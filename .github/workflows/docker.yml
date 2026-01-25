@@ -10,7 +10,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/sym-mlir
+  IMAGE_NAME: ${{ github.repository_owner }}/sym
 
 jobs:
   build-and-push:
