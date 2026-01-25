@@ -1,4 +1,4 @@
-name: Build
+name: Test
 
 on:
   push:
@@ -10,7 +10,8 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
-  build:
+  test:
+    name: Run Tests
     runs-on: ubuntu-latest
 
     steps:
@@ -36,30 +37,33 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and test in container
+      - name: Wait for build workflow
+        uses: lewagon/wait-on-check-action@v1.3.4
+        with:
+          ref: ${{ github.ref }}
+          check-name: build
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 30
+
+      - name: Download build artifacts
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          workflow: build.yml
+          name: build-artifacts
+          path: build/sym
+          branch: ${{ github.head_ref || github.ref_name }}
+          check_artifacts: true
+          search_artifacts: true
+
+      - name: Make sym-opt executable
+        run: chmod +x build/sym/sym/tools/sym-opt
+
+      - name: Run tests
         run: |
           docker run --rm \
             -v ${{ github.workspace }}:/workspace \
             -w /workspace \
             ${{ env.REGISTRY }}/${{ steps.image.outputs.name }}:${{ steps.llvm-version.outputs.short_commit }} \
             bash -c '
-              cmake -G Ninja -S . -B build/sym \
-                -DCMAKE_BUILD_TYPE=Release \
-                -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-                -DMLIR_DIR=/opt/llvm/lib/cmake/mlir \
-                -DLLVM_DIR=/opt/llvm/lib/cmake/llvm \
-                -DLLVM_EXTERNAL_LIT=/opt/llvm/bin/llvm-lit && \
-              ninja -C build/sym -j$(nproc) && \
-              ninja -C build/sym check-sym
+              /opt/llvm/bin/llvm-lit -sv test/
             '
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-artifacts
-          retention-days: 1
-          path: |
-            build/sym/compile_commands.json
-            build/sym/sym/dialect/sym/*.inc
-            build/sym/sym/tools/sym-opt
-            build/sym/test/lit.site.cfg.py
