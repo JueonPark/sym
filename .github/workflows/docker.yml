@@ -1,0 +1,59 @@
+name: Docker
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'build_tools/llvm_version.txt'
+      - 'build_tools/Dockerfile'
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set image name
+        id: image
+        run: |
+          echo "name=${GITHUB_REPOSITORY_OWNER,,}/sym" >> $GITHUB_OUTPUT
+
+      - name: Read LLVM version
+        id: llvm-version
+        run: |
+          LLVM_COMMIT=$(cat build_tools/llvm_version.txt | tr -d '[:space:]')
+          echo "commit=$LLVM_COMMIT" >> $GITHUB_OUTPUT
+          echo "short_commit=${LLVM_COMMIT:0:12}" >> $GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: build_tools
+          file: build_tools/Dockerfile
+          push: true
+          build-args: |
+            LLVM_COMMIT=${{ steps.llvm-version.outputs.commit }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.image.outputs.name }}:${{ steps.llvm-version.outputs.short_commit }}
+            ${{ env.REGISTRY }}/${{ steps.image.outputs.name }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
