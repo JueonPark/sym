@@ -10,7 +10,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/sym
 
 jobs:
   build-and-push:
@@ -22,6 +21,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Set image name
+        id: image
+        run: |
+          echo "name=${GITHUB_REPOSITORY_OWNER,,}/sym" >> $GITHUB_OUTPUT
 
       - name: Read LLVM version
         id: llvm-version
@@ -49,7 +53,7 @@ jobs:
           build-args: |
             LLVM_COMMIT=${{ steps.llvm-version.outputs.commit }}
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.llvm-version.outputs.short_commit }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ steps.image.outputs.name }}:${{ steps.llvm-version.outputs.short_commit }}
+            ${{ env.REGISTRY }}/${{ steps.image.outputs.name }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
