@@ -37,65 +37,28 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build clang clang-tidy lld
+          sudo apt-get install -y clang-tidy
 
-      - name: Read LLVM version
-        id: llvm-version
-        run: |
-          LLVM_COMMIT=$(cat build_tools/llvm_version.txt | tr -d '[:space:]')
-          echo "commit=$LLVM_COMMIT" >> $GITHUB_OUTPUT
-
-      - name: Cache LLVM/MLIR
-        id: cache-llvm
-        uses: actions/cache@v4
+      - name: Wait for build workflow
+        uses: lewagon/wait-on-check-action@v1.3.4
         with:
-          path: |
-            build/llvm-project/install
-          key: llvm-mlir-${{ steps.llvm-version.outputs.commit }}-${{ runner.os }}
+          ref: ${{ github.ref }}
+          check-name: build
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 30
 
-      - name: Build LLVM/MLIR
-        if: steps.cache-llvm.outputs.cache-hit != 'true'
-        run: |
-          LLVM_COMMIT=${{ steps.llvm-version.outputs.commit }}
-          
-          mkdir -p build/llvm-project
-          cd build/llvm-project
-          
-          git clone --depth 1 https://github.com/llvm/llvm-project.git src
-          cd src
-          git fetch --depth 1 origin $LLVM_COMMIT
-          git checkout $LLVM_COMMIT
-          cd ..
-          
-          cmake -G Ninja -S src/llvm -B build \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=$PWD/install \
-            -DLLVM_ENABLE_PROJECTS=mlir \
-            -DLLVM_TARGETS_TO_BUILD="Native" \
-            -DLLVM_ENABLE_ASSERTIONS=ON \
-            -DLLVM_ENABLE_RTTI=ON \
-            -DLLVM_BUILD_EXAMPLES=OFF \
-            -DLLVM_INCLUDE_TESTS=OFF \
-            -DMLIR_INCLUDE_TESTS=OFF
-          
-          ninja -C build -j$(nproc)
-          ninja -C build install
-          
-          # Clean up source and build to reduce cache size
-          rm -rf src build
-
-      - name: Generate compile_commands.json
-        run: |
-          cmake -G Ninja -S . -B build/sym \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-            -DMLIR_DIR=$PWD/build/llvm-project/install/lib/cmake/mlir \
-            -DLLVM_DIR=$PWD/build/llvm-project/install/lib/cmake/llvm \
-            -DLLVM_EXTERNAL_LIT=$PWD/build/llvm-project/install/bin/llvm-lit
+      - name: Download build artifacts
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          workflow: build.yml
+          name: build-artifacts
+          path: build/sym
+          branch: ${{ github.head_ref || github.ref_name }}
+          check_artifacts: true
+          search_artifacts: true
 
       - name: Run clang-tidy
         run: |
-          # Run clang-tidy on all source files
           clang-tidy -p build/sym --warnings-as-errors='*' \
             sym/dialect/sym/SymDialect.cpp \
             sym/tools/SymOptMain.cpp
