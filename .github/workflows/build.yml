@@ -7,7 +7,8 @@ on:
     branches: [main]
 
 env:
-  BUILD_TYPE: Release
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/sym-mlir
 
 jobs:
   build:
@@ -17,70 +18,36 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake ninja-build clang lld
-
       - name: Read LLVM version
         id: llvm-version
         run: |
           LLVM_COMMIT=$(cat build_tools/llvm_version.txt | tr -d '[:space:]')
           echo "commit=$LLVM_COMMIT" >> $GITHUB_OUTPUT
+          echo "short_commit=${LLVM_COMMIT:0:12}" >> $GITHUB_OUTPUT
 
-      - name: Cache LLVM/MLIR
-        id: cache-llvm
-        uses: actions/cache@v4
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
         with:
-          path: |
-            build/llvm-project/install
-          key: llvm-mlir-${{ steps.llvm-version.outputs.commit }}-${{ runner.os }}
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build LLVM/MLIR
-        if: steps.cache-llvm.outputs.cache-hit != 'true'
+      - name: Build and test in container
         run: |
-          LLVM_COMMIT=${{ steps.llvm-version.outputs.commit }}
-          
-          mkdir -p build/llvm-project
-          cd build/llvm-project
-          
-          git clone --depth 1 https://github.com/llvm/llvm-project.git src
-          cd src
-          git fetch --depth 1 origin $LLVM_COMMIT
-          git checkout $LLVM_COMMIT
-          cd ..
-          
-          cmake -G Ninja -S src/llvm -B build \
-            -DCMAKE_BUILD_TYPE=$BUILD_TYPE \
-            -DCMAKE_INSTALL_PREFIX=$PWD/install \
-            -DLLVM_ENABLE_PROJECTS=mlir \
-            -DLLVM_TARGETS_TO_BUILD="Native" \
-            -DLLVM_ENABLE_ASSERTIONS=ON \
-            -DLLVM_ENABLE_RTTI=ON \
-            -DLLVM_BUILD_EXAMPLES=OFF \
-            -DLLVM_INCLUDE_TESTS=OFF \
-            -DMLIR_INCLUDE_TESTS=OFF
-          
-          ninja -C build -j$(nproc)
-          ninja -C build install
-          
-          # Clean up source and build to reduce cache size
-          rm -rf src build
-
-      - name: Build Sym
-        run: |
-          cmake -G Ninja -S . -B build/sym \
-            -DCMAKE_BUILD_TYPE=$BUILD_TYPE \
-            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-            -DMLIR_DIR=$PWD/build/llvm-project/install/lib/cmake/mlir \
-            -DLLVM_DIR=$PWD/build/llvm-project/install/lib/cmake/llvm \
-            -DLLVM_EXTERNAL_LIT=$PWD/build/llvm-project/install/bin/llvm-lit
-          
-          ninja -C build/sym -j$(nproc)
-
-      - name: Run tests
-        run: |
-          ninja -C build/sym check-sym
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.llvm-version.outputs.short_commit }} \
+            bash -c '
+              cmake -G Ninja -S . -B build/sym \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+                -DMLIR_DIR=/opt/llvm/lib/cmake/mlir \
+                -DLLVM_DIR=/opt/llvm/lib/cmake/llvm \
+                -DLLVM_EXTERNAL_LIT=/opt/llvm/bin/llvm-lit && \
+              ninja -C build/sym -j$(nproc) && \
+              ninja -C build/sym check-sym
+            '
 
       - name: Upload build artifacts for clang-tidy
         uses: actions/upload-artifact@v4
