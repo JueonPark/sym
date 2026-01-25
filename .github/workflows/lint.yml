@@ -1,0 +1,64 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  clang-format:
+    name: clang-format
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install clang-format
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format
+
+      - name: Check formatting
+        run: |
+          find . -name "*.cpp" -o -name "*.h" | grep -v build | while read file; do
+            clang-format --dry-run --Werror "$file"
+          done
+
+  clang-tidy:
+    name: clang-tidy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-tidy
+
+      - name: Wait for build workflow
+        uses: lewagon/wait-on-check-action@v1.3.4
+        with:
+          ref: ${{ github.ref }}
+          check-name: build
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 30
+
+      - name: Download build artifacts
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          workflow: build.yml
+          name: build-artifacts
+          path: build/sym
+          branch: ${{ github.head_ref || github.ref_name }}
+          check_artifacts: true
+          search_artifacts: true
+
+      - name: Run clang-tidy
+        run: |
+          clang-tidy -p build/sym --warnings-as-errors='*' \
+            sym/dialect/sym/SymDialect.cpp \
+            sym/tools/SymOptMain.cpp
