@@ -126,6 +126,38 @@ BinaryExprAttr::verify(function_ref<InFlightDiagnostic()> emitError,
 }
 
 //===----------------------------------------------------------------------===//
+// SymbolicTensorType Verification
+//===----------------------------------------------------------------------===//
+
+LogicalResult
+SymbolicTensorType::verify(function_ref<InFlightDiagnostic()> emitError,
+                           ArrayRef<Attribute> shape, Type elementType) {
+  // Verify each shape dimension is a valid symbolic expression attribute
+  for (size_t idx = 0; idx < shape.size(); ++idx) {
+    Attribute attr = shape[idx];
+    bool isValidShapeAttr = isa<SymbolExprAttr>(attr) ||
+                            isa<ConstantExprAttr>(attr) ||
+                            isa<BinaryExprAttr>(attr);
+
+    if (!isValidShapeAttr) {
+      return emitError() << "shape dimension " << idx
+                         << " must be SymbolExprAttr, ConstantExprAttr, or "
+                            "BinaryExprAttr, but got: "
+                         << attr;
+    }
+  }
+
+  // Verify elementType is a valid tensor element type
+  if (!elementType.isIntOrIndexOrFloat() && !isa<ComplexType>(elementType)) {
+    return emitError() << "element type must be a valid tensor element type, "
+                          "but got: "
+                       << elementType;
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // BinaryExprAttr Custom Assembly Format
 //===----------------------------------------------------------------------===//
 
@@ -234,7 +266,10 @@ Type SymbolicTensorType::parse(AsmParser &parser) {
   if (parser.parseGreater())
     return Type();
 
-  return get(parser.getContext(), shape, elemType);
+  // Use getChecked to properly emit diagnostics on verification failure
+  return getChecked(
+      [&]() { return parser.emitError(parser.getCurrentLocation()); },
+      parser.getContext(), shape, elemType);
 }
 
 // --- Type Printer ---

@@ -16,6 +16,9 @@ def SymbolicTensorType : Sym_Type<"SymbolicTensor", "tensor"> {
   // We keep custom assembly to make it readable: 
   // !sym.tensor<[16, #sym.op<add, "a", 1>], f32>
   let hasCustomAssemblyFormat = 1;
+
+  // Enable verification to ensure shape attributes are valid
+  let genVerifyDecl = 1;
 }
 
 #endif // SYM_TYPES_TD
