@@ -101,8 +101,13 @@ jobs:
             -v ${{ github.workspace }}:/workspace \
             -w /workspace \
             ${{ env.REGISTRY }}/${{ steps.image.outputs.name }}:${{ steps.llvm-version.outputs.short_commit }} \
-            clang-tidy -p build/sym --warnings-as-errors='*' \
-              --extra-arg=-std=c++17 \
-              -header-filter='^/workspace/sym/.*' \
-              sym/dialect/sym/SymDialect.cpp \
-              sym/tools/SymOptMain.cpp
+            bash -c '
+              apt-get update && apt-get install -y wget lsb-release software-properties-common gnupg && \
+              wget https://apt.llvm.org/llvm.sh && chmod +x llvm.sh && ./llvm.sh 21 && \
+              apt-get install -y clang-tidy-21 && \
+              clang-tidy-21 -p build/sym --warnings-as-errors="*" \
+                --extra-arg=-std=c++17 \
+                -header-filter="^/workspace/sym/.*" \
+                sym/dialect/sym/SymDialect.cpp \
+                sym/tools/SymOptMain.cpp
+            '
