@@ -22,28 +22,28 @@ func.func @test_constant_attr() {
   return
 }
 
-// Test BinaryExprAttr - binary operations
+// Test BinaryExprAttr - binary operations with infix syntax
 // CHECK-LABEL: func.func @test_binary_attr
 func.func @test_binary_attr() {
   // add: batch + 1
-  // CHECK: "test.use_attr"() {sym_expr = #sym.op<add, #sym.symbol<"batch">, #sym.constant<1>>}
-  "test.use_attr"() {sym_expr = #sym.op<add, #sym.symbol<"batch">, #sym.constant<1>>} : () -> ()
+  // CHECK: "test.use_attr"() {sym_expr = #sym.binary<#sym.symbol<"batch"> + #sym.constant<1>>}
+  "test.use_attr"() {sym_expr = #sym.binary<#sym.symbol<"batch"> + #sym.constant<1>>} : () -> ()
   
   // sub: a - b
-  // CHECK: "test.use_attr"() {sym_expr = #sym.op<sub, #sym.symbol<"a">, #sym.symbol<"b">>}
-  "test.use_attr"() {sym_expr = #sym.op<sub, #sym.symbol<"a">, #sym.symbol<"b">>} : () -> ()
+  // CHECK: "test.use_attr"() {sym_expr = #sym.binary<#sym.symbol<"a"> - #sym.symbol<"b">>}
+  "test.use_attr"() {sym_expr = #sym.binary<#sym.symbol<"a"> - #sym.symbol<"b">>} : () -> ()
   
   // mul: x * 2
-  // CHECK: "test.use_attr"() {sym_expr = #sym.op<mul, #sym.symbol<"x">, #sym.constant<2>>}
-  "test.use_attr"() {sym_expr = #sym.op<mul, #sym.symbol<"x">, #sym.constant<2>>} : () -> ()
+  // CHECK: "test.use_attr"() {sym_expr = #sym.binary<#sym.symbol<"x"> * #sym.constant<2>>}
+  "test.use_attr"() {sym_expr = #sym.binary<#sym.symbol<"x"> * #sym.constant<2>>} : () -> ()
   
-  // div: total / batch_size
-  // CHECK: "test.use_attr"() {sym_expr = #sym.op<div, #sym.symbol<"total">, #sym.symbol<"batch_size">>}
-  "test.use_attr"() {sym_expr = #sym.op<div, #sym.symbol<"total">, #sym.symbol<"batch_size">>} : () -> ()
+  // div: total div batch_size
+  // CHECK: "test.use_attr"() {sym_expr = #sym.binary<#sym.symbol<"total"> div #sym.symbol<"batch_size">>}
+  "test.use_attr"() {sym_expr = #sym.binary<#sym.symbol<"total"> div #sym.symbol<"batch_size">>} : () -> ()
   
-  // mod: index % 8
-  // CHECK: "test.use_attr"() {sym_expr = #sym.op<mod, #sym.symbol<"index">, #sym.constant<8>>}
-  "test.use_attr"() {sym_expr = #sym.op<mod, #sym.symbol<"index">, #sym.constant<8>>} : () -> ()
+  // mod: index mod 8
+  // CHECK: "test.use_attr"() {sym_expr = #sym.binary<#sym.symbol<"index"> mod #sym.constant<8>>}
+  "test.use_attr"() {sym_expr = #sym.binary<#sym.symbol<"index"> mod #sym.constant<8>>} : () -> ()
   return
 }
 
@@ -51,7 +51,7 @@ func.func @test_binary_attr() {
 // CHECK-LABEL: func.func @test_nested_binary_attr
 func.func @test_nested_binary_attr() {
   // (a + b) * c
-  // CHECK: "test.use_attr"() {sym_expr = #sym.op<mul, #sym.op<add, #sym.symbol<"a">, #sym.symbol<"b">>, #sym.symbol<"c">>}
-  "test.use_attr"() {sym_expr = #sym.op<mul, #sym.op<add, #sym.symbol<"a">, #sym.symbol<"b">>, #sym.symbol<"c">>} : () -> ()
+  // CHECK: "test.use_attr"() {sym_expr = #sym.binary<#sym.binary<#sym.symbol<"a"> + #sym.symbol<"b">> * #sym.symbol<"c">>}
+  "test.use_attr"() {sym_expr = #sym.binary<#sym.binary<#sym.symbol<"a"> + #sym.symbol<"b">> * #sym.symbol<"c">>} : () -> ()
   return
 }
