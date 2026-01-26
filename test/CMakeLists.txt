@@ -7,9 +7,6 @@ configure_lit_site_cfg(
 
 set(SYM_TEST_DEPENDS
   sym-opt
-  FileCheck
-  count
-  not
 )
 
 add_lit_testsuite(check-sym "Running Sym regression tests"

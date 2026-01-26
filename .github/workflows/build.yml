@@ -48,7 +48,7 @@ jobs:
                 -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
                 -DMLIR_DIR=/opt/llvm/lib/cmake/mlir \
                 -DLLVM_DIR=/opt/llvm/lib/cmake/llvm \
-                -DLLVM_EXTERNAL_LIT=/opt/llvm/bin/llvm-lit && \
+                -DLLVM_EXTERNAL_LIT=$(which lit) && \
               ninja -C build/sym -j$(nproc) && \
               ninja -C build/sym check-sym
             '
