@@ -24,7 +24,8 @@ def ConstantExprAttr : Sym_Attr<"ConstantExpr", "constant"> {
 // 3. The Binary Operation Attribute (e.g., Add, Mul)
 // This is recursive: lhs and rhs are generic Attributes (which we verify are ExprAttrs)
 // Uses the manually-defined C++ enum SymbolicExprOp from SymDialect.h
-def BinaryExprAttr : Sym_Attr<"BinaryExpr", "op"> {
+// Syntax: #sym.binary<lhs + rhs>, #sym.binary<lhs // rhs>, etc.
+def BinaryExprAttr : Sym_Attr<"BinaryExpr", "binary"> {
   let summary = "Represents a binary operation (add, mul, div, etc.)";
   
   let parameters = (ins 
