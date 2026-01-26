@@ -61,3 +61,33 @@ jobs:
           path: |
             build/sym/compile_commands.json
             build/sym/sym/dialect/sym/*.inc
+
+  clang-tidy:
+    name: clang-tidy
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install clang-tidy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-tidy
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts
+          path: build/sym
+
+      - name: Fix paths in compile_commands.json
+        run: |
+          sed -i 's|/workspace|${{ github.workspace }}|g' build/sym/compile_commands.json
+
+      - name: Run clang-tidy
+        run: |
+          clang-tidy -p build/sym --warnings-as-errors='*' \
+            sym/dialect/sym/SymDialect.cpp \
+            sym/tools/SymOptMain.cpp
