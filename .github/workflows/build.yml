@@ -109,7 +109,7 @@ jobs:
               apt-get install -y clang-tidy-21 && \
               clang-tidy-21 -p build/sym --warnings-as-errors="*" \
                 --extra-arg=-std=c++17 \
-                --exclude-header-filter="/opt/llvm/.*" \
+                --extra-arg=-isystem/opt/llvm/include \
                 -header-filter="^/workspace/sym/.*" \
                 sym/dialect/sym/SymDialect.cpp \
                 sym/tools/SymOptMain.cpp
