@@ -156,8 +156,9 @@ jobs:
           docker run --rm \
             -v ${{ github.workspace }}:/workspace \
             -w /workspace \
+            -e LLVM_TOOLS_DIR=/opt/llvm/bin \
             ${{ env.REGISTRY }}/${{ steps.image.outputs.name }}:${{ steps.llvm-version.outputs.short_commit }} \
             bash -c '
               pip install lit && \
-              lit -sv test/
+              lit -sv build/sym/test/lit.site.cfg.py
             '
