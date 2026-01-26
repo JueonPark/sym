@@ -149,6 +149,9 @@ jobs:
           name: build-artifacts
           path: build/sym
 
+      - name: Debug - list downloaded artifacts
+        run: find build/sym -type f
+
       - name: Make sym-opt executable
         run: chmod +x build/sym/sym/tools/sym-opt
 
@@ -161,5 +164,5 @@ jobs:
             ${{ env.REGISTRY }}/${{ steps.image.outputs.name }}:${{ steps.llvm-version.outputs.short_commit }} \
             bash -c '
               pip install lit && \
-              lit -sv build/sym/test/lit.site.cfg.py
+              lit -sv build/sym/test
             '
