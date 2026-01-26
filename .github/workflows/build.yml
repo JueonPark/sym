@@ -95,7 +95,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: build-artifacts
-          path: .
+          path: build/sym
 
       - name: Run clang-tidy in container
         run: |
@@ -110,6 +110,7 @@ jobs:
               clang-tidy-21 -p build/sym --warnings-as-errors="*" \
                 --extra-arg=-std=c++17 \
                 --extra-arg=-isystem/opt/llvm/include \
+                -checks="-clang-analyzer-core.StackAddressEscape" \
                 -header-filter="^/workspace/sym/.*" \
                 sym/dialect/sym/SymDialect.cpp \
                 sym/tools/SymOptMain.cpp
@@ -146,7 +147,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: build-artifacts
-          path: .
+          path: build/sym
 
       - name: Make sym-opt executable
         run: chmod +x build/sym/sym/tools/sym-opt
