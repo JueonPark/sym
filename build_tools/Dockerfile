@@ -33,13 +33,15 @@ RUN cmake -G Ninja -S src/llvm -B build \
     -DLLVM_ENABLE_ASSERTIONS=ON \
     -DLLVM_ENABLE_RTTI=ON \
     -DLLVM_BUILD_EXAMPLES=OFF \
-    -DLLVM_INCLUDE_TESTS=OFF \
+    -DLLVM_INCLUDE_TESTS=ON \
     -DMLIR_INCLUDE_TESTS=OFF \
     -DLLVM_INCLUDE_BENCHMARKS=OFF \
     -DLLVM_INCLUDE_DOCS=OFF
 
 RUN ninja -C build -j$(nproc) && \
-    ninja -C build install
+    ninja -C build FileCheck count not && \
+    ninja -C build install && \
+    cp build/bin/FileCheck build/bin/count build/bin/not /opt/llvm/bin/
 
 # Stage 2: Minimal runtime image
 FROM ubuntu:22.04
@@ -52,7 +54,9 @@ RUN apt-get update && apt-get install -y \
     lld \
     git \
     python3 \
-    && rm -rf /var/lib/apt/lists/*
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip3 install --no-cache-dir lit
 
 # Copy only the installed LLVM/MLIR artifacts
 COPY --from=builder /opt/llvm /opt/llvm
