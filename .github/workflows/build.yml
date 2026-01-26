@@ -157,5 +157,6 @@ jobs:
             -w /workspace \
             ${{ env.REGISTRY }}/${{ steps.image.outputs.name }}:${{ steps.llvm-version.outputs.short_commit }} \
             bash -c '
-              /opt/llvm/bin/llvm-lit -sv test/
+              pip install lit && \
+              lit -sv test/
             '
