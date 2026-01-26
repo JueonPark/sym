@@ -95,7 +95,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: build-artifacts
-          path: build/sym
+          path: .
 
       - name: Run clang-tidy in container
         run: |
@@ -146,7 +146,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: build-artifacts
-          path: build/sym
+          path: .
 
       - name: Make sym-opt executable
         run: chmod +x build/sym/sym/tools/sym-opt
