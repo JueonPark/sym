@@ -60,51 +60,41 @@ mlir::sym::symbolizeSymbolicExprOp(llvm::StringRef str) {
       .Default(std::nullopt);
 }
 
+// Operator symbol helpers for infix notation
+llvm::StringRef getOperatorSymbol(SymbolicExprOp op) {
+  switch (op) {
+  case SymbolicExprOp::Add:
+    return "+";
+  case SymbolicExprOp::Sub:
+    return "-";
+  case SymbolicExprOp::Mul:
+    return "*";
+  case SymbolicExprOp::Div:
+    return "div";
+  case SymbolicExprOp::Mod:
+    return "mod";
+  }
+  llvm_unreachable("unknown SymbolicExprOp");
+}
+
+std::optional<SymbolicExprOp> symbolizeFromOperator(AsmParser &parser) {
+  // Try to parse operator symbols: +, -, *, /, %
+  if (succeeded(parser.parseOptionalPlus()))
+    return SymbolicExprOp::Add;
+  if (succeeded(parser.parseOptionalMinus()))
+    return SymbolicExprOp::Sub;
+  if (succeeded(parser.parseOptionalStar()))
+    return SymbolicExprOp::Mul;
+  // For division (/) - parse using keyword "div"
+  if (succeeded(parser.parseOptionalKeyword("div")))
+    return SymbolicExprOp::Div;
+  // For modulo (%) - parse using keyword "mod"
+  if (succeeded(parser.parseOptionalKeyword("mod")))
+    return SymbolicExprOp::Mod;
+  return std::nullopt;
+}
+
 // --- Attributes Implementation ---
-
-//===----------------------------------------------------------------------===//
-// SymbolExprAttr Custom Assembly Format
-//===----------------------------------------------------------------------===//
-
-Attribute SymbolExprAttr::parse(AsmParser &parser, Type type) {
-  if (parser.parseLess())
-    return {};
-
-  std::string name;
-  if (parser.parseString(&name))
-    return {};
-
-  if (parser.parseGreater())
-    return {};
-
-  return get(parser.getContext(), name);
-}
-
-void SymbolExprAttr::print(AsmPrinter &printer) const {
-  printer << "<\"" << getName() << "\">";
-}
-
-//===----------------------------------------------------------------------===//
-// ConstantExprAttr Custom Assembly Format
-//===----------------------------------------------------------------------===//
-
-Attribute ConstantExprAttr::parse(AsmParser &parser, Type type) {
-  if (parser.parseLess())
-    return {};
-
-  int64_t value;
-  if (parser.parseInteger(value))
-    return {};
-
-  if (parser.parseGreater())
-    return {};
-
-  return get(parser.getContext(), value);
-}
-
-void ConstantExprAttr::print(AsmPrinter &printer) const {
-  printer << "<" << getValue() << ">";
-}
 
 // 1. Verify BinaryExprAttr
 LogicalResult
@@ -162,33 +152,27 @@ SymbolicTensorType::verify(function_ref<InFlightDiagnostic()> emitError,
 //===----------------------------------------------------------------------===//
 
 Attribute BinaryExprAttr::parse(AsmParser &parser, Type type) {
+  // Parse format: <lhs op rhs>
+  // e.g., #sym.binary<#sym.symbol<"a"> + #sym.constant<1>>
+  // Operators: + (add), - (sub), * (mul), // (div), % (mod)
+
   if (parser.parseLess())
     return {};
 
-  // Parse the opcode as a keyword
-  StringRef opcodeStr;
-  if (parser.parseKeyword(&opcodeStr))
-    return {};
-
-  auto opcode = symbolizeSymbolicExprOp(opcodeStr);
-  if (!opcode) {
-    parser.emitError(parser.getCurrentLocation(), "unknown opcode: ")
-        << opcodeStr;
-    return {};
-  }
-
-  if (parser.parseComma())
-    return {};
-
-  // Parse LHS attribute
+  // Parse lhs attribute
   Attribute lhs;
   if (parser.parseAttribute(lhs))
     return {};
 
-  if (parser.parseComma())
+  // Parse the operator symbol
+  auto opcode = symbolizeFromOperator(parser);
+  if (!opcode) {
+    parser.emitError(parser.getCurrentLocation(),
+                     "expected operator: +, -, *, //, or %");
     return {};
+  }
 
-  // Parse RHS attribute
+  // Parse rhs attribute
   Attribute rhs;
   if (parser.parseAttribute(rhs))
     return {};
@@ -196,13 +180,13 @@ Attribute BinaryExprAttr::parse(AsmParser &parser, Type type) {
   if (parser.parseGreater())
     return {};
 
-  return get(parser.getContext(), *opcode, lhs, rhs);
+  return BinaryExprAttr::get(parser.getContext(), *opcode, lhs, rhs);
 }
 
 void BinaryExprAttr::print(AsmPrinter &printer) const {
-  printer << "<" << stringifySymbolicExprOp(getOpcode()) << ", ";
+  printer << "<";
   printer.printAttribute(getLhs());
-  printer << ", ";
+  printer << " " << getOperatorSymbol(getOpcode()) << " ";
   printer.printAttribute(getRhs());
   printer << ">";
 }
@@ -285,10 +269,10 @@ void SymbolicTensorType::print(AsmPrinter &printer) const {
         .Case<SymbolExprAttr>(
             [&](auto a) { printer << "\"" << a.getName() << "\""; })
         .Case<BinaryExprAttr>([&](auto a) {
-          // Print as prefix: add(lhs, rhs)
-          printer << stringifySymbolicExprOp(a.getOpcode()) << "(";
+          // Print as infix: (lhs op rhs)
+          printer << "(";
           printer.printAttribute(a.getLhs());
-          printer << ", ";
+          printer << " " << getOperatorSymbol(a.getOpcode()) << " ";
           printer.printAttribute(a.getRhs());
           printer << ")";
         })
