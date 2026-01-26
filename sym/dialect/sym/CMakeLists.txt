@@ -11,7 +11,7 @@ mlir_tablegen(SymTypes.cpp.inc -gen-typedef-defs)
 add_public_tablegen_target(SymTypesIncGen)
 
 # TableGen for Attributes
-set(LLVM_TARGET_DEFINITIONS SymAttributes.td)
+set(LLVM_TARGET_DEFINITIONS SymAttrs.td)
 mlir_tablegen(SymAttributes.h.inc -gen-attrdef-decls)
 mlir_tablegen(SymAttributes.cpp.inc -gen-attrdef-defs)
 add_public_tablegen_target(SymAttributesIncGen)
