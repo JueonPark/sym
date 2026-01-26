@@ -62,50 +62,6 @@ mlir::sym::symbolizeSymbolicExprOp(llvm::StringRef str) {
 
 // --- Attributes Implementation ---
 
-//===----------------------------------------------------------------------===//
-// SymbolExprAttr Custom Assembly Format
-//===----------------------------------------------------------------------===//
-
-Attribute SymbolExprAttr::parse(AsmParser &parser, Type type) {
-  if (parser.parseLess())
-    return {};
-
-  std::string name;
-  if (parser.parseString(&name))
-    return {};
-
-  if (parser.parseGreater())
-    return {};
-
-  return get(parser.getContext(), name);
-}
-
-void SymbolExprAttr::print(AsmPrinter &printer) const {
-  printer << "<\"" << getName() << "\">";
-}
-
-//===----------------------------------------------------------------------===//
-// ConstantExprAttr Custom Assembly Format
-//===----------------------------------------------------------------------===//
-
-Attribute ConstantExprAttr::parse(AsmParser &parser, Type type) {
-  if (parser.parseLess())
-    return {};
-
-  int64_t value;
-  if (parser.parseInteger(value))
-    return {};
-
-  if (parser.parseGreater())
-    return {};
-
-  return get(parser.getContext(), value);
-}
-
-void ConstantExprAttr::print(AsmPrinter &printer) const {
-  printer << "<" << getValue() << ">";
-}
-
 // 1. Verify BinaryExprAttr
 LogicalResult
 BinaryExprAttr::verify(function_ref<InFlightDiagnostic()> emitError,
@@ -125,22 +81,23 @@ BinaryExprAttr::verify(function_ref<InFlightDiagnostic()> emitError,
   return success();
 }
 
-//===----------------------------------------------------------------------===//
-// BinaryExprAttr Custom Assembly Format
-//===----------------------------------------------------------------------===//
+// --- Custom Parser/Printer for BinaryExprAttr ---
 
 Attribute BinaryExprAttr::parse(AsmParser &parser, Type type) {
+  // Parse format: <opcode, lhs, rhs>
+  // e.g., #sym.op<add, #sym.symbol<"a">, #sym.constant<1>>
+
   if (parser.parseLess())
     return {};
 
-  // Parse the opcode as a keyword
+  // Parse the opcode keyword
   StringRef opcodeStr;
   if (parser.parseKeyword(&opcodeStr))
     return {};
 
   auto opcode = symbolizeSymbolicExprOp(opcodeStr);
   if (!opcode) {
-    parser.emitError(parser.getCurrentLocation(), "unknown opcode: ")
+    parser.emitError(parser.getCurrentLocation(), "unknown binary opcode: ")
         << opcodeStr;
     return {};
   }
@@ -148,7 +105,7 @@ Attribute BinaryExprAttr::parse(AsmParser &parser, Type type) {
   if (parser.parseComma())
     return {};
 
-  // Parse LHS attribute
+  // Parse lhs attribute
   Attribute lhs;
   if (parser.parseAttribute(lhs))
     return {};
@@ -156,7 +113,7 @@ Attribute BinaryExprAttr::parse(AsmParser &parser, Type type) {
   if (parser.parseComma())
     return {};
 
-  // Parse RHS attribute
+  // Parse rhs attribute
   Attribute rhs;
   if (parser.parseAttribute(rhs))
     return {};
@@ -164,7 +121,7 @@ Attribute BinaryExprAttr::parse(AsmParser &parser, Type type) {
   if (parser.parseGreater())
     return {};
 
-  return get(parser.getContext(), *opcode, lhs, rhs);
+  return BinaryExprAttr::get(parser.getContext(), *opcode, lhs, rhs);
 }
 
 void BinaryExprAttr::print(AsmPrinter &printer) const {
