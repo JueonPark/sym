@@ -57,6 +57,10 @@ jobs:
           check_artifacts: true
           search_artifacts: true
 
+      - name: Fix paths in compile_commands.json
+        run: |
+          sed -i 's|/workspace|${{ github.workspace }}|g' build/sym/compile_commands.json
+
       - name: Run clang-tidy
         run: |
           clang-tidy -p build/sym --warnings-as-errors='*' \
