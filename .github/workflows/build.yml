@@ -71,12 +71,23 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install clang-tidy-21
+      - name: Set image name
+        id: image
         run: |
-          wget https://apt.llvm.org/llvm.sh
-          chmod +x llvm.sh
-          sudo ./llvm.sh 21
-          sudo apt-get install -y clang-tidy-21
+          echo "name=${GITHUB_REPOSITORY_OWNER,,}/sym" >> $GITHUB_OUTPUT
+
+      - name: Read LLVM version
+        id: llvm-version
+        run: |
+          LLVM_COMMIT=$(cat build_tools/llvm_version.txt | tr -d '[:space:]')
+          echo "short_commit=${LLVM_COMMIT:0:12}" >> $GITHUB_OUTPUT
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download build artifacts
         uses: actions/download-artifact@v4
@@ -84,14 +95,19 @@ jobs:
           name: build-artifacts
           path: build/sym
 
-      - name: Fix compile_commands.json paths
+      - name: Run clang-tidy in container
         run: |
-          sed -i "s|/workspace|${{ github.workspace }}|g" build/sym/compile_commands.json
-
-      - name: Run clang-tidy
-        run: |
-          clang-tidy-21 -p build/sym --warnings-as-errors='*' \
-            --extra-arg=-std=c++17 \
-            -header-filter='^/workspace/sym/.*' \
-            sym/dialect/sym/SymDialect.cpp \
-            sym/tools/SymOptMain.cpp
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            ${{ env.REGISTRY }}/${{ steps.image.outputs.name }}:${{ steps.llvm-version.outputs.short_commit }} \
+            bash -c '
+              apt-get update && apt-get install -y wget lsb-release software-properties-common gnupg && \
+              wget https://apt.llvm.org/llvm.sh && chmod +x llvm.sh && ./llvm.sh 21 && \
+              apt-get install -y clang-tidy-21 && \
+              clang-tidy-21 -p build/sym --warnings-as-errors="*" \
+                --extra-arg=-std=c++17 \
+                -header-filter="^/workspace/sym/.*" \
+                sym/dialect/sym/SymDialect.cpp \
+                sym/tools/SymOptMain.cpp
+            '
