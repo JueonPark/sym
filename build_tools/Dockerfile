@@ -26,7 +26,7 @@ RUN cmake -G Ninja -S src/llvm -B build \
     -DCMAKE_INSTALL_PREFIX=/opt/llvm \
     -DCMAKE_C_COMPILER=gcc \
     -DCMAKE_CXX_COMPILER=g++ \
-    -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra;lld;mlir" \
+    -DLLVM_ENABLE_PROJECTS="mlir" \
     -DLLVM_TARGETS_TO_BUILD="Native" \
     -DLLVM_ENABLE_ASSERTIONS=ON \
     -DLLVM_ENABLE_RTTI=ON \
@@ -37,9 +37,9 @@ RUN cmake -G Ninja -S src/llvm -B build \
     -DLLVM_INCLUDE_DOCS=OFF
 
 RUN ninja -C build -j$(nproc) && \
-    ninja -C build FileCheck count not clang-tidy clang-format && \
+    ninja -C build FileCheck count not && \
     ninja -C build install && \
-    cp build/bin/FileCheck build/bin/count build/bin/not build/bin/clang-tidy build/bin/clang-format /opt/llvm/bin/
+    cp build/bin/FileCheck build/bin/count build/bin/not /opt/llvm/bin/
 
 # Stage 2: Minimal runtime image
 FROM ubuntu:22.04
