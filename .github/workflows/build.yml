@@ -102,6 +102,7 @@ jobs:
             -w /workspace \
             ${{ env.REGISTRY }}/${{ steps.image.outputs.name }}:${{ steps.llvm-version.outputs.short_commit }} \
             clang-tidy -p build/sym --warnings-as-errors='*' \
+              --extra-arg=-std=c++17 \
               -header-filter='^/workspace/sym/.*' \
               sym/dialect/sym/SymDialect.cpp \
               sym/tools/SymOptMain.cpp
