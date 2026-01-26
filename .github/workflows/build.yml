@@ -149,9 +149,6 @@ jobs:
           name: build-artifacts
           path: build/sym
 
-      - name: Debug - list downloaded artifacts
-        run: find build/sym -type f
-
       - name: Make sym-opt executable
         run: chmod +x build/sym/sym/tools/sym-opt
 
