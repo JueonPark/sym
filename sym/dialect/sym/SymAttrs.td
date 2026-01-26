@@ -1,15 +1,16 @@
-// SymAttributes.td
+// SymAttrs.td
 #ifndef SYM_ATTRIBUTES_TD
 #define SYM_ATTRIBUTES_TD
 
 include "mlir/IR/AttrTypeBase.td"
+include "mlir/IR/EnumAttr.td"
 include "SymDialect.td"
 
 // 1. The Atomic Symbol Attribute (e.g., "a", "batch")
 def SymbolExprAttr : Sym_Attr<"SymbolExpr", "symbol"> {
   let summary = "Represents a named symbolic variable";
-  let parameters = (ins "std::string":$name);
-  let hasCustomAssemblyFormat = 1;
+  let parameters = (ins StringRefParameter<"symbol name">:$name);
+  let assemblyFormat = "`<` $name `>`";
 }
 
 // 2. The Constant Integer Attribute (e.g., 42)
@@ -17,21 +18,23 @@ def SymbolExprAttr : Sym_Attr<"SymbolExpr", "symbol"> {
 def ConstantExprAttr : Sym_Attr<"ConstantExpr", "constant"> {
   let summary = "Represents a constant integer value";
   let parameters = (ins "int64_t":$value);
-  let hasCustomAssemblyFormat = 1;
+  let assemblyFormat = "`<` $value `>`";
 }
 
 // 3. The Binary Operation Attribute (e.g., Add, Mul)
 // This is recursive: lhs and rhs are generic Attributes (which we verify are ExprAttrs)
-def BinaryExprAttr : Sym_Attr<"BinaryExpr", "op"> {
+// Uses the manually-defined C++ enum SymbolicExprOp from SymDialect.h
+// Syntax: #sym.binary<lhs + rhs>, #sym.binary<lhs // rhs>, etc.
+def BinaryExprAttr : Sym_Attr<"BinaryExpr", "binary"> {
   let summary = "Represents a binary operation (add, mul, div, etc.)";
   
   let parameters = (ins 
-    "SymbolicExprOp":$opcode, // Enum for +, -, *, /
-    "Attribute":$lhs,         // Recursive structure
+    "SymbolicExprOp":$opcode,   // Use the C++ enum directly
+    "Attribute":$lhs,           // Recursive structure
     "Attribute":$rhs
   );
 
-  // Use custom assembly format since SymbolicExprOp is a C++ enum
+  // Custom parser/printer since SymbolicExprOp is a custom C++ enum
   let hasCustomAssemblyFormat = 1;
   
   // Custom verification to ensure lhs/rhs are actually Sym attributes

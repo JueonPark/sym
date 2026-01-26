@@ -4,7 +4,7 @@
 
 include "SymDialect.td"
 include "SymTypes.td"
-include "SymAttributes.td"
+include "SymAttrs.td"
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
