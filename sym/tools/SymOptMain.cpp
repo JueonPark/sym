@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "SymDialect.h"
+#include "SymPasses.h"
 
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/MLIRContext.h"
@@ -20,6 +21,12 @@ int main(int argc, char **argv) {
 
   // Register all MLIR core passes
   mlir::registerAllPasses();
+
+  // Register Sym dialect passes
+  mlir::sym::registerSymPasses();
+
+  // Register external models for arith ops
+  mlir::sym::registerSymbolicShapeOpInterfaceExternalModels(registry);
 
   // Register our Sym dialect
   registry.insert<mlir::sym::SymDialect>();

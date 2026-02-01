@@ -31,4 +31,24 @@ def Sym_ConstantOp : Sym_Op<"constant", []> {
   let assemblyFormat = "attr-dict `:` type($result)";
 }
 
+// Operation to convert a tensor to a symbolic tensor type
+def Sym_ChangeTypeOp : Sym_Op<"change_type", [Pure]> {
+  let summary = "Convert a tensor to a symbolic tensor type";
+  let description = [{
+    Converts an input tensor to a symbolic tensor type. This operation
+    acts as a bridge between standard MLIR tensor types and symbolic
+    tensor types.
+    
+    Example:
+    ```mlir
+    %0 = sym.change_type %input : tensor<?x?xf32> -> !sym.tensor<["batch", "seq"], f32>
+    ```
+  }];
+  
+  let arguments = (ins AnyTensor:$input);
+  let results = (outs SymbolicTensorType:$result);
+  
+  let assemblyFormat = "$input attr-dict `:` type($input) `->` type($result)";
+}
+
 #endif // SYM_OPS_TD
