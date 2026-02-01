@@ -32,6 +32,7 @@ add_custom_target(SymIncGen DEPENDS
 
 # Dialect Library
 add_mlir_dialect_library(MLIRSymDialect
+  SymAttributes.cpp
   SymDialect.cpp
 
   ADDITIONAL_HEADER_DIRS
