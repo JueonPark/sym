@@ -28,6 +28,9 @@ std::optional<SymbolicExprOp> symbolizeSymbolicExprOp(llvm::StringRef str);
 Attribute getSimplifiedBinaryExpr(MLIRContext *context, SymbolicExprOp opcode,
                                   Attribute lhs, Attribute rhs);
 
+/// Register external models for SymbolicShapeOpInterface on standard ops.
+void registerSymbolicShapeOpInterfaceExternalModels(DialectRegistry &registry);
+
 } // namespace sym
 } // namespace mlir
 
