@@ -8,14 +8,17 @@ add_llvm_executable(sym-opt
 llvm_update_compile_flags(sym-opt)
 
 target_include_directories(sym-opt PRIVATE
-  ${PROJECT_SOURCE_DIR}/sym/dialect/sym
-  ${PROJECT_BINARY_DIR}/sym/dialect/sym
+  ${PROJECT_SOURCE_DIR}/sym/dialect/sym/IR
+  ${PROJECT_BINARY_DIR}/sym/dialect/sym/IR
+  ${PROJECT_SOURCE_DIR}/sym/dialect/sym/Transforms
+  ${PROJECT_BINARY_DIR}/sym/dialect/sym/Transforms
 )
 
 target_link_libraries(sym-opt PRIVATE
   ${dialect_libs}
   ${conversion_libs}
   MLIRSymDialect
+  MLIRSymTransforms
   MLIROptLib
   MLIRParser
   MLIRPass

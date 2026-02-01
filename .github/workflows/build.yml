@@ -60,7 +60,8 @@ jobs:
           retention-days: 1
           path: |
             build/sym/compile_commands.json
-            build/sym/sym/dialect/sym/*.inc
+            build/sym/sym/dialect/sym/IR/*.inc
+            build/sym/sym/dialect/sym/Transforms/*.inc
             build/sym/sym/tools/sym-opt
             build/sym/test/lit.site.cfg.py
 
@@ -112,7 +113,7 @@ jobs:
                 --extra-arg=-isystem/opt/llvm/include \
                 -checks="-clang-analyzer-core.StackAddressEscape" \
                 -header-filter="^/workspace/sym/.*" \
-                sym/dialect/sym/SymDialect.cpp \
+                sym/dialect/sym/IR/SymDialect.cpp \
                 sym/tools/SymOptMain.cpp
             '
 
