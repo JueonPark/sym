@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "SymDialect.h"
+#include "SymUtils.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "llvm/ADT/TypeSwitch.h"
@@ -55,57 +56,15 @@ static std::optional<SymbolicExprOp> symbolizeFromOperator(AsmParser &parser) {
 //===----------------------------------------------------------------------===//
 
 /// Check if two expression attributes are logically equal.
-/// This handles commutativity for Add and Mul operations.
+/// Delegates to UnificationSolver::areLogicallyEqual.
 static bool areLogicallyEqual(Attribute a, Attribute b) {
-  if (a == b)
-    return true;
-
-  // Check ConstantExprAttr equality by value
-  if (auto constA = dyn_cast<ConstantExprAttr>(a)) {
-    if (auto constB = dyn_cast<ConstantExprAttr>(b)) {
-      return constA.getValue() == constB.getValue();
-    }
-    return false;
-  }
-
-  // Check SymbolExprAttr equality by name
-  if (auto symA = dyn_cast<SymbolExprAttr>(a)) {
-    if (auto symB = dyn_cast<SymbolExprAttr>(b)) {
-      return symA.getName() == symB.getName();
-    }
-    return false;
-  }
-
-  // Check BinaryExprAttr - must have same opcode and operands
-  // For commutative ops (Add, Mul), also check swapped operands
-  if (auto binA = dyn_cast<BinaryExprAttr>(a)) {
-    if (auto binB = dyn_cast<BinaryExprAttr>(b)) {
-      if (binA.getOpcode() != binB.getOpcode())
-        return false;
-
-      // Direct match
-      if (areLogicallyEqual(binA.getLhs(), binB.getLhs()) &&
-          areLogicallyEqual(binA.getRhs(), binB.getRhs()))
-        return true;
-
-      // For commutative ops, check swapped operands
-      if (binA.getOpcode() == SymbolicExprOp::Add ||
-          binA.getOpcode() == SymbolicExprOp::Mul) {
-        return areLogicallyEqual(binA.getLhs(), binB.getRhs()) &&
-               areLogicallyEqual(binA.getRhs(), binB.getLhs());
-      }
-    }
-    return false;
-  }
-
-  return false;
+  return UnificationSolver::areLogicallyEqual(a, b);
 }
 
 /// Helper to check if an attribute is a constant with a specific value.
+/// Delegates to UnificationSolver::isConstantValue.
 static bool isConstantValue(Attribute attr, int64_t value) {
-  if (auto constAttr = dyn_cast<ConstantExprAttr>(attr))
-    return constAttr.getValue() == value;
-  return false;
+  return UnificationSolver::isConstantValue(attr, value);
 }
 
 /// Simplify a binary expression. Returns the simplified attribute, which may be
