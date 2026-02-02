@@ -81,19 +81,19 @@ sym/
 - Ninja
 - LLVM/MLIR (built from source or pre-built)
 
-### Build LLVM/MLIR
+### Build Sym with LLVM/MLIR altogether
 
 ```bash
 ./build_tools/build_mlir.sh
 ```
 
-### Build Sym
+### Build Sym with external MLIR
 
 ```bash
 mkdir -p build/sym && cd build/sym
 cmake -G Ninja ../.. \
-  -DMLIR_DIR=$PWD/../llvm-project/build/lib/cmake/mlir \
-  -DLLVM_EXTERNAL_LIT=$PWD/../llvm-project/build/bin/llvm-lit
+  -DMLIR_DIR={YOUR_MLIR_PATH} \
+  -DLLVM_EXTERNAL_LIT={YOUR_LLVM-LIT_PATH}
 ninja
 ```
 
