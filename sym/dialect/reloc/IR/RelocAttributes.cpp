@@ -23,14 +23,14 @@ using namespace mlir::reloc;
 /// Parse `[expr, expr, ...]` (possibly empty) into `out`.
 static ParseResult parseExprList(AsmParser &parser,
                                  SmallVectorImpl<Attribute> &out) {
-  return parser.parseCommaSeparatedList(
-      AsmParser::Delimiter::Square, [&]() -> ParseResult {
-        Attribute expr = parseSymExpr(parser);
-        if (!expr)
-          return failure();
-        out.push_back(expr);
-        return success();
-      });
+  return parser.parseCommaSeparatedList(AsmParser::Delimiter::Square,
+                                        [&]() -> ParseResult {
+                                          Attribute expr = parseSymExpr(parser);
+                                          if (!expr)
+                                            return failure();
+                                          out.push_back(expr);
+                                          return success();
+                                        });
 }
 
 /// Print `[expr, expr, ...]`.
@@ -200,10 +200,9 @@ void AxisInfoAttr::print(AsmPrinter &printer) const {
   printer << ">";
 }
 
-LogicalResult
-AxisInfoAttr::verify(function_ref<InFlightDiagnostic()> emitError,
-                     StringRef name, Attribute extent, Attribute srcStride,
-                     Attribute dstStride) {
+LogicalResult AxisInfoAttr::verify(function_ref<InFlightDiagnostic()> emitError,
+                                   StringRef name, Attribute extent,
+                                   Attribute srcStride, Attribute dstStride) {
   if (!isSymExpr(extent) || !isSymExpr(srcStride) || !isSymExpr(dstStride))
     return emitError() << "extent, src_stride, and dst_stride must be sym "
                           "expressions (symbol, constant, or binary)";
@@ -261,10 +260,9 @@ void PadFillAttr::print(AsmPrinter &printer) const {
   printer << ">";
 }
 
-LogicalResult
-PadFillAttr::verify(function_ref<InFlightDiagnostic()> emitError,
-                    int64_t dstAxis, Attribute lo, Attribute hi,
-                    TypedAttr value) {
+LogicalResult PadFillAttr::verify(function_ref<InFlightDiagnostic()> emitError,
+                                  int64_t dstAxis, Attribute lo, Attribute hi,
+                                  TypedAttr value) {
   if (dstAxis < 0)
     return emitError() << "dst_axis must be non-negative, but got: " << dstAxis;
   if (!isSymExpr(lo) || !isSymExpr(hi))
@@ -398,8 +396,8 @@ parseConstraintsBlock(AsmParser &parser,
           parser.parseRParen())
         return failure();
       auto attr = DivisibilityAttr::getChecked(
-          [&]() { return parser.emitError(parser.getCurrentLocation()); },
-          ctx, expr, divisor);
+          [&]() { return parser.emitError(parser.getCurrentLocation()); }, ctx,
+          expr, divisor);
       if (!attr)
         return failure();
       divisibility.push_back(attr);
@@ -410,21 +408,21 @@ parseConstraintsBlock(AsmParser &parser,
           parser.parseRParen())
         return failure();
       auto attr = AlignmentAttr::getChecked(
-          [&]() { return parser.emitError(parser.getCurrentLocation()); },
-          ctx, axis, bytes);
+          [&]() { return parser.emitError(parser.getCurrentLocation()); }, ctx,
+          axis, bytes);
       if (!attr)
         return failure();
       alignment.push_back(attr);
     } else if (succeeded(parser.parseOptionalKeyword("contiguous"))) {
       if (parser.parseEqual() ||
-          parser.parseCommaSeparatedList(
-              AsmParser::Delimiter::Square, [&]() -> ParseResult {
-                bool flag;
-                if (parseBool(flag))
-                  return failure();
-                contiguity.push_back(flag);
-                return success();
-              }))
+          parser.parseCommaSeparatedList(AsmParser::Delimiter::Square,
+                                         [&]() -> ParseResult {
+                                           bool flag;
+                                           if (parseBool(flag))
+                                             return failure();
+                                           contiguity.push_back(flag);
+                                           return success();
+                                         }))
         return failure();
     } else if (succeeded(parser.parseOptionalKeyword("no_copy"))) {
       if (parser.parseEqual() || parseBool(noCopy))
@@ -518,8 +516,8 @@ Attribute PlanAttr::parse(AsmParser &parser, Type type) {
     return {};
 
   return PlanAttr::getChecked(
-      [&]() { return parser.emitError(parser.getCurrentLocation()); }, ctx,
-      src, dst, DenseI64ArrayAttr::get(ctx, perm), axes, padFill, divisibility,
+      [&]() { return parser.emitError(parser.getCurrentLocation()); }, ctx, src,
+      dst, DenseI64ArrayAttr::get(ctx, perm), axes, padFill, divisibility,
       alignment, DenseBoolArrayAttr::get(ctx, contiguity), noCopy, inverse);
 }
 
@@ -544,9 +542,8 @@ void PlanAttr::print(AsmPrinter &printer) const {
     printer << "]";
   }
 
-  bool hasConstraints = !getDivisibility().empty() ||
-                        !getAlignment().empty() || !getContiguity().empty() ||
-                        getNoCopy();
+  bool hasConstraints = !getDivisibility().empty() || !getAlignment().empty() ||
+                        !getContiguity().empty() || getNoCopy();
   if (hasConstraints) {
     printer << ", constraints = {";
     bool first = true;
@@ -563,16 +560,14 @@ void PlanAttr::print(AsmPrinter &printer) const {
     }
     for (AlignmentAttr align : getAlignment()) {
       comma();
-      printer << "align(" << align.getAxis() << ", " << align.getBytes()
-              << ")";
+      printer << "align(" << align.getAxis() << ", " << align.getBytes() << ")";
     }
     if (!getContiguity().empty()) {
       comma();
       printer << "contiguous = [";
-      llvm::interleaveComma(getContiguity().asArrayRef(), printer,
-                            [&](bool flag) {
-                              printer << (flag ? "true" : "false");
-                            });
+      llvm::interleaveComma(
+          getContiguity().asArrayRef(), printer,
+          [&](bool flag) { printer << (flag ? "true" : "false"); });
       printer << "]";
     }
     comma();
@@ -597,8 +592,7 @@ LogicalResult PlanAttr::verify(
     return emitError() << "perm is required";
   if (perm.size() != static_cast<int64_t>(axes.size()))
     return emitError() << "perm size (" << perm.size()
-                       << ") must match number of axes (" << axes.size()
-                       << ")";
+                       << ") must match number of axes (" << axes.size() << ")";
   if (contiguity && !contiguity.empty() &&
       contiguity.size() != static_cast<int64_t>(axes.size()))
     return emitError() << "contiguity size (" << contiguity.size()

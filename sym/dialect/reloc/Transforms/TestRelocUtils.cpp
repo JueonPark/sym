@@ -1,4 +1,5 @@
-//===- TestRelocUtils.cpp - Test pass for reloc utilities ------------------===//
+//===- TestRelocUtils.cpp - Test pass for reloc utilities
+//------------------===//
 //
 // Testing-only pass that exposes RelocUtils (bridge, predicates) to lit via
 // remarks. See RelocPasses.td for the op-attribute protocol.
@@ -42,8 +43,8 @@ struct TestRelocUtilsPass
         if (auto pair = op->getAttrOfType<DenseI64ArrayAttr>("pair"))
           testContiguous(op, plan, pair);
         else
-          op->emitRemark()
-              << "isPureView = " << (isPureView(plan) ? "true" : "false");
+          op->emitRemark() << "isPureView = "
+                           << (isPureView(plan) ? "true" : "false");
       }
     });
   }
@@ -58,8 +59,7 @@ struct TestRelocUtilsPass
     Attribute back = affineToSym(*affine, symbolNames, context);
     bool identical =
         back && sym::UnificationSolver::areLogicallyEqual(expr, back);
-    op->emitRemark() << "bridge round-trip "
-                     << (identical ? "ok" : "MISMATCH")
+    op->emitRemark() << "bridge round-trip " << (identical ? "ok" : "MISMATCH")
                      << ": affine = " << renderAffine(*affine);
   }
 
@@ -75,8 +75,7 @@ struct TestRelocUtilsPass
     bool compatible =
         isContiguousCompatible(axes[indices[0]], axes[indices[1]]);
     op->emitRemark() << "isContiguousCompatible(" << indices[0] << ", "
-                     << indices[1] << ") = "
-                     << (compatible ? "true" : "false");
+                     << indices[1] << ") = " << (compatible ? "true" : "false");
   }
 };
 

@@ -1,4 +1,5 @@
-//===- RelocPasses.h - Reloc dialect passes --------------------------------===//
+//===- RelocPasses.h - Reloc dialect passes
+//--------------------------------===//
 //
 // This file declares passes for the Reloc dialect.
 //

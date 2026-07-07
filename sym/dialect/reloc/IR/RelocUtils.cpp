@@ -149,8 +149,8 @@ static bool isBareIdent(StringRef name) {
     return false;
   if (!llvm::isAlpha(name.front()) && name.front() != '_')
     return false;
-  return llvm::all_of(
-      name, [](char c) { return llvm::isAlnum(c) || c == '_'; });
+  return llvm::all_of(name,
+                      [](char c) { return llvm::isAlnum(c) || c == '_'; });
 }
 
 static void printExprImpl(AsmPrinter &printer, Attribute expr, int parentPrec,
@@ -186,10 +186,8 @@ void mlir::reloc::printSymExpr(AsmPrinter &printer, Attribute expr) {
 // sym <-> affine expression bridge
 //===----------------------------------------------------------------------===//
 
-FailureOr<AffineExpr>
-mlir::reloc::symToAffine(Attribute expr,
-                         SmallVectorImpl<StringRef> &symbolNames,
-                         MLIRContext *ctx) {
+FailureOr<AffineExpr> mlir::reloc::symToAffine(
+    Attribute expr, SmallVectorImpl<StringRef> &symbolNames, MLIRContext *ctx) {
   if (auto constant = dyn_cast<sym::ConstantExprAttr>(expr))
     return getAffineConstantExpr(constant.getValue(), ctx);
 
@@ -320,6 +318,6 @@ bool mlir::reloc::isPureView(PlanAttr plan) {
     if (!sym::UnificationSolver::areLogicallyEqual(axis.getSrcStride(),
                                                    axis.getDstStride()))
       return false;
-  return sym::UnificationSolver::areLogicallyEqual(
-      plan.getSrc().getOffset(), plan.getDst().getOffset());
+  return sym::UnificationSolver::areLogicallyEqual(plan.getSrc().getOffset(),
+                                                   plan.getDst().getOffset());
 }
