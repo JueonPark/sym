@@ -68,4 +68,37 @@ def Reloc_AlignmentAttr : Reloc_Attr<"Alignment", "alignment"> {
   let genVerifyDecl = 1;
 }
 
+// 6. The relocation plan: a serializable, symbolic representation of a
+//    folded layout-transform chain. Assembly format (one line; pad_fill and
+//    constraints sections optional):
+//      #reloc.plan<src = tensor<...>, dst = tensor<...>, perm = [ints],
+//                  axes = [{...}, ...], pad_fill = [{...}, ...],
+//                  constraints = {divisible(e, k), align(a, b),
+//                                 contiguous = [bools], no_copy = bool},
+//                  inverse = affine_map<...>>
+def Reloc_PlanAttr : Reloc_Attr<"Plan", "plan"> {
+  let summary = "Serializable symbolic relocation plan";
+  let description = [{
+    Captures a folded layout-transform chain: src/dst tensor descriptors,
+    the dst-axis -> src-axis permutation, per-axis extent/stride mapping,
+    pad-fill specs, constraint set (divisibility / alignment / contiguity),
+    the no_copy flag, and the dst -> src inverse index map. See
+    docs/reloc-design.md for representation decisions.
+  }];
+  let parameters = (ins
+    "TensorDescAttr":$src,
+    "TensorDescAttr":$dst,
+    "::mlir::DenseI64ArrayAttr":$perm,
+    ArrayRefParameter<"AxisInfoAttr">:$axes,
+    ArrayRefParameter<"PadFillAttr">:$padFill,
+    ArrayRefParameter<"DivisibilityAttr">:$divisibility,
+    ArrayRefParameter<"AlignmentAttr">:$alignment,
+    "::mlir::DenseBoolArrayAttr":$contiguity,
+    "bool":$noCopy,
+    "::mlir::AffineMapAttr":$inverse
+  );
+  let hasCustomAssemblyFormat = 1;
+  let genVerifyDecl = 1;
+}
+
 #endif // RELOC_ATTRIBUTES_TD

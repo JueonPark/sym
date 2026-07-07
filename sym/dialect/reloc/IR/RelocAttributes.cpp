@@ -343,6 +343,273 @@ AlignmentAttr::verify(function_ref<InFlightDiagnostic()> emitError,
 }
 
 //===----------------------------------------------------------------------===//
+// PlanAttr
+//===----------------------------------------------------------------------===//
+
+/// Parse `<keyword> = tensor<BODY>` into a descriptor.
+static TensorDescAttr parseDescField(AsmParser &parser, StringRef keyword) {
+  if (parser.parseKeyword(keyword) || parser.parseEqual() ||
+      parser.parseKeyword("tensor") || parser.parseLess())
+    return {};
+  TensorDescAttr desc = parseTensorDescBody(parser);
+  if (!desc || parser.parseGreater())
+    return {};
+  return desc;
+}
+
+/// Parse the optional constraints block:
+///   constraints = {divisible(e, k), align(a, b), contiguous = [bools],
+///                  no_copy = bool}
+/// Items are comma-separated and may appear in any order; divisible/align
+/// may repeat.
+static ParseResult
+parseConstraintsBlock(AsmParser &parser,
+                      SmallVectorImpl<DivisibilityAttr> &divisibility,
+                      SmallVectorImpl<AlignmentAttr> &alignment,
+                      SmallVectorImpl<bool> &contiguity, bool &noCopy) {
+  MLIRContext *ctx = parser.getContext();
+  if (parser.parseLBrace())
+    return failure();
+  if (succeeded(parser.parseOptionalRBrace()))
+    return success();
+
+  auto parseBool = [&](bool &out) -> ParseResult {
+    if (succeeded(parser.parseOptionalKeyword("true"))) {
+      out = true;
+      return success();
+    }
+    if (succeeded(parser.parseOptionalKeyword("false"))) {
+      out = false;
+      return success();
+    }
+    return parser.emitError(parser.getCurrentLocation(),
+                            "expected 'true' or 'false'");
+  };
+
+  do {
+    if (succeeded(parser.parseOptionalKeyword("divisible"))) {
+      if (parser.parseLParen())
+        return failure();
+      Attribute expr = parseSymExpr(parser);
+      if (!expr)
+        return failure();
+      int64_t divisor;
+      if (parser.parseComma() || parser.parseInteger(divisor) ||
+          parser.parseRParen())
+        return failure();
+      auto attr = DivisibilityAttr::getChecked(
+          [&]() { return parser.emitError(parser.getCurrentLocation()); },
+          ctx, expr, divisor);
+      if (!attr)
+        return failure();
+      divisibility.push_back(attr);
+    } else if (succeeded(parser.parseOptionalKeyword("align"))) {
+      int64_t axis, bytes;
+      if (parser.parseLParen() || parser.parseInteger(axis) ||
+          parser.parseComma() || parser.parseInteger(bytes) ||
+          parser.parseRParen())
+        return failure();
+      auto attr = AlignmentAttr::getChecked(
+          [&]() { return parser.emitError(parser.getCurrentLocation()); },
+          ctx, axis, bytes);
+      if (!attr)
+        return failure();
+      alignment.push_back(attr);
+    } else if (succeeded(parser.parseOptionalKeyword("contiguous"))) {
+      if (parser.parseEqual() ||
+          parser.parseCommaSeparatedList(
+              AsmParser::Delimiter::Square, [&]() -> ParseResult {
+                bool flag;
+                if (parseBool(flag))
+                  return failure();
+                contiguity.push_back(flag);
+                return success();
+              }))
+        return failure();
+    } else if (succeeded(parser.parseOptionalKeyword("no_copy"))) {
+      if (parser.parseEqual() || parseBool(noCopy))
+        return failure();
+    } else {
+      return parser.emitError(parser.getCurrentLocation(),
+                              "expected 'divisible', 'align', 'contiguous', "
+                              "or 'no_copy' in constraints");
+    }
+  } while (succeeded(parser.parseOptionalComma()));
+
+  return parser.parseRBrace();
+}
+
+Attribute PlanAttr::parse(AsmParser &parser, Type type) {
+  MLIRContext *ctx = parser.getContext();
+  if (parser.parseLess())
+    return {};
+
+  // src = tensor<...>, dst = tensor<...>,
+  TensorDescAttr src = parseDescField(parser, "src");
+  if (!src || parser.parseComma())
+    return {};
+  TensorDescAttr dst = parseDescField(parser, "dst");
+  if (!dst || parser.parseComma())
+    return {};
+
+  // perm = [ints],
+  SmallVector<int64_t> perm;
+  if (parser.parseKeyword("perm") || parser.parseEqual() ||
+      parser.parseCommaSeparatedList(AsmParser::Delimiter::Square,
+                                     [&]() -> ParseResult {
+                                       int64_t v;
+                                       if (parser.parseInteger(v))
+                                         return failure();
+                                       perm.push_back(v);
+                                       return success();
+                                     }) ||
+      parser.parseComma())
+    return {};
+
+  // axes = [{...}, ...],
+  SmallVector<AxisInfoAttr> axes;
+  if (parser.parseKeyword("axes") || parser.parseEqual() ||
+      parser.parseCommaSeparatedList(AsmParser::Delimiter::Square,
+                                     [&]() -> ParseResult {
+                                       AxisInfoAttr axis =
+                                           parseAxisInfoBody(parser);
+                                       if (!axis)
+                                         return failure();
+                                       axes.push_back(axis);
+                                       return success();
+                                     }) ||
+      parser.parseComma())
+    return {};
+
+  // Optional: pad_fill = [{...}, ...],
+  SmallVector<PadFillAttr> padFill;
+  if (succeeded(parser.parseOptionalKeyword("pad_fill"))) {
+    if (parser.parseEqual() ||
+        parser.parseCommaSeparatedList(AsmParser::Delimiter::Square,
+                                       [&]() -> ParseResult {
+                                         PadFillAttr pad =
+                                             parsePadFillBody(parser);
+                                         if (!pad)
+                                           return failure();
+                                         padFill.push_back(pad);
+                                         return success();
+                                       }) ||
+        parser.parseComma())
+      return {};
+  }
+
+  // Optional: constraints = {...},
+  SmallVector<DivisibilityAttr> divisibility;
+  SmallVector<AlignmentAttr> alignment;
+  SmallVector<bool> contiguity;
+  bool noCopy = false;
+  if (succeeded(parser.parseOptionalKeyword("constraints"))) {
+    if (parser.parseEqual() ||
+        parseConstraintsBlock(parser, divisibility, alignment, contiguity,
+                              noCopy) ||
+        parser.parseComma())
+      return {};
+  }
+
+  // inverse = affine_map<...>
+  AffineMapAttr inverse;
+  if (parser.parseKeyword("inverse") || parser.parseEqual() ||
+      parser.parseAttribute(inverse) || parser.parseGreater())
+    return {};
+
+  return PlanAttr::getChecked(
+      [&]() { return parser.emitError(parser.getCurrentLocation()); }, ctx,
+      src, dst, DenseI64ArrayAttr::get(ctx, perm), axes, padFill, divisibility,
+      alignment, DenseBoolArrayAttr::get(ctx, contiguity), noCopy, inverse);
+}
+
+void PlanAttr::print(AsmPrinter &printer) const {
+  printer << "<src = tensor<";
+  printTensorDescBody(printer, getSrc());
+  printer << ">, dst = tensor<";
+  printTensorDescBody(printer, getDst());
+  printer << ">, perm = [";
+  llvm::interleaveComma(getPerm().asArrayRef(), printer);
+  printer << "], axes = [";
+  llvm::interleaveComma(getAxes(), printer, [&](AxisInfoAttr axis) {
+    printAxisInfoBody(printer, axis);
+  });
+  printer << "]";
+
+  if (!getPadFill().empty()) {
+    printer << ", pad_fill = [";
+    llvm::interleaveComma(getPadFill(), printer, [&](PadFillAttr pad) {
+      printPadFillBody(printer, pad);
+    });
+    printer << "]";
+  }
+
+  bool hasConstraints = !getDivisibility().empty() ||
+                        !getAlignment().empty() || !getContiguity().empty() ||
+                        getNoCopy();
+  if (hasConstraints) {
+    printer << ", constraints = {";
+    bool first = true;
+    auto comma = [&]() {
+      if (!first)
+        printer << ", ";
+      first = false;
+    };
+    for (DivisibilityAttr div : getDivisibility()) {
+      comma();
+      printer << "divisible(";
+      printSymExpr(printer, div.getExpr());
+      printer << ", " << div.getDivisor() << ")";
+    }
+    for (AlignmentAttr align : getAlignment()) {
+      comma();
+      printer << "align(" << align.getAxis() << ", " << align.getBytes()
+              << ")";
+    }
+    if (!getContiguity().empty()) {
+      comma();
+      printer << "contiguous = [";
+      llvm::interleaveComma(getContiguity().asArrayRef(), printer,
+                            [&](bool flag) {
+                              printer << (flag ? "true" : "false");
+                            });
+      printer << "]";
+    }
+    comma();
+    printer << "no_copy = " << (getNoCopy() ? "true" : "false");
+    printer << "}";
+  }
+
+  printer << ", inverse = ";
+  printer.printAttribute(getInverse());
+  printer << ">";
+}
+
+LogicalResult PlanAttr::verify(
+    function_ref<InFlightDiagnostic()> emitError, TensorDescAttr src,
+    TensorDescAttr dst, DenseI64ArrayAttr perm, ArrayRef<AxisInfoAttr> axes,
+    ArrayRef<PadFillAttr> padFill, ArrayRef<DivisibilityAttr> divisibility,
+    ArrayRef<AlignmentAttr> alignment, DenseBoolArrayAttr contiguity,
+    bool noCopy, AffineMapAttr inverse) {
+  if (!src || !dst)
+    return emitError() << "src and dst descriptors are required";
+  if (!perm)
+    return emitError() << "perm is required";
+  if (perm.size() != static_cast<int64_t>(axes.size()))
+    return emitError() << "perm size (" << perm.size()
+                       << ") must match number of axes (" << axes.size()
+                       << ")";
+  if (contiguity && !contiguity.empty() &&
+      contiguity.size() != static_cast<int64_t>(axes.size()))
+    return emitError() << "contiguity size (" << contiguity.size()
+                       << ") must match number of axes (" << axes.size()
+                       << ") or be empty";
+  if (!inverse)
+    return emitError() << "inverse map is required";
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // RelocDialect attribute registration
 //===----------------------------------------------------------------------===//
 //
