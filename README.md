@@ -54,19 +54,19 @@ sym/
 ├── sym/
 │   ├── CMakeLists.txt          # Dialect library CMake
 │   ├── dialect/sym/
-│       ├── IR/                 # Dialect definitions
-│       │   ├── SymDialect.td   # Dialect TableGen definition
-│       │   ├── SymTypes.td     # Type definitions
-│       │   ├── SymAttrs.td     # Attribute definitions
-│       │   ├── SymOps.td       # Operation definitions
-│       │   ├── SymInterfaces.td # Interface definitions
-│       │   ├── SymDialect.h/cpp # Dialect implementation
-│       │   ├── SymUtils.h/cpp  # UnificationSolver utility
-│       │   └── SymExtensions.cpp # External models for arith ops
-│       └── Transforms/         # Optimization passes
-│           ├── SymPasses.td    # Pass TableGen definitions
-│           ├── SymPasses.h     # Pass declarations
-│           └── SymbolicShapeInference.cpp # Shape inference pass
+│   │   ├── IR/                 # Dialect definitions
+│   │   │   ├── SymDialect.td   # Dialect TableGen definition
+│   │   │   ├── SymTypes.td     # Type definitions
+│   │   │   ├── SymAttrs.td     # Attribute definitions
+│   │   │   ├── SymOps.td       # Operation definitions
+│   │   │   ├── SymInterfaces.td # Interface definitions
+│   │   │   ├── SymDialect.h/cpp # Dialect implementation
+│   │   │   ├── SymUtils.h/cpp  # UnificationSolver utility
+│   │   │   └── SymExtensions.cpp # External models for arith ops
+│   │   └── Transforms/         # Optimization passes
+│   │       ├── SymPasses.td    # Pass TableGen definitions
+│   │       ├── SymPasses.h     # Pass declarations
+│   │       └── SymbolicShapeInference.cpp # Shape inference pass
 │   └── dialect/reloc/          # RelocationPlan IR dialect (P1a, scaffolding)
 │       └── IR/
 │           ├── RelocDialect.td # Dialect TableGen definition
