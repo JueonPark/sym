@@ -615,13 +615,15 @@ LogicalResult PlanAttr::verify(
                        << ") or be empty";
   if (!inverse)
     return emitError() << "inverse map is required";
+  if (dst.getExtents().size() != axes.size())
+    return emitError() << "dst rank (" << dst.getExtents().size()
+                       << ") must match number of axes (" << axes.size() << ")";
 
   // --- A3: pad widths (tensor.pad convention: lo/hi are leading/trailing
   // pad counts; extent + lo + hi must equal the dst extent) ---
   for (PadFillAttr pad : padFill) {
     int64_t axis = pad.getDstAxis();
-    if (axis >= static_cast<int64_t>(axes.size()) ||
-        axis >= static_cast<int64_t>(dst.getExtents().size()))
+    if (axis >= static_cast<int64_t>(axes.size()))
       return emitError() << "pad dst_axis (" << axis << ") is out of range for "
                          << axes.size() << " axes";
     MLIRContext *ctx = pad.getContext();
@@ -655,7 +657,8 @@ LogicalResult PlanAttr::verify(
       if (value < 0 || value >= static_cast<int64_t>(axes.size()) ||
           seen[value])
         return emitError() << "perm is not a permutation of [0, " << axes.size()
-                           << ")";
+                           << "): value " << value
+                           << " is duplicated or out of range";
       seen[value] = true;
     }
   }
@@ -678,13 +681,12 @@ LogicalResult PlanAttr::verify(
     AffineMap forward =
         AffineMap::getPermutationMap(perm.asArrayRef(), inverse.getContext());
     if (inverseMap != inversePermutation(forward))
-      return emitError() << "inverse permutation does not invert perm";
+      return emitError()
+             << "inverse permutation does not invert perm; expected "
+             << AffineMapAttr::get(inversePermutation(forward));
   }
 
-  // --- A3: direct axis order — dst rank and per-axis dst_stride ---
-  if (dst.getExtents().size() != axes.size())
-    return emitError() << "dst rank (" << dst.getExtents().size()
-                       << ") must match number of axes (" << axes.size() << ")";
+  // --- A3: direct axis order — per-axis dst_stride ---
   {
     SmallVector<Attribute> dstStrides;
     if (!dst.getStrides().empty())
