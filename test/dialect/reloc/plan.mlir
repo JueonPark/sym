@@ -6,7 +6,7 @@
 // CHECK: #map = affine_map<(d0, d1, d2, d3) -> (d1, d0, d2, d3)>
 // CHECK: #map1 = affine_map<(d0, d1) -> (d1, d0)>
 // CHECK: #map2 = affine_map<(d0) -> (d0)>
-// CHECK: #map3 = affine_map<(d0, d1) -> (d0 * 64 + d1)>
+// CHECK: #map3 = affine_map<(d0, d1) -> (d0, d1)>
 
 // Reference plan from build doc §2.1:
 // 32768×32768 fp32 → 4D view (N/64, 64, 64, N/64) + transpose(0,1), N = 32768.
@@ -20,8 +20,8 @@ func.func @reference_plan() {
 // Static 2D transpose as a pure strided view (no data movement).
 // CHECK-LABEL: func.func @transpose_view
 func.func @transpose_view() {
-  // CHECK: "test.use_attr"() {plan = #reloc.plan<src = tensor<[64, 32], f32, strides = [32, 1]>, dst = tensor<[32, 64], f32, strides = [1, 32]>, perm = [1, 0], axes = [{name = "r", extent = 64, src_stride = 32, dst_stride = 32}, {name = "c", extent = 32, src_stride = 1, dst_stride = 1}], constraints = {no_copy = true}, inverse = #map1>}
-  "test.use_attr"() {plan = #reloc.plan<src = tensor<[64, 32], f32, strides = [32, 1]>, dst = tensor<[32, 64], f32, strides = [1, 32]>, perm = [1, 0], axes = [{name = "r", extent = 64, src_stride = 32, dst_stride = 32}, {name = "c", extent = 32, src_stride = 1, dst_stride = 1}], constraints = {no_copy = true}, inverse = affine_map<(d0, d1) -> (d1, d0)>>} : () -> ()
+  // CHECK: "test.use_attr"() {plan = #reloc.plan<src = tensor<[64, 32], f32, strides = [32, 1]>, dst = tensor<[32, 64], f32, strides = [1, 32]>, perm = [1, 0], axes = [{name = "c", extent = 32, src_stride = 1, dst_stride = 1}, {name = "r", extent = 64, src_stride = 32, dst_stride = 32}], constraints = {no_copy = true}, inverse = #map1>}
+  "test.use_attr"() {plan = #reloc.plan<src = tensor<[64, 32], f32, strides = [32, 1]>, dst = tensor<[32, 64], f32, strides = [1, 32]>, perm = [1, 0], axes = [{name = "c", extent = 32, src_stride = 1, dst_stride = 1}, {name = "r", extent = 64, src_stride = 32, dst_stride = 32}], constraints = {no_copy = true}, inverse = affine_map<(d0, d1) -> (d1, d0)>>} : () -> ()
   return
 }
 
@@ -36,8 +36,8 @@ func.func @pad_plan() {
 // Static reshape [4096] -> [64, 64] with contiguity flags.
 // CHECK-LABEL: func.func @reshape_plan
 func.func @reshape_plan() {
-  // CHECK: "test.use_attr"() {plan = #reloc.plan<src = tensor<[4096], f32>, dst = tensor<[64, 64], f32>, perm = [0, 1], axes = [{name = "o", extent = 64, src_stride = 64, dst_stride = 64}, {name = "i", extent = 64, src_stride = 1, dst_stride = 1}], constraints = {contiguous = [true, true], no_copy = true}, inverse = #map3>}
-  "test.use_attr"() {plan = #reloc.plan<src = tensor<[4096], f32>, dst = tensor<[64, 64], f32>, perm = [0, 1], axes = [{name = "o", extent = 64, src_stride = 64, dst_stride = 64}, {name = "i", extent = 64, src_stride = 1, dst_stride = 1}], constraints = {contiguous = [true, true], no_copy = true}, inverse = affine_map<(d0, d1) -> (d0 * 64 + d1)>>} : () -> ()
+  // CHECK: "test.use_attr"() {plan = #reloc.plan<src = tensor<[4096], f32>, dst = tensor<[64, 64], f32>, perm = [0, 1], axes = [{name = "o", extent = 64, src_stride = 64, dst_stride = 64}, {name = "i", extent = 64, src_stride = 1, dst_stride = 1}], constraints = {contiguous = [false, true], no_copy = true}, inverse = #map3>}
+  "test.use_attr"() {plan = #reloc.plan<src = tensor<[4096], f32>, dst = tensor<[64, 64], f32>, perm = [0, 1], axes = [{name = "o", extent = 64, src_stride = 64, dst_stride = 64}, {name = "i", extent = 64, src_stride = 1, dst_stride = 1}], constraints = {contiguous = [false, true], no_copy = true}, inverse = affine_map<(d0, d1) -> (d0, d1)>>} : () -> ()
   return
 }
 
