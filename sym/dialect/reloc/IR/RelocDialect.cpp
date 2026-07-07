@@ -10,6 +10,4 @@ using namespace mlir::reloc;
 // Reloc Dialect Initialization
 //===----------------------------------------------------------------------===//
 
-void RelocDialect::initialize() {
-  // No types, attributes, or operations registered yet (added in A2/A5).
-}
+void RelocDialect::initialize() { registerAttributes(); }

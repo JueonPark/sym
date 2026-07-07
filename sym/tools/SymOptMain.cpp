@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "RelocDialect.h"
+#include "RelocPasses.h"
 #include "SymDialect.h"
 #include "SymPasses.h"
 
@@ -25,6 +26,9 @@ int main(int argc, char **argv) {
 
   // Register Sym dialect passes
   mlir::sym::registerSymPasses();
+
+  // Register Reloc dialect passes
+  mlir::reloc::registerRelocPasses();
 
   // Register external models for arith ops
   mlir::sym::registerSymbolicShapeOpInterfaceExternalModels(registry);

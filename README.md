@@ -46,6 +46,24 @@ Sym is an MLIR dialect that enables symbolic shape tracking and inference for te
 |------|-------------|
 | `--symbolic-shape-inference` | Propagate symbolic shapes through operations |
 
+### Reloc Dialect (P1a)
+
+The `reloc` dialect provides `#reloc.plan`, a serializable symbolic
+representation of folded layout-transform chains. Design decisions are
+recorded in [docs/reloc-design.md](docs/reloc-design.md).
+
+| Attribute | Description |
+|-----------|-------------|
+| `#reloc.plan` | Full relocation plan: descriptors, perm, axes, pad/constraints, inverse map |
+| `#reloc.tensor_desc` | Symbolic tensor descriptor (extents, strides, offset, element type) |
+| `#reloc.axis_info` | Named axis with extent and src/dst strides |
+| `#reloc.pad_fill` | Pad spec for one destination axis |
+| `#reloc.divisibility` / `#reloc.alignment` | Plan-local constraints |
+
+| Pass | Description |
+|------|-------------|
+| `--test-reloc-utils` | Testing-only: bridge round-trips and structure predicates via remarks |
+
 ## Project Structure
 
 ```
@@ -67,10 +85,16 @@ sym/
 │   │       ├── SymPasses.td    # Pass TableGen definitions
 │   │       ├── SymPasses.h     # Pass declarations
 │   │       └── SymbolicShapeInference.cpp # Shape inference pass
-│   └── dialect/reloc/          # RelocationPlan IR dialect (P1a, scaffolding)
-│       └── IR/
-│           ├── RelocDialect.td # Dialect TableGen definition
-│           └── RelocDialect.h/cpp # Dialect implementation
+│   └── dialect/reloc/          # RelocationPlan IR dialect (P1a)
+│       ├── IR/
+│       │   ├── RelocDialect.td # Dialect TableGen definition
+│       │   ├── RelocAttrs.td   # Plan attribute definitions
+│       │   ├── RelocDialect.h/cpp # Dialect implementation
+│       │   ├── RelocAttributes.cpp # Attribute assembly + verification
+│       │   └── RelocUtils.h/cpp # Expr syntax, sym<->affine bridge, predicates
+│       └── Transforms/         # Reloc passes
+│           ├── RelocPasses.td  # Pass TableGen definitions
+│           └── TestRelocUtils.cpp # --test-reloc-utils test pass
 ├── tools/
 │   └── SymOptMain.cpp          # sym-opt driver tool
 ├── test/                       # LIT tests

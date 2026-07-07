@@ -12,7 +12,12 @@
 namespace mlir {
 namespace sym {
 
-// Define the OpCode Enum for symbolic binary operations
+// Define the OpCode Enum for symbolic binary operations.
+// Semantics note: `Div` is FLOOR division (rounds toward negative infinity)
+// and `Mod` is the matching floor modulo (the result has the sign of the
+// divisor; non-negative for positive divisors). These match MLIR affine
+// `floordiv` / `mod` semantics, so symbolic expressions bridge losslessly
+// to AffineExpr. Examples: -7 div 2 = -4, -7 mod 2 = 1.
 enum class SymbolicExprOp { Add, Sub, Mul, Div, Mod };
 
 // Helper to convert Enum to String (for printing)
