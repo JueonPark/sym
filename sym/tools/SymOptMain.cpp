@@ -4,6 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "RelocDialect.h"
 #include "SymDialect.h"
 #include "SymPasses.h"
 
@@ -30,6 +31,9 @@ int main(int argc, char **argv) {
 
   // Register our Sym dialect
   registry.insert<mlir::sym::SymDialect>();
+
+  // Register our Reloc dialect
+  registry.insert<mlir::reloc::RelocDialect>();
 
   return mlir::asMainReturnCode(
       mlir::MlirOptMain(argc, argv, "Sym optimizer driver\n", registry));

@@ -53,20 +53,24 @@ sym/
 ├── CMakeLists.txt              # Root CMake configuration
 ├── sym/
 │   ├── CMakeLists.txt          # Dialect library CMake
-│   └── dialect/sym/
-│       ├── IR/                 # Dialect definitions
-│       │   ├── SymDialect.td   # Dialect TableGen definition
-│       │   ├── SymTypes.td     # Type definitions
-│       │   ├── SymAttrs.td     # Attribute definitions
-│       │   ├── SymOps.td       # Operation definitions
-│       │   ├── SymInterfaces.td # Interface definitions
-│       │   ├── SymDialect.h/cpp # Dialect implementation
-│       │   ├── SymUtils.h/cpp  # UnificationSolver utility
-│       │   └── SymExtensions.cpp # External models for arith ops
-│       └── Transforms/         # Optimization passes
-│           ├── SymPasses.td    # Pass TableGen definitions
-│           ├── SymPasses.h     # Pass declarations
-│           └── SymbolicShapeInference.cpp # Shape inference pass
+│   ├── dialect/sym/
+│   │   ├── IR/                 # Dialect definitions
+│   │   │   ├── SymDialect.td   # Dialect TableGen definition
+│   │   │   ├── SymTypes.td     # Type definitions
+│   │   │   ├── SymAttrs.td     # Attribute definitions
+│   │   │   ├── SymOps.td       # Operation definitions
+│   │   │   ├── SymInterfaces.td # Interface definitions
+│   │   │   ├── SymDialect.h/cpp # Dialect implementation
+│   │   │   ├── SymUtils.h/cpp  # UnificationSolver utility
+│   │   │   └── SymExtensions.cpp # External models for arith ops
+│   │   └── Transforms/         # Optimization passes
+│   │       ├── SymPasses.td    # Pass TableGen definitions
+│   │       ├── SymPasses.h     # Pass declarations
+│   │       └── SymbolicShapeInference.cpp # Shape inference pass
+│   └── dialect/reloc/          # RelocationPlan IR dialect (P1a, scaffolding)
+│       └── IR/
+│           ├── RelocDialect.td # Dialect TableGen definition
+│           └── RelocDialect.h/cpp # Dialect implementation
 ├── tools/
 │   └── SymOptMain.cpp          # sym-opt driver tool
 ├── test/                       # LIT tests
@@ -80,6 +84,9 @@ sym/
 - CMake 3.20+
 - Ninja
 - LLVM/MLIR (built from source or pre-built)
+  - Target version: **LLVM/MLIR 21.1.8**. The repo pins commit
+    `2078da43e25a4623cab2d0d60decddf709aaea28` in `build_tools/llvm_version.txt`;
+    this is the version currently used by the project.
 
 ### Build Sym with LLVM/MLIR altogether
 
