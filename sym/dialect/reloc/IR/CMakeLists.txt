@@ -4,14 +4,23 @@ mlir_tablegen(RelocDialect.h.inc -gen-dialect-decls)
 mlir_tablegen(RelocDialect.cpp.inc -gen-dialect-defs)
 add_public_tablegen_target(RelocDialectIncGen)
 
+# TableGen for Attributes
+set(LLVM_TARGET_DEFINITIONS RelocAttrs.td)
+mlir_tablegen(RelocAttributes.h.inc -gen-attrdef-decls)
+mlir_tablegen(RelocAttributes.cpp.inc -gen-attrdef-defs)
+add_public_tablegen_target(RelocAttributesIncGen)
+
 # Combined TableGen target for IR
 add_custom_target(RelocIRIncGen DEPENDS
   RelocDialectIncGen
+  RelocAttributesIncGen
 )
 
 # Dialect Library
 add_mlir_dialect_library(MLIRRelocDialect
+  RelocAttributes.cpp
   RelocDialect.cpp
+  RelocUtils.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${PROJECT_SOURCE_DIR}/sym/dialect/reloc/IR
@@ -22,6 +31,7 @@ add_mlir_dialect_library(MLIRRelocDialect
   LINK_LIBS PUBLIC
   MLIRIR
   MLIRSupport
+  MLIRSymDialect
 )
 
 # Add include path for generated files
