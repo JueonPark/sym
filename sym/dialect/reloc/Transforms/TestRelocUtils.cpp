@@ -38,7 +38,13 @@ struct TestRelocUtilsPass
     getOperation().walk([&](Operation *op) {
       if (Attribute expr = op->getAttr("expr"))
         testBridge(op, expr, context);
-      // Task 7 extends this walk with plan-predicate remarks.
+      if (auto plan = op->getAttrOfType<PlanAttr>("plan")) {
+        if (auto pair = op->getAttrOfType<DenseI64ArrayAttr>("pair"))
+          testContiguous(op, plan, pair);
+        else
+          op->emitRemark()
+              << "isPureView = " << (isPureView(plan) ? "true" : "false");
+      }
     });
   }
 
@@ -55,6 +61,22 @@ struct TestRelocUtilsPass
     op->emitRemark() << "bridge round-trip "
                      << (identical ? "ok" : "MISMATCH")
                      << ": affine = " << renderAffine(*affine);
+  }
+
+  void testContiguous(Operation *op, PlanAttr plan, DenseI64ArrayAttr pair) {
+    ArrayRef<int64_t> indices = pair.asArrayRef();
+    ArrayRef<AxisInfoAttr> axes = plan.getAxes();
+    if (indices.size() != 2 || indices[0] < 0 || indices[1] < 0 ||
+        indices[0] >= static_cast<int64_t>(axes.size()) ||
+        indices[1] >= static_cast<int64_t>(axes.size())) {
+      op->emitRemark() << "isContiguousCompatible: pair index out of range";
+      return;
+    }
+    bool compatible =
+        isContiguousCompatible(axes[indices[0]], axes[indices[1]]);
+    op->emitRemark() << "isContiguousCompatible(" << indices[0] << ", "
+                     << indices[1] << ") = "
+                     << (compatible ? "true" : "false");
   }
 };
 

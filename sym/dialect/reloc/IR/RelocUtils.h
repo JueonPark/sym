@@ -66,6 +66,22 @@ FailureOr<AffineExpr> symToAffine(Attribute expr,
 Attribute affineToSym(AffineExpr expr, ArrayRef<StringRef> symbolNames,
                       MLIRContext *ctx);
 
+//===----------------------------------------------------------------------===//
+// Plan-structure predicates
+//===----------------------------------------------------------------------===//
+//
+// Both predicates are sound but incomplete: `true` means provably so under
+// sym simplification; `false` means "not proven". See docs/reloc-design.md.
+
+/// True iff `outer.src_stride == inner.src_stride * inner.extent` is provable
+/// via sym simplification — i.e. the two source axes can be treated as one
+/// contiguous axis.
+bool isContiguousCompatible(AxisInfoAttr outer, AxisInfoAttr inner);
+
+/// True iff the plan provably performs no data movement: no pad_fill entries,
+/// every axis has dst_stride == src_stride, and src/dst offsets are equal.
+bool isPureView(PlanAttr plan);
+
 } // namespace reloc
 } // namespace mlir
 

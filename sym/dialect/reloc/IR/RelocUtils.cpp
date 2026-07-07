@@ -295,3 +295,31 @@ Attribute mlir::reloc::affineToSym(AffineExpr expr,
     return {};
   return sym::getSimplifiedBinaryExpr(ctx, opcode, lhs, rhs);
 }
+
+//===----------------------------------------------------------------------===//
+// Plan-structure predicates
+//===----------------------------------------------------------------------===//
+
+bool mlir::reloc::isContiguousCompatible(AxisInfoAttr outer,
+                                         AxisInfoAttr inner) {
+  if (!outer || !inner)
+    return false;
+  MLIRContext *ctx = outer.getContext();
+  Attribute product = sym::getSimplifiedBinaryExpr(
+      ctx, sym::SymbolicExprOp::Mul, inner.getSrcStride(), inner.getExtent());
+  return sym::UnificationSolver::areLogicallyEqual(outer.getSrcStride(),
+                                                   product);
+}
+
+bool mlir::reloc::isPureView(PlanAttr plan) {
+  if (!plan)
+    return false;
+  if (!plan.getPadFill().empty())
+    return false;
+  for (AxisInfoAttr axis : plan.getAxes())
+    if (!sym::UnificationSolver::areLogicallyEqual(axis.getSrcStride(),
+                                                   axis.getDstStride()))
+      return false;
+  return sym::UnificationSolver::areLogicallyEqual(
+      plan.getSrc().getOffset(), plan.getDst().getOffset());
+}
