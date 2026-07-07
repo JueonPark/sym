@@ -56,3 +56,11 @@ func.func @offset_plan() {
   "test.use_attr"() {plan = #reloc.plan<src = tensor<[N], f32, offset = N floordiv 2>, dst = tensor<[N], f32>, perm = [0], axes = [{name = "x", extent = N, src_stride = 1, dst_stride = 1}], inverse = affine_map<(d0) -> (d0)>>} : () -> ()
   return
 }
+
+// Pad-only plan: pad_fill present, constraints block entirely absent.
+// CHECK-LABEL: func.func @pad_only_plan
+func.func @pad_only_plan() {
+  // CHECK: "test.use_attr"() {plan = #reloc.plan<src = tensor<[6], f32>, dst = tensor<[8], f32>, perm = [0], axes = [{name = "x", extent = 6, src_stride = 1, dst_stride = 1}], pad_fill = [{dst_axis = 0, lo = 1, hi = 1, value = 1.000000e+00 : f32}], inverse = #map2>}
+  "test.use_attr"() {plan = #reloc.plan<src = tensor<[6], f32>, dst = tensor<[8], f32>, perm = [0], axes = [{name = "x", extent = 6, src_stride = 1, dst_stride = 1}], pad_fill = [{dst_axis = 0, lo = 1, hi = 1, value = 1.0 : f32}], inverse = affine_map<(d0) -> (d0)>>} : () -> ()
+  return
+}
