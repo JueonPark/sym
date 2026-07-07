@@ -181,3 +181,117 @@ static void printExprImpl(AsmPrinter &printer, Attribute expr, int parentPrec,
 void mlir::reloc::printSymExpr(AsmPrinter &printer, Attribute expr) {
   printExprImpl(printer, expr, /*parentPrec=*/0, /*isRhs=*/false);
 }
+
+//===----------------------------------------------------------------------===//
+// sym <-> affine expression bridge
+//===----------------------------------------------------------------------===//
+
+FailureOr<AffineExpr>
+mlir::reloc::symToAffine(Attribute expr,
+                         SmallVectorImpl<StringRef> &symbolNames,
+                         MLIRContext *ctx) {
+  if (auto constant = dyn_cast<sym::ConstantExprAttr>(expr))
+    return getAffineConstantExpr(constant.getValue(), ctx);
+
+  if (auto symbol = dyn_cast<sym::SymbolExprAttr>(expr)) {
+    StringRef name = symbol.getName();
+    for (auto [index, existing] : llvm::enumerate(symbolNames))
+      if (existing == name)
+        return getAffineSymbolExpr(index, ctx);
+    symbolNames.push_back(name);
+    return getAffineSymbolExpr(symbolNames.size() - 1, ctx);
+  }
+
+  if (auto binary = dyn_cast<sym::BinaryExprAttr>(expr)) {
+    FailureOr<AffineExpr> lhs = symToAffine(binary.getLhs(), symbolNames, ctx);
+    if (failed(lhs))
+      return failure();
+    FailureOr<AffineExpr> rhs = symToAffine(binary.getRhs(), symbolNames, ctx);
+    if (failed(rhs))
+      return failure();
+    switch (binary.getOpcode()) {
+    case sym::SymbolicExprOp::Add:
+      return *lhs + *rhs;
+    case sym::SymbolicExprOp::Sub:
+      return *lhs - *rhs; // affine encodes as lhs + rhs * -1
+    case sym::SymbolicExprOp::Mul:
+      return *lhs * *rhs;
+    case sym::SymbolicExprOp::Div:
+      return lhs->floorDiv(*rhs); // Div is floordiv (docs/reloc-design.md)
+    case sym::SymbolicExprOp::Mod:
+      return *lhs % *rhs;
+    }
+    llvm_unreachable("unknown SymbolicExprOp");
+  }
+
+  return failure();
+}
+
+Attribute mlir::reloc::affineToSym(AffineExpr expr,
+                                   ArrayRef<StringRef> symbolNames,
+                                   MLIRContext *ctx) {
+  using sym::SymbolicExprOp;
+
+  if (auto constant = dyn_cast<AffineConstantExpr>(expr))
+    return sym::ConstantExprAttr::get(ctx, constant.getValue());
+
+  if (auto symbol = dyn_cast<AffineSymbolExpr>(expr)) {
+    if (symbol.getPosition() >= symbolNames.size())
+      return {};
+    return sym::SymbolExprAttr::get(ctx, symbolNames[symbol.getPosition()]);
+  }
+
+  auto binary = dyn_cast<AffineBinaryOpExpr>(expr);
+  if (!binary)
+    return {}; // AffineDimExpr: no sym counterpart in A2.
+
+  // Rebuild subtraction from affine's encodings so `a - b` survives the
+  // round trip: `x + (y * -1)` -> `x - y`, and `x + (-c)` -> `x - c`.
+  if (binary.getKind() == AffineExprKind::Add) {
+    AffineExpr rhs = binary.getRHS();
+    if (auto rhsBinary = dyn_cast<AffineBinaryOpExpr>(rhs))
+      if (rhsBinary.getKind() == AffineExprKind::Mul)
+        if (auto factor = dyn_cast<AffineConstantExpr>(rhsBinary.getRHS()))
+          if (factor.getValue() == -1) {
+            Attribute lhs = affineToSym(binary.getLHS(), symbolNames, ctx);
+            Attribute sub = affineToSym(rhsBinary.getLHS(), symbolNames, ctx);
+            if (!lhs || !sub)
+              return {};
+            return sym::getSimplifiedBinaryExpr(ctx, SymbolicExprOp::Sub, lhs,
+                                                sub);
+          }
+    if (auto constant = dyn_cast<AffineConstantExpr>(rhs))
+      if (constant.getValue() < 0) {
+        Attribute lhs = affineToSym(binary.getLHS(), symbolNames, ctx);
+        if (!lhs)
+          return {};
+        return sym::getSimplifiedBinaryExpr(
+            ctx, SymbolicExprOp::Sub, lhs,
+            sym::ConstantExprAttr::get(ctx, -constant.getValue()));
+      }
+  }
+
+  SymbolicExprOp opcode;
+  switch (binary.getKind()) {
+  case AffineExprKind::Add:
+    opcode = SymbolicExprOp::Add;
+    break;
+  case AffineExprKind::Mul:
+    opcode = SymbolicExprOp::Mul;
+    break;
+  case AffineExprKind::Mod:
+    opcode = SymbolicExprOp::Mod;
+    break;
+  case AffineExprKind::FloorDiv:
+    opcode = SymbolicExprOp::Div;
+    break;
+  default:
+    return {}; // CeilDiv: no sym counterpart in A2.
+  }
+
+  Attribute lhs = affineToSym(binary.getLHS(), symbolNames, ctx);
+  Attribute rhs = affineToSym(binary.getRHS(), symbolNames, ctx);
+  if (!lhs || !rhs)
+    return {};
+  return sym::getSimplifiedBinaryExpr(ctx, opcode, lhs, rhs);
+}

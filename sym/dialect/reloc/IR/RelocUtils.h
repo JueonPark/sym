@@ -43,6 +43,29 @@ void printSymExpr(AsmPrinter &printer, Attribute expr);
 /// ConstantExprAttr, or BinaryExprAttr).
 bool isSymExpr(Attribute attr);
 
+//===----------------------------------------------------------------------===//
+// sym <-> affine expression bridge
+//===----------------------------------------------------------------------===//
+//
+// Sym symbols are named; affine symbols are positional. symToAffine assigns
+// positions in order of first appearance, recording names in `symbolNames`
+// (an already-recorded name reuses its position, so one call chain shares a
+// binding across expressions). affineToSym maps positions back through the
+// same list. Lossless for {symbol, constant, +, -, *, floordiv, mod}; see
+// docs/reloc-design.md for the Sub encoding and equality caveats.
+
+/// Convert a sym expression attribute to an AffineExpr over symbols.
+/// Returns failure for attributes that are not sym expressions.
+FailureOr<AffineExpr> symToAffine(Attribute expr,
+                                  SmallVectorImpl<StringRef> &symbolNames,
+                                  MLIRContext *ctx);
+
+/// Convert an AffineExpr over symbols back to a sym expression attribute.
+/// Returns null for expressions with no sym counterpart (ceildiv, dims,
+/// out-of-range symbol positions).
+Attribute affineToSym(AffineExpr expr, ArrayRef<StringRef> symbolNames,
+                      MLIRContext *ctx);
+
 } // namespace reloc
 } // namespace mlir
 

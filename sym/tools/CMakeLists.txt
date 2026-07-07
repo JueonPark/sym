@@ -14,6 +14,8 @@ target_include_directories(sym-opt PRIVATE
   ${PROJECT_BINARY_DIR}/sym/dialect/sym/Transforms
   ${PROJECT_SOURCE_DIR}/sym/dialect/reloc/IR
   ${PROJECT_BINARY_DIR}/sym/dialect/reloc/IR
+  ${PROJECT_SOURCE_DIR}/sym/dialect/reloc/Transforms
+  ${PROJECT_BINARY_DIR}/sym/dialect/reloc/Transforms
 )
 
 target_link_libraries(sym-opt PRIVATE
@@ -22,6 +24,7 @@ target_link_libraries(sym-opt PRIVATE
   MLIRSymDialect
   MLIRRelocDialect
   MLIRSymTransforms
+  MLIRRelocTransforms
   MLIROptLib
   MLIRParser
   MLIRPass

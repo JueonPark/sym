@@ -63,6 +63,7 @@ jobs:
             build/sym/sym/dialect/sym/IR/*.inc
             build/sym/sym/dialect/sym/Transforms/*.inc
             build/sym/sym/dialect/reloc/IR/*.inc
+            build/sym/sym/dialect/reloc/Transforms/*.inc
             build/sym/sym/tools/sym-opt
             build/sym/test/lit.site.cfg.py
 
