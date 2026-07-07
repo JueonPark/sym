@@ -143,6 +143,206 @@ TensorDescAttr::verify(function_ref<InFlightDiagnostic()> emitError,
 }
 
 //===----------------------------------------------------------------------===//
+// AxisInfoAttr
+//===----------------------------------------------------------------------===//
+
+/// Parse an expression field of the form `, <keyword> = <expr>`.
+static ParseResult parseExprField(AsmParser &parser, StringRef keyword,
+                                  Attribute &out) {
+  if (parser.parseComma() || parser.parseKeyword(keyword) ||
+      parser.parseEqual())
+    return failure();
+  out = parseSymExpr(parser);
+  return out ? success() : failure();
+}
+
+/// Parse an axis-info body:
+///   {name = "n0", extent = e, src_stride = e, dst_stride = e}
+/// Shared with PlanAttr's parser.
+static AxisInfoAttr parseAxisInfoBody(AsmParser &parser) {
+  MLIRContext *ctx = parser.getContext();
+  std::string name;
+  if (parser.parseLBrace() || parser.parseKeyword("name") ||
+      parser.parseEqual() || parser.parseString(&name))
+    return {};
+  Attribute extent, srcStride, dstStride;
+  if (parseExprField(parser, "extent", extent) ||
+      parseExprField(parser, "src_stride", srcStride) ||
+      parseExprField(parser, "dst_stride", dstStride) || parser.parseRBrace())
+    return {};
+  return AxisInfoAttr::getChecked(
+      [&]() { return parser.emitError(parser.getCurrentLocation()); }, ctx,
+      name, extent, srcStride, dstStride);
+}
+
+static void printAxisInfoBody(AsmPrinter &printer, AxisInfoAttr axis) {
+  printer << "{name = \"" << axis.getName() << "\", extent = ";
+  printSymExpr(printer, axis.getExtent());
+  printer << ", src_stride = ";
+  printSymExpr(printer, axis.getSrcStride());
+  printer << ", dst_stride = ";
+  printSymExpr(printer, axis.getDstStride());
+  printer << "}";
+}
+
+Attribute AxisInfoAttr::parse(AsmParser &parser, Type type) {
+  if (parser.parseLess())
+    return {};
+  AxisInfoAttr axis = parseAxisInfoBody(parser);
+  if (!axis || parser.parseGreater())
+    return {};
+  return axis;
+}
+
+void AxisInfoAttr::print(AsmPrinter &printer) const {
+  printer << "<";
+  printAxisInfoBody(printer, *this);
+  printer << ">";
+}
+
+LogicalResult
+AxisInfoAttr::verify(function_ref<InFlightDiagnostic()> emitError,
+                     StringRef name, Attribute extent, Attribute srcStride,
+                     Attribute dstStride) {
+  if (!isSymExpr(extent) || !isSymExpr(srcStride) || !isSymExpr(dstStride))
+    return emitError() << "extent, src_stride, and dst_stride must be sym "
+                          "expressions (symbol, constant, or binary)";
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// PadFillAttr
+//===----------------------------------------------------------------------===//
+
+/// Parse a pad-fill body:
+///   {dst_axis = 1, lo = e, hi = e, value = 0.0 : f32}
+/// Shared with PlanAttr's parser.
+static PadFillAttr parsePadFillBody(AsmParser &parser) {
+  MLIRContext *ctx = parser.getContext();
+  int64_t dstAxis;
+  if (parser.parseLBrace() || parser.parseKeyword("dst_axis") ||
+      parser.parseEqual() || parser.parseInteger(dstAxis))
+    return {};
+  Attribute lo, hi;
+  if (parseExprField(parser, "lo", lo) || parseExprField(parser, "hi", hi))
+    return {};
+  TypedAttr value;
+  if (parser.parseComma() || parser.parseKeyword("value") ||
+      parser.parseEqual() || parser.parseAttribute(value) ||
+      parser.parseRBrace())
+    return {};
+  return PadFillAttr::getChecked(
+      [&]() { return parser.emitError(parser.getCurrentLocation()); }, ctx,
+      dstAxis, lo, hi, value);
+}
+
+static void printPadFillBody(AsmPrinter &printer, PadFillAttr pad) {
+  printer << "{dst_axis = " << pad.getDstAxis() << ", lo = ";
+  printSymExpr(printer, pad.getLo());
+  printer << ", hi = ";
+  printSymExpr(printer, pad.getHi());
+  printer << ", value = ";
+  printer.printAttribute(pad.getValue());
+  printer << "}";
+}
+
+Attribute PadFillAttr::parse(AsmParser &parser, Type type) {
+  if (parser.parseLess())
+    return {};
+  PadFillAttr pad = parsePadFillBody(parser);
+  if (!pad || parser.parseGreater())
+    return {};
+  return pad;
+}
+
+void PadFillAttr::print(AsmPrinter &printer) const {
+  printer << "<";
+  printPadFillBody(printer, *this);
+  printer << ">";
+}
+
+LogicalResult
+PadFillAttr::verify(function_ref<InFlightDiagnostic()> emitError,
+                    int64_t dstAxis, Attribute lo, Attribute hi,
+                    TypedAttr value) {
+  if (dstAxis < 0)
+    return emitError() << "dst_axis must be non-negative, but got: " << dstAxis;
+  if (!isSymExpr(lo) || !isSymExpr(hi))
+    return emitError() << "lo and hi must be sym expressions (symbol, "
+                          "constant, or binary)";
+  if (!value)
+    return emitError() << "value must be a typed attribute";
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// DivisibilityAttr
+//===----------------------------------------------------------------------===//
+
+Attribute DivisibilityAttr::parse(AsmParser &parser, Type type) {
+  MLIRContext *ctx = parser.getContext();
+  if (parser.parseLess())
+    return {};
+  Attribute expr = parseSymExpr(parser);
+  if (!expr)
+    return {};
+  int64_t divisor;
+  if (parser.parseComma() || parser.parseInteger(divisor) ||
+      parser.parseGreater())
+    return {};
+  return DivisibilityAttr::getChecked(
+      [&]() { return parser.emitError(parser.getCurrentLocation()); }, ctx,
+      expr, divisor);
+}
+
+void DivisibilityAttr::print(AsmPrinter &printer) const {
+  printer << "<";
+  printSymExpr(printer, getExpr());
+  printer << ", " << getDivisor() << ">";
+}
+
+LogicalResult
+DivisibilityAttr::verify(function_ref<InFlightDiagnostic()> emitError,
+                         Attribute expr, int64_t divisor) {
+  if (!isSymExpr(expr))
+    return emitError() << "expr must be a sym expression (symbol, constant, "
+                          "or binary), but got: "
+                       << expr;
+  if (divisor <= 0)
+    return emitError() << "divisor must be positive, but got: " << divisor;
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// AlignmentAttr
+//===----------------------------------------------------------------------===//
+
+Attribute AlignmentAttr::parse(AsmParser &parser, Type type) {
+  MLIRContext *ctx = parser.getContext();
+  int64_t axis, bytes;
+  if (parser.parseLess() || parser.parseInteger(axis) || parser.parseComma() ||
+      parser.parseInteger(bytes) || parser.parseGreater())
+    return {};
+  return AlignmentAttr::getChecked(
+      [&]() { return parser.emitError(parser.getCurrentLocation()); }, ctx,
+      axis, bytes);
+}
+
+void AlignmentAttr::print(AsmPrinter &printer) const {
+  printer << "<" << getAxis() << ", " << getBytes() << ">";
+}
+
+LogicalResult
+AlignmentAttr::verify(function_ref<InFlightDiagnostic()> emitError,
+                      int64_t axis, int64_t bytes) {
+  if (axis < 0)
+    return emitError() << "axis must be non-negative, but got: " << axis;
+  if (bytes <= 0)
+    return emitError() << "bytes must be positive, but got: " << bytes;
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // RelocDialect attribute registration
 //===----------------------------------------------------------------------===//
 //

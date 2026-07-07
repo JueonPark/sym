@@ -21,3 +21,27 @@
 // Dangling operator: nothing after '+'.
 // expected-error @below {{expected integer, symbol, or '(' in expression}}
 "test.use_attr"() {desc = #reloc.tensor_desc<[N + ], f32>} : () -> ()
+
+// -----
+
+// AxisInfo keys are ordered: name, extent, src_stride, dst_stride.
+// expected-error @below {{expected 'name'}}
+"test.use_attr"() {axis = #reloc.axis_info<{extent = 8, name = "x", src_stride = 1, dst_stride = 1}>} : () -> ()
+
+// -----
+
+// PadFill dst_axis must be non-negative.
+// expected-error @below {{dst_axis must be non-negative}}
+"test.use_attr"() {pad = #reloc.pad_fill<{dst_axis = -1, lo = 0, hi = 2, value = 0.0 : f32}>} : () -> ()
+
+// -----
+
+// Divisibility divisor must be positive.
+// expected-error @below {{divisor must be positive}}
+"test.use_attr"() {d = #reloc.divisibility<N, 0>} : () -> ()
+
+// -----
+
+// Alignment bytes must be positive.
+// expected-error @below {{bytes must be positive}}
+"test.use_attr"() {a = #reloc.alignment<0, 0>} : () -> ()

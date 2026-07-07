@@ -48,3 +48,38 @@ func.func @tensor_desc_expressions() {
   "test.use_attr"() {desc = #reloc.tensor_desc<["my dim" + 1], f32>} : () -> ()
   return
 }
+
+//===----------------------------------------------------------------------===//
+// AxisInfoAttr round-trips
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func.func @axis_info
+func.func @axis_info() {
+  // CHECK: "test.use_attr"() {axis = #reloc.axis_info<{name = "n0", extent = N floordiv 64, src_stride = 64, dst_stride = 4096 * (N floordiv 64)}>}
+  "test.use_attr"() {axis = #reloc.axis_info<{name = "n0", extent = N floordiv 64, src_stride = 64, dst_stride = 64 * 64 * (N floordiv 64)}>} : () -> ()
+  return
+}
+
+//===----------------------------------------------------------------------===//
+// PadFillAttr round-trips
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func.func @pad_fill
+func.func @pad_fill() {
+  // CHECK: "test.use_attr"() {pad = #reloc.pad_fill<{dst_axis = 1, lo = 0, hi = N mod 64, value = 0.000000e+00 : f32}>}
+  "test.use_attr"() {pad = #reloc.pad_fill<{dst_axis = 1, lo = 0, hi = N mod 64, value = 0.0 : f32}>} : () -> ()
+  return
+}
+
+//===----------------------------------------------------------------------===//
+// DivisibilityAttr / AlignmentAttr round-trips
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func.func @constraint_attrs
+func.func @constraint_attrs() {
+  // CHECK: "test.use_attr"() {d = #reloc.divisibility<N, 64>}
+  "test.use_attr"() {d = #reloc.divisibility<N, 64>} : () -> ()
+  // CHECK: "test.use_attr"() {a = #reloc.alignment<2, 128>}
+  "test.use_attr"() {a = #reloc.alignment<2, 128>} : () -> ()
+  return
+}
