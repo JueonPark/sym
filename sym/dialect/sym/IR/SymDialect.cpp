@@ -343,11 +343,13 @@ BinaryExprAttr::verify(function_ref<InFlightDiagnostic()> emitError,
                        SymbolicExprOp opcode, Attribute lhs, Attribute rhs) {
 
   // Ensure LHS is one of our known Expression Attributes
-  bool validLHS = isa<SymbolExprAttr>(lhs) || isa<ConstantExprAttr>(lhs) ||
-                  isa<BinaryExprAttr>(lhs);
+  bool validLHS = mlir::isa<SymbolExprAttr>(lhs) ||
+                  mlir::isa<ConstantExprAttr>(lhs) ||
+                  mlir::isa<BinaryExprAttr>(lhs);
 
-  bool validRHS = isa<SymbolExprAttr>(rhs) || isa<ConstantExprAttr>(rhs) ||
-                  isa<BinaryExprAttr>(rhs);
+  bool validRHS = mlir::isa<SymbolExprAttr>(rhs) ||
+                  mlir::isa<ConstantExprAttr>(rhs) ||
+                  mlir::isa<BinaryExprAttr>(rhs);
 
   if (!validLHS || !validRHS) {
     return emitError()
@@ -366,9 +368,9 @@ SymbolicTensorType::verify(function_ref<InFlightDiagnostic()> emitError,
   // Verify each shape dimension is a valid symbolic expression attribute
   for (size_t idx = 0; idx < shape.size(); ++idx) {
     Attribute attr = shape[idx];
-    bool isValidShapeAttr = isa<SymbolExprAttr>(attr) ||
-                            isa<ConstantExprAttr>(attr) ||
-                            isa<BinaryExprAttr>(attr);
+    bool isValidShapeAttr = mlir::isa<SymbolExprAttr>(attr) ||
+                            mlir::isa<ConstantExprAttr>(attr) ||
+                            mlir::isa<BinaryExprAttr>(attr);
 
     if (!isValidShapeAttr) {
       return emitError() << "shape dimension " << idx
@@ -379,7 +381,8 @@ SymbolicTensorType::verify(function_ref<InFlightDiagnostic()> emitError,
   }
 
   // Verify elementType is a valid tensor element type
-  if (!elementType.isIntOrIndexOrFloat() && !isa<ComplexType>(elementType)) {
+  if (!elementType.isIntOrIndexOrFloat() &&
+      !mlir::isa<ComplexType>(elementType)) {
     return emitError() << "element type must be a valid tensor element type, "
                           "but got: "
                        << elementType;
