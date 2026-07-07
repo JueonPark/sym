@@ -209,6 +209,31 @@ func.func @test_no_simplification() {
   // n * 2 should remain as-is
   // CHECK: "test.use_attr"() {sym_expr = #sym.binary<#sym.symbol<"n"> * #sym.constant<2>>}
   "test.use_attr"() {sym_expr = #sym.binary<#sym.symbol<"n"> * #sym.constant<2>>} : () -> ()
-  
+
+  return
+}
+
+//===----------------------------------------------------------------------===//
+// Floor Division / Modulo Semantics Tests (div == floordiv, mod == floor-mod)
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func.func @test_floor_semantics
+func.func @test_floor_semantics() {
+  // -7 div 2 -> -4 (floor division, not C++ truncation which gives -3)
+  // CHECK: "test.use_attr"() {sym_expr = #sym.constant<-4>}
+  "test.use_attr"() {sym_expr = #sym.binary<#sym.constant<-7> div #sym.constant<2>>} : () -> ()
+
+  // -7 mod 2 -> 1 (floor modulo: result has the sign of the divisor)
+  // CHECK: "test.use_attr"() {sym_expr = #sym.constant<1>}
+  "test.use_attr"() {sym_expr = #sym.binary<#sym.constant<-7> mod #sym.constant<2>>} : () -> ()
+
+  // 7 div -2 -> -4
+  // CHECK: "test.use_attr"() {sym_expr = #sym.constant<-4>}
+  "test.use_attr"() {sym_expr = #sym.binary<#sym.constant<7> div #sym.constant<-2>>} : () -> ()
+
+  // 7 mod -2 -> -1
+  // CHECK: "test.use_attr"() {sym_expr = #sym.constant<-1>}
+  "test.use_attr"() {sym_expr = #sym.binary<#sym.constant<7> mod #sym.constant<-2>>} : () -> ()
+
   return
 }

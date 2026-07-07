@@ -9,6 +9,7 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/MathExtras.h"
 
 using namespace mlir;
 using namespace mlir::sym;
@@ -98,12 +99,14 @@ static Attribute simplifyBinaryExpr(MLIRContext *context, SymbolicExprOp opcode,
     case SymbolicExprOp::Div:
       if (r == 0)
         return nullptr; // Division by zero - don't simplify
-      result = l / r;
+      // Floor division (see SymbolicExprOp semantics note in SymDialect.h).
+      result = llvm::divideFloorSigned(l, r);
       break;
     case SymbolicExprOp::Mod:
       if (r == 0)
         return nullptr; // Mod by zero - don't simplify
-      result = l % r;
+      // Floor modulo: l - floor(l/r) * r has the sign of the divisor.
+      result = l - llvm::divideFloorSigned(l, r) * r;
       break;
     }
     return ConstantExprAttr::get(context, result);
