@@ -38,6 +38,14 @@ struct TestRelocUtilsPass
     getOperation().walk([&](Operation *op) {
       if (Attribute expr = op->getAttr("expr"))
         testBridge(op, expr, context);
+      if (Attribute lhs = op->getAttr("lhs"))
+        if (Attribute rhs = op->getAttr("rhs"))
+          op->emitRemark() << "proveEqual = "
+                           << stringifyProof(proveEqual(lhs, rhs))
+                           << ", proveLessEqual = "
+                           << stringifyProof(proveLessEqual(lhs, rhs));
+      if (auto desc = op->getAttrOfType<TensorDescAttr>("desc"))
+        testRowMajor(op, desc, context);
       if (auto plan = op->getAttrOfType<PlanAttr>("plan")) {
         if (auto pair = op->getAttrOfType<DenseI64ArrayAttr>("pair"))
           testContiguous(op, plan, pair);
@@ -75,6 +83,16 @@ struct TestRelocUtilsPass
         isContiguousCompatible(axes[indices[0]], axes[indices[1]]);
     op->emitRemark() << "isContiguousCompatible(" << indices[0] << ", "
                      << indices[1] << ") = " << (compatible ? "true" : "false");
+  }
+
+  void testRowMajor(Operation *op, TensorDescAttr desc, MLIRContext *context) {
+    SmallVector<Attribute> computed =
+        canonicalRowMajorStrides(desc.getExtents(), context);
+    bool matches = computed.size() == desc.getStrides().size();
+    for (size_t k = 0; matches && k < computed.size(); ++k)
+      matches = proveEqual(computed[k], desc.getStrides()[k]) == Proof::Proven;
+    op->emitRemark() << "row-major matches strides: "
+                     << (matches ? "true" : "false");
   }
 };
 

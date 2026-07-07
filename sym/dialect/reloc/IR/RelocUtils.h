@@ -82,6 +82,41 @@ bool isContiguousCompatible(AxisInfoAttr outer, AxisInfoAttr inner);
 /// every axis has dst_stride == src_stride, and src/dst offsets are equal.
 bool isPureView(PlanAttr plan);
 
+//===----------------------------------------------------------------------===//
+// Verification proofs
+//===----------------------------------------------------------------------===//
+//
+// Three-valued proofs over sym expressions: Proven / Disproven answer
+// definitively; Unknown means "not decidable with the current prover".
+// The verifier rejects only on Disproven; Unknown never rejects.
+
+enum class Proof { Proven, Disproven, Unknown };
+
+/// Human-readable proof name ("Proven" / "Disproven" / "Unknown").
+StringRef stringifyProof(Proof proof);
+
+/// Prove or disprove `lhs == rhs`. Constants compare numerically;
+/// logically-equal expressions are Proven; anything else is Unknown.
+Proof proveEqual(Attribute lhs, Attribute rhs);
+
+/// Prove or disprove `lhs <= rhs`. Constants compare numerically;
+/// logically-equal expressions are Proven; anything else is Unknown.
+Proof proveLessEqual(Attribute lhs, Attribute rhs);
+
+/// Canonical row-major strides over `extents`: stride[rank-1] = 1,
+/// stride[k] = stride[k+1] * extent[k+1], built with parse-style
+/// simplification.
+SmallVector<Attribute> canonicalRowMajorStrides(ArrayRef<Attribute> extents,
+                                                MLIRContext *ctx);
+
+/// Combined pad-widths proof for one pad_fill entry, with `a = dst_axis`:
+///   0 <= lo,  0 <= hi,  axes[a].extent + lo + hi == dst.extents[a]
+/// Returns Disproven if any relation is disproven or `a` is out of range
+/// for `axes`/`dst`; Unknown if none is disproven but any is unknown;
+/// Proven otherwise.
+Proof provePadRange(PadFillAttr pad, ArrayRef<AxisInfoAttr> axes,
+                    TensorDescAttr dst);
+
 } // namespace reloc
 } // namespace mlir
 
