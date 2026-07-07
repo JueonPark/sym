@@ -95,6 +95,7 @@ def Reloc_PlanAttr : Reloc_Attr<"Plan", "plan"> {
     ArrayRefParameter<"AlignmentAttr">:$alignment,
     "::mlir::DenseBoolArrayAttr":$contiguity,
     "bool":$noCopy,
+    "bool":$runtimePadCheck,
     "::mlir::AffineMapAttr":$inverse
   );
   let hasCustomAssemblyFormat = 1;
