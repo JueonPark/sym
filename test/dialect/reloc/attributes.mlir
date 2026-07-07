@@ -46,6 +46,9 @@ func.func @tensor_desc_expressions() {
   // Quoted symbol with a non-identifier name stays quoted.
   // CHECK: "test.use_attr"() {desc = #reloc.tensor_desc<["my dim" + 1], f32>}
   "test.use_attr"() {desc = #reloc.tensor_desc<["my dim" + 1], f32>} : () -> ()
+  // Negative integer literals in extents and offsets.
+  // CHECK: "test.use_attr"() {desc = #reloc.tensor_desc<[-7, N + -1], f32, offset = -4>}
+  "test.use_attr"() {desc = #reloc.tensor_desc<[-7, N + -1], f32, offset = -4>} : () -> ()
   return
 }
 

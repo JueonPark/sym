@@ -1,5 +1,4 @@
-//===- TestRelocUtils.cpp - Test pass for reloc utilities
-//------------------===//
+//===- TestRelocUtils.cpp - Test pass for reloc utilities -----------------===//
 //
 // Testing-only pass that exposes RelocUtils (bridge, predicates) to lit via
 // remarks. See RelocPasses.td for the op-attribute protocol.

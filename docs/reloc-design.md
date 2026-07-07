@@ -36,9 +36,10 @@ when it first constructs one.
 - Round-trip identity is judged by `UnificationSolver::areLogicallyEqual`
   (structural equality modulo Add/Mul commutativity), because affine
   canonicalizes constants to the RHS of `Mul` (`64 * N` → `s0 * 64`).
-- Canonical sym form prefers `Sub(x, c)` over `Add(x, -c)`; both map to the
-  same affine expression, so the bridge is not injective on non-canonical
-  input.
+- `affineToSym` emits `Sub(x, c)` where affine holds `x + (-c)`; a sym
+  expression written as `Add(x, -c)` maps to the same affine expression, so
+  the bridge is not injective on such input — round-trip identity is
+  guaranteed for `Sub`-form input.
 
 ## Decision 2 — `div` is floor division
 
@@ -97,7 +98,7 @@ symbol names).
 A2 attribute verifiers check only **local structure**: fields are sym
 expressions of the right kind, sizes agree (`strides` empty-or-`extents`-sized,
 `perm`/`contiguity` sized to `axes`), scalars in range (`divisor > 0`,
-`bytes > 0`, `dst_axis >= 0`). Cross-field semantics (perm is a permutation,
+`bytes > 0`, `dst_axis >= 0`, `axis >= 0`). Cross-field semantics (perm is a permutation,
 `inverse` dim count = rank, extent consistency between descriptors and axes,
 `no_copy` ⇒ `isPureView`) belong to A3's plan verifier.
 
