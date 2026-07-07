@@ -649,6 +649,39 @@ LogicalResult PlanAttr::verify(
                          << " is not provable; set runtime_pad_check";
   }
 
+  // --- A3: perm must be a bijection on [0, axes.size()) ---
+  {
+    SmallVector<bool> seen(axes.size(), false);
+    for (int64_t value : perm.asArrayRef()) {
+      if (value < 0 || value >= static_cast<int64_t>(axes.size()) ||
+          seen[value])
+        return emitError() << "perm is not a permutation of [0, " << axes.size()
+                           << ")";
+      seen[value] = true;
+    }
+  }
+
+  // --- A3: inverse is square on the axes space ---
+  AffineMap inverseMap = inverse.getValue();
+  if (inverseMap.getNumDims() != axes.size() ||
+      inverseMap.getNumResults() != axes.size())
+    return emitError() << "inverse map must be square on the axes space: "
+                       << "expected " << axes.size() << " dims and "
+                       << axes.size() << " results, got "
+                       << inverseMap.getNumDims() << " and "
+                       << inverseMap.getNumResults();
+
+  // --- A3: pure-permutation plans must have a matching inverse.
+  // Floordiv-style inverses are not permutations; for those only the
+  // arity checks above apply (full bijectivity checking for such plans
+  // needs P1b's composition algebra). ---
+  if (!axes.empty() && inverseMap.isPermutation()) {
+    AffineMap forward =
+        AffineMap::getPermutationMap(perm.asArrayRef(), inverse.getContext());
+    if (inverseMap != inversePermutation(forward))
+      return emitError() << "inverse permutation does not invert perm";
+  }
+
   return success();
 }
 

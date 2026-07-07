@@ -25,3 +25,17 @@
 // CHECK: constraints = {no_copy = true, runtime_pad_check}
 // expected-remark @below {{isPureView = true}}
 "test.plan"() {plan = #reloc.plan<src = tensor<[8], f32>, dst = tensor<[8], f32>, perm = [0], axes = [{name = "x", extent = 8, src_stride = 1, dst_stride = 1}], constraints = {no_copy = true, runtime_pad_check}, inverse = affine_map<(d0) -> (d0)>>} : () -> ()
+
+// 4. Non-self-inverse permutation: perm = [2, 0, 1] requires
+//    inverse = inversePermutation((d0,d1,d2) -> (d2,d0,d1)) = (d0,d1,d2) -> (d1,d2,d0).
+// CHECK: perm = [2, 0, 1]
+// expected-remark @below {{isPureView = false}}
+"test.plan"() {plan = #reloc.plan<src = tensor<[4, 5, 6], f32>, dst = tensor<[6, 4, 5], f32>, perm = [2, 0, 1], axes = [{name = "a", extent = 6, src_stride = 1, dst_stride = 20}, {name = "b", extent = 4, src_stride = 30, dst_stride = 5}, {name = "c", extent = 5, src_stride = 6, dst_stride = 1}], inverse = affine_map<(d0, d1, d2) -> (d1, d2, d0)>>} : () -> ()
+
+// 5. Floordiv inverse: not a permutation map, so only arity is checked.
+// The inverse map itself (a floordiv expression) is hoisted by the
+// generic printer into a top-of-file #map alias, so it cannot be
+// matched here in-order; check the op's own attributes instead.
+// CHECK: perm = [0], axes = [{name = "x", extent = 8, src_stride = 1, dst_stride = 1}], inverse = #map2
+// expected-remark @below {{isPureView = true}}
+"test.plan"() {plan = #reloc.plan<src = tensor<[8], f32>, dst = tensor<[8], f32>, perm = [0], axes = [{name = "x", extent = 8, src_stride = 1, dst_stride = 1}], inverse = affine_map<(d0) -> (d0 floordiv 2 + d0 mod 2)>>} : () -> ()
