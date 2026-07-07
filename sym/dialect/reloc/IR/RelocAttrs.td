@@ -82,8 +82,7 @@ def Reloc_PlanAttr : Reloc_Attr<"Plan", "plan"> {
     Captures a folded layout-transform chain: src/dst tensor descriptors,
     the dst-axis -> src-axis permutation, per-axis extent/stride mapping,
     pad-fill specs, constraint set (divisibility / alignment / contiguity),
-    the no_copy flag, and the dst -> src inverse index map. See
-    docs/reloc-design.md for representation decisions.
+    the no_copy flag, and the dst -> src inverse index map.
   }];
   let parameters = (ins
     "TensorDescAttr":$src,

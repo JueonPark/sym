@@ -1,7 +1,6 @@
 //===- RelocAttributes.cpp - Reloc dialect attribute implementation -------===//
 //
-// This file implements the Reloc dialect attributes. Assembly-format
-// conventions are documented in docs/reloc-design.md.
+// This file implements the Reloc dialect attributes.
 //
 //===----------------------------------------------------------------------===//
 
@@ -680,6 +679,35 @@ LogicalResult PlanAttr::verify(
         AffineMap::getPermutationMap(perm.asArrayRef(), inverse.getContext());
     if (inverseMap != inversePermutation(forward))
       return emitError() << "inverse permutation does not invert perm";
+  }
+
+  // --- A3: direct axis order — dst rank and per-axis dst_stride ---
+  if (dst.getExtents().size() != axes.size())
+    return emitError() << "dst rank (" << dst.getExtents().size()
+                       << ") must match number of axes (" << axes.size() << ")";
+  {
+    SmallVector<Attribute> dstStrides;
+    if (!dst.getStrides().empty())
+      dstStrides.assign(dst.getStrides().begin(), dst.getStrides().end());
+    else
+      dstStrides = canonicalRowMajorStrides(dst.getExtents(), dst.getContext());
+    for (size_t k = 0; k < axes.size(); ++k)
+      if (proveEqual(axes[k].getDstStride(), dstStrides[k]) == Proof::Disproven)
+        return emitError() << "axis " << k
+                           << " dst_stride provably disagrees with the dst "
+                              "descriptor: "
+                           << axes[k].getDstStride() << " vs " << dstStrides[k];
+  }
+
+  // --- A3: contiguity[k] asserts unit source stride ---
+  if (contiguity && !contiguity.empty()) {
+    Attribute one = sym::ConstantExprAttr::get(dst.getContext(), 1);
+    for (int64_t k = 0; k < contiguity.size(); ++k)
+      if (contiguity.asArrayRef()[k] &&
+          proveEqual(axes[k].getSrcStride(), one) == Proof::Disproven)
+        return emitError() << "contiguity[" << k
+                           << "] asserts unit src_stride, but axis " << k
+                           << " has src_stride " << axes[k].getSrcStride();
   }
 
   return success();

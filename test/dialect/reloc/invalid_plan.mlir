@@ -76,3 +76,22 @@
 // (d0, d1) -> (d1, d0), not the identity.
 // expected-error @below {{inverse permutation does not invert perm}}
 "test.use_attr"() {plan = #reloc.plan<src = tensor<[4, 4], f32>, dst = tensor<[4, 4], f32>, perm = [1, 0], axes = [{name = "a", extent = 4, src_stride = 1, dst_stride = 4}, {name = "b", extent = 4, src_stride = 4, dst_stride = 1}], inverse = affine_map<(d0, d1) -> (d0, d1)>>} : () -> ()
+
+// -----
+
+// dst descriptor rank must match the number of axes (direct axis order).
+// expected-error @below {{dst rank (2) must match number of axes (1)}}
+"test.use_attr"() {plan = #reloc.plan<src = tensor<[8], f32>, dst = tensor<[2, 4], f32>, perm = [0], axes = [{name = "x", extent = 8, src_stride = 1, dst_stride = 1}], inverse = affine_map<(d0) -> (d0)>>} : () -> ()
+
+// -----
+
+// Axis dst_stride provably disagrees with the dst descriptor: row-major
+// reconstruction of [8] is [1], but the axis claims stride 2.
+// expected-error @below {{axis 0 dst_stride provably disagrees with the dst descriptor}}
+"test.use_attr"() {plan = #reloc.plan<src = tensor<[8], f32>, dst = tensor<[8], f32>, perm = [0], axes = [{name = "x", extent = 8, src_stride = 1, dst_stride = 2}], inverse = affine_map<(d0) -> (d0)>>} : () -> ()
+
+// -----
+
+// Contiguity flag asserts unit source stride; stride 4 contradicts it.
+// expected-error @below {{contiguity[0] asserts unit src_stride, but axis 0 has src_stride}}
+"test.use_attr"() {plan = #reloc.plan<src = tensor<[8], f32>, dst = tensor<[8], f32, strides = [4]>, perm = [0], axes = [{name = "x", extent = 8, src_stride = 4, dst_stride = 4}], constraints = {contiguous = [true], no_copy = false}, inverse = affine_map<(d0) -> (d0)>>} : () -> ()

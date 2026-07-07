@@ -215,7 +215,8 @@ FailureOr<AffineExpr> mlir::reloc::symToAffine(
     case sym::SymbolicExprOp::Mul:
       return *lhs * *rhs;
     case sym::SymbolicExprOp::Div:
-      return lhs->floorDiv(*rhs); // Div is floordiv (docs/reloc-design.md)
+      return lhs->floorDiv(
+          *rhs); // Div is floor division (matches affine floordiv)
     case sym::SymbolicExprOp::Mod:
       return *lhs % *rhs;
     }
