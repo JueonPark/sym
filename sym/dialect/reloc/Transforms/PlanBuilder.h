@@ -55,10 +55,6 @@ public:
   SmallVector<int64_t> perm;
 };
 
-/// Helper to implement PlanBuilder::finalize (defined in RelocAttributes.cpp
-/// where storage definitions are available for template instantiation).
-PlanAttr finalizePlanBuilder(const PlanBuilder &builder, Location loc);
-
 } // namespace reloc
 } // namespace mlir
 

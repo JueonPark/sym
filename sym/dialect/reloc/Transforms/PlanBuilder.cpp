@@ -29,5 +29,29 @@ PlanBuilder::PlanBuilder(sym::SymbolicTensorType input)
 }
 
 PlanAttr PlanBuilder::finalize(Location loc) const {
-  return finalizePlanBuilder(*this, loc);
+  SmallVector<Attribute> dstExtents;
+  dstExtents.reserve(axes.size());
+  for (const auto &axis : axes)
+    dstExtents.push_back(axis.extent);
+  Attribute zero = sym::ConstantExprAttr::get(ctx, 0);
+  auto dst = TensorDescAttr::get(ctx, dstExtents,
+                                 /*strides=*/ArrayRef<Attribute>(), zero,
+                                 src.getElementType());
+  SmallVector<Attribute> dstStrides =
+      canonicalRowMajorStrides(dstExtents, ctx);
+  SmallVector<AxisInfoAttr> axisAttrs;
+  axisAttrs.reserve(axes.size());
+  for (auto [k, axis] : llvm::enumerate(axes))
+    axisAttrs.push_back(AxisInfoAttr::get(ctx, axis.name, axis.extent,
+                                          axis.srcStride, dstStrides[k]));
+  AffineMap forward = AffineMap::getPermutationMap(perm, ctx);
+  auto inverse = AffineMapAttr::get(inversePermutation(forward));
+  return PlanAttr::getChecked(
+      [&]() { return emitError(loc); }, ctx, src, dst,
+      DenseI64ArrayAttr::get(ctx, perm), ArrayRef<AxisInfoAttr>(axisAttrs),
+      /*padFill=*/ArrayRef<PadFillAttr>(),
+      /*divisibility=*/ArrayRef<DivisibilityAttr>(),
+      /*alignment=*/ArrayRef<AlignmentAttr>(),
+      DenseBoolArrayAttr::get(ctx, ArrayRef<bool>()),
+      /*noCopy=*/false, /*runtimePadCheck=*/false, inverse);
 }
