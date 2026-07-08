@@ -51,7 +51,8 @@ FLOORDIV/MOD semantics match MLIR affine `floordiv`/`mod` and sym's pinned
 | `2` | signless integer | 1..64 |
 | `3` | index | 64 (by convention) |
 
-Anything else (complex, wider integers) is unrepresentable in v0.
+Anything else (complex types, non-signless integers, exotic floats, integers
+wider than 64 bits) is unrepresentable in v0.
 
 ## Tensor descriptor (`tensor_desc`)
 
@@ -100,8 +101,9 @@ little-endian.
 Symbol indices are assigned by **first use in encoding order** — the encoder
 walks sections 3..8 in the layout order above (within a descriptor: extents,
 strides, offset; within an axis: extent, src_stride, dst_stride; within a pad:
-lo, hi), appending each previously-unseen symbol name. This makes the byte
-stream a pure function of the attribute.
+lo, hi; then each divisibility entry's expr in order), appending each
+previously-unseen symbol name. This makes the byte stream a pure function of
+the attribute.
 
 ## Worked example
 
@@ -152,3 +154,7 @@ Total: 4+4+4+39+39+8+48+4+4+4+4+2+17 = **181 bytes**.
 
 The `version` field is bumped on any layout change; v0 decoders must reject
 other versions (decoder-side enforcement lands with P2).
+
+v0 carries no per-section byte lengths, so decoders parse sections in full to
+advance; any layout change (including additions) bumps the version, and v0
+decoders must reject unknown versions rather than attempt partial reads.

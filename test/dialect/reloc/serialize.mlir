@@ -25,3 +25,8 @@
 // CHECK: plan_hex(degraded): 52504c4e0000000001000000010000004e010000000100000000000000000000000001000000010000000000000000002000000001000000070000000140000000000000000000000000013f000000000000000201400000000000000005040000000001000000010000000000000000002000000001000000000000000100000001000000780100000000000000000100000001010000000000000001000000010100000000000000010000000000000001000000010000000000000000090000000140000000000000000000000000013f000000000000000201400000000000000005040000000000030020000000000000000000000000000000000000000000000000010100000001000000010000000700000000
 // expected-remark @below {{encoded 279 bytes, deterministic = true, within_size_budget(4096) = true}}
 "test.plan"() {serialize, name = "degraded", plan = #reloc.plan<src = tensor<[N], f32>, dst = tensor<[64 * ((N + 63) floordiv 64)], f32>, perm = [0], axes = [{name = "x", extent = N, src_stride = 1, dst_stride = 1}], pad_fill = [{dst_axis = 0, lo = 0, hi = (64 * ((N + 63) floordiv 64)) - N, value = 0.0 : f32}], inverse = affine_map<(d0) -> (d0)>>} : () -> ()
+
+// Non-signless integer element types are rejected by the encoder (v0 is
+// signless-only); the error fires during serialization, not verification.
+// expected-error @below {{signed/unsigned integer element types are not representable in wire format v0 (signless only): 'si32'}}
+"test.plan"() {serialize, name = "signed", plan = #reloc.plan<src = tensor<[8], si32>, dst = tensor<[8], si32>, perm = [0], axes = [{name = "x", extent = 8, src_stride = 1, dst_stride = 1}], inverse = affine_map<(d0) -> (d0)>>} : () -> ()

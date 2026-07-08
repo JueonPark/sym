@@ -236,6 +236,11 @@ LogicalResult PlanEncoder::emitType(Type type) {
                           << type;
   }
   if (auto intType = dyn_cast<IntegerType>(type)) {
+    if (!intType.isSignless())
+      return emitError(loc) << "signed/unsigned integer element types are "
+                               "not representable in wire format v0 "
+                               "(signless only): "
+                            << type;
     if (intType.getWidth() > 64)
       return emitError(loc) << "integer element type wider than 64 bits not "
                                "representable in wire format v0: "
