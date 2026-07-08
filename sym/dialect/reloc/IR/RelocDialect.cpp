@@ -10,4 +10,10 @@ using namespace mlir::reloc;
 // Reloc Dialect Initialization
 //===----------------------------------------------------------------------===//
 
-void RelocDialect::initialize() { registerAttributes(); }
+void RelocDialect::initialize() {
+  registerAttributes();
+  addOperations<
+#define GET_OP_LIST
+#include "RelocOps.cpp.inc"
+      >();
+}
