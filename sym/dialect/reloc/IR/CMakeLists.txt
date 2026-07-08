@@ -20,6 +20,7 @@ add_custom_target(RelocIRIncGen DEPENDS
 add_mlir_dialect_library(MLIRRelocDialect
   RelocAttributes.cpp
   RelocDialect.cpp
+  RelocSerialization.cpp
   RelocUtils.cpp
 
   ADDITIONAL_HEADER_DIRS

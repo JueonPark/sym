@@ -7,10 +7,12 @@
 
 #include "RelocDialect.h"
 #include "RelocPasses.h"
+#include "RelocSerialization.h"
 #include "RelocUtils.h"
 #include "SymDialect.h"
 #include "SymUtils.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace mlir {
@@ -51,6 +53,8 @@ struct TestRelocUtilsPass
           testContiguous(op, plan, pair);
         else if (op->hasAttr("rebuild_no_flag"))
           testRebuildNoFlag(op, plan);
+        else if (op->hasAttr("serialize"))
+          testSerialize(op, plan);
         else
           op->emitRemark() << "isPureView = "
                            << (isPureView(plan) ? "true" : "false");
@@ -98,6 +102,31 @@ struct TestRelocUtilsPass
         plan.getNoCopy(), /*runtimePadCheck=*/false, plan.getInverse());
     if (rebuilt)
       op->emitRemark() << "rebuild without runtime_pad_check: ok";
+  }
+
+  /// Encode the plan twice; report size, in-process determinism, and the
+  /// E9 size budget as a remark, and print the byte stream as lowercase hex
+  /// on stdout for FileCheck golden matching.
+  void testSerialize(Operation *op, PlanAttr plan) {
+    FailureOr<std::vector<uint8_t>> first = encodePlan(plan, op->getLoc());
+    if (failed(first))
+      return; // encodePlan emitted the error.
+    FailureOr<std::vector<uint8_t>> second = encodePlan(plan, op->getLoc());
+    bool deterministic = succeeded(second) && *first == *second;
+    bool withinBudget = first->size() < 4096;
+    op->emitRemark() << "encoded " << first->size()
+                     << " bytes, deterministic = "
+                     << (deterministic ? "true" : "false")
+                     << ", within_size_budget(4096) = "
+                     << (withinBudget ? "true" : "false");
+    StringRef name = "plan";
+    if (auto nameAttr = op->getAttrOfType<StringAttr>("name"))
+      name = nameAttr.getValue();
+    llvm::outs() << "plan_hex(" << name << "): "
+                 << llvm::toHex(
+                        llvm::ArrayRef<uint8_t>(first->data(), first->size()),
+                        /*LowerCase=*/true)
+                 << "\n";
   }
 
   void testRowMajor(Operation *op, TensorDescAttr desc, MLIRContext *context) {
