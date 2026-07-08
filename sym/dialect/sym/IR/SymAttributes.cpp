@@ -320,6 +320,22 @@ void BinaryExprAttr::print(AsmPrinter &printer) const {
 }
 
 //===----------------------------------------------------------------------===//
+// SymDialect attribute registration
+//===----------------------------------------------------------------------===//
+//
+// Defined here (rather than in SymDialect.cpp's initialize()) because
+// addAttributes<...>() requires the generated attribute storage classes to
+// be complete in the same translation unit; this file is the only one that
+// includes SymAttributes.cpp.inc under GET_ATTRDEF_CLASSES.
+
+void SymDialect::registerAttributes() {
+  addAttributes<
+#define GET_ATTRDEF_LIST
+#include "SymAttributes.cpp.inc"
+      >();
+}
+
+//===----------------------------------------------------------------------===//
 // TableGen'd Attribute Definitions
 //===----------------------------------------------------------------------===//
 
