@@ -50,6 +50,7 @@ jobs:
                 -DLLVM_DIR=/opt/llvm/lib/cmake/llvm \
                 -DLLVM_EXTERNAL_LIT=$(which lit) && \
               ninja -C build/sym -j$(nproc) && \
+              ctest --test-dir build/sym --output-on-failure && \
               ninja -C build/sym check-sym
             '
 

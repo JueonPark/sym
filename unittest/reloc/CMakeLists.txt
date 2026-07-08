@@ -22,3 +22,5 @@ target_link_libraries(reloc-plan-builder-test PRIVATE
   llvm_gtest
   llvm_gtest_main
 )
+
+add_test(NAME reloc-plan-builder-test COMMAND reloc-plan-builder-test)
