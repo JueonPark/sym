@@ -85,6 +85,8 @@ public:
 /// constraints and never fails (the result is always success(), kept for a
 /// uniform transfer-function API); `opPerm` must be a valid permutation of
 /// the current rank (guaranteed by the reloc.transpose verifier).
+/// Pads travel with their axes: their indices are renumbered through the
+/// permutation.
 LogicalResult foldTranspose(PlanBuilder &plan, ArrayRef<int64_t> opPerm);
 
 /// #B2 transfer function: fold `reloc.reshape` with `targetShape` (sym

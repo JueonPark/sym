@@ -190,7 +190,8 @@ applyPlan(reloc::PlanAttr plan, const llvm::StringMap<int64_t> &bindings) {
     paddedExtents.push_back(evalExpr(extent, bindings));
   std::vector<int64_t> dst(product(paddedExtents), -1);
   SmallVector<int64_t> index(rank, 0);
-  for (size_t n = 0; n < product(extents); ++n) {
+  const size_t total = static_cast<size_t>(product(extents));
+  for (size_t n = 0; n < total; ++n) {
     int64_t srcOff = srcOffset, dstOff = 0;
     for (int64_t k = 0; k < rank; ++k) {
       srcOff += index[k] * srcStrides[k];
@@ -649,6 +650,41 @@ TEST_F(PlanBuilderTest, PadSurvivesReshapeKeepAndRemaps) {
   reloc::PlanAttr plan = finalize(builder);
   ASSERT_TRUE(plan);
   Tensor expected = reshapeRef(padRef(iota({6, 4}), 0, 1, 1), {8, 2, 2});
+  EXPECT_EQ(applyPlan(plan, noBindings), expected.data);
+}
+
+TEST_F(PlanBuilderTest, PadRemapsWhenPrecedingAxesMerge) {
+  // Merge (2, 3) -> 6 before a padded 1:1-kept axis: the pad's index must
+  // remap from 2 to 1.
+  reloc::PlanBuilder builder(makeType({dim(2), dim(3), dim(6)}));
+  ASSERT_TRUE(succeeded(reloc::foldPad(builder, 2, dim(1), dim(1), fill(0.0))));
+  ASSERT_TRUE(succeeded(reloc::foldReshape(builder, {dim(6), dim(8)})));
+  ASSERT_EQ(builder.pads.size(), 1u);
+  EXPECT_EQ(builder.pads[0].axis, 1);
+  EXPECT_EQ(builder.axes[1].extent, dim(6)); // valid extent preserved
+  reloc::PlanAttr plan = finalize(builder);
+  ASSERT_TRUE(plan);
+  Tensor expected = reshapeRef(padRef(iota({2, 3, 6}), 2, 1, 1), {6, 8});
+  EXPECT_EQ(applyPlan(plan, noBindings), expected.data);
+}
+
+TEST_F(PlanBuilderTest, TwoPadsOnDifferentAxesRenumberThroughTranspose) {
+  reloc::PlanBuilder builder(makeType({dim(4), dim(6)}));
+  ASSERT_TRUE(succeeded(reloc::foldPad(builder, 0, dim(1), dim(0), fill(0.0))));
+  ASSERT_TRUE(succeeded(reloc::foldPad(builder, 1, dim(0), dim(2), fill(0.0))));
+  ASSERT_TRUE(succeeded(reloc::foldTranspose(builder, {1, 0})));
+  ASSERT_EQ(builder.pads.size(), 2u);
+  // The axis-0 pad (lo 1) moved to dst position 1; the axis-1 pad (hi 2)
+  // moved to dst position 0.
+  const reloc::PlanPad *padOnZero = builder.findPad(0);
+  const reloc::PlanPad *padOnOne = builder.findPad(1);
+  ASSERT_TRUE(padOnZero && padOnOne);
+  EXPECT_EQ(padOnZero->hi, dim(2));
+  EXPECT_EQ(padOnOne->lo, dim(1));
+  reloc::PlanAttr plan = finalize(builder);
+  ASSERT_TRUE(plan);
+  Tensor expected =
+      transposeRef(padRef(padRef(iota({4, 6}), 0, 1, 0), 1, 0, 2), {1, 0});
   EXPECT_EQ(applyPlan(plan, noBindings), expected.data);
 }
 

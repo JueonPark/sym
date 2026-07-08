@@ -312,6 +312,13 @@ LogicalResult mlir::reloc::foldReshape(PlanBuilder &plan,
   if (i != old.size() || j != targetShape.size())
     return failure();
 
+  // Every padded axis must have survived as a 1:1 keep (guarded above);
+  // check before mutating so a future guard gap bails instead of
+  // committing a wrong plan in release builds.
+  for (const PlanPad &pad : plan.pads)
+    if (newIndexOfOld[pad.axis] < 0)
+      return failure();
+
   // Commit: the reshaped view becomes the new source view.
   for (size_t k = 0; k < newAxes.size(); ++k)
     newAxes[k].name = ("d" + Twine(k)).str();
@@ -320,11 +327,8 @@ LogicalResult mlir::reloc::foldReshape(PlanBuilder &plan,
   for (size_t k = 0; k < plan.axes.size(); ++k)
     plan.perm.push_back(static_cast<int64_t>(k));
   plan.divisibility.append(emitted.begin(), emitted.end());
-  for (PlanPad &pad : plan.pads) {
-    assert(newIndexOfOld[pad.axis] >= 0 &&
-           "padded axis must survive as a 1:1 keep");
+  for (PlanPad &pad : plan.pads)
     pad.axis = newIndexOfOld[pad.axis];
-  }
   return success();
 }
 
