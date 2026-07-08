@@ -40,10 +40,15 @@ static void printOpTypes(OpAsmPrinter &printer, Type inputType,
 /// Requires `perm` to be a valid permutation of the input rank.
 static sym::SymbolicTensorType
 computeTransposedType(sym::SymbolicTensorType input, ArrayRef<int64_t> perm) {
+  assert(perm.size() == input.getShape().size() && "perm size must match rank");
   SmallVector<Attribute> shape;
   shape.reserve(perm.size());
-  for (int64_t source : perm)
+  for (int64_t source : perm) {
+    assert(source >= 0 &&
+           source < static_cast<int64_t>(input.getShape().size()) &&
+           "perm entry out of range");
     shape.push_back(input.getShape()[source]);
+  }
   return sym::SymbolicTensorType::get(input.getContext(), shape,
                                       input.getElementType());
 }
@@ -227,6 +232,8 @@ void PadOp::build(OpBuilder &builder, OperationState &state, Value input,
                   int64_t axis, Attribute lo, Attribute hi, TypedAttr value) {
   auto inputType = cast<sym::SymbolicTensorType>(input.getType());
   SmallVector<Attribute> shape(inputType.getShape());
+  assert(axis >= 0 && axis < static_cast<int64_t>(shape.size()) &&
+         "pad axis out of range");
   shape[axis] = paddedDim(shape[axis], lo, hi, builder.getContext());
   auto resultType = sym::SymbolicTensorType::get(builder.getContext(), shape,
                                                  inputType.getElementType());
@@ -293,6 +300,11 @@ LogicalResult PadOp::verify() {
                          << "operand rank " << rank;
   if (!isSymExpr(getLo()) || !isSymExpr(getHi()))
     return emitOpError() << "lo and hi must be sym expressions";
+  Attribute zero = sym::ConstantExprAttr::get(getContext(), 0);
+  if (proveLessEqual(zero, getLo()) == Proof::Disproven)
+    return emitOpError() << "lo is provably negative: " << getLo();
+  if (proveLessEqual(zero, getHi()) == Proof::Disproven)
+    return emitOpError() << "hi is provably negative: " << getHi();
   TypedAttr value = getValue();
   if (value.getType() != inputType.getElementType())
     return emitOpError() << "pad value type (" << value.getType()

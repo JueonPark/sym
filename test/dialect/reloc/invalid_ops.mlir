@@ -61,3 +61,11 @@ func.func @pad_result_dim(%t: !sym.tensor<[6], f32>) {
   %0 = reloc.pad %t axis 0 lo 1 hi 1 value (0.0 : f32) : !sym.tensor<[6], f32> -> !sym.tensor<[9], f32>
   return
 }
+
+// -----
+
+func.func @pad_negative_width(%t: !sym.tensor<[6], f32>) {
+  // expected-error @below {{lo is provably negative: #sym.constant<-1>}}
+  %0 = reloc.pad %t axis 0 lo 0 - 1 hi 1 value (0.0 : f32) : !sym.tensor<[6], f32> -> !sym.tensor<[6], f32>
+  return
+}
