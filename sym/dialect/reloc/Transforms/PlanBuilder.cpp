@@ -31,10 +31,20 @@ PlanBuilder::PlanBuilder(sym::SymbolicTensorType input)
 }
 
 PlanAttr PlanBuilder::finalize(Location loc) const {
+  auto add = [&](Attribute lhs, Attribute rhs) {
+    return sym::getSimplifiedBinaryExpr(ctx, sym::SymbolicExprOp::Add, lhs,
+                                        rhs);
+  };
   SmallVector<Attribute> dstExtents;
   dstExtents.reserve(axes.size());
-  for (const auto &axis : axes)
-    dstExtents.push_back(axis.extent);
+  for (auto [k, axis] : llvm::enumerate(axes)) {
+    Attribute extent = axis.extent;
+    // (extent + lo) + hi: the same association the plan verifier proves
+    // against, so the equality is uniqued-attribute identity.
+    if (const PlanPad *pad = findPad(static_cast<int64_t>(k)))
+      extent = add(add(extent, pad->lo), pad->hi);
+    dstExtents.push_back(extent);
+  }
   Attribute zero = sym::ConstantExprAttr::get(ctx, 0);
   auto dst = TensorDescAttr::get(ctx, dstExtents,
                                  /*strides=*/ArrayRef<Attribute>(), zero,
@@ -52,14 +62,24 @@ PlanAttr PlanBuilder::finalize(Location loc) const {
   contiguous.reserve(axes.size());
   for (const PlanAxis &axis : axes)
     contiguous.push_back(proveEqual(axis.srcStride, one) == Proof::Proven);
+  SmallVector<PadFillAttr> padAttrs;
+  padAttrs.reserve(pads.size());
+  for (const PlanPad &pad : pads)
+    padAttrs.push_back(
+        PadFillAttr::get(ctx, pad.axis, pad.lo, pad.hi, pad.value));
+  // Symbolic pad ranges are not statically provable; the verifier accepts
+  // them only under runtime_pad_check.
+  bool runtimePadCheck = false;
+  for (PadFillAttr pad : padAttrs)
+    if (provePadRange(pad, axisAttrs, dst) == Proof::Unknown)
+      runtimePadCheck = true;
   return PlanAttr::getChecked(
       [&]() { return emitError(loc); }, ctx, src, dst,
       DenseI64ArrayAttr::get(ctx, perm), ArrayRef<AxisInfoAttr>(axisAttrs),
-      /*padFill=*/ArrayRef<PadFillAttr>(),
-      ArrayRef<DivisibilityAttr>(divisibility),
+      ArrayRef<PadFillAttr>(padAttrs), ArrayRef<DivisibilityAttr>(divisibility),
       /*alignment=*/ArrayRef<AlignmentAttr>(),
       DenseBoolArrayAttr::get(ctx, contiguous),
-      /*noCopy=*/false, /*runtimePadCheck=*/false, inverse);
+      /*noCopy=*/false, runtimePadCheck, inverse);
 }
 
 LogicalResult mlir::reloc::foldTranspose(PlanBuilder &plan,
@@ -276,5 +296,46 @@ LogicalResult mlir::reloc::foldReshape(PlanBuilder &plan,
   for (size_t k = 0; k < plan.axes.size(); ++k)
     plan.perm.push_back(static_cast<int64_t>(k));
   plan.divisibility.append(emitted.begin(), emitted.end());
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// foldPad (#B3)
+//===----------------------------------------------------------------------===//
+
+LogicalResult mlir::reloc::foldPad(PlanBuilder &plan, int64_t axis,
+                                   Attribute lo, Attribute hi,
+                                   TypedAttr value) {
+  MLIRContext *ctx = plan.ctx;
+  if (axis < 0 || axis >= static_cast<int64_t>(plan.axes.size()))
+    return failure();
+  if (!isSymExpr(lo) || !isSymExpr(hi) || !value)
+    return failure();
+  int64_t width;
+  if ((getConstant(lo, width) && width < 0) ||
+      (getConstant(hi, width) && width < 0))
+    return failure(); // provably negative width (op verifier gap defense)
+
+  // Both widths provably zero: nothing to record.
+  int64_t loValue, hiValue;
+  if (getConstant(lo, loValue) && loValue == 0 && getConstant(hi, hiValue) &&
+      hiValue == 0)
+    return success();
+
+  auto add = [&](Attribute lhs, Attribute rhs) {
+    return sym::getSimplifiedBinaryExpr(ctx, sym::SymbolicExprOp::Add, lhs,
+                                        rhs);
+  };
+  for (PlanPad &pad : plan.pads) {
+    if (pad.axis != axis)
+      continue;
+    if (pad.value != value)
+      return failure(); // one fill value per axis in the plan format
+    // The new pad wraps the old valid region: widths accumulate.
+    pad.lo = add(pad.lo, lo);
+    pad.hi = add(pad.hi, hi);
+    return success();
+  }
+  plan.pads.push_back({axis, lo, hi, value});
   return success();
 }

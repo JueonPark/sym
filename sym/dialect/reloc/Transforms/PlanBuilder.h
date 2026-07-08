@@ -28,12 +28,22 @@ struct PlanAxis {
   Attribute srcStride; // sym expression: stride in the source buffer
 };
 
+/// One pending pad (at most one per dst axis; same-value re-pads merge).
+struct PlanPad {
+  int64_t axis;    // dst axis index (kept current across folds)
+  Attribute lo;    // sym expression: leading pad width
+  Attribute hi;    // sym expression: trailing pad width
+  TypedAttr value; // fill value
+};
+
 /// Invariants between transfer-function calls:
 /// - axes[k] describes dst axis k (destination order);
 /// - perm maps dst axis k to source-view axis perm[k] and is a bijection
 ///   on [0, axes.size()); a folded reshape re-baselines the view, so perm
 ///   resets to the identity over the new rank;
-/// - axis extents are the current dst extents (no pad widths until #B3);
+/// - axis extents are the VALID (unpadded) extents; pads holds at most one
+///   {lo, hi, value} per axis, and a padded axis's dst extent is
+///   (extent + lo) + hi, derived at finalize();
 /// - divisibility holds the constraints emitted by folds so far, in
 ///   emission order, deduplicated.
 class PlanBuilder {
@@ -58,6 +68,15 @@ public:
   SmallVector<PlanAxis> axes;
   SmallVector<int64_t> perm;
   SmallVector<DivisibilityAttr> divisibility;
+  SmallVector<PlanPad> pads;
+
+  /// The pad on dst axis `axis`, or nullptr.
+  const PlanPad *findPad(int64_t axis) const {
+    for (const PlanPad &pad : pads)
+      if (pad.axis == axis)
+        return &pad;
+    return nullptr;
+  }
 };
 
 /// #B1 transfer function: fold `reloc.transpose` with permutation `opPerm`
@@ -78,6 +97,17 @@ LogicalResult foldTranspose(PlanBuilder &plan, ArrayRef<int64_t> opPerm);
 /// the available symbolic facts (issue #15 design decision 1: bail, never
 /// a wrong plan).
 LogicalResult foldReshape(PlanBuilder &plan, ArrayRef<Attribute> targetShape);
+
+/// #B3 transfer function: fold `reloc.pad` on dst axis `axis` with
+/// leading/trailing widths `lo`/`hi` (sym expressions, tensor.pad
+/// convention) and fill `value`. The axis's valid extent is unchanged —
+/// the pad is tracked separately and grows the dst extent at finalize().
+/// A second pad on the same axis merges when the fill values are equal
+/// (the new pad wraps the old valid region). Fails, leaving `plan`
+/// untouched, on: an out-of-range axis, non-expression or provably
+/// negative widths, or a differing fill value on an already-padded axis.
+LogicalResult foldPad(PlanBuilder &plan, int64_t axis, Attribute lo,
+                      Attribute hi, TypedAttr value);
 
 } // namespace reloc
 } // namespace mlir
