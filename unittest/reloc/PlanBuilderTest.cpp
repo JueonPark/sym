@@ -88,6 +88,15 @@ static Tensor transposeRef(const Tensor &t, ArrayRef<int64_t> perm) {
   return result;
 }
 
+/// NumPy-reshape reference: a reshape of row-major data reinterprets the
+/// same flat buffer under a new shape.
+static Tensor reshapeRef(const Tensor &t, ArrayRef<int64_t> shape) {
+  Tensor result;
+  result.shape.assign(shape.begin(), shape.end());
+  result.data = t.data;
+  return result;
+}
+
 //===----------------------------------------------------------------------===//
 // Plan evaluation (the index-table side of the oracle)
 //===----------------------------------------------------------------------===//
@@ -176,6 +185,14 @@ protected:
   Attribute dim(StringRef name) {
     return sym::SymbolExprAttr::get(&context, name);
   }
+  Attribute div(Attribute lhs, int64_t rhs) {
+    return sym::getSimplifiedBinaryExpr(&context, sym::SymbolicExprOp::Div, lhs,
+                                        dim(rhs));
+  }
+  Attribute mul(int64_t lhs, Attribute rhs) {
+    return sym::getSimplifiedBinaryExpr(&context, sym::SymbolicExprOp::Mul,
+                                        dim(lhs), rhs);
+  }
   sym::SymbolicTensorType makeType(ArrayRef<Attribute> shape) {
     return sym::SymbolicTensorType::get(&context, shape,
                                         Float32Type::get(&context));
@@ -204,13 +221,16 @@ TEST_F(PlanBuilderTest, IdentityPlanFinalizes) {
   EXPECT_FALSE(plan.getNoCopy()); // no_copy detection is #B5, not #B1
   EXPECT_TRUE(plan.getPadFill().empty());
   EXPECT_TRUE(plan.getDivisibility().empty());
+  // finalize emits per-axis contiguity: srcStride == 1 proven (B2).
+  EXPECT_EQ(plan.getContiguity().asArrayRef(),
+            ArrayRef<bool>({false, false, true}));
   expectInverseInvertsForward(plan);
   EXPECT_EQ(applyPlan(plan, noBindings), iota({6, 4, 2}).data);
 }
 
 TEST_F(PlanBuilderTest, SingleTransposeMatchesOracle) {
   reloc::PlanBuilder builder(makeType({dim(6), dim(4), dim(2)}));
-  reloc::foldTranspose(builder, {2, 0, 1});
+  ASSERT_TRUE(succeeded(reloc::foldTranspose(builder, {2, 0, 1})));
   reloc::PlanAttr plan = finalize(builder);
   ASSERT_TRUE(plan);
   EXPECT_EQ(plan.getPerm().asArrayRef(), ArrayRef<int64_t>({2, 0, 1}));
@@ -221,8 +241,8 @@ TEST_F(PlanBuilderTest, SingleTransposeMatchesOracle) {
 
 TEST_F(PlanBuilderTest, ComposedTransposesMatchOracle) {
   reloc::PlanBuilder builder(makeType({dim(6), dim(4), dim(2)}));
-  reloc::foldTranspose(builder, {2, 0, 1});
-  reloc::foldTranspose(builder, {0, 2, 1});
+  ASSERT_TRUE(succeeded(reloc::foldTranspose(builder, {2, 0, 1})));
+  ASSERT_TRUE(succeeded(reloc::foldTranspose(builder, {0, 2, 1})));
   reloc::PlanAttr plan = finalize(builder);
   ASSERT_TRUE(plan);
   // Composition: perm[k] <- old_perm[op_perm[k]] = [2, 1, 0].
@@ -235,8 +255,9 @@ TEST_F(PlanBuilderTest, ComposedTransposesMatchOracle) {
 
 TEST_F(PlanBuilderTest, InversePairComposesToIdentity) {
   reloc::PlanBuilder builder(makeType({dim(6), dim(4), dim(2)}));
-  reloc::foldTranspose(builder, {2, 0, 1});
-  reloc::foldTranspose(builder, {1, 2, 0}); // inverse of [2, 0, 1]
+  ASSERT_TRUE(succeeded(reloc::foldTranspose(builder, {2, 0, 1})));
+  ASSERT_TRUE(succeeded(
+      reloc::foldTranspose(builder, {1, 2, 0}))); // inverse of [2, 0, 1]
   reloc::PlanAttr plan = finalize(builder);
   ASSERT_TRUE(plan);
   // Identity elision: the composed perm IS the identity permutation, and
@@ -251,7 +272,7 @@ TEST_F(PlanBuilderTest, InversePairComposesToIdentity) {
 TEST_F(PlanBuilderTest, SymbolicExtentsPreservedVerbatim) {
   Attribute n = dim("N");
   reloc::PlanBuilder builder(makeType({dim(6), n, dim(2)}));
-  reloc::foldTranspose(builder, {1, 0, 2});
+  ASSERT_TRUE(succeeded(reloc::foldTranspose(builder, {1, 0, 2})));
   reloc::PlanAttr plan = finalize(builder);
   ASSERT_TRUE(plan);
   // The symbol rides through the fold untouched (same uniqued attribute).
@@ -262,6 +283,204 @@ TEST_F(PlanBuilderTest, SymbolicExtentsPreservedVerbatim) {
   bindings["N"] = 4;
   EXPECT_EQ(applyPlan(plan, bindings),
             transposeRef(iota({6, 4, 2}), {1, 0, 2}).data);
+}
+
+TEST_F(PlanBuilderTest, StaticSplitMatchesOracle) {
+  reloc::PlanBuilder builder(makeType({dim(4096)}));
+  ASSERT_TRUE(succeeded(reloc::foldReshape(builder, {dim(64), dim(64)})));
+  reloc::PlanAttr plan = finalize(builder);
+  ASSERT_TRUE(plan);
+  EXPECT_EQ(plan.getPerm().asArrayRef(), ArrayRef<int64_t>({0, 1}));
+  EXPECT_TRUE(plan.getDivisibility().empty());
+  EXPECT_EQ(plan.getAxes()[0].getSrcStride(), dim(64));
+  EXPECT_EQ(plan.getAxes()[1].getSrcStride(), dim(1));
+  // A contiguous reshape moves no data: dst equals the flat iota buffer.
+  EXPECT_EQ(applyPlan(plan, noBindings), iota({4096}).data);
+}
+
+TEST_F(PlanBuilderTest, ThreeWaySplitMatchesOracle) {
+  reloc::PlanBuilder builder(makeType({dim(24)}));
+  ASSERT_TRUE(succeeded(reloc::foldReshape(builder, {dim(2), dim(3), dim(4)})));
+  reloc::PlanAttr plan = finalize(builder);
+  ASSERT_TRUE(plan);
+  EXPECT_EQ(plan.getAxes()[0].getSrcStride(), dim(12));
+  EXPECT_EQ(plan.getAxes()[1].getSrcStride(), dim(4));
+  EXPECT_EQ(plan.getAxes()[2].getSrcStride(), dim(1));
+  EXPECT_EQ(applyPlan(plan, noBindings), iota({24}).data);
+}
+
+TEST_F(PlanBuilderTest, StaticMergeMatchesOracle) {
+  reloc::PlanBuilder builder(makeType({dim(8), dim(128)}));
+  ASSERT_TRUE(succeeded(reloc::foldReshape(builder, {dim(1024)})));
+  reloc::PlanAttr plan = finalize(builder);
+  ASSERT_TRUE(plan);
+  EXPECT_EQ(plan.getAxes().size(), 1u);
+  EXPECT_EQ(plan.getAxes()[0].getSrcStride(), dim(1));
+  EXPECT_EQ(applyPlan(plan, noBindings), iota({1024}).data);
+}
+
+TEST_F(PlanBuilderTest, RegroupMatchesOracle) {
+  // m:n group: [4, 6] -> [2, 12] is merge-then-split; a trailing transpose
+  // forces real data movement through the regrouped strides.
+  reloc::PlanBuilder builder(makeType({dim(4), dim(6)}));
+  ASSERT_TRUE(succeeded(reloc::foldReshape(builder, {dim(2), dim(12)})));
+  ASSERT_TRUE(succeeded(reloc::foldTranspose(builder, {1, 0})));
+  reloc::PlanAttr plan = finalize(builder);
+  ASSERT_TRUE(plan);
+  Tensor expected = transposeRef(reshapeRef(iota({4, 6}), {2, 12}), {1, 0});
+  EXPECT_EQ(applyPlan(plan, noBindings), expected.data);
+}
+
+TEST_F(PlanBuilderTest, ReshapeThenTransposeMatchesOracle) {
+  reloc::PlanBuilder builder(makeType({dim(4096)}));
+  ASSERT_TRUE(succeeded(reloc::foldReshape(builder, {dim(64), dim(64)})));
+  ASSERT_TRUE(succeeded(reloc::foldTranspose(builder, {1, 0})));
+  reloc::PlanAttr plan = finalize(builder);
+  ASSERT_TRUE(plan);
+  Tensor expected = transposeRef(reshapeRef(iota({4096}), {64, 64}), {1, 0});
+  EXPECT_EQ(applyPlan(plan, noBindings), expected.data);
+}
+
+TEST_F(PlanBuilderTest, TrailingUnitDimsFold) {
+  reloc::PlanBuilder dropOne(makeType({dim(6), dim(1)}));
+  ASSERT_TRUE(succeeded(reloc::foldReshape(dropOne, {dim(6)})));
+  reloc::PlanAttr dropped = finalize(dropOne);
+  ASSERT_TRUE(dropped);
+  EXPECT_EQ(applyPlan(dropped, noBindings), iota({6}).data);
+
+  reloc::PlanBuilder addOne(makeType({dim(6)}));
+  ASSERT_TRUE(succeeded(reloc::foldReshape(addOne, {dim(6), dim(1)})));
+  reloc::PlanAttr added = finalize(addOne);
+  ASSERT_TRUE(added);
+  EXPECT_EQ(applyPlan(added, noBindings), iota({6}).data);
+}
+
+TEST_F(PlanBuilderTest, NonContiguousMergeBails) {
+  // Transposed data is not mergeable: outer src stride 1 != 6 * 4.
+  reloc::PlanBuilder builder(makeType({dim(4), dim(6)}));
+  ASSERT_TRUE(succeeded(reloc::foldTranspose(builder, {1, 0})));
+  EXPECT_TRUE(failed(reloc::foldReshape(builder, {dim(24)})));
+  // Bail leaves the builder untouched: the transpose-only plan still
+  // finalizes and its oracle still holds.
+  reloc::PlanAttr plan = finalize(builder);
+  ASSERT_TRUE(plan);
+  EXPECT_EQ(plan.getPerm().asArrayRef(), ArrayRef<int64_t>({1, 0}));
+  EXPECT_EQ(applyPlan(plan, noBindings),
+            transposeRef(iota({4, 6}), {1, 0}).data);
+}
+
+TEST_F(PlanBuilderTest, ElementCountMismatchBails) {
+  reloc::PlanBuilder builder(makeType({dim(6)}));
+  EXPECT_TRUE(failed(reloc::foldReshape(builder, {dim(4)})));
+  EXPECT_TRUE(failed(reloc::foldReshape(builder, {dim(4), dim(2)})));
+  EXPECT_EQ(builder.axes.size(), 1u);
+}
+
+TEST_F(PlanBuilderTest, SymbolicSplitEmitsDivisibility) {
+  Attribute n = dim("N");
+  reloc::PlanBuilder builder(makeType({n, dim(4)}));
+  ASSERT_TRUE(
+      succeeded(reloc::foldReshape(builder, {div(n, 8), dim(8), dim(4)})));
+  ASSERT_EQ(builder.divisibility.size(), 1u);
+  EXPECT_EQ(builder.divisibility[0].getExpr(), n);
+  EXPECT_EQ(builder.divisibility[0].getDivisor(), 8);
+  // Exercise the plan with a binding where the divisibility holds.
+  ASSERT_TRUE(succeeded(reloc::foldTranspose(builder, {2, 0, 1})));
+  reloc::PlanAttr plan = finalize(builder);
+  ASSERT_TRUE(plan);
+  llvm::StringMap<int64_t> bindings;
+  bindings["N"] = 48;
+  Tensor expected =
+      transposeRef(reshapeRef(iota({48, 4}), {6, 8, 4}), {2, 0, 1});
+  EXPECT_EQ(applyPlan(plan, bindings), expected.data);
+}
+
+TEST_F(PlanBuilderTest, SymbolicMergeWhenContiguityProvable) {
+  Attribute n = dim("N");
+  reloc::PlanBuilder builder(makeType({n, dim(4)}));
+  ASSERT_TRUE(succeeded(reloc::foldReshape(builder, {mul(4, n)})));
+  reloc::PlanAttr plan = finalize(builder);
+  ASSERT_TRUE(plan);
+  EXPECT_TRUE(plan.getDivisibility().empty());
+  EXPECT_EQ(plan.getContiguity().asArrayRef(), ArrayRef<bool>({true}));
+  llvm::StringMap<int64_t> bindings;
+  bindings["N"] = 6;
+  EXPECT_EQ(applyPlan(plan, bindings), iota({24}).data);
+}
+
+TEST_F(PlanBuilderTest, TwoSymbolicSplitEntriesBail) {
+  reloc::PlanBuilder builder(makeType({dim("N")}));
+  EXPECT_TRUE(failed(reloc::foldReshape(builder, {dim("M"), dim("K")})));
+  EXPECT_EQ(builder.axes.size(), 1u);
+}
+
+TEST_F(PlanBuilderTest, UnprovableSymbolicMergeBails) {
+  Attribute n = dim("N"), m = dim("M");
+  reloc::PlanBuilder builder(makeType({n, m}));
+  ASSERT_TRUE(succeeded(reloc::foldTranspose(builder, {1, 0})));
+  EXPECT_TRUE(failed(reloc::foldReshape(
+      builder, {sym::getSimplifiedBinaryExpr(&context, sym::SymbolicExprOp::Mul,
+                                             m, n)})));
+  EXPECT_EQ(builder.axes.size(), 2u);
+}
+
+TEST_F(PlanBuilderTest, DivisibilityDeduplicated) {
+  Attribute n = dim("N");
+  reloc::PlanBuilder builder(makeType({n, n}));
+  ASSERT_TRUE(succeeded(
+      reloc::foldReshape(builder, {div(n, 64), dim(64), div(n, 64), dim(64)})));
+  EXPECT_EQ(builder.divisibility.size(), 1u);
+}
+
+TEST_F(PlanBuilderTest, DivisibilityDeduplicatedAcrossFolds) {
+  // The same divisibility fact can be re-derived by a later, independent
+  // fold on the same builder; it must dedup against plan.divisibility (not
+  // just within a single fold's own emissions).
+  Attribute n = dim("N");
+  reloc::PlanBuilder builder(makeType({n, n}));
+  ASSERT_TRUE(succeeded(reloc::foldReshape(builder, {div(n, 64), dim(64), n})));
+  EXPECT_EQ(builder.divisibility.size(), 1u);
+  // The first two entries are 1:1 keeps of the axes just split off above;
+  // the trailing `n` splits again, emitting divisible(N, 64) a second time.
+  ASSERT_TRUE(succeeded(
+      reloc::foldReshape(builder, {div(n, 64), dim(64), div(n, 64), dim(64)})));
+  EXPECT_EQ(builder.divisibility.size(), 1u);
+}
+
+TEST_F(PlanBuilderTest, NonPositiveExtentBails) {
+  // The frozen P1a reshape verifier accepts [24] -> [-8, -3] (matching
+  // element count); foldReshape must still bail rather than fold negative
+  // extents/strides into the plan.
+  reloc::PlanBuilder builder(makeType({dim(24)}));
+  EXPECT_TRUE(failed(reloc::foldReshape(builder, {dim(-8), dim(-3)})));
+  EXPECT_EQ(builder.axes.size(), 1u);
+}
+
+TEST_F(PlanBuilderTest, ReferenceChainMatchesBuildDocConstraintSet) {
+  // Build doc §2.1 acceptance: [N, N] -> blocked 4D view + transpose;
+  // constraint set must be exactly {divisible(N, 64),
+  // contiguous = [false, false, false, true], no_copy = false}.
+  Attribute n = dim("N");
+  reloc::PlanBuilder builder(makeType({n, n}));
+  ASSERT_TRUE(succeeded(
+      reloc::foldReshape(builder, {div(n, 64), dim(64), div(n, 64), dim(64)})));
+  ASSERT_TRUE(succeeded(reloc::foldTranspose(builder, {2, 0, 1, 3})));
+  reloc::PlanAttr plan = finalize(builder);
+  ASSERT_TRUE(plan);
+  ASSERT_EQ(plan.getDivisibility().size(), 1u);
+  EXPECT_EQ(plan.getDivisibility()[0].getExpr(), n);
+  EXPECT_EQ(plan.getDivisibility()[0].getDivisor(), 64);
+  EXPECT_EQ(plan.getContiguity().asArrayRef(),
+            ArrayRef<bool>({false, false, false, true}));
+  EXPECT_FALSE(plan.getNoCopy());
+  EXPECT_TRUE(plan.getPadFill().empty());
+  EXPECT_TRUE(plan.getAlignment().empty());
+  EXPECT_FALSE(plan.getRuntimePadCheck());
+  llvm::StringMap<int64_t> bindings;
+  bindings["N"] = 128;
+  Tensor expected =
+      transposeRef(reshapeRef(iota({128, 128}), {2, 64, 2, 64}), {2, 0, 1, 3});
+  EXPECT_EQ(applyPlan(plan, bindings), expected.data);
 }
 
 } // namespace

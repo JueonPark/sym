@@ -11,6 +11,7 @@
 #include "RelocPasses.h"
 #include "SymDialect.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "llvm/ADT/TypeSwitch.h"
 
 namespace mlir {
 namespace reloc {
@@ -19,6 +20,11 @@ namespace reloc {
 #include "RelocPasses.h.inc"
 
 namespace {
+
+/// Chain ops the transfer functions can fold today (#B3 adds pad).
+static bool isFoldableChainOp(Operation *op) {
+  return isa<TransposeOp, ReshapeOp>(op);
+}
 
 /// True if any user of `value` is a reloc op (the chain continues past it).
 static bool hasRelocUser(Value value) {
@@ -31,23 +37,37 @@ static bool hasRelocUser(Value value) {
 struct TestRelocTransferPass
     : public impl::TestRelocTransferPassBase<TestRelocTransferPass> {
   void runOnOperation() override {
-    getOperation().walk([&](TransposeOp tail) {
-      if (hasRelocUser(tail.getResult()))
+    getOperation().walk([&](Operation *op) {
+      if (!isFoldableChainOp(op) || hasRelocUser(op->getResult(0)))
         return;
-      // Walk back through the straight-line transpose chain to its root.
-      SmallVector<TransposeOp> chain;
-      Operation *def = tail;
-      while (auto op = dyn_cast_or_null<TransposeOp>(def)) {
-        chain.push_back(op);
-        def = op.getInput().getDefiningOp();
+      // Walk back through the straight-line foldable chain to its root.
+      SmallVector<Operation *> chain;
+      Operation *def = op;
+      while (def && isFoldableChainOp(def)) {
+        chain.push_back(def);
+        def = def->getOperand(0).getDefiningOp();
       }
       std::reverse(chain.begin(), chain.end());
-      PlanBuilder builder(
-          cast<sym::SymbolicTensorType>(chain.front().getInput().getType()));
-      for (TransposeOp op : chain)
-        foldTranspose(builder, op.getPerm());
-      if (PlanAttr plan = builder.finalize(tail.getLoc()))
-        tail->emitRemark() << "folded plan: " << plan;
+      PlanBuilder builder(cast<sym::SymbolicTensorType>(
+          chain.front()->getOperand(0).getType()));
+      for (Operation *link : chain) {
+        LogicalResult folded =
+            llvm::TypeSwitch<Operation *, LogicalResult>(link)
+                .Case([&](TransposeOp transpose) {
+                  return foldTranspose(builder, transpose.getPerm());
+                })
+                .Case([&](ReshapeOp reshape) {
+                  return foldReshape(builder,
+                                     reshape.getTargetShape().getValue());
+                })
+                .Default([](Operation *) { return failure(); });
+        if (failed(folded)) {
+          link->emitRemark() << "fold bail: " << link->getName();
+          return;
+        }
+      }
+      if (PlanAttr plan = builder.finalize(op->getLoc()))
+        op->emitRemark() << "folded plan: " << plan;
     });
   }
 };
