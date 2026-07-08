@@ -95,3 +95,10 @@
 // Contiguity flag asserts unit source stride; stride 4 contradicts it.
 // expected-error @below {{contiguity[0] asserts unit src_stride, but axis 0 has src_stride}}
 "test.use_attr"() {plan = #reloc.plan<src = tensor<[8], f32>, dst = tensor<[8], f32, strides = [4]>, perm = [0], axes = [{name = "x", extent = 8, src_stride = 4, dst_stride = 4}], constraints = {contiguous = [true], no_copy = false}, inverse = affine_map<(d0) -> (d0)>>} : () -> ()
+
+// -----
+
+// Alignment must reference a real axis (also protects the wire encoder's
+// u32 narrowing from silent truncation).
+// expected-error @below {{alignment axis (7) is out of range for 1 axes}}
+"test.use_attr"() {plan = #reloc.plan<src = tensor<[8], f32>, dst = tensor<[8], f32>, perm = [0], axes = [{name = "x", extent = 8, src_stride = 1, dst_stride = 1}], constraints = {align(7, 64), no_copy = false}, inverse = affine_map<(d0) -> (d0)>>} : () -> ()

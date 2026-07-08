@@ -52,6 +52,8 @@ The `reloc` dialect provides `#reloc.plan`, a serializable symbolic
 representation of folded layout-transform chains. Plans are structurally
 verified at construction time; undecidable pad ranges degrade to a
 `runtime_pad_check` flag instead of being rejected.
+Plans serialize to an MLIR-free binary format for the runtime handoff —
+see [docs/reloc-plan-format.md](docs/reloc-plan-format.md).
 
 | Attribute | Description |
 |-----------|-------------|
