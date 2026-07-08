@@ -23,6 +23,15 @@ def Sym_Dialect : Dialect {
   // Use generated type/attribute printer/parser with custom hooks
   let useDefaultTypePrinterParser = 1;
   let useDefaultAttributePrinterParser = 1;
+
+  // Attribute registration is defined out-of-line in SymAttributes.cpp,
+  // the only TU where the generated attribute storage classes are complete
+  // (see SymAttributes.cpp's `GET_ATTRDEF_CLASSES` include). Calling
+  // addAttributes<...>() requires a complete storage type in the same
+  // translation unit, so this cannot live in SymDialect.cpp's initialize().
+  let extraClassDeclaration = [{
+    void registerAttributes();
+  }];
 }
 
 //===----------------------------------------------------------------------===//
