@@ -86,6 +86,8 @@ little-endian.
                       (lo/hi are leading/trailing pad WIDTHS, tensor.pad-style)
 8. divisibility     u32 count, per entry: expr, i64 divisor
 9. alignment        u32 count, per entry: u32 axis, i64 bytes
+                      (axis < the axis count; enforced by the attribute
+                      verifier, so the u32 narrowing is lossless)
 10. contiguity      u32 count, count × u8 (0 or 1; count is 0 or the axis count)
 11. flags           u8 no_copy, u8 runtime_pad_check   (0 or 1)
 12. inverse         u32 num_dims, u32 num_results, num_results × expr

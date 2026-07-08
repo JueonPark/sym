@@ -650,6 +650,13 @@ LogicalResult PlanAttr::verify(
                          << " is not provable; set runtime_pad_check";
   }
 
+  // --- A3/A4: alignment constraints must reference a real axis (also keeps
+  // the wire encoder's u32 narrowing provably lossless) ---
+  for (AlignmentAttr alignmentEntry : alignment)
+    if (alignmentEntry.getAxis() >= static_cast<int64_t>(axes.size()))
+      return emitError() << "alignment axis (" << alignmentEntry.getAxis()
+                         << ") is out of range for " << axes.size() << " axes";
+
   // --- A3: perm must be a bijection on [0, axes.size()) ---
   {
     SmallVector<bool> seen(axes.size(), false);
