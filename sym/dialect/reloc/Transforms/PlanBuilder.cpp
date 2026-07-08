@@ -97,6 +97,12 @@ LogicalResult mlir::reloc::foldTranspose(PlanBuilder &plan,
     newAxes.push_back(plan.axes[source]);
     newPerm.push_back(plan.perm[source]);
   }
+  // Pads travel with their axis: renumber through the permutation.
+  SmallVector<int64_t> newIndexOfOld(rank);
+  for (int64_t k = 0; k < rank; ++k)
+    newIndexOfOld[opPerm[k]] = k;
+  for (PlanPad &pad : plan.pads)
+    pad.axis = newIndexOfOld[pad.axis];
   plan.axes = std::move(newAxes);
   plan.perm = std::move(newPerm);
   return success();
@@ -205,14 +211,23 @@ LogicalResult mlir::reloc::foldReshape(PlanBuilder &plan,
     return sym::getSimplifiedBinaryExpr(ctx, sym::SymbolicExprOp::Mul, lhs,
                                         rhs);
   };
+  auto add = [&](Attribute lhs, Attribute rhs) {
+    return sym::getSimplifiedBinaryExpr(ctx, sym::SymbolicExprOp::Add, lhs,
+                                        rhs);
+  };
+  auto paddedExtent = [&](size_t k) -> Attribute {
+    const PlanPad *pad = plan.findPad(static_cast<int64_t>(k));
+    return pad ? add(add(old[k].extent, pad->lo), pad->hi) : old[k].extent;
+  };
   Attribute one = sym::ConstantExprAttr::get(ctx, 1);
 
   SmallVector<PlanAxis> newAxes;
   SmallVector<DivisibilityAttr> emitted;
+  SmallVector<int64_t> newIndexOfOld(old.size(), -1);
   size_t i = 0, j = 0;
   while (i < old.size() && j < targetShape.size()) {
     size_t iEnd = i + 1, jEnd = j + 1;
-    Attribute oldProd = old[i].extent;
+    Attribute oldProd = paddedExtent(i);
     Attribute newProd = targetShape[j];
     bool needsDivisibility = false;
     int64_t divisor = 0;
@@ -221,7 +236,7 @@ LogicalResult mlir::reloc::foldReshape(PlanBuilder &plan,
     // validates; bail when no growth is possible.
     while (proveEqual(oldProd, newProd) != Proof::Proven) {
       if (iEnd == i + 1 &&
-          matchesSplit(old[i].extent, targetShape.slice(j, jEnd - j), ctx,
+          matchesSplit(paddedExtent(i), targetShape.slice(j, jEnd - j), ctx,
                        needsDivisibility, divisor))
         break;
       int64_t oldValue, newValue;
@@ -229,7 +244,7 @@ LogicalResult mlir::reloc::foldReshape(PlanBuilder &plan,
         if (oldValue < newValue) {
           if (iEnd == old.size())
             return failure();
-          oldProd = mul(oldProd, old[iEnd].extent);
+          oldProd = mul(oldProd, paddedExtent(iEnd));
           ++iEnd;
         } else {
           if (jEnd == targetShape.size())
@@ -241,7 +256,7 @@ LogicalResult mlir::reloc::foldReshape(PlanBuilder &plan,
         newProd = mul(newProd, targetShape[jEnd]);
         ++jEnd; // extend the candidate split run
       } else if (iEnd < old.size()) {
-        oldProd = mul(oldProd, old[iEnd].extent);
+        oldProd = mul(oldProd, paddedExtent(iEnd));
         ++iEnd; // extend the candidate merge run
       } else {
         return failure();
@@ -251,6 +266,8 @@ LogicalResult mlir::reloc::foldReshape(PlanBuilder &plan,
     size_t numOld = iEnd - i, numNew = jEnd - j;
     if (needsDivisibility || (numOld == 1 && numNew > 1)) {
       // SPLIT one axis into the target run.
+      if (plan.findPad(static_cast<int64_t>(i)))
+        return failure(); // splitting a padded axis (design decision 3)
       appendSplitAxes(targetShape.slice(j, numNew), old[i].srcStride, newAxes,
                       ctx);
       if (needsDivisibility) {
@@ -260,9 +277,13 @@ LogicalResult mlir::reloc::foldReshape(PlanBuilder &plan,
           emitted.push_back(constraint);
       }
     } else if (numOld == 1 && numNew == 1) {
+      newIndexOfOld[i] = static_cast<int64_t>(newAxes.size());
       newAxes.push_back(old[i]); // KEEP (extents proven equal)
     } else {
       // MERGE the old run (contiguity-gated), then split if numNew > 1.
+      for (size_t p = i; p < iEnd; ++p)
+        if (plan.findPad(static_cast<int64_t>(p)))
+          return failure(); // pad folded into a merged axis: inexpressible
       for (size_t p = i; p + 1 < iEnd; ++p)
         if (!contiguousCompatible(old[p], old[p + 1], ctx))
           return failure();
@@ -278,8 +299,11 @@ LogicalResult mlir::reloc::foldReshape(PlanBuilder &plan,
   }
 
   // Absorb trailing unit dims on either side.
-  while (i < old.size() && proveEqual(old[i].extent, one) == Proof::Proven)
+  while (i < old.size() && proveEqual(paddedExtent(i), one) == Proof::Proven) {
+    if (plan.findPad(static_cast<int64_t>(i)))
+      return failure();
     ++i;
+  }
   while (j < targetShape.size() &&
          proveEqual(targetShape[j], one) == Proof::Proven) {
     newAxes.push_back({"", targetShape[j], one});
@@ -296,6 +320,11 @@ LogicalResult mlir::reloc::foldReshape(PlanBuilder &plan,
   for (size_t k = 0; k < plan.axes.size(); ++k)
     plan.perm.push_back(static_cast<int64_t>(k));
   plan.divisibility.append(emitted.begin(), emitted.end());
+  for (PlanPad &pad : plan.pads) {
+    assert(newIndexOfOld[pad.axis] >= 0 &&
+           "padded axis must survive as a 1:1 keep");
+    pad.axis = newIndexOfOld[pad.axis];
+  }
   return success();
 }
 

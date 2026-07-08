@@ -602,4 +602,54 @@ TEST_F(PlanBuilderTest, AlignmentPadFoldsAndBinds) {
   }
 }
 
+TEST_F(PlanBuilderTest, PadThenTransposeRenumbersPad) {
+  reloc::PlanBuilder builder(makeType({dim(4), dim(6)}));
+  ASSERT_TRUE(succeeded(reloc::foldPad(builder, 1, dim(0), dim(2), fill(0.0))));
+  ASSERT_TRUE(succeeded(reloc::foldTranspose(builder, {1, 0})));
+  ASSERT_EQ(builder.pads.size(), 1u);
+  EXPECT_EQ(builder.pads[0].axis, 0); // padded axis moved to dst position 0
+  reloc::PlanAttr plan = finalize(builder);
+  ASSERT_TRUE(plan);
+  Tensor expected = transposeRef(padRef(iota({4, 6}), 1, 0, 2), {1, 0});
+  EXPECT_EQ(applyPlan(plan, noBindings), expected.data);
+}
+
+TEST_F(PlanBuilderTest, PadThenSplitOnPaddedAxisBails) {
+  // Issue #15 design decision 3: the valid region is not expressible
+  // per-axis after splitting a padded axis.
+  reloc::PlanBuilder builder(makeType({dim(6)}));
+  ASSERT_TRUE(succeeded(reloc::foldPad(builder, 0, dim(1), dim(1), fill(0.0))));
+  EXPECT_TRUE(failed(reloc::foldReshape(builder, {dim(2), dim(4)})));
+  // Bail leaves the builder untouched: the pad-only plan still holds.
+  EXPECT_EQ(builder.axes.size(), 1u);
+  EXPECT_EQ(builder.pads.size(), 1u);
+  reloc::PlanAttr plan = finalize(builder);
+  ASSERT_TRUE(plan);
+  EXPECT_EQ(applyPlan(plan, noBindings), padRef(iota({6}), 0, 1, 1).data);
+}
+
+TEST_F(PlanBuilderTest, PadThenMergeWithPaddedAxisBails) {
+  reloc::PlanBuilder builder(makeType({dim(6), dim(4)}));
+  ASSERT_TRUE(succeeded(reloc::foldPad(builder, 0, dim(1), dim(1), fill(0.0))));
+  // Padded view is [8, 4]; merging to [32] would fold the pad into the
+  // merged axis -> bail.
+  EXPECT_TRUE(failed(reloc::foldReshape(builder, {dim(32)})));
+  EXPECT_EQ(builder.axes.size(), 2u);
+}
+
+TEST_F(PlanBuilderTest, PadSurvivesReshapeKeepAndRemaps) {
+  reloc::PlanBuilder builder(makeType({dim(6), dim(4)}));
+  ASSERT_TRUE(succeeded(reloc::foldPad(builder, 0, dim(1), dim(1), fill(0.0))));
+  // Padded view is [8, 4]; the reshape keeps the padded axis 1:1 (target
+  // entry 8 == padded extent) and splits the unpadded 4 into (2, 2).
+  ASSERT_TRUE(succeeded(reloc::foldReshape(builder, {dim(8), dim(2), dim(2)})));
+  ASSERT_EQ(builder.pads.size(), 1u);
+  EXPECT_EQ(builder.pads[0].axis, 0);
+  EXPECT_EQ(builder.axes[0].extent, dim(6)); // valid extent preserved
+  reloc::PlanAttr plan = finalize(builder);
+  ASSERT_TRUE(plan);
+  Tensor expected = reshapeRef(padRef(iota({6, 4}), 0, 1, 1), {8, 2, 2});
+  EXPECT_EQ(applyPlan(plan, noBindings), expected.data);
+}
+
 } // namespace
