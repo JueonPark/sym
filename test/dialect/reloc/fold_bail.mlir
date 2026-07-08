@@ -12,3 +12,15 @@ func.func @noncontiguous_merge_bails(%t: !sym.tensor<[4, 6], f32>) -> !sym.tenso
   %1 = reloc.reshape %0 to [24] : !sym.tensor<[6, 4], f32> -> !sym.tensor<[24], f32>
   return %1 : !sym.tensor<[24], f32>
 }
+
+// The bail happens mid-chain (the reshape), not on the chain tail (the
+// trailing identity transpose): the walk still starts from the tail, walks
+// back to the bailing link, and emits the remark there — the tail itself
+// gets no remark since the chain never reaches finalize().
+func.func @midchain_bail(%t: !sym.tensor<[4, 6], f32>) -> !sym.tensor<[24], f32> {
+  %0 = reloc.transpose %t perm [1, 0] : !sym.tensor<[4, 6], f32> -> !sym.tensor<[6, 4], f32>
+  // expected-remark @below {{fold bail: reloc.reshape}}
+  %1 = reloc.reshape %0 to [24] : !sym.tensor<[6, 4], f32> -> !sym.tensor<[24], f32>
+  %2 = reloc.transpose %1 perm [0] : !sym.tensor<[24], f32> -> !sym.tensor<[24], f32>
+  return %2 : !sym.tensor<[24], f32>
+}

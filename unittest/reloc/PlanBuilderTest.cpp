@@ -432,6 +432,30 @@ TEST_F(PlanBuilderTest, DivisibilityDeduplicated) {
   EXPECT_EQ(builder.divisibility.size(), 1u);
 }
 
+TEST_F(PlanBuilderTest, DivisibilityDeduplicatedAcrossFolds) {
+  // The same divisibility fact can be re-derived by a later, independent
+  // fold on the same builder; it must dedup against plan.divisibility (not
+  // just within a single fold's own emissions).
+  Attribute n = dim("N");
+  reloc::PlanBuilder builder(makeType({n, n}));
+  ASSERT_TRUE(succeeded(reloc::foldReshape(builder, {div(n, 64), dim(64), n})));
+  EXPECT_EQ(builder.divisibility.size(), 1u);
+  // The first two entries are 1:1 keeps of the axes just split off above;
+  // the trailing `n` splits again, emitting divisible(N, 64) a second time.
+  ASSERT_TRUE(succeeded(
+      reloc::foldReshape(builder, {div(n, 64), dim(64), div(n, 64), dim(64)})));
+  EXPECT_EQ(builder.divisibility.size(), 1u);
+}
+
+TEST_F(PlanBuilderTest, NonPositiveExtentBails) {
+  // The frozen P1a reshape verifier accepts [24] -> [-8, -3] (matching
+  // element count); foldReshape must still bail rather than fold negative
+  // extents/strides into the plan.
+  reloc::PlanBuilder builder(makeType({dim(24)}));
+  EXPECT_TRUE(failed(reloc::foldReshape(builder, {dim(-8), dim(-3)})));
+  EXPECT_EQ(builder.axes.size(), 1u);
+}
+
 TEST_F(PlanBuilderTest, ReferenceChainMatchesBuildDocConstraintSet) {
   // Build doc §2.1 acceptance: [N, N] -> blocked 4D view + transpose;
   // constraint set must be exactly {divisible(N, 64),
@@ -450,6 +474,8 @@ TEST_F(PlanBuilderTest, ReferenceChainMatchesBuildDocConstraintSet) {
             ArrayRef<bool>({false, false, false, true}));
   EXPECT_FALSE(plan.getNoCopy());
   EXPECT_TRUE(plan.getPadFill().empty());
+  EXPECT_TRUE(plan.getAlignment().empty());
+  EXPECT_FALSE(plan.getRuntimePadCheck());
   llvm::StringMap<int64_t> bindings;
   bindings["N"] = 128;
   Tensor expected =

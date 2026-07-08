@@ -59,7 +59,8 @@ struct TestRelocTransferPass
                 .Case([&](ReshapeOp reshape) {
                   return foldReshape(builder,
                                      reshape.getTargetShape().getValue());
-                });
+                })
+                .Default([](Operation *) { return failure(); });
         if (failed(folded)) {
           link->emitRemark() << "fold bail: " << link->getName();
           return;

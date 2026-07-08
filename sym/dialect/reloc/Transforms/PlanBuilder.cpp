@@ -166,6 +166,20 @@ LogicalResult mlir::reloc::foldReshape(PlanBuilder &plan,
   for (Attribute target : targetShape)
     if (!isSymExpr(target))
       return failure();
+  // The frozen P1a reshape verifier only checks element-count equality, not
+  // sign, so a decomposition like [24] -> [-8, -3] (matching element count)
+  // passes it. Guard here so the transform layer never folds a non-positive
+  // constant extent into negative extents/strides (bail-never-wrong-plan).
+  for (Attribute target : targetShape) {
+    int64_t value;
+    if (getConstant(target, value) && value <= 0)
+      return failure();
+  }
+  for (const PlanAxis &axis : old) {
+    int64_t value;
+    if (getConstant(axis.extent, value) && value <= 0)
+      return failure();
+  }
 
   auto mul = [&](Attribute lhs, Attribute rhs) {
     return sym::getSimplifiedBinaryExpr(ctx, sym::SymbolicExprOp::Mul, lhs,
