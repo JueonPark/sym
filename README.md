@@ -63,6 +63,12 @@ see [docs/reloc-plan-format.md](docs/reloc-plan-format.md).
 | `#reloc.pad_fill` | Pad spec for one destination axis |
 | `#reloc.divisibility` / `#reloc.alignment` | Plan-local constraints |
 
+| Operation | Description |
+|-----------|-------------|
+| `reloc.transpose` | Permute axes: result dim k = operand dim perm[k] |
+| `reloc.reshape` | Row-major reinterpretation to a symbolic target shape |
+| `reloc.pad` | Pad one axis with leading/trailing widths and a fill value |
+
 | Pass | Description |
 |------|-------------|
 | `--test-reloc-utils` | Testing-only: bridge round-trips and structure predicates via remarks |

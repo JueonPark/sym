@@ -10,16 +10,24 @@ mlir_tablegen(RelocAttributes.h.inc -gen-attrdef-decls)
 mlir_tablegen(RelocAttributes.cpp.inc -gen-attrdef-defs)
 add_public_tablegen_target(RelocAttributesIncGen)
 
+# TableGen for Operations
+set(LLVM_TARGET_DEFINITIONS RelocOps.td)
+mlir_tablegen(RelocOps.h.inc -gen-op-decls)
+mlir_tablegen(RelocOps.cpp.inc -gen-op-defs)
+add_public_tablegen_target(RelocOpsIncGen)
+
 # Combined TableGen target for IR
 add_custom_target(RelocIRIncGen DEPENDS
   RelocDialectIncGen
   RelocAttributesIncGen
+  RelocOpsIncGen
 )
 
 # Dialect Library
 add_mlir_dialect_library(MLIRRelocDialect
   RelocAttributes.cpp
   RelocDialect.cpp
+  RelocOps.cpp
   RelocSerialization.cpp
   RelocUtils.cpp
 
