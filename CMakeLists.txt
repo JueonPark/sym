@@ -25,4 +25,6 @@ add_definitions(${LLVM_DEFINITIONS})
 add_subdirectory(sym)
 
 # 4. Add Testing Support
+enable_testing()
+add_subdirectory(unittest)
 add_subdirectory(test)

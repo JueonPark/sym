@@ -7,6 +7,7 @@ configure_lit_site_cfg(
 
 set(SYM_TEST_DEPENDS
   sym-opt
+  reloc-plan-builder-test
 )
 
 add_lit_testsuite(check-sym "Running Sym regression tests"

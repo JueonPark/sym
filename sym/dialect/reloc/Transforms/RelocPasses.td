@@ -30,4 +30,24 @@ def TestRelocUtilsPass : Pass<"test-reloc-utils", "::mlir::ModuleOp"> {
   ];
 }
 
+//===----------------------------------------------------------------------===//
+// TestRelocTransferPass
+//===----------------------------------------------------------------------===//
+
+def TestRelocTransferPass : Pass<"test-reloc-transfer", "::mlir::ModuleOp"> {
+  let summary = "Test pass folding straight-line reloc chains via transfer functions";
+  let description = [{
+    Testing-only pass. For every reloc.transpose whose result has no reloc
+    user (a chain tail), walks back through the straight-line transpose
+    chain to its root, seeds a PlanBuilder from the root's type, applies
+    foldTranspose per op, and emits the finalized #reloc.plan as a remark
+    on the tail. Later P1b milestones extend the walk to reshape/pad.
+  }];
+
+  let dependentDialects = [
+    "sym::SymDialect",
+    "reloc::RelocDialect"
+  ];
+}
+
 #endif // RELOC_PASSES_TD

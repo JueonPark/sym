@@ -50,6 +50,7 @@ jobs:
                 -DLLVM_DIR=/opt/llvm/lib/cmake/llvm \
                 -DLLVM_EXTERNAL_LIT=$(which lit) && \
               ninja -C build/sym -j$(nproc) && \
+              ctest --test-dir build/sym --output-on-failure && \
               ninja -C build/sym check-sym
             '
 
@@ -65,6 +66,7 @@ jobs:
             build/sym/sym/dialect/reloc/IR/*.inc
             build/sym/sym/dialect/reloc/Transforms/*.inc
             build/sym/sym/tools/sym-opt
+            build/sym/unittest/reloc/reloc-plan-builder-test
             build/sym/test/lit.site.cfg.py
 
   clang-tidy:
@@ -152,8 +154,10 @@ jobs:
           name: build-artifacts
           path: build/sym
 
-      - name: Make sym-opt executable
-        run: chmod +x build/sym/sym/tools/sym-opt
+      - name: Make test binaries executable
+        run: |
+          chmod +x build/sym/sym/tools/sym-opt
+          chmod +x build/sym/unittest/reloc/reloc-plan-builder-test
 
       - name: Run tests
         run: |
