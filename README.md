@@ -49,8 +49,9 @@ Sym is an MLIR dialect that enables symbolic shape tracking and inference for te
 ### Reloc Dialect (P1a)
 
 The `reloc` dialect provides `#reloc.plan`, a serializable symbolic
-representation of folded layout-transform chains. Design decisions are
-recorded in [docs/reloc-design.md](docs/reloc-design.md).
+representation of folded layout-transform chains. Plans are structurally
+verified at construction time; undecidable pad ranges degrade to a
+`runtime_pad_check` flag instead of being rejected.
 
 | Attribute | Description |
 |-----------|-------------|

@@ -215,7 +215,8 @@ FailureOr<AffineExpr> mlir::reloc::symToAffine(
     case sym::SymbolicExprOp::Mul:
       return *lhs * *rhs;
     case sym::SymbolicExprOp::Div:
-      return lhs->floorDiv(*rhs); // Div is floordiv (docs/reloc-design.md)
+      return lhs->floorDiv(
+          *rhs); // Div is floor division (matches affine floordiv)
     case sym::SymbolicExprOp::Mod:
       return *lhs % *rhs;
     }
@@ -320,4 +321,92 @@ bool mlir::reloc::isPureView(PlanAttr plan) {
       return false;
   return sym::UnificationSolver::areLogicallyEqual(plan.getSrc().getOffset(),
                                                    plan.getDst().getOffset());
+}
+
+//===----------------------------------------------------------------------===//
+// Verification proofs
+//===----------------------------------------------------------------------===//
+
+StringRef mlir::reloc::stringifyProof(Proof proof) {
+  switch (proof) {
+  case Proof::Proven:
+    return "Proven";
+  case Proof::Disproven:
+    return "Disproven";
+  case Proof::Unknown:
+    return "Unknown";
+  }
+  llvm_unreachable("unknown Proof");
+}
+
+Proof mlir::reloc::proveEqual(Attribute lhs, Attribute rhs) {
+  if (!lhs || !rhs)
+    return Proof::Unknown;
+  if (sym::UnificationSolver::areLogicallyEqual(lhs, rhs))
+    return Proof::Proven;
+  auto constLhs = dyn_cast<sym::ConstantExprAttr>(lhs);
+  auto constRhs = dyn_cast<sym::ConstantExprAttr>(rhs);
+  if (constLhs && constRhs)
+    return constLhs.getValue() == constRhs.getValue() ? Proof::Proven
+                                                      : Proof::Disproven;
+  return Proof::Unknown;
+}
+
+Proof mlir::reloc::proveLessEqual(Attribute lhs, Attribute rhs) {
+  if (!lhs || !rhs)
+    return Proof::Unknown;
+  auto constLhs = dyn_cast<sym::ConstantExprAttr>(lhs);
+  auto constRhs = dyn_cast<sym::ConstantExprAttr>(rhs);
+  if (constLhs && constRhs)
+    return constLhs.getValue() <= constRhs.getValue() ? Proof::Proven
+                                                      : Proof::Disproven;
+  if (sym::UnificationSolver::areLogicallyEqual(lhs, rhs))
+    return Proof::Proven; // x <= x
+  return Proof::Unknown;
+}
+
+SmallVector<Attribute>
+mlir::reloc::canonicalRowMajorStrides(ArrayRef<Attribute> extents,
+                                      MLIRContext *ctx) {
+  SmallVector<Attribute> strides(extents.size());
+  Attribute running = sym::ConstantExprAttr::get(ctx, 1);
+  for (int64_t k = static_cast<int64_t>(extents.size()) - 1; k >= 0; --k) {
+    strides[k] = running;
+    running = sym::getSimplifiedBinaryExpr(ctx, sym::SymbolicExprOp::Mul,
+                                           running, extents[k]);
+  }
+  return strides;
+}
+
+/// Combine proofs of conjoined relations: any Disproven disproves the
+/// conjunction; otherwise any Unknown makes it Unknown.
+static Proof combineProofs(ArrayRef<Proof> proofs) {
+  Proof result = Proof::Proven;
+  for (Proof proof : proofs) {
+    if (proof == Proof::Disproven)
+      return Proof::Disproven;
+    if (proof == Proof::Unknown)
+      result = Proof::Unknown;
+  }
+  return result;
+}
+
+Proof mlir::reloc::provePadRange(PadFillAttr pad, ArrayRef<AxisInfoAttr> axes,
+                                 TensorDescAttr dst) {
+  if (!pad || !dst)
+    return Proof::Unknown;
+  int64_t axis = pad.getDstAxis();
+  if (axis < 0 || axis >= static_cast<int64_t>(axes.size()) ||
+      axis >= static_cast<int64_t>(dst.getExtents().size()))
+    return Proof::Disproven;
+  MLIRContext *ctx = pad.getContext();
+  Attribute zero = sym::ConstantExprAttr::get(ctx, 0);
+  Attribute sum = sym::getSimplifiedBinaryExpr(
+      ctx, sym::SymbolicExprOp::Add,
+      sym::getSimplifiedBinaryExpr(ctx, sym::SymbolicExprOp::Add,
+                                   axes[axis].getExtent(), pad.getLo()),
+      pad.getHi());
+  return combineProofs({proveLessEqual(zero, pad.getLo()),
+                        proveLessEqual(zero, pad.getHi()),
+                        proveEqual(sum, dst.getExtents()[axis])});
 }

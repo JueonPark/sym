@@ -1,7 +1,6 @@
 //===- RelocAttributes.cpp - Reloc dialect attribute implementation -------===//
 //
-// This file implements the Reloc dialect attributes. Assembly-format
-// conventions are documented in docs/reloc-design.md.
+// This file implements the Reloc dialect attributes.
 //
 //===----------------------------------------------------------------------===//
 
@@ -135,7 +134,8 @@ TensorDescAttr::verify(function_ref<InFlightDiagnostic()> emitError,
     return emitError() << "strides size (" << strides.size()
                        << ") must match extents size (" << extents.size()
                        << ") or be empty";
-  if (!elementType.isIntOrIndexOrFloat() && !isa<ComplexType>(elementType))
+  if (!elementType.isIntOrIndexOrFloat() &&
+      !mlir::isa<ComplexType>(elementType))
     return emitError() << "element type must be a valid tensor element type, "
                           "but got: "
                        << elementType;
@@ -360,11 +360,10 @@ static TensorDescAttr parseDescField(AsmParser &parser, StringRef keyword) {
 ///                  no_copy = bool}
 /// Items are comma-separated and may appear in any order; divisible/align
 /// may repeat.
-static ParseResult
-parseConstraintsBlock(AsmParser &parser,
-                      SmallVectorImpl<DivisibilityAttr> &divisibility,
-                      SmallVectorImpl<AlignmentAttr> &alignment,
-                      SmallVectorImpl<bool> &contiguity, bool &noCopy) {
+static ParseResult parseConstraintsBlock(
+    AsmParser &parser, SmallVectorImpl<DivisibilityAttr> &divisibility,
+    SmallVectorImpl<AlignmentAttr> &alignment,
+    SmallVectorImpl<bool> &contiguity, bool &noCopy, bool &runtimePadCheck) {
   MLIRContext *ctx = parser.getContext();
   if (parser.parseLBrace())
     return failure();
@@ -427,10 +426,13 @@ parseConstraintsBlock(AsmParser &parser,
     } else if (succeeded(parser.parseOptionalKeyword("no_copy"))) {
       if (parser.parseEqual() || parseBool(noCopy))
         return failure();
+    } else if (succeeded(parser.parseOptionalKeyword("runtime_pad_check"))) {
+      runtimePadCheck = true;
     } else {
       return parser.emitError(parser.getCurrentLocation(),
                               "expected 'divisible', 'align', 'contiguous', "
-                              "or 'no_copy' in constraints");
+                              "'no_copy', or 'runtime_pad_check' in "
+                              "constraints");
     }
   } while (succeeded(parser.parseOptionalComma()));
 
@@ -501,10 +503,11 @@ Attribute PlanAttr::parse(AsmParser &parser, Type type) {
   SmallVector<AlignmentAttr> alignment;
   SmallVector<bool> contiguity;
   bool noCopy = false;
+  bool runtimePadCheck = false;
   if (succeeded(parser.parseOptionalKeyword("constraints"))) {
     if (parser.parseEqual() ||
         parseConstraintsBlock(parser, divisibility, alignment, contiguity,
-                              noCopy) ||
+                              noCopy, runtimePadCheck) ||
         parser.parseComma())
       return {};
   }
@@ -515,10 +518,17 @@ Attribute PlanAttr::parse(AsmParser &parser, Type type) {
       parser.parseAttribute(inverse) || parser.parseGreater())
     return {};
 
+  // Degradation path: an undecidable pad range marks the plan as
+  // requiring a runtime check instead of rejecting.
+  for (PadFillAttr pad : padFill)
+    if (provePadRange(pad, axes, dst) == Proof::Unknown)
+      runtimePadCheck = true;
+
   return PlanAttr::getChecked(
       [&]() { return parser.emitError(parser.getCurrentLocation()); }, ctx, src,
       dst, DenseI64ArrayAttr::get(ctx, perm), axes, padFill, divisibility,
-      alignment, DenseBoolArrayAttr::get(ctx, contiguity), noCopy, inverse);
+      alignment, DenseBoolArrayAttr::get(ctx, contiguity), noCopy,
+      runtimePadCheck, inverse);
 }
 
 void PlanAttr::print(AsmPrinter &printer) const {
@@ -543,7 +553,8 @@ void PlanAttr::print(AsmPrinter &printer) const {
   }
 
   bool hasConstraints = !getDivisibility().empty() || !getAlignment().empty() ||
-                        !getContiguity().empty() || getNoCopy();
+                        !getContiguity().empty() || getNoCopy() ||
+                        getRuntimePadCheck();
   if (hasConstraints) {
     printer << ", constraints = {";
     bool first = true;
@@ -572,6 +583,10 @@ void PlanAttr::print(AsmPrinter &printer) const {
     }
     comma();
     printer << "no_copy = " << (getNoCopy() ? "true" : "false");
+    if (getRuntimePadCheck()) {
+      comma();
+      printer << "runtime_pad_check";
+    }
     printer << "}";
   }
 
@@ -585,7 +600,7 @@ LogicalResult PlanAttr::verify(
     TensorDescAttr dst, DenseI64ArrayAttr perm, ArrayRef<AxisInfoAttr> axes,
     ArrayRef<PadFillAttr> padFill, ArrayRef<DivisibilityAttr> divisibility,
     ArrayRef<AlignmentAttr> alignment, DenseBoolArrayAttr contiguity,
-    bool noCopy, AffineMapAttr inverse) {
+    bool noCopy, bool runtimePadCheck, AffineMapAttr inverse) {
   if (!src || !dst)
     return emitError() << "src and dst descriptors are required";
   if (!perm)
@@ -600,6 +615,103 @@ LogicalResult PlanAttr::verify(
                        << ") or be empty";
   if (!inverse)
     return emitError() << "inverse map is required";
+  if (dst.getExtents().size() != axes.size())
+    return emitError() << "dst rank (" << dst.getExtents().size()
+                       << ") must match number of axes (" << axes.size() << ")";
+
+  // --- A3: pad widths (tensor.pad convention: lo/hi are leading/trailing
+  // pad counts; extent + lo + hi must equal the dst extent) ---
+  for (PadFillAttr pad : padFill) {
+    int64_t axis = pad.getDstAxis();
+    if (axis >= static_cast<int64_t>(axes.size()))
+      return emitError() << "pad dst_axis (" << axis << ") is out of range for "
+                         << axes.size() << " axes";
+    MLIRContext *ctx = pad.getContext();
+    Attribute zero = sym::ConstantExprAttr::get(ctx, 0);
+    if (proveLessEqual(zero, pad.getLo()) == Proof::Disproven)
+      return emitError() << "pad lo for dst_axis " << axis
+                         << " is provably negative: " << pad.getLo();
+    if (proveLessEqual(zero, pad.getHi()) == Proof::Disproven)
+      return emitError() << "pad hi for dst_axis " << axis
+                         << " is provably negative: " << pad.getHi();
+    Attribute sum = sym::getSimplifiedBinaryExpr(
+        ctx, sym::SymbolicExprOp::Add,
+        sym::getSimplifiedBinaryExpr(ctx, sym::SymbolicExprOp::Add,
+                                     axes[axis].getExtent(), pad.getLo()),
+        pad.getHi());
+    Proof relation = proveEqual(sum, dst.getExtents()[axis]);
+    if (relation == Proof::Disproven)
+      return emitError() << "pad on dst_axis " << axis
+                         << " is inconsistent: extent + lo + hi must equal "
+                            "the dst extent, but "
+                         << sum << " != " << dst.getExtents()[axis];
+    if (relation == Proof::Unknown && !runtimePadCheck)
+      return emitError() << "pad range for dst_axis " << axis
+                         << " is not provable; set runtime_pad_check";
+  }
+
+  // --- A3: perm must be a bijection on [0, axes.size()) ---
+  {
+    SmallVector<bool> seen(axes.size(), false);
+    for (int64_t value : perm.asArrayRef()) {
+      if (value < 0 || value >= static_cast<int64_t>(axes.size()) ||
+          seen[value])
+        return emitError() << "perm is not a permutation of [0, " << axes.size()
+                           << "): value " << value
+                           << " is duplicated or out of range";
+      seen[value] = true;
+    }
+  }
+
+  // --- A3: inverse is square on the axes space ---
+  AffineMap inverseMap = inverse.getValue();
+  if (inverseMap.getNumDims() != axes.size() ||
+      inverseMap.getNumResults() != axes.size())
+    return emitError() << "inverse map must be square on the axes space: "
+                       << "expected " << axes.size() << " dims and "
+                       << axes.size() << " results, got "
+                       << inverseMap.getNumDims() << " and "
+                       << inverseMap.getNumResults();
+
+  // --- A3: pure-permutation plans must have a matching inverse.
+  // Floordiv-style inverses are not permutations; for those only the
+  // arity checks above apply (full bijectivity checking for such plans
+  // needs P1b's composition algebra). ---
+  if (!axes.empty() && inverseMap.isPermutation()) {
+    AffineMap forward =
+        AffineMap::getPermutationMap(perm.asArrayRef(), inverse.getContext());
+    if (inverseMap != inversePermutation(forward))
+      return emitError()
+             << "inverse permutation does not invert perm; expected "
+             << AffineMapAttr::get(inversePermutation(forward));
+  }
+
+  // --- A3: direct axis order — per-axis dst_stride ---
+  {
+    SmallVector<Attribute> dstStrides;
+    if (!dst.getStrides().empty())
+      dstStrides.assign(dst.getStrides().begin(), dst.getStrides().end());
+    else
+      dstStrides = canonicalRowMajorStrides(dst.getExtents(), dst.getContext());
+    for (size_t k = 0; k < axes.size(); ++k)
+      if (proveEqual(axes[k].getDstStride(), dstStrides[k]) == Proof::Disproven)
+        return emitError() << "axis " << k
+                           << " dst_stride provably disagrees with the dst "
+                              "descriptor: "
+                           << axes[k].getDstStride() << " vs " << dstStrides[k];
+  }
+
+  // --- A3: contiguity[k] asserts unit source stride ---
+  if (contiguity && !contiguity.empty()) {
+    Attribute one = sym::ConstantExprAttr::get(dst.getContext(), 1);
+    for (int64_t k = 0; k < contiguity.size(); ++k)
+      if (contiguity.asArrayRef()[k] &&
+          proveEqual(axes[k].getSrcStride(), one) == Proof::Disproven)
+        return emitError() << "contiguity[" << k
+                           << "] asserts unit src_stride, but axis " << k
+                           << " has src_stride " << axes[k].getSrcStride();
+  }
+
   return success();
 }
 

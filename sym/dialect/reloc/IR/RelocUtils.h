@@ -3,7 +3,6 @@
 // This file declares utilities for the Reloc dialect: the compact symbolic
 // expression syntax shared by all reloc attributes, the sym<->affine
 // expression bridge, and plan-structure predicates.
-// Conventions are documented in docs/reloc-design.md.
 //
 //===----------------------------------------------------------------------===//
 
@@ -51,8 +50,9 @@ bool isSymExpr(Attribute attr);
 // positions in order of first appearance, recording names in `symbolNames`
 // (an already-recorded name reuses its position, so one call chain shares a
 // binding across expressions). affineToSym maps positions back through the
-// same list. Lossless for {symbol, constant, +, -, *, floordiv, mod}; see
-// docs/reloc-design.md for the Sub encoding and equality caveats.
+// same list. Lossless for {symbol, constant, +, -, *, floordiv, mod}; Sub is
+// encoded as lhs + rhs * -1 on the affine side; round-trip equality is judged
+// modulo Add/Mul commutativity.
 
 /// Convert a sym expression attribute to an AffineExpr over symbols.
 /// Returns failure for attributes that are not sym expressions.
@@ -71,7 +71,7 @@ Attribute affineToSym(AffineExpr expr, ArrayRef<StringRef> symbolNames,
 //===----------------------------------------------------------------------===//
 //
 // Both predicates are sound but incomplete: `true` means provably so under
-// sym simplification; `false` means "not proven". See docs/reloc-design.md.
+// sym simplification; `false` means "not proven".
 
 /// True iff `outer.src_stride == inner.src_stride * inner.extent` is provable
 /// via sym simplification — i.e. the two source axes can be treated as one
@@ -81,6 +81,41 @@ bool isContiguousCompatible(AxisInfoAttr outer, AxisInfoAttr inner);
 /// True iff the plan provably performs no data movement: no pad_fill entries,
 /// every axis has dst_stride == src_stride, and src/dst offsets are equal.
 bool isPureView(PlanAttr plan);
+
+//===----------------------------------------------------------------------===//
+// Verification proofs
+//===----------------------------------------------------------------------===//
+//
+// Three-valued proofs over sym expressions: Proven / Disproven answer
+// definitively; Unknown means "not decidable with the current prover".
+// The verifier rejects only on Disproven; Unknown never rejects.
+
+enum class Proof { Proven, Disproven, Unknown };
+
+/// Human-readable proof name ("Proven" / "Disproven" / "Unknown").
+StringRef stringifyProof(Proof proof);
+
+/// Prove or disprove `lhs == rhs`. Constants compare numerically;
+/// logically-equal expressions are Proven; anything else is Unknown.
+Proof proveEqual(Attribute lhs, Attribute rhs);
+
+/// Prove or disprove `lhs <= rhs`. Constants compare numerically;
+/// logically-equal expressions are Proven; anything else is Unknown.
+Proof proveLessEqual(Attribute lhs, Attribute rhs);
+
+/// Canonical row-major strides over `extents`: stride[rank-1] = 1,
+/// stride[k] = stride[k+1] * extent[k+1], built with parse-style
+/// simplification.
+SmallVector<Attribute> canonicalRowMajorStrides(ArrayRef<Attribute> extents,
+                                                MLIRContext *ctx);
+
+/// Combined pad-widths proof for one pad_fill entry, with `a = dst_axis`:
+///   0 <= lo,  0 <= hi,  axes[a].extent + lo + hi == dst.extents[a]
+/// Returns Disproven if any relation is disproven or `a` is out of range
+/// for `axes`/`dst`; Unknown if none is disproven but any is unknown;
+/// Proven otherwise.
+Proof provePadRange(PadFillAttr pad, ArrayRef<AxisInfoAttr> axes,
+                    TensorDescAttr dst);
 
 } // namespace reloc
 } // namespace mlir

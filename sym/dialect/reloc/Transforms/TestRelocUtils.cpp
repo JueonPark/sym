@@ -38,9 +38,19 @@ struct TestRelocUtilsPass
     getOperation().walk([&](Operation *op) {
       if (Attribute expr = op->getAttr("expr"))
         testBridge(op, expr, context);
+      if (Attribute lhs = op->getAttr("lhs"))
+        if (Attribute rhs = op->getAttr("rhs"))
+          op->emitRemark() << "proveEqual = "
+                           << stringifyProof(proveEqual(lhs, rhs))
+                           << ", proveLessEqual = "
+                           << stringifyProof(proveLessEqual(lhs, rhs));
+      if (auto desc = op->getAttrOfType<TensorDescAttr>("desc"))
+        testRowMajor(op, desc, context);
       if (auto plan = op->getAttrOfType<PlanAttr>("plan")) {
         if (auto pair = op->getAttrOfType<DenseI64ArrayAttr>("pair"))
           testContiguous(op, plan, pair);
+        else if (op->hasAttr("rebuild_no_flag"))
+          testRebuildNoFlag(op, plan);
         else
           op->emitRemark() << "isPureView = "
                            << (isPureView(plan) ? "true" : "false");
@@ -75,6 +85,29 @@ struct TestRelocUtilsPass
         isContiguousCompatible(axes[indices[0]], axes[indices[1]]);
     op->emitRemark() << "isContiguousCompatible(" << indices[0] << ", "
                      << indices[1] << ") = " << (compatible ? "true" : "false");
+  }
+
+  /// Reconstruct `plan` with runtime_pad_check forced to false. Undecidable
+  /// pad ranges must then be rejected by the verifier (emitting an error at
+  /// this op's location); provable ones rebuild fine.
+  void testRebuildNoFlag(Operation *op, PlanAttr plan) {
+    auto rebuilt = PlanAttr::getChecked(
+        [&]() { return op->emitError(); }, plan.getContext(), plan.getSrc(),
+        plan.getDst(), plan.getPerm(), plan.getAxes(), plan.getPadFill(),
+        plan.getDivisibility(), plan.getAlignment(), plan.getContiguity(),
+        plan.getNoCopy(), /*runtimePadCheck=*/false, plan.getInverse());
+    if (rebuilt)
+      op->emitRemark() << "rebuild without runtime_pad_check: ok";
+  }
+
+  void testRowMajor(Operation *op, TensorDescAttr desc, MLIRContext *context) {
+    SmallVector<Attribute> computed =
+        canonicalRowMajorStrides(desc.getExtents(), context);
+    bool matches = computed.size() == desc.getStrides().size();
+    for (size_t k = 0; matches && k < computed.size(); ++k)
+      matches = proveEqual(computed[k], desc.getStrides()[k]) == Proof::Proven;
+    op->emitRemark() << "row-major matches strides: "
+                     << (matches ? "true" : "false");
   }
 };
 

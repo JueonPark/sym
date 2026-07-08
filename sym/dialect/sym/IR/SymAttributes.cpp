@@ -259,11 +259,13 @@ BinaryExprAttr::verify(function_ref<InFlightDiagnostic()> emitError,
                        SymbolicExprOp opcode, Attribute lhs, Attribute rhs) {
 
   // Ensure LHS is one of our known Expression Attributes
-  bool validLHS = isa<SymbolExprAttr>(lhs) || isa<ConstantExprAttr>(lhs) ||
-                  isa<BinaryExprAttr>(lhs);
+  bool validLHS = mlir::isa<SymbolExprAttr>(lhs) ||
+                  mlir::isa<ConstantExprAttr>(lhs) ||
+                  mlir::isa<BinaryExprAttr>(lhs);
 
-  bool validRHS = isa<SymbolExprAttr>(rhs) || isa<ConstantExprAttr>(rhs) ||
-                  isa<BinaryExprAttr>(rhs);
+  bool validRHS = mlir::isa<SymbolExprAttr>(rhs) ||
+                  mlir::isa<ConstantExprAttr>(rhs) ||
+                  mlir::isa<BinaryExprAttr>(rhs);
 
   if (!validLHS || !validRHS) {
     return emitError()
