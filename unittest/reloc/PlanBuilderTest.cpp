@@ -208,4 +208,60 @@ TEST_F(PlanBuilderTest, IdentityPlanFinalizes) {
   EXPECT_EQ(applyPlan(plan, noBindings), iota({6, 4, 2}).data);
 }
 
+TEST_F(PlanBuilderTest, SingleTransposeMatchesOracle) {
+  reloc::PlanBuilder builder(makeType({dim(6), dim(4), dim(2)}));
+  reloc::foldTranspose(builder, {2, 0, 1});
+  reloc::PlanAttr plan = finalize(builder);
+  ASSERT_TRUE(plan);
+  EXPECT_EQ(plan.getPerm().asArrayRef(), ArrayRef<int64_t>({2, 0, 1}));
+  expectInverseInvertsForward(plan);
+  EXPECT_EQ(applyPlan(plan, noBindings),
+            transposeRef(iota({6, 4, 2}), {2, 0, 1}).data);
+}
+
+TEST_F(PlanBuilderTest, ComposedTransposesMatchOracle) {
+  reloc::PlanBuilder builder(makeType({dim(6), dim(4), dim(2)}));
+  reloc::foldTranspose(builder, {2, 0, 1});
+  reloc::foldTranspose(builder, {0, 2, 1});
+  reloc::PlanAttr plan = finalize(builder);
+  ASSERT_TRUE(plan);
+  // Composition: perm[k] <- old_perm[op_perm[k]] = [2, 1, 0].
+  EXPECT_EQ(plan.getPerm().asArrayRef(), ArrayRef<int64_t>({2, 1, 0}));
+  expectInverseInvertsForward(plan);
+  Tensor expected =
+      transposeRef(transposeRef(iota({6, 4, 2}), {2, 0, 1}), {0, 2, 1});
+  EXPECT_EQ(applyPlan(plan, noBindings), expected.data);
+}
+
+TEST_F(PlanBuilderTest, InversePairComposesToIdentity) {
+  reloc::PlanBuilder builder(makeType({dim(6), dim(4), dim(2)}));
+  reloc::foldTranspose(builder, {2, 0, 1});
+  reloc::foldTranspose(builder, {1, 2, 0}); // inverse of [2, 0, 1]
+  reloc::PlanAttr plan = finalize(builder);
+  ASSERT_TRUE(plan);
+  // Identity elision: the composed perm IS the identity permutation, and
+  // src/dst strides realign; #B5 turns this into no_copy.
+  EXPECT_EQ(plan.getPerm().asArrayRef(), ArrayRef<int64_t>({0, 1, 2}));
+  EXPECT_TRUE(plan.getInverse().getValue().isIdentity());
+  EXPECT_TRUE(reloc::isPureView(plan));
+  EXPECT_FALSE(plan.getNoCopy()); // still false until #B5
+  EXPECT_EQ(applyPlan(plan, noBindings), iota({6, 4, 2}).data);
+}
+
+TEST_F(PlanBuilderTest, SymbolicExtentsPreservedVerbatim) {
+  Attribute n = dim("N");
+  reloc::PlanBuilder builder(makeType({dim(6), n, dim(2)}));
+  reloc::foldTranspose(builder, {1, 0, 2});
+  reloc::PlanAttr plan = finalize(builder);
+  ASSERT_TRUE(plan);
+  // The symbol rides through the fold untouched (same uniqued attribute).
+  EXPECT_EQ(plan.getAxes()[0].getExtent(), n);
+  EXPECT_EQ(plan.getDst().getExtents()[0], n);
+  expectInverseInvertsForward(plan);
+  llvm::StringMap<int64_t> bindings;
+  bindings["N"] = 4;
+  EXPECT_EQ(applyPlan(plan, bindings),
+            transposeRef(iota({6, 4, 2}), {1, 0, 2}).data);
+}
+
 } // namespace

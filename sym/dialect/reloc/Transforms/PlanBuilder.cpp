@@ -55,3 +55,21 @@ PlanAttr PlanBuilder::finalize(Location loc) const {
       DenseBoolArrayAttr::get(ctx, ArrayRef<bool>()),
       /*noCopy=*/false, /*runtimePadCheck=*/false, inverse);
 }
+
+void mlir::reloc::foldTranspose(PlanBuilder &plan, ArrayRef<int64_t> opPerm) {
+  int64_t rank = static_cast<int64_t>(plan.axes.size());
+  assert(static_cast<int64_t>(opPerm.size()) == rank &&
+         "transpose perm size must match plan rank");
+  SmallVector<PlanAxis> newAxes;
+  SmallVector<int64_t> newPerm;
+  newAxes.reserve(rank);
+  newPerm.reserve(rank);
+  for (int64_t source : opPerm) {
+    assert(source >= 0 && source < rank && "perm entry out of range");
+    // New dst axis k <- old dst axis opPerm[k].
+    newAxes.push_back(plan.axes[source]);
+    newPerm.push_back(plan.perm[source]);
+  }
+  plan.axes = std::move(newAxes);
+  plan.perm = std::move(newPerm);
+}

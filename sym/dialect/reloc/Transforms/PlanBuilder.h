@@ -55,6 +55,13 @@ public:
   SmallVector<int64_t> perm;
 };
 
+/// #B1 transfer function: fold `reloc.transpose` with permutation `opPerm`
+/// (result dim k = operand dim opPerm[k]) into `plan` by permuting the axes
+/// and composing the permutations (perm[k] <- perm[opPerm[k]]). Emits no
+/// constraints and cannot bail; `opPerm` must be a valid permutation of the
+/// current rank (guaranteed by the reloc.transpose verifier).
+void foldTranspose(PlanBuilder &plan, ArrayRef<int64_t> opPerm);
+
 } // namespace reloc
 } // namespace mlir
 
