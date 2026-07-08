@@ -43,4 +43,32 @@ def Reloc_TransposeOp : Reloc_Op<"transpose", [Pure]> {
   let hasVerifier = 1;
 }
 
+def Reloc_ReshapeOp : Reloc_Op<"reshape", [Pure]> {
+  let summary = "Reinterpret a symbolic tensor's shape (row-major)";
+  let description = [{
+    Row-major reinterpretation of the operand into target_shape, whose
+    entries are sym expression attributes and must equal the result
+    dimensions. The element count is preserved; the verifier rejects only
+    provably-changed counts (symbolically undecidable counts pass — the
+    folding pass emits the constraint).
+
+    Example:
+    ```mlir
+    %0 = reloc.reshape %t to [N floordiv 64, 64]
+        : !sym.tensor<["N"], f32> -> !sym.tensor<[(N floordiv 64), 64], f32>
+    ```
+  }];
+
+  let arguments = (ins Reloc_SymTensor:$input, ArrayAttr:$targetShape);
+  let results = (outs Reloc_SymTensor:$result);
+
+  let builders = [
+    OpBuilder<(ins "::mlir::Value":$input,
+                   "::llvm::ArrayRef<::mlir::Attribute>":$targetShape)>
+  ];
+
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
+}
+
 #endif // RELOC_OPS_TD

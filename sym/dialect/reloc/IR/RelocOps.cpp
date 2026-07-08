@@ -133,6 +133,95 @@ LogicalResult TransposeOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// ReshapeOp
+//===----------------------------------------------------------------------===//
+
+/// Product of a symbolic shape's dims, parse-style simplified.
+static Attribute shapeProduct(ArrayRef<Attribute> shape, MLIRContext *ctx) {
+  Attribute product = sym::ConstantExprAttr::get(ctx, 1);
+  for (Attribute dim : shape)
+    product = sym::getSimplifiedBinaryExpr(ctx, sym::SymbolicExprOp::Mul,
+                                           product, dim);
+  return product;
+}
+
+void ReshapeOp::build(OpBuilder &builder, OperationState &state, Value input,
+                      ArrayRef<Attribute> targetShape) {
+  auto inputType = cast<sym::SymbolicTensorType>(input.getType());
+  auto resultType = sym::SymbolicTensorType::get(
+      builder.getContext(), targetShape, inputType.getElementType());
+  build(builder, state, resultType, input, builder.getArrayAttr(targetShape));
+}
+
+ParseResult ReshapeOp::parse(OpAsmParser &parser, OperationState &result) {
+  OpAsmParser::UnresolvedOperand input;
+  SmallVector<Attribute> targetShape;
+  if (parser.parseOperand(input) || parser.parseKeyword("to") ||
+      parser.parseCommaSeparatedList(AsmParser::Delimiter::Square,
+                                     [&]() -> ParseResult {
+                                       Attribute dim = parseSymExpr(parser);
+                                       if (!dim)
+                                         return failure();
+                                       targetShape.push_back(dim);
+                                       return success();
+                                     }))
+    return failure();
+  result.addAttribute(getTargetShapeAttrName(result.name),
+                      parser.getBuilder().getArrayAttr(targetShape));
+  if (parser.parseOptionalAttrDict(result.attributes))
+    return failure();
+  Type inputType, resultType;
+  if (parseOpTypes(parser, inputType, resultType) ||
+      parser.resolveOperand(input, inputType, result.operands))
+    return failure();
+  result.addTypes(resultType);
+  return success();
+}
+
+void ReshapeOp::print(OpAsmPrinter &printer) {
+  printer << " " << getInput() << " to [";
+  llvm::interleaveComma(getTargetShape(), printer,
+                        [&](Attribute dim) { printSymExpr(printer, dim); });
+  printer << "]";
+  printer.printOptionalAttrDict((*this)->getAttrs(),
+                                /*elidedAttrs=*/{getTargetShapeAttrName()});
+  printOpTypes(printer, getInput().getType(), getResult().getType());
+}
+
+LogicalResult ReshapeOp::verify() {
+  auto inputType = cast<sym::SymbolicTensorType>(getInput().getType());
+  auto resultType = cast<sym::SymbolicTensorType>(getResult().getType());
+  ArrayRef<Attribute> target = getTargetShape().getValue();
+
+  for (auto [index, dim] : llvm::enumerate(target))
+    if (!isSymExpr(dim))
+      return emitOpError() << "target_shape entry " << index
+                           << " must be a sym expression, but got: " << dim;
+  if (resultType.getShape().size() != target.size())
+    return emitOpError() << "result rank (" << resultType.getShape().size()
+                         << ") must match target_shape size (" << target.size()
+                         << ")";
+  for (size_t k = 0; k < target.size(); ++k)
+    if (!sym::UnificationSolver::areLogicallyEqual(resultType.getShape()[k],
+                                                   target[k]))
+      return emitOpError() << "result dimension " << k
+                           << " must equal target_shape entry " << k;
+  if (resultType.getElementType() != inputType.getElementType())
+    return emitOpError() << "result element type must match operand element "
+                            "type";
+
+  // Element-count consistency: reject only provable changes.
+  MLIRContext *ctx = getContext();
+  Attribute inputCount = shapeProduct(inputType.getShape(), ctx);
+  Attribute targetCount = shapeProduct(target, ctx);
+  if (proveEqual(inputCount, targetCount) == Proof::Disproven)
+    return emitOpError() << "element count provably changes: operand has "
+                         << inputCount << " elements, target has "
+                         << targetCount;
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // TableGen'd Operation Definitions
 //===----------------------------------------------------------------------===//
 
