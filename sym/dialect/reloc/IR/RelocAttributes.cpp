@@ -8,9 +8,12 @@
 #include "RelocUtils.h"
 #include "SymDialect.h"
 #include "SymUtils.h"
+#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/DialectImplementation.h"
+#include "mlir/IR/Diagnostics.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "../Transforms/PlanBuilder.h"
 
 using namespace mlir;
 using namespace mlir::reloc;
@@ -744,3 +747,35 @@ void RelocDialect::registerAttributes() {
 
 #define GET_ATTRDEF_CLASSES
 #include "RelocAttributes.cpp.inc"
+
+//===----------------------------------------------------------------------===//
+// PlanBuilder Helper (finalize implementation)
+//===----------------------------------------------------------------------===//
+
+PlanAttr reloc::finalizePlanBuilder(const PlanBuilder &builder, Location loc) {
+  SmallVector<Attribute> dstExtents;
+  dstExtents.reserve(builder.axes.size());
+  for (const auto &axis : builder.axes)
+    dstExtents.push_back(axis.extent);
+  Attribute zero = sym::ConstantExprAttr::get(builder.ctx, 0);
+  auto dst = TensorDescAttr::get(builder.ctx, dstExtents,
+                                 /*strides=*/ArrayRef<Attribute>(), zero,
+                                 builder.src.getElementType());
+  SmallVector<Attribute> dstStrides =
+      canonicalRowMajorStrides(dstExtents, builder.ctx);
+  SmallVector<AxisInfoAttr> axisAttrs;
+  axisAttrs.reserve(builder.axes.size());
+  for (auto [k, axis] : llvm::enumerate(builder.axes))
+    axisAttrs.push_back(AxisInfoAttr::get(builder.ctx, axis.name, axis.extent,
+                                          axis.srcStride, dstStrides[k]));
+  AffineMap forward = AffineMap::getPermutationMap(builder.perm, builder.ctx);
+  auto inverse = AffineMapAttr::get(inversePermutation(forward));
+  return PlanAttr::getChecked(
+      [&]() { return emitError(loc); }, builder.ctx, builder.src, dst,
+      DenseI64ArrayAttr::get(builder.ctx, builder.perm), axisAttrs,
+      /*padFill=*/ArrayRef<PadFillAttr>(),
+      /*divisibility=*/ArrayRef<DivisibilityAttr>(),
+      /*alignment=*/ArrayRef<AlignmentAttr>(),
+      DenseBoolArrayAttr::get(builder.ctx, ArrayRef<bool>()),
+      /*noCopy=*/false, /*runtimePadCheck=*/false, inverse);
+}
