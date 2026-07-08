@@ -68,6 +68,17 @@ public:
 /// the current rank (guaranteed by the reloc.transpose verifier).
 LogicalResult foldTranspose(PlanBuilder &plan, ArrayRef<int64_t> opPerm);
 
+/// #B2 transfer function: fold `reloc.reshape` with `targetShape` (sym
+/// expression attributes, the op's target_shape) into `plan`. The current
+/// dst view is dense row-major, so the reshape decomposes into per-axis
+/// splits and contiguity-checked merges; a successful fold re-baselines
+/// the view (perm = identity over the new rank, axes renamed d0..d(n-1))
+/// and may append divisibility constraints (symbolic splits). Returns
+/// failure — leaving `plan` untouched — when no factorization exists with
+/// the available symbolic facts (issue #15 design decision 1: bail, never
+/// a wrong plan).
+LogicalResult foldReshape(PlanBuilder &plan, ArrayRef<Attribute> targetShape);
+
 } // namespace reloc
 } // namespace mlir
 

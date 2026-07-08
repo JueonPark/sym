@@ -88,6 +88,15 @@ static Tensor transposeRef(const Tensor &t, ArrayRef<int64_t> perm) {
   return result;
 }
 
+/// NumPy-reshape reference: a reshape of row-major data reinterprets the
+/// same flat buffer under a new shape.
+static Tensor reshapeRef(const Tensor &t, ArrayRef<int64_t> shape) {
+  Tensor result;
+  result.shape.assign(shape.begin(), shape.end());
+  result.data = t.data;
+  return result;
+}
+
 //===----------------------------------------------------------------------===//
 // Plan evaluation (the index-table side of the oracle)
 //===----------------------------------------------------------------------===//
@@ -266,6 +275,97 @@ TEST_F(PlanBuilderTest, SymbolicExtentsPreservedVerbatim) {
   bindings["N"] = 4;
   EXPECT_EQ(applyPlan(plan, bindings),
             transposeRef(iota({6, 4, 2}), {1, 0, 2}).data);
+}
+
+TEST_F(PlanBuilderTest, StaticSplitMatchesOracle) {
+  reloc::PlanBuilder builder(makeType({dim(4096)}));
+  ASSERT_TRUE(succeeded(reloc::foldReshape(builder, {dim(64), dim(64)})));
+  reloc::PlanAttr plan = finalize(builder);
+  ASSERT_TRUE(plan);
+  EXPECT_EQ(plan.getPerm().asArrayRef(), ArrayRef<int64_t>({0, 1}));
+  EXPECT_TRUE(plan.getDivisibility().empty());
+  EXPECT_EQ(plan.getAxes()[0].getSrcStride(), dim(64));
+  EXPECT_EQ(plan.getAxes()[1].getSrcStride(), dim(1));
+  // A contiguous reshape moves no data: dst equals the flat iota buffer.
+  EXPECT_EQ(applyPlan(plan, noBindings), iota({4096}).data);
+}
+
+TEST_F(PlanBuilderTest, ThreeWaySplitMatchesOracle) {
+  reloc::PlanBuilder builder(makeType({dim(24)}));
+  ASSERT_TRUE(succeeded(reloc::foldReshape(builder, {dim(2), dim(3), dim(4)})));
+  reloc::PlanAttr plan = finalize(builder);
+  ASSERT_TRUE(plan);
+  EXPECT_EQ(plan.getAxes()[0].getSrcStride(), dim(12));
+  EXPECT_EQ(plan.getAxes()[1].getSrcStride(), dim(4));
+  EXPECT_EQ(plan.getAxes()[2].getSrcStride(), dim(1));
+  EXPECT_EQ(applyPlan(plan, noBindings), iota({24}).data);
+}
+
+TEST_F(PlanBuilderTest, StaticMergeMatchesOracle) {
+  reloc::PlanBuilder builder(makeType({dim(8), dim(128)}));
+  ASSERT_TRUE(succeeded(reloc::foldReshape(builder, {dim(1024)})));
+  reloc::PlanAttr plan = finalize(builder);
+  ASSERT_TRUE(plan);
+  EXPECT_EQ(plan.getAxes().size(), 1u);
+  EXPECT_EQ(plan.getAxes()[0].getSrcStride(), dim(1));
+  EXPECT_EQ(applyPlan(plan, noBindings), iota({1024}).data);
+}
+
+TEST_F(PlanBuilderTest, RegroupMatchesOracle) {
+  // m:n group: [4, 6] -> [2, 12] is merge-then-split; a trailing transpose
+  // forces real data movement through the regrouped strides.
+  reloc::PlanBuilder builder(makeType({dim(4), dim(6)}));
+  ASSERT_TRUE(succeeded(reloc::foldReshape(builder, {dim(2), dim(12)})));
+  ASSERT_TRUE(succeeded(reloc::foldTranspose(builder, {1, 0})));
+  reloc::PlanAttr plan = finalize(builder);
+  ASSERT_TRUE(plan);
+  Tensor expected = transposeRef(reshapeRef(iota({4, 6}), {2, 12}), {1, 0});
+  EXPECT_EQ(applyPlan(plan, noBindings), expected.data);
+}
+
+TEST_F(PlanBuilderTest, ReshapeThenTransposeMatchesOracle) {
+  reloc::PlanBuilder builder(makeType({dim(4096)}));
+  ASSERT_TRUE(succeeded(reloc::foldReshape(builder, {dim(64), dim(64)})));
+  ASSERT_TRUE(succeeded(reloc::foldTranspose(builder, {1, 0})));
+  reloc::PlanAttr plan = finalize(builder);
+  ASSERT_TRUE(plan);
+  Tensor expected = transposeRef(reshapeRef(iota({4096}), {64, 64}), {1, 0});
+  EXPECT_EQ(applyPlan(plan, noBindings), expected.data);
+}
+
+TEST_F(PlanBuilderTest, TrailingUnitDimsFold) {
+  reloc::PlanBuilder dropOne(makeType({dim(6), dim(1)}));
+  ASSERT_TRUE(succeeded(reloc::foldReshape(dropOne, {dim(6)})));
+  reloc::PlanAttr dropped = finalize(dropOne);
+  ASSERT_TRUE(dropped);
+  EXPECT_EQ(applyPlan(dropped, noBindings), iota({6}).data);
+
+  reloc::PlanBuilder addOne(makeType({dim(6)}));
+  ASSERT_TRUE(succeeded(reloc::foldReshape(addOne, {dim(6), dim(1)})));
+  reloc::PlanAttr added = finalize(addOne);
+  ASSERT_TRUE(added);
+  EXPECT_EQ(applyPlan(added, noBindings), iota({6}).data);
+}
+
+TEST_F(PlanBuilderTest, NonContiguousMergeBails) {
+  // Transposed data is not mergeable: outer src stride 1 != 6 * 4.
+  reloc::PlanBuilder builder(makeType({dim(4), dim(6)}));
+  ASSERT_TRUE(succeeded(reloc::foldTranspose(builder, {1, 0})));
+  EXPECT_TRUE(failed(reloc::foldReshape(builder, {dim(24)})));
+  // Bail leaves the builder untouched: the transpose-only plan still
+  // finalizes and its oracle still holds.
+  reloc::PlanAttr plan = finalize(builder);
+  ASSERT_TRUE(plan);
+  EXPECT_EQ(plan.getPerm().asArrayRef(), ArrayRef<int64_t>({1, 0}));
+  EXPECT_EQ(applyPlan(plan, noBindings),
+            transposeRef(iota({4, 6}), {1, 0}).data);
+}
+
+TEST_F(PlanBuilderTest, ElementCountMismatchBails) {
+  reloc::PlanBuilder builder(makeType({dim(6)}));
+  EXPECT_TRUE(failed(reloc::foldReshape(builder, {dim(4)})));
+  EXPECT_TRUE(failed(reloc::foldReshape(builder, {dim(4), dim(2)})));
+  EXPECT_EQ(builder.axes.size(), 1u);
 }
 
 } // namespace
