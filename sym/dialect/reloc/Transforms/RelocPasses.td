@@ -38,12 +38,12 @@ def TestRelocTransferPass : Pass<"test-reloc-transfer", "::mlir::ModuleOp"> {
   let summary = "Test pass folding straight-line reloc chains via transfer functions";
   let description = [{
     Testing-only pass. For every foldable chain op (reloc.transpose,
-    reloc.reshape) whose result has no reloc user (a chain tail), walks
-    back through the straight-line chain to its root, seeds a PlanBuilder
-    from the root's type, applies the transfer functions in order, and
-    emits the finalized #reloc.plan as a remark on the tail. A transfer
-    function that bails emits `fold bail: <op name>` on the failing op
-    instead. #B3 extends the walk to reloc.pad.
+    reloc.reshape, reloc.pad) whose result has no reloc user (a chain tail),
+    walks back through the straight-line chain to its root, seeds a
+    PlanBuilder from the root's type, applies the transfer functions in
+    order, and emits the finalized #reloc.plan as a remark on the tail. A
+    transfer function that bails emits `fold bail: <op name>` on the
+    failing op instead.
   }];
 
   let dependentDialects = [
