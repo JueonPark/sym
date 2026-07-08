@@ -40,10 +40,13 @@ func.func @symbolic_extents(%t: !sym.tensor<[6, "N", 2], f32>) -> !sym.tensor<["
   return %0 : !sym.tensor<["N", 6, 2], f32>
 }
 
-// A transpose feeding another reloc op is not a chain tail: no remark on
-// it (verify-diagnostics fails on any unexpected remark).
+// A transpose feeding another reloc op is not a chain tail on its own: no
+// remark on %0 (verify-diagnostics fails on any unexpected remark). Since
+// #B2 the chain continues into the reshape tail, which bails here for the
+// same non-contiguous-merge reason as fold_bail.mlir.
 func.func @not_a_tail(%t: !sym.tensor<[4, 2], f32>) -> !sym.tensor<[8], f32> {
   %0 = reloc.transpose %t perm [1, 0] : !sym.tensor<[4, 2], f32> -> !sym.tensor<[2, 4], f32>
+  // expected-remark @below {{fold bail: reloc.reshape}}
   %1 = reloc.reshape %0 to [8] : !sym.tensor<[2, 4], f32> -> !sym.tensor<[8], f32>
   return %1 : !sym.tensor<[8], f32>
 }
