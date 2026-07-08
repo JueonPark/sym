@@ -19,8 +19,8 @@ PlanBuilder::PlanBuilder(sym::SymbolicTensorType input)
   ArrayRef<Attribute> shape = input.getShape();
   assert(!shape.empty() && "rank-0 tensors have no relocation plan");
   Attribute zero = sym::ConstantExprAttr::get(ctx, 0);
-  src = TensorDescAttr::get(ctx, shape, /*strides=*/ArrayRef<Attribute>(),
-                            zero, input.getElementType());
+  src = TensorDescAttr::get(ctx, shape, /*strides=*/ArrayRef<Attribute>(), zero,
+                            input.getElementType());
   SmallVector<Attribute> srcStrides = canonicalRowMajorStrides(shape, ctx);
   for (auto [k, extent] : llvm::enumerate(shape)) {
     axes.push_back({("d" + Twine(k)).str(), extent, srcStrides[k]});
@@ -37,8 +37,7 @@ PlanAttr PlanBuilder::finalize(Location loc) const {
   auto dst = TensorDescAttr::get(ctx, dstExtents,
                                  /*strides=*/ArrayRef<Attribute>(), zero,
                                  src.getElementType());
-  SmallVector<Attribute> dstStrides =
-      canonicalRowMajorStrides(dstExtents, ctx);
+  SmallVector<Attribute> dstStrides = canonicalRowMajorStrides(dstExtents, ctx);
   SmallVector<AxisInfoAttr> axisAttrs;
   axisAttrs.reserve(axes.size());
   for (auto [k, axis] : llvm::enumerate(axes))
