@@ -45,17 +45,23 @@ PlanAttr PlanBuilder::finalize(Location loc) const {
                                           axis.srcStride, dstStrides[k]));
   AffineMap forward = AffineMap::getPermutationMap(perm, ctx);
   auto inverse = AffineMapAttr::get(inversePermutation(forward));
+  Attribute one = sym::ConstantExprAttr::get(ctx, 1);
+  SmallVector<bool> contiguous;
+  contiguous.reserve(axes.size());
+  for (const PlanAxis &axis : axes)
+    contiguous.push_back(proveEqual(axis.srcStride, one) == Proof::Proven);
   return PlanAttr::getChecked(
       [&]() { return emitError(loc); }, ctx, src, dst,
       DenseI64ArrayAttr::get(ctx, perm), ArrayRef<AxisInfoAttr>(axisAttrs),
       /*padFill=*/ArrayRef<PadFillAttr>(),
-      /*divisibility=*/ArrayRef<DivisibilityAttr>(),
+      ArrayRef<DivisibilityAttr>(divisibility),
       /*alignment=*/ArrayRef<AlignmentAttr>(),
-      DenseBoolArrayAttr::get(ctx, ArrayRef<bool>()),
+      DenseBoolArrayAttr::get(ctx, contiguous),
       /*noCopy=*/false, /*runtimePadCheck=*/false, inverse);
 }
 
-void mlir::reloc::foldTranspose(PlanBuilder &plan, ArrayRef<int64_t> opPerm) {
+LogicalResult mlir::reloc::foldTranspose(PlanBuilder &plan,
+                                         ArrayRef<int64_t> opPerm) {
   int64_t rank = static_cast<int64_t>(plan.axes.size());
   assert(static_cast<int64_t>(opPerm.size()) == rank &&
          "transpose perm size must match plan rank");
@@ -71,4 +77,5 @@ void mlir::reloc::foldTranspose(PlanBuilder &plan, ArrayRef<int64_t> opPerm) {
   }
   plan.axes = std::move(newAxes);
   plan.perm = std::move(newPerm);
+  return success();
 }

@@ -31,8 +31,11 @@ struct PlanAxis {
 /// Invariants between transfer-function calls:
 /// - axes[k] describes dst axis k (destination order);
 /// - perm maps dst axis k to source-view axis perm[k] and is a bijection
-///   on [0, axes.size());
-/// - axis extents are the current dst extents (no pad widths until #B3).
+///   on [0, axes.size()); a folded reshape re-baselines the view, so perm
+///   resets to the identity over the new rank;
+/// - axis extents are the current dst extents (no pad widths until #B3);
+/// - divisibility holds the constraints emitted by folds so far, in
+///   emission order, deduplicated.
 class PlanBuilder {
 public:
   /// Seed the identity plan over `input` (rank >= 1): the src descriptor
@@ -43,9 +46,10 @@ public:
 
   /// Emit the #reloc.plan for the current state: dst gets the axis extents
   /// with canonical row-major strides, the inverse map is the inverse of
-  /// perm, and no constraint sections are emitted (no_copy detection lands
-  /// in #B5). Verifier-checked; returns null after emitting an error at
-  /// `loc` if verification fails.
+  /// perm, divisibility constraints are emitted in insertion order, and
+  /// contiguity flags mark axes with provably-unit source stride (no_copy
+  /// detection lands in #B5). Verifier-checked; returns null after
+  /// emitting an error at `loc` if verification fails.
   PlanAttr finalize(Location loc) const;
 
   // State is public: transfer functions are free functions over the builder.
@@ -53,14 +57,16 @@ public:
   TensorDescAttr src;
   SmallVector<PlanAxis> axes;
   SmallVector<int64_t> perm;
+  SmallVector<DivisibilityAttr> divisibility;
 };
 
 /// #B1 transfer function: fold `reloc.transpose` with permutation `opPerm`
 /// (result dim k = operand dim opPerm[k]) into `plan` by permuting the axes
 /// and composing the permutations (perm[k] <- perm[opPerm[k]]). Emits no
-/// constraints and cannot bail; `opPerm` must be a valid permutation of the
-/// current rank (guaranteed by the reloc.transpose verifier).
-void foldTranspose(PlanBuilder &plan, ArrayRef<int64_t> opPerm);
+/// constraints and never fails (the result is always success(), kept for a
+/// uniform transfer-function API); `opPerm` must be a valid permutation of
+/// the current rank (guaranteed by the reloc.transpose verifier).
+LogicalResult foldTranspose(PlanBuilder &plan, ArrayRef<int64_t> opPerm);
 
 } // namespace reloc
 } // namespace mlir

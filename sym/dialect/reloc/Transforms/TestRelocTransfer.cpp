@@ -45,7 +45,8 @@ struct TestRelocTransferPass
       PlanBuilder builder(
           cast<sym::SymbolicTensorType>(chain.front().getInput().getType()));
       for (TransposeOp op : chain)
-        foldTranspose(builder, op.getPerm());
+        if (failed(foldTranspose(builder, op.getPerm())))
+          return;
       if (PlanAttr plan = builder.finalize(tail.getLoc()))
         tail->emitRemark() << "folded plan: " << plan;
     });

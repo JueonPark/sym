@@ -204,13 +204,16 @@ TEST_F(PlanBuilderTest, IdentityPlanFinalizes) {
   EXPECT_FALSE(plan.getNoCopy()); // no_copy detection is #B5, not #B1
   EXPECT_TRUE(plan.getPadFill().empty());
   EXPECT_TRUE(plan.getDivisibility().empty());
+  // finalize emits per-axis contiguity: srcStride == 1 proven (B2).
+  EXPECT_EQ(plan.getContiguity().asArrayRef(),
+            ArrayRef<bool>({false, false, true}));
   expectInverseInvertsForward(plan);
   EXPECT_EQ(applyPlan(plan, noBindings), iota({6, 4, 2}).data);
 }
 
 TEST_F(PlanBuilderTest, SingleTransposeMatchesOracle) {
   reloc::PlanBuilder builder(makeType({dim(6), dim(4), dim(2)}));
-  reloc::foldTranspose(builder, {2, 0, 1});
+  ASSERT_TRUE(succeeded(reloc::foldTranspose(builder, {2, 0, 1})));
   reloc::PlanAttr plan = finalize(builder);
   ASSERT_TRUE(plan);
   EXPECT_EQ(plan.getPerm().asArrayRef(), ArrayRef<int64_t>({2, 0, 1}));
@@ -221,8 +224,8 @@ TEST_F(PlanBuilderTest, SingleTransposeMatchesOracle) {
 
 TEST_F(PlanBuilderTest, ComposedTransposesMatchOracle) {
   reloc::PlanBuilder builder(makeType({dim(6), dim(4), dim(2)}));
-  reloc::foldTranspose(builder, {2, 0, 1});
-  reloc::foldTranspose(builder, {0, 2, 1});
+  ASSERT_TRUE(succeeded(reloc::foldTranspose(builder, {2, 0, 1})));
+  ASSERT_TRUE(succeeded(reloc::foldTranspose(builder, {0, 2, 1})));
   reloc::PlanAttr plan = finalize(builder);
   ASSERT_TRUE(plan);
   // Composition: perm[k] <- old_perm[op_perm[k]] = [2, 1, 0].
@@ -235,8 +238,9 @@ TEST_F(PlanBuilderTest, ComposedTransposesMatchOracle) {
 
 TEST_F(PlanBuilderTest, InversePairComposesToIdentity) {
   reloc::PlanBuilder builder(makeType({dim(6), dim(4), dim(2)}));
-  reloc::foldTranspose(builder, {2, 0, 1});
-  reloc::foldTranspose(builder, {1, 2, 0}); // inverse of [2, 0, 1]
+  ASSERT_TRUE(succeeded(reloc::foldTranspose(builder, {2, 0, 1})));
+  ASSERT_TRUE(succeeded(
+      reloc::foldTranspose(builder, {1, 2, 0}))); // inverse of [2, 0, 1]
   reloc::PlanAttr plan = finalize(builder);
   ASSERT_TRUE(plan);
   // Identity elision: the composed perm IS the identity permutation, and
@@ -251,7 +255,7 @@ TEST_F(PlanBuilderTest, InversePairComposesToIdentity) {
 TEST_F(PlanBuilderTest, SymbolicExtentsPreservedVerbatim) {
   Attribute n = dim("N");
   reloc::PlanBuilder builder(makeType({dim(6), n, dim(2)}));
-  reloc::foldTranspose(builder, {1, 0, 2});
+  ASSERT_TRUE(succeeded(reloc::foldTranspose(builder, {1, 0, 2})));
   reloc::PlanAttr plan = finalize(builder);
   ASSERT_TRUE(plan);
   // The symbol rides through the fold untouched (same uniqued attribute).
