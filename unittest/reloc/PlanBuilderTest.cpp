@@ -185,6 +185,14 @@ protected:
   Attribute dim(StringRef name) {
     return sym::SymbolExprAttr::get(&context, name);
   }
+  Attribute div(Attribute lhs, int64_t rhs) {
+    return sym::getSimplifiedBinaryExpr(&context, sym::SymbolicExprOp::Div, lhs,
+                                        dim(rhs));
+  }
+  Attribute mul(int64_t lhs, Attribute rhs) {
+    return sym::getSimplifiedBinaryExpr(&context, sym::SymbolicExprOp::Mul,
+                                        dim(lhs), rhs);
+  }
   sym::SymbolicTensorType makeType(ArrayRef<Attribute> shape) {
     return sym::SymbolicTensorType::get(&context, shape,
                                         Float32Type::get(&context));
@@ -366,6 +374,87 @@ TEST_F(PlanBuilderTest, ElementCountMismatchBails) {
   EXPECT_TRUE(failed(reloc::foldReshape(builder, {dim(4)})));
   EXPECT_TRUE(failed(reloc::foldReshape(builder, {dim(4), dim(2)})));
   EXPECT_EQ(builder.axes.size(), 1u);
+}
+
+TEST_F(PlanBuilderTest, SymbolicSplitEmitsDivisibility) {
+  Attribute n = dim("N");
+  reloc::PlanBuilder builder(makeType({n, dim(4)}));
+  ASSERT_TRUE(
+      succeeded(reloc::foldReshape(builder, {div(n, 8), dim(8), dim(4)})));
+  ASSERT_EQ(builder.divisibility.size(), 1u);
+  EXPECT_EQ(builder.divisibility[0].getExpr(), n);
+  EXPECT_EQ(builder.divisibility[0].getDivisor(), 8);
+  // Exercise the plan with a binding where the divisibility holds.
+  ASSERT_TRUE(succeeded(reloc::foldTranspose(builder, {2, 0, 1})));
+  reloc::PlanAttr plan = finalize(builder);
+  ASSERT_TRUE(plan);
+  llvm::StringMap<int64_t> bindings;
+  bindings["N"] = 48;
+  Tensor expected =
+      transposeRef(reshapeRef(iota({48, 4}), {6, 8, 4}), {2, 0, 1});
+  EXPECT_EQ(applyPlan(plan, bindings), expected.data);
+}
+
+TEST_F(PlanBuilderTest, SymbolicMergeWhenContiguityProvable) {
+  Attribute n = dim("N");
+  reloc::PlanBuilder builder(makeType({n, dim(4)}));
+  ASSERT_TRUE(succeeded(reloc::foldReshape(builder, {mul(4, n)})));
+  reloc::PlanAttr plan = finalize(builder);
+  ASSERT_TRUE(plan);
+  EXPECT_TRUE(plan.getDivisibility().empty());
+  EXPECT_EQ(plan.getContiguity().asArrayRef(), ArrayRef<bool>({true}));
+  llvm::StringMap<int64_t> bindings;
+  bindings["N"] = 6;
+  EXPECT_EQ(applyPlan(plan, bindings), iota({24}).data);
+}
+
+TEST_F(PlanBuilderTest, TwoSymbolicSplitEntriesBail) {
+  reloc::PlanBuilder builder(makeType({dim("N")}));
+  EXPECT_TRUE(failed(reloc::foldReshape(builder, {dim("M"), dim("K")})));
+  EXPECT_EQ(builder.axes.size(), 1u);
+}
+
+TEST_F(PlanBuilderTest, UnprovableSymbolicMergeBails) {
+  Attribute n = dim("N"), m = dim("M");
+  reloc::PlanBuilder builder(makeType({n, m}));
+  ASSERT_TRUE(succeeded(reloc::foldTranspose(builder, {1, 0})));
+  EXPECT_TRUE(failed(reloc::foldReshape(
+      builder, {sym::getSimplifiedBinaryExpr(&context, sym::SymbolicExprOp::Mul,
+                                             m, n)})));
+  EXPECT_EQ(builder.axes.size(), 2u);
+}
+
+TEST_F(PlanBuilderTest, DivisibilityDeduplicated) {
+  Attribute n = dim("N");
+  reloc::PlanBuilder builder(makeType({n, n}));
+  ASSERT_TRUE(succeeded(
+      reloc::foldReshape(builder, {div(n, 64), dim(64), div(n, 64), dim(64)})));
+  EXPECT_EQ(builder.divisibility.size(), 1u);
+}
+
+TEST_F(PlanBuilderTest, ReferenceChainMatchesBuildDocConstraintSet) {
+  // Build doc §2.1 acceptance: [N, N] -> blocked 4D view + transpose;
+  // constraint set must be exactly {divisible(N, 64),
+  // contiguous = [false, false, false, true], no_copy = false}.
+  Attribute n = dim("N");
+  reloc::PlanBuilder builder(makeType({n, n}));
+  ASSERT_TRUE(succeeded(
+      reloc::foldReshape(builder, {div(n, 64), dim(64), div(n, 64), dim(64)})));
+  ASSERT_TRUE(succeeded(reloc::foldTranspose(builder, {2, 0, 1, 3})));
+  reloc::PlanAttr plan = finalize(builder);
+  ASSERT_TRUE(plan);
+  ASSERT_EQ(plan.getDivisibility().size(), 1u);
+  EXPECT_EQ(plan.getDivisibility()[0].getExpr(), n);
+  EXPECT_EQ(plan.getDivisibility()[0].getDivisor(), 64);
+  EXPECT_EQ(plan.getContiguity().asArrayRef(),
+            ArrayRef<bool>({false, false, false, true}));
+  EXPECT_FALSE(plan.getNoCopy());
+  EXPECT_TRUE(plan.getPadFill().empty());
+  llvm::StringMap<int64_t> bindings;
+  bindings["N"] = 128;
+  Tensor expected =
+      transposeRef(reshapeRef(iota({128, 128}), {2, 64, 2, 64}), {2, 0, 1, 3});
+  EXPECT_EQ(applyPlan(plan, bindings), expected.data);
 }
 
 } // namespace

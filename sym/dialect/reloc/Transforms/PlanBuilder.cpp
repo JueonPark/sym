@@ -6,6 +6,7 @@
 
 #include "PlanBuilder.h"
 #include "RelocUtils.h"
+#include "SymUtils.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Diagnostics.h"
@@ -96,21 +97,38 @@ static bool getConstant(Attribute attr, int64_t &value) {
 
 /// True iff `targets` is a valid decomposition of one axis of extent
 /// `extent`. Static rule: all entries constant with product == extent.
-/// (Task 3 adds the one-symbolic rule.) Sets needsDivisibility/divisor for
-/// the symbolic rule only.
+/// One-symbolic rule: exactly one non-constant entry, logically equal to
+/// `extent floordiv C` where C is the product of the remaining (constant)
+/// entries — sets needsDivisibility (unless C == 1) and divisor = C.
 static bool matchesSplit(Attribute extent, ArrayRef<Attribute> targets,
                          MLIRContext *ctx, bool &needsDivisibility,
                          int64_t &divisor) {
   needsDivisibility = false;
   int64_t extentValue;
   int64_t constProduct = 1;
+  Attribute symbolic;
   for (Attribute target : targets) {
     int64_t value;
-    if (!getConstant(target, value))
-      return false; // symbolic entries: Task 3
-    constProduct *= value;
+    if (getConstant(target, value)) {
+      constProduct *= value;
+      continue;
+    }
+    if (symbolic)
+      return false; // at most one symbolic entry in v0
+    symbolic = target;
   }
-  return getConstant(extent, extentValue) && extentValue == constProduct;
+  if (!symbolic)
+    return getConstant(extent, extentValue) && extentValue == constProduct;
+  if (getConstant(extent, extentValue))
+    return false; // constant extent cannot absorb a symbolic entry
+  Attribute quotient = sym::getSimplifiedBinaryExpr(
+      ctx, sym::SymbolicExprOp::Div, extent,
+      sym::ConstantExprAttr::get(ctx, constProduct));
+  if (!sym::UnificationSolver::areLogicallyEqual(symbolic, quotient))
+    return false;
+  needsDivisibility = constProduct > 1;
+  divisor = constProduct;
+  return true;
 }
 
 /// P1a contiguity predicate over builder axes: outer.srcStride ==
@@ -185,8 +203,14 @@ LogicalResult mlir::reloc::foldReshape(PlanBuilder &plan,
           newProd = mul(newProd, targetShape[jEnd]);
           ++jEnd;
         }
+      } else if (iEnd == i + 1 && jEnd < targetShape.size()) {
+        newProd = mul(newProd, targetShape[jEnd]);
+        ++jEnd; // extend the candidate split run
+      } else if (iEnd < old.size()) {
+        oldProd = mul(oldProd, old[iEnd].extent);
+        ++iEnd; // extend the candidate merge run
       } else {
-        return failure(); // symbolic growth: Task 3
+        return failure();
       }
     }
 
