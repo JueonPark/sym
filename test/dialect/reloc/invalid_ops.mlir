@@ -37,3 +37,27 @@ func.func @reshape_result_mismatch(%t: !sym.tensor<[4096], f32>) {
   %0 = reloc.reshape %t to [64, 64] : !sym.tensor<[4096], f32> -> !sym.tensor<[32, 128], f32>
   return
 }
+
+// -----
+
+func.func @pad_axis(%t: !sym.tensor<[6], f32>) {
+  // expected-error @below {{axis (3) is out of range for operand rank 1}}
+  %0 = reloc.pad %t axis 3 lo 1 hi 1 value (0.0 : f32) : !sym.tensor<[6], f32> -> !sym.tensor<[8], f32>
+  return
+}
+
+// -----
+
+func.func @pad_value_type(%t: !sym.tensor<[6], f32>) {
+  // expected-error @below {{pad value type ('f64') must match the element type ('f32')}}
+  %0 = reloc.pad %t axis 0 lo 1 hi 1 value (0.0 : f64) : !sym.tensor<[6], f32> -> !sym.tensor<[8], f32>
+  return
+}
+
+// -----
+
+func.func @pad_result_dim(%t: !sym.tensor<[6], f32>) {
+  // expected-error @below {{result dimension 0 must equal operand dimension + lo + hi}}
+  %0 = reloc.pad %t axis 0 lo 1 hi 1 value (0.0 : f32) : !sym.tensor<[6], f32> -> !sym.tensor<[9], f32>
+  return
+}

@@ -41,3 +41,22 @@ func.func @reshape_symbolic(%t: !sym.tensor<["N", 64], f32>) -> !sym.tensor<["M"
   %0 = reloc.reshape %t to [M, 64] : !sym.tensor<["N", 64], f32> -> !sym.tensor<["M", 64], f32>
   return %0 : !sym.tensor<["M", 64], f32>
 }
+
+// CHECK-LABEL: func.func @pad_static
+func.func @pad_static(%t: !sym.tensor<[6], f32>) -> !sym.tensor<[8], f32> {
+  // CHECK: reloc.pad %{{.*}} axis 0 lo 1 hi 1 value (1.000000e+00 : f32) : !sym.tensor<[6], f32> -> !sym.tensor<[8], f32>
+  %0 = reloc.pad %t axis 0 lo 1 hi 1 value (1.0 : f32) : !sym.tensor<[6], f32> -> !sym.tensor<[8], f32>
+  return %0 : !sym.tensor<[8], f32>
+}
+
+// The acceptance-criterion chain: transpose -> reshape -> pad in one function.
+// CHECK-LABEL: func.func @chain
+func.func @chain(%t: !sym.tensor<[64, 32], f32>) -> !sym.tensor<[8, 258], f32> {
+  // CHECK: reloc.transpose
+  %0 = reloc.transpose %t perm [1, 0] : !sym.tensor<[64, 32], f32> -> !sym.tensor<[32, 64], f32>
+  // CHECK: reloc.reshape
+  %1 = reloc.reshape %0 to [8, 256] : !sym.tensor<[32, 64], f32> -> !sym.tensor<[8, 256], f32>
+  // CHECK: reloc.pad
+  %2 = reloc.pad %1 axis 1 lo 1 hi 1 value (0.0 : f32) : !sym.tensor<[8, 256], f32> -> !sym.tensor<[8, 258], f32>
+  return %2 : !sym.tensor<[8, 258], f32>
+}

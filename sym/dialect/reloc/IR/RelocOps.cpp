@@ -32,17 +32,6 @@ static void printOpTypes(OpAsmPrinter &printer, Type inputType,
   printer << " : " << inputType << " -> " << resultType;
 }
 
-/// Elementwise logical equality of two symbolic shapes of equal rank.
-static bool logicallyEqualShapes(ArrayRef<Attribute> lhs,
-                                 ArrayRef<Attribute> rhs) {
-  if (lhs.size() != rhs.size())
-    return false;
-  for (auto [left, right] : llvm::zip_equal(lhs, rhs))
-    if (!sym::UnificationSolver::areLogicallyEqual(left, right))
-      return false;
-  return true;
-}
-
 //===----------------------------------------------------------------------===//
 // TransposeOp
 //===----------------------------------------------------------------------===//
@@ -218,6 +207,115 @@ LogicalResult ReshapeOp::verify() {
     return emitOpError() << "element count provably changes: operand has "
                          << inputCount << " elements, target has "
                          << targetCount;
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// PadOp
+//===----------------------------------------------------------------------===//
+
+/// The padded dimension: (dim + lo) + hi, parse-style simplified — the same
+/// association order the plan verifier uses, so canonical forms match.
+static Attribute paddedDim(Attribute dim, Attribute lo, Attribute hi,
+                           MLIRContext *ctx) {
+  return sym::getSimplifiedBinaryExpr(
+      ctx, sym::SymbolicExprOp::Add,
+      sym::getSimplifiedBinaryExpr(ctx, sym::SymbolicExprOp::Add, dim, lo), hi);
+}
+
+void PadOp::build(OpBuilder &builder, OperationState &state, Value input,
+                  int64_t axis, Attribute lo, Attribute hi, TypedAttr value) {
+  auto inputType = cast<sym::SymbolicTensorType>(input.getType());
+  SmallVector<Attribute> shape(inputType.getShape());
+  shape[axis] = paddedDim(shape[axis], lo, hi, builder.getContext());
+  auto resultType = sym::SymbolicTensorType::get(builder.getContext(), shape,
+                                                 inputType.getElementType());
+  build(builder, state, resultType, input, builder.getI64IntegerAttr(axis), lo,
+        hi, value);
+}
+
+ParseResult PadOp::parse(OpAsmParser &parser, OperationState &result) {
+  OpAsmParser::UnresolvedOperand input;
+  int64_t axis;
+  if (parser.parseOperand(input) || parser.parseKeyword("axis") ||
+      parser.parseInteger(axis))
+    return failure();
+  result.addAttribute(getAxisAttrName(result.name),
+                      parser.getBuilder().getI64IntegerAttr(axis));
+  if (parser.parseKeyword("lo"))
+    return failure();
+  Attribute lo = parseSymExpr(parser);
+  if (!lo || parser.parseKeyword("hi"))
+    return failure();
+  Attribute hi = parseSymExpr(parser);
+  if (!hi)
+    return failure();
+  result.addAttribute(getLoAttrName(result.name), lo);
+  result.addAttribute(getHiAttrName(result.name), hi);
+  Attribute value;
+  if (parser.parseKeyword("value") || parser.parseLParen() ||
+      parser.parseAttribute(value) || parser.parseRParen())
+    return failure();
+  result.addAttribute(getValueAttrName(result.name), value);
+  if (parser.parseOptionalAttrDict(result.attributes))
+    return failure();
+  Type inputType, resultType;
+  if (parseOpTypes(parser, inputType, resultType) ||
+      parser.resolveOperand(input, inputType, result.operands))
+    return failure();
+  result.addTypes(resultType);
+  return success();
+}
+
+void PadOp::print(OpAsmPrinter &printer) {
+  printer << " " << getInput() << " axis " << getAxis() << " lo ";
+  printSymExpr(printer, getLo());
+  printer << " hi ";
+  printSymExpr(printer, getHi());
+  printer << " value (";
+  printer.printAttribute(getValue());
+  printer << ")";
+  printer.printOptionalAttrDict(
+      (*this)->getAttrs(),
+      /*elidedAttrs=*/{getAxisAttrName(), getLoAttrName(), getHiAttrName(),
+                       getValueAttrName()});
+  printOpTypes(printer, getInput().getType(), getResult().getType());
+}
+
+LogicalResult PadOp::verify() {
+  auto inputType = cast<sym::SymbolicTensorType>(getInput().getType());
+  auto resultType = cast<sym::SymbolicTensorType>(getResult().getType());
+  int64_t axis = getAxis();
+  int64_t rank = static_cast<int64_t>(inputType.getShape().size());
+
+  if (axis < 0 || axis >= rank)
+    return emitOpError() << "axis (" << axis << ") is out of range for "
+                         << "operand rank " << rank;
+  if (!isSymExpr(getLo()) || !isSymExpr(getHi()))
+    return emitOpError() << "lo and hi must be sym expressions";
+  TypedAttr value = getValue();
+  if (value.getType() != inputType.getElementType())
+    return emitOpError() << "pad value type (" << value.getType()
+                         << ") must match the element type ("
+                         << inputType.getElementType() << ")";
+  if (resultType.getShape().size() != inputType.getShape().size())
+    return emitOpError() << "result rank must match operand rank";
+  for (int64_t k = 0; k < rank; ++k) {
+    Attribute expected = k == axis ? paddedDim(inputType.getShape()[k], getLo(),
+                                               getHi(), getContext())
+                                   : inputType.getShape()[k];
+    if (!sym::UnificationSolver::areLogicallyEqual(resultType.getShape()[k],
+                                                   expected)) {
+      if (k == axis)
+        return emitOpError() << "result dimension " << k
+                             << " must equal operand dimension + lo + hi";
+      return emitOpError() << "result dimension " << k
+                           << " must equal operand dimension " << k;
+    }
+  }
+  if (resultType.getElementType() != inputType.getElementType())
+    return emitOpError() << "result element type must match operand element "
+                            "type";
   return success();
 }
 
