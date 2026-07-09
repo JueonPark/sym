@@ -54,6 +54,24 @@ jobs:
               ninja -C build/sym check-sym
             '
 
+      - name: Assert libreloc is MLIR-free
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            ${{ env.REGISTRY }}/${{ steps.image.outputs.name }}:${{ steps.llvm-version.outputs.short_commit }} \
+            bash -c '
+              set -e
+              # nm must SUCCEED before its output means anything: a bare
+              # "if nm | grep" would false-pass when nm itself errors.
+              nm -D build/sym/libreloc/libreloc_runtime.so > /tmp/reloc-syms.txt
+              if grep -iE "mlir|llvm" /tmp/reloc-syms.txt; then
+                echo "ERROR: MLIR/LLVM symbols found in libreloc_runtime.so" >&2
+                exit 1
+              fi
+              echo "libreloc_runtime.so is MLIR/LLVM-free ($(wc -l < /tmp/reloc-syms.txt) dynamic symbols checked)"
+            '
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -67,6 +85,8 @@ jobs:
             build/sym/sym/dialect/reloc/Transforms/*.inc
             build/sym/sym/tools/sym-opt
             build/sym/unittest/reloc/reloc-plan-builder-test
+            build/sym/libreloc/libreloc_runtime.so
+            build/sym/libreloc/test/libreloc-test
             build/sym/test/lit.site.cfg.py
 
   clang-tidy:
@@ -158,6 +178,8 @@ jobs:
         run: |
           chmod +x build/sym/sym/tools/sym-opt
           chmod +x build/sym/unittest/reloc/reloc-plan-builder-test
+          chmod +x build/sym/libreloc/libreloc_runtime.so
+          chmod +x build/sym/libreloc/test/libreloc-test
 
       - name: Run tests
         run: |
