@@ -52,4 +52,30 @@ def TestRelocTransferPass : Pass<"test-reloc-transfer", "::mlir::ModuleOp"> {
   ];
 }
 
+//===----------------------------------------------------------------------===//
+// RelocFoldPass
+//===----------------------------------------------------------------------===//
+
+def RelocFoldPass : Pass<"reloc-fold", "::mlir::ModuleOp"> {
+  let summary = "Fold straight-line reloc.* chains into reloc.plan_result ops";
+  let description = [{
+    Identifies maximal straight-line chains of reloc.transpose /
+    reloc.reshape / reloc.pad ops, folds each front-to-back through the
+    P1b transfer functions, and materializes the result as a
+    reloc.plan_result op carrying the folded #reloc.plan. Folding is
+    all-or-nothing per chain: when a transfer function bails, a non-reloc
+    op interrupts the chain, or an intermediate value has multiple uses,
+    every op in the chain is marked with a `reloc.fallback` unit attribute
+    and left intact (per-op fallback). Ops already marked reloc.fallback
+    are skipped, which also makes the pass idempotent. Every produced plan
+    passes the #reloc.plan verifier; a verification failure is a pass
+    error, never a silent skip.
+  }];
+
+  let dependentDialects = [
+    "sym::SymDialect",
+    "reloc::RelocDialect"
+  ];
+}
+
 #endif // RELOC_PASSES_TD

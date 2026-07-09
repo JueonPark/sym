@@ -111,6 +111,14 @@ LogicalResult foldReshape(PlanBuilder &plan, ArrayRef<Attribute> targetShape);
 LogicalResult foldPad(PlanBuilder &plan, int64_t axis, Attribute lo,
                       Attribute hi, TypedAttr value);
 
+/// True for ops the P1b transfer functions can fold (#B1-#B3:
+/// reloc.transpose, reloc.reshape, reloc.pad).
+bool isFoldableChainOp(Operation *op);
+
+/// Dispatch one chain op through its transfer function. Returns failure
+/// for a transfer-function bail or a non-foldable op.
+LogicalResult foldChainOp(PlanBuilder &plan, Operation *op);
+
 } // namespace reloc
 } // namespace mlir
 
