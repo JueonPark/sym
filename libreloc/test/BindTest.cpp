@@ -331,4 +331,16 @@ TEST(Bind, AlignmentAxisOutOfRangeRejected) {
             std::string::npos);
 }
 
+TEST(Bind, PadDstAxisOutOfRangeRejected) {
+  // A hand-built pad.dstAxis past the plan's axis count must be a hard
+  // bind error, not an OOB WRITE into the axes[] vector. This guard runs
+  // for every pad, independent of runtime_pad_check.
+  RelocationPlan plan = decoded(kDegradedHex);
+  ASSERT_FALSE(plan.padFill.empty());
+  plan.runtimePadCheck = false;
+  plan.padFill[0].dstAxis = 999999;
+  EXPECT_NE(bindErr(plan, {{"N", 1000}}).find("out of range"),
+            std::string::npos);
+}
+
 } // namespace

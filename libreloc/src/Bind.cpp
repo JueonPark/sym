@@ -185,6 +185,13 @@ BindResult bind(const RelocationPlan &plan, const SymbolMap &symbolMap,
     if (!evalField(pad.lo, symbols, "pad lo", lo, error) ||
         !evalField(pad.hi, symbols, "pad hi", hi, error))
       return BindError{error};
+    // The decoder rejects an out-of-range pad.dstAxis, but bind is public
+    // and may be handed a hand-built plan; guard the index (mirrors the
+    // alignment-axis guard) before the OOB WRITE into axes[] below. This
+    // also makes the dst.extents access inside the runtime_pad_check block
+    // safe against a bad dstAxis.
+    if (pad.dstAxis >= plan.axes.size())
+      return BindError{"pad dst_axis out of range"};
     ConcreteAxis &axis = axes[pad.dstAxis];
     axis.padded = true;
     axis.lo = lo;
