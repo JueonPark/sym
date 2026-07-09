@@ -60,3 +60,11 @@ func.func @chain(%t: !sym.tensor<[64, 32], f32>) -> !sym.tensor<[8, 258], f32> {
   %2 = reloc.pad %1 axis 1 lo 1 hi 1 value (0.0 : f32) : !sym.tensor<[8, 256], f32> -> !sym.tensor<[8, 258], f32>
   return %2 : !sym.tensor<[8, 258], f32>
 }
+
+// plan_result: a folded chain materialized as a first-class value (#B4).
+// CHECK-LABEL: func.func @plan_result_roundtrip
+func.func @plan_result_roundtrip(%t: !sym.tensor<[8], i32>) -> !sym.tensor<[8], i32> {
+  // CHECK: reloc.plan_result %{{.*}} plan(#reloc.plan<src = tensor<[8], i32>, dst = tensor<[8], i32>, perm = [0], axes = [{name = "x", extent = 8, src_stride = 1, dst_stride = 1}], inverse = #map{{[0-9]*}}>) : !sym.tensor<[8], i32> -> !sym.tensor<[8], i32>
+  %0 = reloc.plan_result %t plan(#reloc.plan<src = tensor<[8], i32>, dst = tensor<[8], i32>, perm = [0], axes = [{name = "x", extent = 8, src_stride = 1, dst_stride = 1}], inverse = affine_map<(d0) -> (d0)>>) : !sym.tensor<[8], i32> -> !sym.tensor<[8], i32>
+  return %0 : !sym.tensor<[8], i32>
+}

@@ -11,7 +11,6 @@
 #include "RelocPasses.h"
 #include "SymDialect.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "llvm/ADT/TypeSwitch.h"
 
 namespace mlir {
 namespace reloc {
@@ -21,15 +20,10 @@ namespace reloc {
 
 namespace {
 
-/// Chain ops the transfer functions can fold (#B1-#B3: the full P1b set).
-static bool isFoldableChainOp(Operation *op) {
-  return isa<TransposeOp, ReshapeOp, PadOp>(op);
-}
-
 /// True if any user of `value` is a reloc op (the chain continues past it).
 static bool hasRelocUser(Value value) {
   for (Operation *user : value.getUsers())
-    if (isa<TransposeOp, ReshapeOp, PadOp>(user))
+    if (isFoldableChainOp(user))
       return true;
   return false;
 }
@@ -51,21 +45,7 @@ struct TestRelocTransferPass
       PlanBuilder builder(cast<sym::SymbolicTensorType>(
           chain.front()->getOperand(0).getType()));
       for (Operation *link : chain) {
-        LogicalResult folded =
-            llvm::TypeSwitch<Operation *, LogicalResult>(link)
-                .Case([&](TransposeOp transpose) {
-                  return foldTranspose(builder, transpose.getPerm());
-                })
-                .Case([&](ReshapeOp reshape) {
-                  return foldReshape(builder,
-                                     reshape.getTargetShape().getValue());
-                })
-                .Case([&](PadOp pad) {
-                  return foldPad(builder, pad.getAxis(), pad.getLo(),
-                                 pad.getHi(), pad.getValue());
-                })
-                .Default([](Operation *) { return failure(); });
-        if (failed(folded)) {
+        if (failed(foldChainOp(builder, link))) {
           link->emitRemark() << "fold bail: " << link->getName();
           return;
         }

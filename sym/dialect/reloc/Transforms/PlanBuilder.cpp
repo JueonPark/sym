@@ -12,6 +12,7 @@
 #include "mlir/IR/Diagnostics.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/ADT/TypeSwitch.h"
 
 using namespace mlir;
 using namespace mlir::reloc;
@@ -371,4 +372,27 @@ LogicalResult mlir::reloc::foldPad(PlanBuilder &plan, int64_t axis,
   }
   plan.pads.push_back({axis, lo, hi, value});
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// Chain-op dispatch (#B4)
+//===----------------------------------------------------------------------===//
+
+bool mlir::reloc::isFoldableChainOp(Operation *op) {
+  return isa<TransposeOp, ReshapeOp, PadOp>(op);
+}
+
+LogicalResult mlir::reloc::foldChainOp(PlanBuilder &plan, Operation *op) {
+  return llvm::TypeSwitch<Operation *, LogicalResult>(op)
+      .Case([&](TransposeOp transpose) {
+        return foldTranspose(plan, transpose.getPerm());
+      })
+      .Case([&](ReshapeOp reshape) {
+        return foldReshape(plan, reshape.getTargetShape().getValue());
+      })
+      .Case([&](PadOp pad) {
+        return foldPad(plan, pad.getAxis(), pad.getLo(), pad.getHi(),
+                       pad.getValue());
+      })
+      .Default([](Operation *) { return failure(); });
 }
