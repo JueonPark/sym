@@ -21,6 +21,8 @@ def TestRelocUtilsPass : Pass<"test-reloc-utils", "::mlir::ModuleOp"> {
       verdict and the affine rendering;
     - ops with a `plan` attribute and a `pair` DenseI64ArrayAttr: the
       isContiguousCompatible(axes[pair[0]], axes[pair[1]]) result;
+    - ops with a `plan` attribute and a `canonicalize` unit attribute: the
+      canonicalizePlan result;
     - ops with only a `plan` attribute: the isPureView result.
   }];
 

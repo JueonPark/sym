@@ -68,3 +68,12 @@ func.func @plan_result_roundtrip(%t: !sym.tensor<[8], i32>) -> !sym.tensor<[8], 
   %0 = reloc.plan_result %t plan(#reloc.plan<src = tensor<[8], i32>, dst = tensor<[8], i32>, perm = [0], axes = [{name = "x", extent = 8, src_stride = 1, dst_stride = 1}], inverse = affine_map<(d0) -> (d0)>>) : !sym.tensor<[8], i32> -> !sym.tensor<[8], i32>
   return %0 : !sym.tensor<[8], i32>
 }
+
+// A canonicalized (rank-collapsed) plan on a higher-rank result type:
+// element counts agree (2*3 == 6), so the op verifies.
+// CHECK-LABEL: func.func @plan_result_rank_collapsed
+func.func @plan_result_rank_collapsed(%t: !sym.tensor<[6], f32>) -> !sym.tensor<[2, 3], f32> {
+  // CHECK: reloc.plan_result
+  %0 = reloc.plan_result %t plan(#reloc.plan<src = tensor<[6], f32>, dst = tensor<[6], f32>, perm = [0], axes = [{name = "d0", extent = 6, src_stride = 1, dst_stride = 1}], constraints = {no_copy = true}, inverse = affine_map<(d0) -> (d0)>>) : !sym.tensor<[6], f32> -> !sym.tensor<[2, 3], f32>
+  return %0 : !sym.tensor<[2, 3], f32>
+}

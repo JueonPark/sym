@@ -119,6 +119,18 @@ bool isFoldableChainOp(Operation *op);
 /// for a transfer-function bail or a non-foldable op.
 LogicalResult foldChainOp(PlanBuilder &plan, Operation *op);
 
+/// #B5: canonicalize `plan` so equivalent chains yield the same attribute:
+/// re-simplify every expression through sym's simplifier, merge adjacent
+/// axes that are contiguous-compatible on both the src and dst sides and
+/// view-adjacent (perm[k+1] == perm[k]+1; padded/aligned axes never
+/// merge), rename axes d0..d(n-1), rebuild the dst descriptor (dst rank
+/// collapses with the axes), and recompute no_copy from isPureView.
+/// Plans outside fold-normal form (explicit dst strides or a
+/// non-permutation inverse) get the safe subset: constant folding and
+/// no_copy recomputation only. Idempotent. Returns null after emitting a
+/// diagnostic at `loc` if the rebuilt plan fails verification.
+PlanAttr canonicalizePlan(PlanAttr plan, Location loc);
+
 } // namespace reloc
 } // namespace mlir
 

@@ -4,12 +4,16 @@
 
 // The static analogue of the build-doc reference chain: 2D -> 4D blocked
 // view -> transpose folds to ONE plan_result; the chain ops disappear.
-// CHECK: #map = affine_map<(d0, d1, d2, d3) -> (d1, d2, d0, d3)>
+// #B5 canonicalization collapses the plan's rank-2 dst back down to the
+// two axes that actually vary independently; the op's own result type
+// stays the original (uncollapsed) [2, 2, 64, 64], which is legal per the
+// plan_result rank relaxation.
+// CHECK: #map = affine_map<(d0, d1, d2) -> (d1, d0, d2)>
 // CHECK-LABEL: func.func @full_chain
 func.func @full_chain(%t: !sym.tensor<[128, 128], f32>) -> !sym.tensor<[2, 2, 64, 64], f32> {
   // CHECK-NOT: reloc.reshape
   // CHECK-NOT: reloc.transpose
-  // CHECK: %[[R:.*]] = reloc.plan_result %{{.*}} plan(#reloc.plan<src = tensor<[128, 128], f32>, dst = tensor<[2, 2, 64, 64], f32>, perm = [2, 0, 1, 3], axes = [{name = "d2", extent = 2, src_stride = 64, dst_stride = 8192}, {name = "d0", extent = 2, src_stride = 8192, dst_stride = 4096}, {name = "d1", extent = 64, src_stride = 128, dst_stride = 64}, {name = "d3", extent = 64, src_stride = 1, dst_stride = 1}], constraints = {contiguous = [false, false, false, true], no_copy = false}, inverse = #map>) : !sym.tensor<[128, 128], f32> -> !sym.tensor<[2, 2, 64, 64], f32>
+  // CHECK: %[[R:.*]] = reloc.plan_result %{{.*}} plan(#reloc.plan<src = tensor<[128, 128], f32>, dst = tensor<[2, 128, 64], f32>, perm = [1, 0, 2], axes = [{name = "d0", extent = 2, src_stride = 64, dst_stride = 8192}, {name = "d1", extent = 128, src_stride = 128, dst_stride = 64}, {name = "d2", extent = 64, src_stride = 1, dst_stride = 1}], constraints = {contiguous = [false, false, true], no_copy = false}, inverse = #map>) : !sym.tensor<[128, 128], f32> -> !sym.tensor<[2, 2, 64, 64], f32>
   // CHECK: return %[[R]]
   %0 = reloc.reshape %t to [2, 64, 2, 64] : !sym.tensor<[128, 128], f32> -> !sym.tensor<[2, 64, 2, 64], f32>
   %1 = reloc.transpose %0 perm [2, 0, 1, 3] : !sym.tensor<[2, 64, 2, 64], f32> -> !sym.tensor<[2, 2, 64, 64], f32>
@@ -99,6 +103,27 @@ func.func @diamond_marks_all(%t: !sym.tensor<[4, 6], f32>) -> (!sym.tensor<[24],
   %1 = reloc.reshape %0 to [24] : !sym.tensor<[6, 4], f32> -> !sym.tensor<[24], f32>
   %2 = reloc.pad %0 axis 0 lo 1 hi 1 value (0.0 : f32) : !sym.tensor<[6, 4], f32> -> !sym.tensor<[8, 4], f32>
   return %1, %2 : !sym.tensor<[24], f32>, !sym.tensor<[8, 4], f32>
+}
+
+// Confluence: the same two pads applied in opposite orders must fold to
+// byte-identical plan text — canonicalization sorts pad_fill by dst axis,
+// so the emission (call) order cannot leak into the plan.
+// CHECK-LABEL: func.func @pad_order_a
+func.func @pad_order_a(%t: !sym.tensor<[6, 4], f32>) -> !sym.tensor<[7, 6], f32> {
+  // CHECK-NOT: reloc.pad
+  // CHECK: reloc.plan_result %{{.*}} plan(#reloc.plan<src = tensor<[6, 4], f32>, dst = tensor<[7, 6], f32>, perm = [0, 1], axes = [{name = "d0", extent = 6, src_stride = 4, dst_stride = 6}, {name = "d1", extent = 4, src_stride = 1, dst_stride = 1}], pad_fill = [{dst_axis = 0, lo = 1, hi = 0, value = 0.000000e+00 : f32}, {dst_axis = 1, lo = 0, hi = 2, value = 0.000000e+00 : f32}], constraints = {contiguous = [false, true], no_copy = false}, inverse = #map{{[0-9]+}}>) : !sym.tensor<[6, 4], f32> -> !sym.tensor<[7, 6], f32>
+  %0 = reloc.pad %t axis 0 lo 1 hi 0 value (0.0 : f32) : !sym.tensor<[6, 4], f32> -> !sym.tensor<[7, 4], f32>
+  %1 = reloc.pad %0 axis 1 lo 0 hi 2 value (0.0 : f32) : !sym.tensor<[7, 4], f32> -> !sym.tensor<[7, 6], f32>
+  return %1 : !sym.tensor<[7, 6], f32>
+}
+
+// CHECK-LABEL: func.func @pad_order_b
+func.func @pad_order_b(%t: !sym.tensor<[6, 4], f32>) -> !sym.tensor<[7, 6], f32> {
+  // CHECK-NOT: reloc.pad
+  // CHECK: reloc.plan_result %{{.*}} plan(#reloc.plan<src = tensor<[6, 4], f32>, dst = tensor<[7, 6], f32>, perm = [0, 1], axes = [{name = "d0", extent = 6, src_stride = 4, dst_stride = 6}, {name = "d1", extent = 4, src_stride = 1, dst_stride = 1}], pad_fill = [{dst_axis = 0, lo = 1, hi = 0, value = 0.000000e+00 : f32}, {dst_axis = 1, lo = 0, hi = 2, value = 0.000000e+00 : f32}], constraints = {contiguous = [false, true], no_copy = false}, inverse = #map{{[0-9]+}}>) : !sym.tensor<[6, 4], f32> -> !sym.tensor<[7, 6], f32>
+  %0 = reloc.pad %t axis 1 lo 0 hi 2 value (0.0 : f32) : !sym.tensor<[6, 4], f32> -> !sym.tensor<[6, 6], f32>
+  %1 = reloc.pad %0 axis 0 lo 1 hi 0 value (0.0 : f32) : !sym.tensor<[6, 6], f32> -> !sym.tensor<[7, 6], f32>
+  return %1 : !sym.tensor<[7, 6], f32>
 }
 
 // Mark-on-skip: a clean transpose feeds a reshape that already carries a

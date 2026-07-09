@@ -6,6 +6,7 @@ add_public_tablegen_target(RelocPassesIncGen)
 # Transforms Library
 add_mlir_library(MLIRRelocTransforms
   PlanBuilder.cpp
+  PlanCanonicalize.cpp
   RelocFold.cpp
   TestRelocTransfer.cpp
   TestRelocUtils.cpp

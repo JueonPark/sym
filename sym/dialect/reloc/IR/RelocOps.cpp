@@ -373,10 +373,6 @@ LogicalResult PlanResultOp::verify() {
     return emitOpError() << "input rank (" << inputType.getShape().size()
                          << ") must match the plan src rank ("
                          << srcExtents.size() << ")";
-  if (resultType.getShape().size() != dstExtents.size())
-    return emitOpError() << "result rank (" << resultType.getShape().size()
-                         << ") must match the plan dst rank ("
-                         << dstExtents.size() << ")";
   if (inputType.getElementType() != plan.getSrc().getElementType())
     return emitOpError() << "input element type (" << inputType.getElementType()
                          << ") must match the plan src element type ("
@@ -393,10 +389,21 @@ LogicalResult PlanResultOp::verify() {
     if (proveEqual(inputType.getShape()[k], srcExtents[k]) == Proof::Disproven)
       return emitOpError() << "input dimension " << k
                            << " provably disagrees with the plan src extent";
-  for (size_t k = 0; k < dstExtents.size(); ++k)
-    if (proveEqual(resultType.getShape()[k], dstExtents[k]) == Proof::Disproven)
-      return emitOpError() << "result dimension " << k
-                           << " provably disagrees with the plan dst extent";
+
+  if (resultType.getShape().size() != dstExtents.size()) {
+    // Canonicalized plans collapse dst axes (#B5): accept a rank change
+    // when the element counts do not provably disagree.
+    if (proveEqual(shapeProduct(resultType.getShape(), getContext()),
+                   shapeProduct(dstExtents, getContext())) == Proof::Disproven)
+      return emitOpError()
+             << "result element count provably disagrees with the plan dst";
+  } else {
+    for (size_t k = 0; k < dstExtents.size(); ++k)
+      if (proveEqual(resultType.getShape()[k], dstExtents[k]) ==
+          Proof::Disproven)
+        return emitOpError() << "result dimension " << k
+                             << " provably disagrees with the plan dst extent";
+  }
   return success();
 }
 
