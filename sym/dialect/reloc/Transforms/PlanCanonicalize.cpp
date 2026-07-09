@@ -13,7 +13,12 @@
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Diagnostics.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/raw_ostream.h"
+#include <algorithm>
+#include <string>
+#include <utility>
 
 using namespace mlir;
 using namespace mlir::reloc;
@@ -82,8 +87,23 @@ PlanAttr mlir::reloc::canonicalizePlan(PlanAttr plan, Location loc) {
   for (PadFillAttr pad : plan.getPadFill())
     pads.push_back(PadFillAttr::get(ctx, pad.getDstAxis(), simp(pad.getLo()),
                                     simp(pad.getHi()), pad.getValue()));
+  // Canonical pad order for confluence: equivalent chains padding different
+  // axes in opposite call orders emit the same pad_fill entries in
+  // different list orders. Sort by dst axis — foldPad keeps at most one
+  // entry per axis, so the key is total. Sorted BEFORE the merge loop:
+  // its remapping preserves relative order, so sortedness survives.
+  llvm::sort(pads, [](PadFillAttr lhs, PadFillAttr rhs) {
+    return lhs.getDstAxis() < rhs.getDstAxis();
+  });
   SmallVector<AlignmentAttr> alignments(plan.getAlignment().begin(),
                                         plan.getAlignment().end());
+  // Same canonical-order treatment for alignments (the builder never emits
+  // them, but hand-written plans may carry several — even duplicates on one
+  // axis, which the verifier permits, so (axis, bytes) keeps the key total).
+  llvm::sort(alignments, [](AlignmentAttr lhs, AlignmentAttr rhs) {
+    return std::make_pair(lhs.getAxis(), lhs.getBytes()) <
+           std::make_pair(rhs.getAxis(), rhs.getBytes());
+  });
   SmallVector<DivisibilityAttr> divisibility;
   for (DivisibilityAttr constraint : plan.getDivisibility()) {
     auto simplified = DivisibilityAttr::get(ctx, simp(constraint.getExpr()),
@@ -91,11 +111,37 @@ PlanAttr mlir::reloc::canonicalizePlan(PlanAttr plan, Location loc) {
     if (!llvm::is_contained(divisibility, simplified))
       divisibility.push_back(simplified);
   }
+  // Confluence requires a canonical constraint order: two equivalent fold
+  // chains can emit the same divisibility facts in different emission
+  // orders (e.g. splitting one dimension's axis before another's), and
+  // canonicalization must still produce attr-equal (and byte-equal, #A4)
+  // plans either way. Sort by a deterministic key independent of emission
+  // order: the printed expression text, then the divisor.
+  llvm::sort(divisibility, [](DivisibilityAttr lhs, DivisibilityAttr rhs) {
+    std::string lhsText, rhsText;
+    llvm::raw_string_ostream lhsOs(lhsText), rhsOs(rhsText);
+    lhs.getExpr().print(lhsOs);
+    rhs.getExpr().print(rhsOs);
+    if (lhsText != rhsText)
+      return lhsText < rhsText;
+    return lhs.getDivisor() < rhs.getDivisor();
+  });
 
   // Fold-normal form gate: axis merging needs a permutation inverse and a
-  // canonical (elided) row-major dst.
+  // canonical (elided) row-major dst. Duplicate same-axis pads are
+  // verifier-accepted (each entry independently satisfies extent + lo + hi
+  // == dst extent) but ill-defined for the fold-normal dst rebuild, which
+  // would accumulate ALL of an axis's pads onto its extent; the safe
+  // subset preserves them (and the original dst descriptor) instead.
+  // Pads are already sorted by dst axis, so duplicates are adjacent.
+  bool uniquePadAxes =
+      std::adjacent_find(pads.begin(), pads.end(),
+                         [](PadFillAttr lhs, PadFillAttr rhs) {
+                           return lhs.getDstAxis() == rhs.getDstAxis();
+                         }) == pads.end();
   bool foldNormal = plan.getDst().getStrides().empty() &&
-                    plan.getInverse().getValue().isPermutation();
+                    plan.getInverse().getValue().isPermutation() &&
+                    uniquePadAxes;
 
   if (foldNormal) {
     auto referenced = [&](size_t k) {
@@ -151,22 +197,31 @@ PlanAttr mlir::reloc::canonicalizePlan(PlanAttr plan, Location loc) {
     }
   }
 
-  // Rebuild. dst extents = axis extents plus pad widths, verifier
-  // association (extent + lo) + hi.
+  // Rebuild the dst descriptor. Fold-normal form derives dst extents from
+  // the (possibly merged) axis extents plus pad widths — the verifier's
+  // (extent + lo) + hi association — since the dst descriptor there is
+  // regenerated wholesale as canonical row-major. The safe subset
+  // (non-fold-normal: explicit dst strides or a non-permutation inverse)
+  // must NOT rewrite the dst descriptor beyond re-simplification:
+  // recomputing it from axes+pads could silently replace a symbolic dst
+  // extent with a different expression and drop the deferred
+  // runtime_pad_check that goes with it — exceeding the documented safe
+  // subset of "constant folding + renaming + no_copy only".
   SmallVector<Attribute> dstExtents;
-  for (auto [k, axis] : llvm::enumerate(axes)) {
-    Attribute extent = axis.extent;
-    for (PadFillAttr pad : pads)
-      if (pad.getDstAxis() == static_cast<int64_t>(k))
-        extent = add(add(extent, pad.getLo()), pad.getHi());
-    dstExtents.push_back(extent);
-  }
   SmallVector<Attribute> dstStrides;
-  if (foldNormal)
+  if (foldNormal) {
+    for (auto [k, axis] : llvm::enumerate(axes)) {
+      Attribute extent = axis.extent;
+      for (PadFillAttr pad : pads)
+        if (pad.getDstAxis() == static_cast<int64_t>(k))
+          extent = add(add(extent, pad.getLo()), pad.getHi());
+      dstExtents.push_back(extent);
+    }
     dstStrides = canonicalRowMajorStrides(dstExtents, ctx);
-  else
-    for (const CanonAxis &axis : axes)
-      dstStrides.push_back(axis.dstStride);
+  } else {
+    for (Attribute extent : plan.getDst().getExtents())
+      dstExtents.push_back(simp(extent));
+  }
   SmallVector<Attribute> dstDescStrides;
   if (!plan.getDst().getStrides().empty())
     for (Attribute stride : plan.getDst().getStrides())

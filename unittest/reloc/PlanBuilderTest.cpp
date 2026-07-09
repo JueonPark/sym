@@ -869,6 +869,71 @@ TEST_F(PlanBuilderTest, ConfluenceInversePairVsIdentity) {
   EXPECT_EQ(applyPlan(canonA, noBindings), iota({6, 4, 2}).data);
 }
 
+TEST_F(PlanBuilderTest, ConfluenceDivisibilityOrderIndependent) {
+  // Split M's axis first vs N's axis first: the emitted divisibility
+  // constraints arrive in opposite orders and must converge byte-wise.
+  Attribute m = dim("M"), n = dim("N");
+  reloc::PlanBuilder a(makeType({m, n}));
+  ASSERT_TRUE(succeeded(reloc::foldReshape(a, {dim(2), div(m, 2), n})));
+  ASSERT_TRUE(
+      succeeded(reloc::foldReshape(a, {dim(2), div(m, 2), dim(3), div(n, 3)})));
+  reloc::PlanBuilder b(makeType({m, n}));
+  ASSERT_TRUE(succeeded(reloc::foldReshape(b, {m, dim(3), div(n, 3)})));
+  ASSERT_TRUE(
+      succeeded(reloc::foldReshape(b, {dim(2), div(m, 2), dim(3), div(n, 3)})));
+  reloc::PlanAttr canonA = canonical(finalize(a));
+  reloc::PlanAttr canonB = canonical(finalize(b));
+  EXPECT_EQ(canonA, canonB);
+  EXPECT_EQ(encoded(canonA), encoded(canonB));
+}
+
+TEST_F(PlanBuilderTest, ConfluencePadOrderIndependent) {
+  // Pad axis 0 then axis 1 vs the opposite call order: the pads lists
+  // arrive in opposite orders (same-value pads on DIFFERENT axes both
+  // fold) and must converge attr- and byte-wise.
+  reloc::PlanBuilder a(makeType({dim(6), dim(4)}));
+  ASSERT_TRUE(succeeded(reloc::foldPad(a, 0, dim(1), dim(0), fill(0.0))));
+  ASSERT_TRUE(succeeded(reloc::foldPad(a, 1, dim(0), dim(2), fill(0.0))));
+  reloc::PlanBuilder b(makeType({dim(6), dim(4)}));
+  ASSERT_TRUE(succeeded(reloc::foldPad(b, 1, dim(0), dim(2), fill(0.0))));
+  ASSERT_TRUE(succeeded(reloc::foldPad(b, 0, dim(1), dim(0), fill(0.0))));
+  reloc::PlanAttr canonA = canonical(finalize(a));
+  reloc::PlanAttr canonB = canonical(finalize(b));
+  EXPECT_EQ(canonA, canonB);
+  EXPECT_EQ(encoded(canonA), encoded(canonB));
+}
+
+TEST_F(PlanBuilderTest, CanonicalizeSafeSubsetPreservesSymbolicDstAndPadCheck) {
+  // Safe subset (explicit dst strides -> non-fold-normal) must not rewrite
+  // the dst descriptor from axes+pads: a symbolic dst extent P alongside a
+  // deferred runtime_pad_check must survive canonicalization untouched,
+  // even though the axis's valid extent Q plus the pad widths doesn't
+  // provably sum to P (mirrors the review probe that caught the bug).
+  MLIRContext *ctx = &context;
+  Attribute zero = dim(0);
+  Attribute q = dim("Q"), p = dim("P");
+  auto desc = [&](ArrayRef<Attribute> extents, ArrayRef<Attribute> strides) {
+    return reloc::TensorDescAttr::get(ctx, extents, strides, zero,
+                                      Float32Type::get(ctx));
+  };
+  SmallVector<reloc::AxisInfoAttr> axes = {
+      reloc::AxisInfoAttr::get(ctx, "a", q, dim(1), dim(1))};
+  SmallVector<reloc::PadFillAttr> pads = {
+      reloc::PadFillAttr::get(ctx, /*dstAxis=*/0, dim(1), dim(1), fill(0.0))};
+  auto plan = reloc::PlanAttr::get(
+      ctx, desc({q}, {}), desc({p}, {dim(1)}), DenseI64ArrayAttr::get(ctx, {0}),
+      axes, pads, {}, {}, DenseBoolArrayAttr::get(ctx, ArrayRef<bool>()),
+      /*noCopy=*/false, /*runtimePadCheck=*/true,
+      AffineMapAttr::get(AffineMap::getMultiDimIdentityMap(1, ctx)));
+  ASSERT_TRUE(plan); // verifier accepts: the pad-range proof is Unknown and
+                     // runtime_pad_check is set.
+  reloc::PlanAttr canon =
+      reloc::canonicalizePlan(plan, UnknownLoc::get(&context));
+  ASSERT_TRUE(canon);
+  EXPECT_EQ(canon.getDst().getExtents()[0], p); // dst extent left untouched
+  EXPECT_TRUE(canon.getRuntimePadCheck());
+}
+
 TEST_F(PlanBuilderTest, ConfluenceSplitPathsToSameShape) {
   // Path A: [24] -> reshape [2,3,4] -> reshape [6,4]; Path B: [24] ->
   // reshape [6,4] directly.

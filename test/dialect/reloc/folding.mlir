@@ -105,6 +105,27 @@ func.func @diamond_marks_all(%t: !sym.tensor<[4, 6], f32>) -> (!sym.tensor<[24],
   return %1, %2 : !sym.tensor<[24], f32>, !sym.tensor<[8, 4], f32>
 }
 
+// Confluence: the same two pads applied in opposite orders must fold to
+// byte-identical plan text — canonicalization sorts pad_fill by dst axis,
+// so the emission (call) order cannot leak into the plan.
+// CHECK-LABEL: func.func @pad_order_a
+func.func @pad_order_a(%t: !sym.tensor<[6, 4], f32>) -> !sym.tensor<[7, 6], f32> {
+  // CHECK-NOT: reloc.pad
+  // CHECK: reloc.plan_result %{{.*}} plan(#reloc.plan<src = tensor<[6, 4], f32>, dst = tensor<[7, 6], f32>, perm = [0, 1], axes = [{name = "d0", extent = 6, src_stride = 4, dst_stride = 6}, {name = "d1", extent = 4, src_stride = 1, dst_stride = 1}], pad_fill = [{dst_axis = 0, lo = 1, hi = 0, value = 0.000000e+00 : f32}, {dst_axis = 1, lo = 0, hi = 2, value = 0.000000e+00 : f32}], constraints = {contiguous = [false, true], no_copy = false}, inverse = #map{{[0-9]+}}>) : !sym.tensor<[6, 4], f32> -> !sym.tensor<[7, 6], f32>
+  %0 = reloc.pad %t axis 0 lo 1 hi 0 value (0.0 : f32) : !sym.tensor<[6, 4], f32> -> !sym.tensor<[7, 4], f32>
+  %1 = reloc.pad %0 axis 1 lo 0 hi 2 value (0.0 : f32) : !sym.tensor<[7, 4], f32> -> !sym.tensor<[7, 6], f32>
+  return %1 : !sym.tensor<[7, 6], f32>
+}
+
+// CHECK-LABEL: func.func @pad_order_b
+func.func @pad_order_b(%t: !sym.tensor<[6, 4], f32>) -> !sym.tensor<[7, 6], f32> {
+  // CHECK-NOT: reloc.pad
+  // CHECK: reloc.plan_result %{{.*}} plan(#reloc.plan<src = tensor<[6, 4], f32>, dst = tensor<[7, 6], f32>, perm = [0, 1], axes = [{name = "d0", extent = 6, src_stride = 4, dst_stride = 6}, {name = "d1", extent = 4, src_stride = 1, dst_stride = 1}], pad_fill = [{dst_axis = 0, lo = 1, hi = 0, value = 0.000000e+00 : f32}, {dst_axis = 1, lo = 0, hi = 2, value = 0.000000e+00 : f32}], constraints = {contiguous = [false, true], no_copy = false}, inverse = #map{{[0-9]+}}>) : !sym.tensor<[6, 4], f32> -> !sym.tensor<[7, 6], f32>
+  %0 = reloc.pad %t axis 1 lo 0 hi 2 value (0.0 : f32) : !sym.tensor<[6, 4], f32> -> !sym.tensor<[6, 6], f32>
+  %1 = reloc.pad %0 axis 0 lo 1 hi 0 value (0.0 : f32) : !sym.tensor<[6, 6], f32> -> !sym.tensor<[7, 6], f32>
+  return %1 : !sym.tensor<[7, 6], f32>
+}
+
 // Mark-on-skip: a clean transpose feeds a reshape that already carries a
 // manual reloc.fallback opt-out. The reshape is the chain tail (its user
 // is the func.return, not a foldable op), so the chain is [transpose,

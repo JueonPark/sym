@@ -3,6 +3,11 @@
 // The `canonicalize` unit attr routes a hand-written plan through
 // canonicalizePlan and reports the result as a remark.
 
+// Divisibility-constraint ordering (confluence: two equivalent fold chains
+// must emit the same constraint order regardless of emission order) is
+// covered at the gtest level only — the type grammar here can't express the
+// floordiv-shaped dims needed to construct that scenario textually.
+
 // Both-side contiguous + view-adjacent: axes merge, rank collapses, and
 // the result is a pure view -> no_copy is set.
 // expected-remark @below {{canonicalized: #reloc.plan<src = tensor<[8, 128], f32>, dst = tensor<[1024], f32>, perm = [0], axes = [{name = "d0", extent = 1024, src_stride = 1, dst_stride = 1}], constraints = {contiguous = [true], no_copy = true}, inverse = affine_map<(d0) -> (d0)>>}}
@@ -24,3 +29,13 @@
 // A wrong no_copy = true on a data-moving plan is cleared.
 // expected-remark @below {{canonicalized: #reloc.plan<src = tensor<[30], f32>, dst = tensor<[32], f32>, perm = [0], axes = [{name = "d0", extent = 30, src_stride = 1, dst_stride = 1}], pad_fill = [{dst_axis = 0, lo = 0, hi = 2, value = 0.000000e+00 : f32}], constraints = {contiguous = [true], no_copy = false}, inverse = affine_map<(d0) -> (d0)>>}}
 "test.plan"() {canonicalize, plan = #reloc.plan<src = tensor<[30], f32>, dst = tensor<[32], f32>, perm = [0], axes = [{name = "x", extent = 30, src_stride = 1, dst_stride = 1}], pad_fill = [{dst_axis = 0, lo = 0, hi = 2, value = 0.0 : f32}], constraints = {no_copy = true}, inverse = affine_map<(d0) -> (d0)>>} : () -> ()
+
+// Verifier-accepted degenerate input: DUPLICATE pad_fill entries on the
+// same dst axis (each independently satisfies extent + lo + hi == dst
+// extent: 4+1+1 == 6 and 4+2+0 == 6). Ill-defined for the fold-normal dst
+// rebuild (which would accumulate both pads onto the extent), so the
+// duplicate-pad gate routes the plan to the safe subset: axes renamed,
+// both pads and the dst descriptor preserved verbatim — and crucially NO
+// crash.
+// expected-remark @below {{canonicalized: #reloc.plan<src = tensor<[4], f32>, dst = tensor<[6], f32>, perm = [0], axes = [{name = "d0", extent = 4, src_stride = 1, dst_stride = 1}], pad_fill = [{dst_axis = 0, lo = 1, hi = 1, value = 0.000000e+00 : f32}, {dst_axis = 0, lo = 2, hi = 0, value = 0.000000e+00 : f32}], constraints = {contiguous = [true], no_copy = false}, inverse = affine_map<(d0) -> (d0)>>}}
+"test.plan"() {canonicalize, plan = #reloc.plan<src = tensor<[4], f32>, dst = tensor<[6], f32>, perm = [0], axes = [{name = "x", extent = 4, src_stride = 1, dst_stride = 1}], pad_fill = [{dst_axis = 0, lo = 1, hi = 1, value = 0.0 : f32}, {dst_axis = 0, lo = 2, hi = 0, value = 0.0 : f32}], inverse = affine_map<(d0) -> (d0)>>} : () -> ()
