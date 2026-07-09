@@ -84,6 +84,17 @@ TEST(Eval, OverflowIsError) {
   EXPECT_NE(evalErr({konst(min), konst(-1), op(ExprOp::FloorDiv)}, {})
                 .find("overflow"),
             std::string::npos);
+  // Sub overflow: INT64_MIN - 1 underflows.
+  EXPECT_NE(
+      evalErr({konst(min), konst(1), op(ExprOp::Sub)}, {}).find("overflow"),
+      std::string::npos);
+  // Mod's reconstruction overflow: floordiv(INT64_MAX, -3) succeeds (q =
+  // -3074457345618258603), but reconstructing the remainder via q*b
+  // overflows (q*-3 = 9223372036854775809 > INT64_MAX). This exercises the
+  // mod-specific overflow guard, distinct from floordiv's own overflow path.
+  EXPECT_NE(
+      evalErr({konst(max), konst(-3), op(ExprOp::Mod)}, {}).find("overflow"),
+      std::string::npos);
 }
 
 TEST(Eval, PushDimIsErrorInPlanContext) {

@@ -4,8 +4,13 @@
 #include "reloc/Decode.h"
 #include "gtest/gtest.h"
 
+#include <algorithm>
+#include <chrono>
 #include <cstdint>
+#include <iostream>
+#include <limits>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -146,6 +151,142 @@ TEST(Bind, RejectsPadAxisOutOfRangeForDstExtents) {
   plan.dst.extents.clear();
   EXPECT_NE(bindErr(plan, {{"N", 1000}}).find("out of range"),
             std::string::npos);
+}
+
+TEST(Bind, ReferencePlanN32768CoalescesToThreeAxes) {
+  BoundPlan bound = bindOk(decoded(kReferenceHex), {{"N", 32768}});
+  // 4 -> 3 axes: n0, merged(b0,b1), n1.
+  ASSERT_EQ(bound.extents.size(), 3u);
+  EXPECT_EQ(bound.extents[0], 512); // n0
+  EXPECT_EQ(bound.srcStrides[0], 64);
+  EXPECT_EQ(bound.dstStrides[0], 2097152);
+  EXPECT_EQ(bound.extents[1], 4096); // merged b0+b1
+  EXPECT_EQ(bound.srcStrides[1], 32768);
+  EXPECT_EQ(bound.dstStrides[1], 512);
+  EXPECT_EQ(bound.extents[2], 512); // n1
+  EXPECT_EQ(bound.srcStrides[2], 1);
+  EXPECT_EQ(bound.dstStrides[2], 1);
+  EXPECT_EQ(bound.L, 512); // N/64
+  EXPECT_EQ(bound.elementSize, 4u);
+  EXPECT_EQ(bound.totalBytes, int64_t(512) * 64 * 64 * 512 * 4); // 4 GiB
+  EXPECT_FALSE(bound.noCopy);
+}
+
+// Coalescing must preserve the (dst offset -> src offset) map. Verified on
+// a small binding (N = 128) by enumerating the ORIGINAL axes and the
+// COALESCED axes and asserting identical offset-pair sets.
+TEST(Bind, CoalescingPreservesOffsetMapSmall) {
+  const int64_t N = 128; // N/64 = 2
+  // Original axes (dst order), values hand-derived for N=128:
+  struct A {
+    int64_t ext, src, dst;
+  };
+  std::vector<A> orig = {
+      {2, 64, 8192}, {64, 8192, 128}, {64, 128, 2}, {2, 1, 1}};
+  auto enumerate = [](const std::vector<A> &axes) {
+    std::vector<std::pair<int64_t, int64_t>> pairs; // (dstOff, srcOff)
+    std::vector<int64_t> idx(axes.size(), 0);
+    int64_t total = 1;
+    for (auto &a : axes)
+      total *= a.ext;
+    for (int64_t n = 0; n < total; ++n) {
+      int64_t s = 0, d = 0;
+      for (size_t k = 0; k < axes.size(); ++k) {
+        s += idx[k] * axes[k].src;
+        d += idx[k] * axes[k].dst;
+      }
+      pairs.emplace_back(d, s);
+      for (int64_t k = (int64_t)axes.size() - 1; k >= 0; --k) {
+        if (++idx[k] < axes[k].ext)
+          break;
+        idx[k] = 0;
+      }
+    }
+    std::sort(pairs.begin(), pairs.end());
+    return pairs;
+  };
+  BoundPlan bound = bindOk(decoded(kReferenceHex), {{"N", N}});
+  std::vector<A> coalesced;
+  for (size_t k = 0; k < bound.extents.size(); ++k)
+    coalesced.push_back(
+        {bound.extents[k], bound.srcStrides[k], bound.dstStrides[k]});
+  EXPECT_EQ(enumerate(orig), enumerate(coalesced));
+}
+
+TEST(Bind, DegradedPadRangeFailsWhenRelationBroken) {
+  // Mutate the decoded degraded plan so extent + lo + hi != dst extent:
+  // force the dst extent to a constant that cannot match.
+  RelocationPlan plan = decoded(kDegradedHex);
+  plan.dst.extents[0] = {reloc::ExprToken{reloc::ExprOp::PushConst, 99999}};
+  EXPECT_NE(bindErr(plan, {{"N", 1000}}).find("pad range"), std::string::npos);
+}
+
+TEST(Bind, DegradedNegativePadWidthRejected) {
+  RelocationPlan plan = decoded(kDegradedHex);
+  plan.padFill[0].lo = {reloc::ExprToken{reloc::ExprOp::PushConst, -1}};
+  EXPECT_NE(bindErr(plan, {{"N", 1000}}).find("negative"), std::string::npos);
+}
+
+TEST(Bind, ZeroExtentRejected) {
+  RelocationPlan plan = decoded(kDegradedHex);
+  plan.axes[0].extent = {reloc::ExprToken{reloc::ExprOp::PushConst, 0}};
+  EXPECT_NE(bindErr(plan, {{"N", 1000}}).find("extent"), std::string::npos);
+}
+
+TEST(Bind, NegativeStrideRejected) {
+  RelocationPlan plan = decoded(kDegradedHex);
+  plan.axes[0].srcStride = {reloc::ExprToken{reloc::ExprOp::PushConst, -1}};
+  EXPECT_NE(bindErr(plan, {{"N", 1000}}).find("stride"), std::string::npos);
+}
+
+TEST(Bind, EvaluationOverflowRejected) {
+  RelocationPlan plan = decoded(kDegradedHex);
+  plan.axes[0].extent = {reloc::ExprToken{reloc::ExprOp::PushConst,
+                                          std::numeric_limits<int64_t>::max()},
+                         reloc::ExprToken{reloc::ExprOp::PushConst, 2},
+                         reloc::ExprToken{reloc::ExprOp::Mul}};
+  EXPECT_NE(bindErr(plan, {{"N", 1000}}).find("overflow"), std::string::npos);
+}
+
+TEST(Bind, BindCostUnderBudget) {
+  // E9 budget: bind is a "few microseconds", measured over 10^6 binds of
+  // the reference plan. The bound is regime-gated on NDEBUG so the
+  // authoritative check runs where E9's budget applies:
+  //
+  //   * Release/-O3 (CI, NDEBUG defined): enforce issue #43's < 5 us
+  //     criterion. A standalone -O2 rebuild of this exact bind() + plan
+  //     measures ~478 ns/bind, ~10x inside the budget, so a genuine
+  //     6-9 us regression here is caught rather than sailing through.
+  //   * Debug (-O0, no inlining, per-iteration heap alloc for the small
+  //     vectors + a std::map symbol lookup): the identical arithmetic
+  //     measures ~3.8-5.6 us/bind on an idle-to-moderately-loaded box.
+  //     The 10 us Debug bound is NOT the E9 budget -- it only guards
+  //     against a gross (order-of-magnitude) regression when developing
+  //     locally against an unoptimized build.
+  RelocationPlan plan = decoded(kReferenceHex);
+  reloc::SymbolMap symbols = {{"N", 32768}};
+  const int iterations = 1000000;
+  auto start = std::chrono::steady_clock::now();
+  for (int i = 0; i < iterations; ++i) {
+    auto result = reloc::bind(plan, symbols, Strategy::Auto);
+    ASSERT_TRUE(std::holds_alternative<BoundPlan>(result));
+  }
+  auto end = std::chrono::steady_clock::now();
+  double meanNs =
+      std::chrono::duration_cast<std::chrono::nanoseconds>(end - start)
+          .count() /
+      double(iterations);
+#ifdef NDEBUG
+  constexpr double kBudgetNs =
+      5000.0; // Release/-O3 (CI): issue #43's < 5 us criterion
+#else
+  constexpr double kBudgetNs =
+      10000.0; // Debug (-O0, no inlining, per-iter heap alloc)
+#endif
+  EXPECT_LT(meanNs, kBudgetNs)
+      << "bind mean " << meanNs << " ns exceeds " << kBudgetNs << " ns";
+  // Informational: record the measurement.
+  std::cout << "[ bind cost ] " << meanNs << " ns/bind\n";
 }
 
 } // namespace
