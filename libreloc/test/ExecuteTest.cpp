@@ -9,6 +9,7 @@
 
 #include "reloc/Execute.h"
 #include "reloc/Bind.h"
+#include "reloc/CopyRun.h"
 #include "reloc/Decode.h"
 #include "gtest/gtest.h"
 
@@ -225,6 +226,41 @@ TEST(Execute, ReferencePlanN4096) {
   auto *bp = std::get_if<BoundPlan>(&bound);
   ASSERT_NE(bp, nullptr);
   expectH2DExact(*bp);
+}
+
+TEST(CopyRun, Avx2MatchesScalarAllLengths) {
+  // For every length 0..300 bytes and several src/dst alignment offsets,
+  // the AVX2 path must be byte-identical to the scalar path.
+  std::vector<uint8_t> srcbuf(512), a(512), b(512);
+  for (size_t i = 0; i < srcbuf.size(); ++i)
+    srcbuf[i] = static_cast<uint8_t>(i * 7 + 3);
+  for (size_t n = 0; n <= 300; ++n)
+    for (size_t soff : {size_t(0), size_t(1), size_t(3), size_t(16)})
+      for (size_t doff : {size_t(0), size_t(1), size_t(7), size_t(32)}) {
+        std::fill(a.begin(), a.end(), 0);
+        std::fill(b.begin(), b.end(), 0);
+        reloc::copyRunScalar(a.data() + doff, srcbuf.data() + soff, n);
+        reloc::copyRun(b.data() + doff, srcbuf.data() + soff, n);
+        ASSERT_EQ(std::memcmp(a.data(), b.data(), 512), 0)
+            << "n=" << n << " soff=" << soff << " doff=" << doff;
+      }
+}
+
+TEST(Execute, MisalignedSourceStaysExact) {
+  // Offset the source buffer by 1 byte so the contiguous inner run reads
+  // from a misaligned address; result must remain byte-exact.
+  BoundPlan b = makeBound({8, 128}, {128, 1}, {128, 1}, 4); // L=128
+  int64_t elems = product(b.extents);
+  std::vector<uint8_t> raw = iotaBytes(elems + 1, b.elementSize);
+  const uint8_t *misaligned = raw.data() + 1; // 1-byte-misaligned src
+  std::vector<uint8_t> expected(elems * 4), dst(elems * 4, 0xAB);
+  // reference over the same misaligned source
+  {
+    std::vector<uint8_t> srcView(misaligned, misaligned + elems * 4);
+    expected = referenceH2D(b, srcView);
+  }
+  reloc::executeH2D(b, misaligned, dst.data());
+  EXPECT_EQ(dst, expected);
 }
 
 } // namespace

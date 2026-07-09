@@ -2,6 +2,8 @@
 
 #include "reloc/Execute.h"
 
+#include "reloc/CopyRun.h"
+
 #include <cassert>
 #include <cstring>
 
@@ -23,10 +25,9 @@ void copyRun1D(const BoundPlan &b, const uint8_t *src, uint8_t *dst,
   const size_t d = b.extents.size() - 1;
   const uint32_t es = b.elementSize;
   if (b.srcStrides[d] == 1 && b.dstStrides[d] == 1) {
-    // Task 2 swaps this std::memcpy for reloc::copyRun (byte-identical).
-    std::memcpy(dst + (dstOff + iBegin + innerLo) * es,
-                src + (srcOff + iBegin) * es,
-                static_cast<size_t>(iEnd - iBegin) * es);
+    copyRun(dst + (dstOff + iBegin + innerLo) * es,
+            src + (srcOff + iBegin) * es,
+            static_cast<size_t>(iEnd - iBegin) * es);
   } else {
     for (int64_t i = iBegin; i < iEnd; ++i)
       std::memcpy(dst + (dstOff + (i + innerLo) * b.dstStrides[d]) * es,
