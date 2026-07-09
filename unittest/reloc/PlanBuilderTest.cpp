@@ -9,6 +9,7 @@
 
 #include "PlanBuilder.h"
 #include "RelocDialect.h"
+#include "RelocSerialization.h"
 #include "RelocUtils.h"
 #include "SymDialect.h"
 #include "mlir/IR/AffineMap.h"
@@ -251,6 +252,18 @@ protected:
   }
   reloc::PlanAttr finalize(const reloc::PlanBuilder &builder) {
     return builder.finalize(UnknownLoc::get(&context));
+  }
+  reloc::PlanAttr canonical(reloc::PlanAttr raw) {
+    reloc::PlanAttr canon =
+        reloc::canonicalizePlan(raw, UnknownLoc::get(&context));
+    EXPECT_TRUE(canon);
+    return canon;
+  }
+  std::vector<uint8_t> encoded(reloc::PlanAttr plan) {
+    FailureOr<std::vector<uint8_t>> bytes =
+        reloc::encodePlan(plan, UnknownLoc::get(&context));
+    EXPECT_TRUE(succeeded(bytes));
+    return succeeded(bytes) ? *bytes : std::vector<uint8_t>();
   }
 
   /// inverse o forward == id on the axes space.
@@ -814,6 +827,61 @@ TEST_F(PlanBuilderTest, CanonicalizeSafeSubsetForNonFoldNormalPlans) {
   ASSERT_TRUE(canon);
   EXPECT_EQ(canon.getAxes().size(), 2u); // no merging in the safe subset
   EXPECT_TRUE(canon.getNoCopy());        // but no_copy is recomputed
+}
+
+TEST_F(PlanBuilderTest, ConfluenceBlockedTransposeVsDirectTranspose) {
+  // Path A: [128,128] -> reshape [2,64,2,64] -> transpose [2,3,0,1]
+  // Path B: [128,128] -> transpose [1,0]
+  // The same logical transform; A's four axes must merge pairwise back to
+  // B's two.
+  Attribute d2 = dim(2), d64 = dim(64);
+  reloc::PlanBuilder a(makeType({dim(128), dim(128)}));
+  ASSERT_TRUE(succeeded(reloc::foldReshape(a, {d2, d64, d2, d64})));
+  ASSERT_TRUE(succeeded(reloc::foldTranspose(a, {2, 3, 0, 1})));
+  reloc::PlanAttr rawA = finalize(a);
+  ASSERT_TRUE(rawA);
+
+  reloc::PlanBuilder b(makeType({dim(128), dim(128)}));
+  ASSERT_TRUE(succeeded(reloc::foldTranspose(b, {1, 0})));
+  reloc::PlanAttr rawB = finalize(b);
+  ASSERT_TRUE(rawB);
+
+  reloc::PlanAttr canonA = canonical(rawA), canonB = canonical(rawB);
+  EXPECT_EQ(canonA, canonB);                   // uniqued attrs: identical
+  EXPECT_EQ(encoded(canonA), encoded(canonB)); // byte-identical (#A4)
+  EXPECT_EQ(applyPlan(canonA, noBindings), applyPlan(rawA, noBindings));
+  EXPECT_EQ(applyPlan(canonB, noBindings), applyPlan(rawB, noBindings));
+}
+
+TEST_F(PlanBuilderTest, ConfluenceInversePairVsIdentity) {
+  // Path A: transpose [2,0,1] then its inverse [1,2,0]; Path B: no folds.
+  // Both canonicalize to the fully-merged single-axis pure view.
+  reloc::PlanBuilder a(makeType({dim(6), dim(4), dim(2)}));
+  ASSERT_TRUE(succeeded(reloc::foldTranspose(a, {2, 0, 1})));
+  ASSERT_TRUE(succeeded(reloc::foldTranspose(a, {1, 2, 0})));
+  reloc::PlanBuilder b(makeType({dim(6), dim(4), dim(2)}));
+  reloc::PlanAttr canonA = canonical(finalize(a));
+  reloc::PlanAttr canonB = canonical(finalize(b));
+  EXPECT_EQ(canonA, canonB);
+  EXPECT_EQ(encoded(canonA), encoded(canonB));
+  ASSERT_EQ(canonA.getAxes().size(), 1u);
+  EXPECT_TRUE(canonA.getNoCopy()); // inverse pair eliminated -> pure view
+  EXPECT_EQ(applyPlan(canonA, noBindings), iota({6, 4, 2}).data);
+}
+
+TEST_F(PlanBuilderTest, ConfluenceSplitPathsToSameShape) {
+  // Path A: [24] -> reshape [2,3,4] -> reshape [6,4]; Path B: [24] ->
+  // reshape [6,4] directly.
+  reloc::PlanBuilder a(makeType({dim(24)}));
+  ASSERT_TRUE(succeeded(reloc::foldReshape(a, {dim(2), dim(3), dim(4)})));
+  ASSERT_TRUE(succeeded(reloc::foldReshape(a, {dim(6), dim(4)})));
+  reloc::PlanBuilder b(makeType({dim(24)}));
+  ASSERT_TRUE(succeeded(reloc::foldReshape(b, {dim(6), dim(4)})));
+  reloc::PlanAttr canonA = canonical(finalize(a));
+  reloc::PlanAttr canonB = canonical(finalize(b));
+  EXPECT_EQ(canonA, canonB);
+  EXPECT_EQ(encoded(canonA), encoded(canonB));
+  EXPECT_EQ(applyPlan(canonA, noBindings), applyPlan(finalize(b), noBindings));
 }
 
 } // namespace

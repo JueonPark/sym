@@ -5,6 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "PlanBuilder.h"
 #include "RelocDialect.h"
 #include "RelocPasses.h"
 #include "RelocSerialization.h"
@@ -55,6 +56,8 @@ struct TestRelocUtilsPass
           testRebuildNoFlag(op, plan);
         else if (op->hasAttr("serialize"))
           testSerialize(op, plan);
+        else if (op->hasAttr("canonicalize"))
+          testCanonicalize(op, plan);
         else
           op->emitRemark() << "isPureView = "
                            << (isPureView(plan) ? "true" : "false");
@@ -127,6 +130,11 @@ struct TestRelocUtilsPass
                         llvm::ArrayRef<uint8_t>(first->data(), first->size()),
                         /*LowerCase=*/true)
                  << "\n";
+  }
+
+  void testCanonicalize(Operation *op, PlanAttr plan) {
+    if (PlanAttr canonical = canonicalizePlan(plan, op->getLoc()))
+      op->emitRemark() << "canonicalized: " << canonical;
   }
 
   void testRowMajor(Operation *op, TensorDescAttr desc, MLIRContext *context) {
