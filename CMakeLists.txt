@@ -25,6 +25,14 @@ add_definitions(${LLVM_DEFINITIONS})
 add_subdirectory(sym)
 
 # 4. Add Testing Support
+#
+# libreloc is added here (rather than in section 3) because its test
+# subdirectory calls add_test(): CMake only registers add_test() into
+# CTestTestfile.cmake for directories where testing was already enabled
+# when add_subdirectory() processed them, so it must come after
+# enable_testing() and before test/ (whose SYM_TEST_DEPENDS references
+# the libreloc-test target).
 enable_testing()
+add_subdirectory(libreloc)
 add_subdirectory(unittest)
 add_subdirectory(test)

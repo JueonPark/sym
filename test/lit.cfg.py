@@ -17,6 +17,7 @@ config.environment['PATH'] = os.path.pathsep.join([
 # Add unit-test binaries to path
 config.environment['PATH'] = os.path.pathsep.join([
     os.path.join(config.sym_build_dir, 'unittest', 'reloc'),
+    os.path.join(config.sym_build_dir, 'libreloc', 'test'),
     config.environment.get('PATH', '')
 ])
 
