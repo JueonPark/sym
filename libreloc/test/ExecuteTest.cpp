@@ -359,4 +359,15 @@ TEST(Execute, D2HRoundTripsH2D) {
   roundTrip(makeBound({6, 4}, {4, 1}, {4, 1}, 4, {pad})); // padded (valid only)
 }
 
+TEST(Execute, D2HRank1RoundTripsH2D) {
+  BoundPlan b = makeBound({256}, {1}, {1}, 4);
+  int64_t validElems = product(b.extents);
+  std::vector<uint8_t> src = iotaBytes(validElems, b.elementSize);
+  std::vector<uint8_t> dst = referenceH2D(b, src);
+  std::vector<uint8_t> back(validElems * b.elementSize, 0xAB);
+  reloc::executeD2H(b, dst.data(), back.data());
+  EXPECT_EQ(back, src);
+  EXPECT_EQ(back, referenceD2H(b, dst));
+}
+
 } // namespace

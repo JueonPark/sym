@@ -12,3 +12,4 @@ llvm-build
 **/__pycache__
 *.whl
 **/*.egg-info/
+/Testing/
