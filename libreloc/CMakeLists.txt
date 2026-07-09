@@ -15,6 +15,7 @@ add_library(reloc_runtime SHARED
   src/Execute.cpp
   src/CopyRun.cpp
   src/HostBackend.cpp
+  src/PinnedBufferPool.cpp
 )
 
 target_compile_features(reloc_runtime PUBLIC cxx_std_17)

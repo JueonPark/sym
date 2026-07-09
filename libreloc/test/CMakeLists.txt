@@ -8,6 +8,7 @@ add_executable(libreloc-test
   BindTest.cpp
   ExecuteTest.cpp
   BackendTest.cpp
+  PoolTest.cpp
 )
 
 target_link_libraries(libreloc-test PRIVATE
