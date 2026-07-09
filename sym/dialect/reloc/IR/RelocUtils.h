@@ -10,6 +10,7 @@
 #define RELOC_UTILS_H
 
 #include "RelocDialect.h"
+#include "SymUtils.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/Support/LogicalResult.h"
@@ -19,28 +20,15 @@ namespace mlir {
 namespace reloc {
 
 //===----------------------------------------------------------------------===//
-// Compact expression syntax
+// Compact expression syntax (moved to sym, issue #31)
 //===----------------------------------------------------------------------===//
 //
-// Grammar (left-associative; * floordiv mod bind tighter than + -):
-//   expr   := term  (('+' | '-') term)*
-//   term   := factor (('*' | 'floordiv' | 'div' | 'mod') factor)*
-//   factor := INTEGER | IDENT | STRING | '(' expr ')'
-//
-// Parsing builds through sym::getSimplifiedBinaryExpr, so expressions
-// simplify at parse time exactly like #sym.binary.
+// The grammar is shared with the !sym.tensor type; see SymUtils.h. These
+// using-declarations keep the reloc spellings working.
 
-/// Parse a compact symbolic expression. Returns the parsed sym expression
-/// attribute, or null after emitting a located error.
-Attribute parseSymExpr(AsmParser &parser);
-
-/// Print a sym expression attribute in the compact syntax with minimal
-/// parentheses. `expr` must satisfy isSymExpr().
-void printSymExpr(AsmPrinter &printer, Attribute expr);
-
-/// True if `attr` is a sym expression attribute (SymbolExprAttr,
-/// ConstantExprAttr, or BinaryExprAttr).
-bool isSymExpr(Attribute attr);
+using sym::isSymExpr;
+using sym::parseSymExpr;
+using sym::printSymExpr;
 
 //===----------------------------------------------------------------------===//
 // sym <-> affine expression bridge

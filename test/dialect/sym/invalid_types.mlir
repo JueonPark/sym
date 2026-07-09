@@ -1,4 +1,4 @@
-// RUN: sym-opt %s --allow-unregistered-dialect --verify-diagnostics
+// RUN: sym-opt %s --allow-unregistered-dialect --split-input-file --verify-diagnostics
 
 // Test that invalid element types are rejected by SymbolicTensorType verification
 
@@ -7,3 +7,9 @@ func.func @invalid_element_type() {
   // expected-error @below {{element type must be a valid tensor element type}}
   return
 }
+
+// -----
+
+// Operator keywords are not valid expression operands.
+// expected-error @below {{unexpected operator keyword 'floordiv'; expected expression operand}}
+func.func private @bad_dim() -> !sym.tensor<[floordiv, 4], f32>

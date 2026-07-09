@@ -29,17 +29,15 @@ func.func @reshape_static(%t: !sym.tensor<[4096], f32>) -> !sym.tensor<[64, 64],
   return %0 : !sym.tensor<[64, 64], f32>
 }
 
-// Symbolic target with an unrelated symbol swapped in for one dim: the
-// element count (N * 64 vs M * 64) is symbolically undecidable -> accepted.
-// (sym's !sym.tensor type grammar cannot round-trip a binary-expression dim
-// like "N floordiv 64" — a pre-existing sym limitation, out of scope here —
-// so this exercises the same "undecidable count passes" path with symbol
-// dims instead.)
+// Symbolic split target: N -> (N floordiv 64, 64). The element count
+// (N * 64 vs (N floordiv 64) * 64 * 64) is symbolically undecidable ->
+// accepted; the folding pass emits the divisibility constraint. Writable
+// in text since issue #31.
 // CHECK-LABEL: func.func @reshape_symbolic
-func.func @reshape_symbolic(%t: !sym.tensor<["N", 64], f32>) -> !sym.tensor<["M", 64], f32> {
-  // CHECK: reloc.reshape %{{.*}} to [M, 64] : !sym.tensor<["N", 64], f32> -> !sym.tensor<["M", 64], f32>
-  %0 = reloc.reshape %t to [M, 64] : !sym.tensor<["N", 64], f32> -> !sym.tensor<["M", 64], f32>
-  return %0 : !sym.tensor<["M", 64], f32>
+func.func @reshape_symbolic(%t: !sym.tensor<["N", 64], f32>) -> !sym.tensor<["N" floordiv 64, 64, 64], f32> {
+  // CHECK: reloc.reshape %{{.*}} to [N floordiv 64, 64, 64] : !sym.tensor<["N", 64], f32> -> !sym.tensor<[N floordiv 64, 64, 64], f32>
+  %0 = reloc.reshape %t to [N floordiv 64, 64, 64] : !sym.tensor<["N", 64], f32> -> !sym.tensor<["N" floordiv 64, 64, 64], f32>
+  return %0 : !sym.tensor<["N" floordiv 64, 64, 64], f32>
 }
 
 // CHECK-LABEL: func.func @pad_static

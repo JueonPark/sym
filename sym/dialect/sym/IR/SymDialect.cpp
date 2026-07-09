@@ -1,4 +1,5 @@
 #include "SymDialect.h"
+#include "SymUtils.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "llvm/ADT/StringSwitch.h"
@@ -58,23 +59,6 @@ mlir::sym::symbolizeSymbolicExprOp(llvm::StringRef str) {
       .Default(std::nullopt);
 }
 
-// Operator symbol helpers for infix notation
-llvm::StringRef getOperatorSymbol(SymbolicExprOp op) {
-  switch (op) {
-  case SymbolicExprOp::Add:
-    return "+";
-  case SymbolicExprOp::Sub:
-    return "-";
-  case SymbolicExprOp::Mul:
-    return "*";
-  case SymbolicExprOp::Div:
-    return "div";
-  case SymbolicExprOp::Mod:
-    return "mod";
-  }
-  llvm_unreachable("unknown SymbolicExprOp");
-}
-
 //===----------------------------------------------------------------------===//
 // SymbolicTensorType Verification
 //===----------------------------------------------------------------------===//
@@ -111,33 +95,8 @@ SymbolicTensorType::verify(function_ref<InFlightDiagnostic()> emitError,
 // --- Type Parser (Custom Assembly) ---
 
 // We want to support syntax: !sym.tensor<[32, "a" + 1], f32>
-// This requires a Recursive Descent Parser in C++ to build the Attribute Tree.
-
-Attribute parseExpression(AsmParser &parser) {
-  // 1. Try Parse Integer (Constant)
-  int64_t val;
-  OptionalParseResult intResult = parser.parseOptionalInteger(val);
-  if (intResult.has_value() && succeeded(*intResult)) {
-    return ConstantExprAttr::get(parser.getContext(), val);
-  }
-
-  // 2. Try Parse String (Symbol)
-  std::string symName;
-  if (succeeded(parser.parseOptionalString(&symName)) && !symName.empty()) {
-    return SymbolExprAttr::get(parser.getContext(), symName);
-  }
-
-  // 3. Try Parse Parentheses for Binary Ops "(lhs + rhs)"
-  // NOTE: Full infix parsing (precedence) is complex.
-  // MLIR often prefers prefix notation in attributes: #sym.op<add, ...>
-  // If you want infix "a + b", you need to write a shunting-yard parser here.
-
-  // Fallback: Use standard Attribute parser
-  Attribute attr;
-  if (parser.parseAttribute(attr))
-    return {};
-  return attr;
-}
+// Dim expressions use the compact expression grammar (see SymUtils.h),
+// shared with the reloc dialect's attribute/op surface.
 
 Type SymbolicTensorType::parse(AsmParser &parser) {
   // Parse wrapper <[ ... ]>
@@ -148,7 +107,7 @@ Type SymbolicTensorType::parse(AsmParser &parser) {
 
   // Parse Comma Separated List of Expressions
   auto parseElem = [&]() -> ParseResult {
-    Attribute attr = parseExpression(parser);
+    Attribute attr = parseSymExpr(parser);
     if (!attr)
       return failure();
     shape.push_back(attr);
@@ -185,14 +144,7 @@ void SymbolicTensorType::print(AsmPrinter &printer) const {
         .Case<ConstantExprAttr>([&](auto a) { printer << a.getValue(); })
         .Case<SymbolExprAttr>(
             [&](auto a) { printer << "\"" << a.getName() << "\""; })
-        .Case<BinaryExprAttr>([&](auto a) {
-          // Print as infix: (lhs op rhs)
-          printer << "(";
-          printer.printAttribute(a.getLhs());
-          printer << " " << getOperatorSymbol(a.getOpcode()) << " ";
-          printer.printAttribute(a.getRhs());
-          printer << ")";
-        })
+        .Case<BinaryExprAttr>([&](auto a) { printSymExpr(printer, a); })
         .Default([&](Attribute a) { printer << a; }); // Fallback
 
     if (it.index() != getShape().size() - 1)
