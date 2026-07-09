@@ -263,4 +263,40 @@ TEST(Execute, MisalignedSourceStaysExact) {
   EXPECT_EQ(dst, expected);
 }
 
+TEST(Execute, ThreadedMatchesSingleThread) {
+  // Strategy 2 vs Strategy 3 must be bit-identical. Use a plan with a
+  // sizable outer axis so partitioning is exercised.
+  BoundPlan b = makeBound({64, 3}, {3, 1}, {3, 1}, 4);
+  std::vector<uint8_t> src = iotaBytes(product(b.extents), 4);
+  std::vector<uint8_t> single(product(b.extents) * 4, 0);
+  std::vector<uint8_t> multi(product(b.extents) * 4, 0);
+  reloc::executeH2D(b, src.data(), single.data());
+  reloc::executeH2DThreaded(b, src.data(), multi.data(), /*threads=*/4);
+  EXPECT_EQ(single, multi);
+}
+
+TEST(Execute, ThreadedTransposeAndPadExact) {
+  reloc::BoundPlan t = makeBound({32, 64}, {1, 32}, {64, 1}, 4);
+  std::vector<uint8_t> src = iotaBytes(product(t.extents), 4);
+  std::vector<uint8_t> got(product(t.extents) * 4, 0);
+  reloc::executeH2DThreaded(t, src.data(), got.data(), 3);
+  EXPECT_EQ(got, referenceH2D(t, src));
+
+  PadRegion pad{0, 1, 1};
+  pad.fillBits = 0x11223344;
+  reloc::BoundPlan p = makeBound({6, 4}, {4, 1}, {4, 1}, 4, {pad}); // pad outer
+  std::vector<uint8_t> psrc = iotaBytes(product(p.extents), 4);
+  int64_t pElems = (6 + 2) * 4;
+  std::vector<uint8_t> pgot(pElems * 4, 0);
+  reloc::executeH2DThreaded(p, psrc.data(), pgot.data(), 4);
+  EXPECT_EQ(pgot, referenceH2D(p, psrc));
+
+  // More threads than outer rows must be safe.
+  reloc::BoundPlan tiny = makeBound({2, 5}, {5, 1}, {5, 1}, 4);
+  std::vector<uint8_t> tsrc = iotaBytes(product(tiny.extents), 4);
+  std::vector<uint8_t> tgot(product(tiny.extents) * 4, 0);
+  reloc::executeH2DThreaded(tiny, tsrc.data(), tgot.data(), 16);
+  EXPECT_EQ(tgot, referenceH2D(tiny, tsrc));
+}
+
 } // namespace

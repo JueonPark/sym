@@ -48,6 +48,12 @@ void gatherChunk(const BoundPlan &bound, const void *srcBase, void *dstBase,
 /// range. `dstBase` sized bound.totalBytes.
 void executeH2D(const BoundPlan &bound, const void *srcBase, void *dstBase);
 
+/// Strategy 3: multi-thread tiled H2D. Partitions the outer axis into
+/// contiguous ranges, one gatherChunk per worker. `threads == 0` uses
+/// std::thread::hardware_concurrency(). Bit-identical to executeH2D.
+void executeH2DThreaded(const BoundPlan &bound, const void *srcBase,
+                        void *dstBase, unsigned threads = 0);
+
 } // namespace reloc
 
 #endif // RELOC_EXECUTE_H

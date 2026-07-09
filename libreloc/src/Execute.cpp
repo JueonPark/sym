@@ -4,8 +4,10 @@
 
 #include "reloc/CopyRun.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstring>
+#include <thread>
 
 namespace reloc {
 namespace {
@@ -98,6 +100,43 @@ void gatherChunk(const BoundPlan &bound, const void *srcBaseV, void *dstBaseV,
 void executeH2D(const BoundPlan &bound, const void *srcBase, void *dstBase) {
   fillDst(bound, dstBase);
   gatherChunk(bound, srcBase, dstBase, 0, bound.extents[0]);
+}
+
+void executeH2DThreaded(const BoundPlan &bound, const void *srcBase,
+                        void *dstBase, unsigned threads) {
+  const int64_t outer = bound.extents[0];
+  // Fill pads once, single-threaded, before any worker writes valid cells
+  // (gatherChunk no longer fills). No race: happens-before all workers.
+  fillDst(bound, dstBase);
+  if (threads == 0)
+    threads = std::thread::hardware_concurrency();
+  if (threads == 0)
+    threads = 1;
+  // Never spawn more workers than outer rows; each row is disjoint in dst
+  // (distinct outer index -> distinct dst offset range), so no data race.
+  int64_t workers = std::min<int64_t>(threads, outer);
+  if (workers <= 1) {
+    gatherChunk(bound, srcBase, dstBase, 0, outer);
+    return;
+  }
+  std::vector<std::thread> pool;
+  pool.reserve(workers - 1);
+  int64_t per = (outer + workers - 1) / workers; // ceil
+  for (int64_t w = 0; w < workers; ++w) {
+    int64_t begin = w * per;
+    int64_t end = std::min(begin + per, outer);
+    if (begin >= end)
+      break;
+    auto body = [&bound, srcBase, dstBase, begin, end]() {
+      gatherChunk(bound, srcBase, dstBase, begin, end);
+    };
+    if (w + 1 == workers)
+      body(); // run the last partition on this thread
+    else
+      pool.emplace_back(body);
+  }
+  for (std::thread &t : pool)
+    t.join();
 }
 
 ViewDescriptor executeView(const BoundPlan &bound, const void *srcBase) {
