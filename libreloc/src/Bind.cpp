@@ -60,6 +60,7 @@ struct ConcreteAxis {
   bool padded;
   int64_t lo;
   int64_t hi;
+  uint64_t fillBits = 0;
 };
 
 bool mulOk(int64_t a, int64_t b, int64_t &out) {
@@ -196,6 +197,7 @@ BindResult bind(const RelocationPlan &plan, const SymbolMap &symbolMap,
     axis.padded = true;
     axis.lo = lo;
     axis.hi = hi;
+    axis.fillBits = pad.fillBits;
     // Negative pad width is a domain invariant (like extent >= 1),
     // independent of runtime_pad_check: a negative width would produce a
     // negative padded extent and negative totalBytes. Reject unconditionally.
@@ -286,7 +288,8 @@ BindResult bind(const RelocationPlan &plan, const SymbolMap &symbolMap,
     bound.dstStrides.push_back(axes[k].dstStride);
     int64_t padded = axes[k].extent;
     if (axes[k].padded) {
-      bound.padRegions.push_back(PadRegion{k, axes[k].lo, axes[k].hi});
+      bound.padRegions.push_back(
+          PadRegion{k, axes[k].lo, axes[k].hi, axes[k].fillBits});
       if (__builtin_add_overflow(padded, axes[k].lo, &padded) ||
           __builtin_add_overflow(padded, axes[k].hi, &padded))
         return BindError{"overflow computing padded extent"};

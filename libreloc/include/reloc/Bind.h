@@ -50,6 +50,7 @@ struct PadRegion {
   size_t axis; // index into BoundPlan::extents (coalesced dst order)
   int64_t lo;
   int64_t hi;
+  uint64_t fillBits = 0; // fill value bit pattern (low elementSize bytes)
 };
 
 /// The concrete plan the executors consume. extents/strides are in
