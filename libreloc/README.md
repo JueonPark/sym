@@ -31,6 +31,13 @@ them; it is the runtime half of the compiler → runtime handoff.
   count is sanity-capped against the remaining byte budget before it gates
   an allocation, and hostile inputs are rejected by construction and
   fuzz-tested (`libreloc/test/DecodeTest.cpp`).
+- `reloc::bind` (`reloc/Bind.h`) — `RelocationPlan` plus a caller-supplied
+  `{symbol -> value}` map in, `BoundPlan` out. Requires an exact symbol-map
+  match, enforces the two-class constraint contract (divisibility and
+  runtime pad-range violations are hard bind errors; alignment is recorded
+  on the bound plan for execute-time downgrade, never a bind failure),
+  coalesces adjacent contiguous axes to a fixpoint, and picks an execution
+  strategy unless the caller forces one (`libreloc/test/BindTest.cpp`).
 
 ## Building
 

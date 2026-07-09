@@ -4,6 +4,8 @@
 add_executable(libreloc-test
   VersionTest.cpp
   DecodeTest.cpp
+  EvalTest.cpp
+  BindTest.cpp
 )
 
 target_link_libraries(libreloc-test PRIVATE

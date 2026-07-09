@@ -11,6 +11,7 @@ option(RELOC_ENABLE_CUDA "Build libreloc's CUDA backend (requires the CUDA toolk
 add_library(reloc_runtime SHARED
   src/Version.cpp
   src/Decode.cpp
+  src/Bind.cpp
 )
 
 target_compile_features(reloc_runtime PUBLIC cxx_std_17)
