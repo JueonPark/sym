@@ -56,6 +56,38 @@ void walk(const BoundPlan &b, const uint8_t *src, uint8_t *dst,
          dstOff + (i + lo[depth]) * b.dstStrides[depth]);
 }
 
+// Mirror of copyRun1D, reading dst and writing src (the innermost run).
+void scatterRun1D(const BoundPlan &b, uint8_t *src, const uint8_t *dst,
+                  int64_t innerLo, int64_t srcOff, int64_t dstOff,
+                  int64_t iBegin, int64_t iEnd) {
+  const size_t d = b.extents.size() - 1;
+  const uint32_t es = b.elementSize;
+  if (b.srcStrides[d] == 1 && b.dstStrides[d] == 1) {
+    copyRun(src + (srcOff + iBegin) * es,
+            dst + (dstOff + iBegin + innerLo) * es,
+            static_cast<size_t>(iEnd - iBegin) * es);
+  } else {
+    for (int64_t i = iBegin; i < iEnd; ++i)
+      std::memcpy(src + (srcOff + i * b.srcStrides[d]) * es,
+                  dst + (dstOff + (i + innerLo) * b.dstStrides[d]) * es, es);
+  }
+}
+
+// Mirror of walk, scattering dst -> src.
+void scatterWalk(const BoundPlan &b, uint8_t *src, const uint8_t *dst,
+                 const std::vector<int64_t> &lo, size_t depth, int64_t iBegin,
+                 int64_t iEnd, int64_t srcOff, int64_t dstOff) {
+  const size_t r = b.extents.size();
+  if (depth == r - 1) {
+    scatterRun1D(b, src, dst, lo[depth], srcOff, dstOff, iBegin, iEnd);
+    return;
+  }
+  for (int64_t i = iBegin; i < iEnd; ++i)
+    scatterWalk(b, src, dst, lo, depth + 1, 0, b.extents[depth + 1],
+                srcOff + i * b.srcStrides[depth],
+                dstOff + (i + lo[depth]) * b.dstStrides[depth]);
+}
+
 } // namespace
 
 void fillDst(const BoundPlan &bound, void *dstBaseV) {
@@ -172,6 +204,18 @@ void executeH2DThreaded(const BoundPlan &bound, const void *srcBase,
   }
   for (std::thread &t : pool)
     t.join();
+}
+
+void executeD2H(const BoundPlan &bound, const void *dstBaseV, void *srcBaseV) {
+  const auto *dst = static_cast<const uint8_t *>(dstBaseV);
+  auto *src = static_cast<uint8_t *>(srcBaseV);
+  const size_t r = bound.extents.size();
+  assert(r >= 1 && "bound plan has no axes");
+  std::vector<int64_t> lo(r, 0);
+  for (const PadRegion &p : bound.padRegions)
+    lo[p.axis] = p.lo;
+  scatterWalk(bound, src, dst, lo, /*depth=*/0, 0, bound.extents[0],
+              /*srcOff=*/0, /*dstOff=*/0);
 }
 
 ViewDescriptor executeView(const BoundPlan &bound, const void *srcBase) {

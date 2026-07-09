@@ -311,4 +311,52 @@ TEST(Execute, ThreadedOverlappingDstMatchesSingleThread) {
   EXPECT_EQ(single, multi);
 }
 
+// Reference D2H: reconstruct src from a dst-layout buffer over the valid
+// index space (inverse of referenceH2D on the valid region).
+std::vector<uint8_t> referenceD2H(const BoundPlan &bound,
+                                  const std::vector<uint8_t> &dst) {
+  const uint32_t es = bound.elementSize;
+  const size_t r = bound.extents.size();
+  std::vector<int64_t> lo(r, 0);
+  for (const PadRegion &p : bound.padRegions)
+    lo[p.axis] = p.lo;
+  std::vector<uint8_t> src(static_cast<size_t>(product(bound.extents)) * es);
+  std::vector<int64_t> idx(r, 0);
+  int64_t validElems = product(bound.extents);
+  for (int64_t n = 0; n < validElems; ++n) {
+    int64_t srcOff = 0, dstOff = 0;
+    for (size_t k = 0; k < r; ++k) {
+      srcOff += idx[k] * bound.srcStrides[k];
+      dstOff += (idx[k] + lo[k]) * bound.dstStrides[k];
+    }
+    std::memcpy(&src[srcOff * es], &dst[dstOff * es], es);
+    for (int64_t k = static_cast<int64_t>(r) - 1; k >= 0; --k) {
+      if (++idx[k] < bound.extents[k])
+        break;
+      idx[k] = 0;
+    }
+  }
+  return src;
+}
+
+TEST(Execute, D2HRoundTripsH2D) {
+  // H2D then D2H must reconstruct the original source exactly (valid
+  // region is a bijection). Cover transpose / contiguous / pad / reference.
+  auto roundTrip = [](const BoundPlan &b) {
+    int64_t validElems = product(b.extents);
+    std::vector<uint8_t> src = iotaBytes(validElems, b.elementSize);
+    std::vector<uint8_t> dst = referenceH2D(b, src); // known-good dst layout
+    std::vector<uint8_t> back(validElems * b.elementSize, 0xAB);
+    reloc::executeD2H(b, dst.data(), back.data());
+    EXPECT_EQ(back, src);
+    EXPECT_EQ(back, referenceD2H(b, dst));
+  };
+  roundTrip(makeBound({32, 64}, {1, 32}, {64, 1}, 4));   // transpose
+  roundTrip(makeBound({8, 128}, {128, 1}, {128, 1}, 4)); // contiguous
+  roundTrip(makeBound({32, 64}, {1, 32}, {64, 1}, 1));   // int8 transpose
+  PadRegion pad{0, 1, 1};
+  pad.fillBits = 0x55667788;
+  roundTrip(makeBound({6, 4}, {4, 1}, {4, 1}, 4, {pad})); // padded (valid only)
+}
+
 } // namespace

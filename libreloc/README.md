@@ -38,6 +38,11 @@ them; it is the runtime half of the compiler → runtime handoff.
   on the bound plan for execute-time downgrade, never a bind failure),
   coalesces adjacent contiguous axes to a fixpoint, and picks an execution
   strategy unless the caller forces one (`libreloc/test/BindTest.cpp`).
+- `reloc::executeView` / `executeH2D` / `executeH2DThreaded` / `gatherChunk` /
+  `executeD2H` (`reloc/Execute.h`) — CPU relocation executors over a
+  `BoundPlan`; `no_copy` view publish, single- and multi-thread strided copy
+  with an AVX2 inner run, and the CPU D2H scatter; the gather primitive is
+  #C5's per-chunk form.
 
 ## Building
 

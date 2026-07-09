@@ -58,6 +58,15 @@ void executeH2D(const BoundPlan &bound, const void *srcBase, void *dstBase);
 void executeH2DThreaded(const BoundPlan &bound, const void *srcBase,
                         void *dstBase, unsigned threads = 0);
 
+/// D2H: reconstruct the original source from a dst-layout buffer over the
+/// valid (unpadded) index space. Realizes the inverse relocation by
+/// role-swapping src/dst strides over the coalesced valid index space (a
+/// scatter mirror of the H2D walk) rather than evaluating the wire
+/// `inverse` PUSH_DIM streams -- see libreloc/README.md's Surface entry.
+/// `dstBaseV` is a dst-layout buffer (as produced by executeH2D);
+/// `srcBaseV` is sized for the valid region only (no pad cells).
+void executeD2H(const BoundPlan &bound, const void *dstBaseV, void *srcBaseV);
+
 } // namespace reloc
 
 #endif // RELOC_EXECUTE_H
