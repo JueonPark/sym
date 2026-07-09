@@ -688,4 +688,132 @@ TEST_F(PlanBuilderTest, TwoPadsOnDifferentAxesRenumberThroughTranspose) {
   EXPECT_EQ(applyPlan(plan, noBindings), expected.data);
 }
 
+TEST_F(PlanBuilderTest, CanonicalizeMergesAdjacentAxes) {
+  // Identity plan over [8, 128]: both sides contiguous, view-adjacent.
+  reloc::PlanBuilder builder(makeType({dim(8), dim(128)}));
+  reloc::PlanAttr raw = finalize(builder);
+  ASSERT_TRUE(raw);
+  reloc::PlanAttr canon =
+      reloc::canonicalizePlan(raw, UnknownLoc::get(&context));
+  ASSERT_TRUE(canon);
+  ASSERT_EQ(canon.getAxes().size(), 1u);
+  EXPECT_EQ(canon.getAxes()[0].getName(), "d0");
+  EXPECT_EQ(canon.getAxes()[0].getExtent(), dim(1024));
+  EXPECT_EQ(canon.getAxes()[0].getSrcStride(), dim(1));
+  EXPECT_EQ(canon.getDst().getExtents().size(), 1u); // dst rank collapses
+  EXPECT_TRUE(canon.getNoCopy()); // pure view after the merge
+  // Semantics preserved: same flat buffer.
+  EXPECT_EQ(applyPlan(canon, noBindings), applyPlan(raw, noBindings));
+}
+
+TEST_F(PlanBuilderTest, CanonicalizeRespectsViewAdjacency) {
+  // Transposed [4, 6]: dst axes are adjacent but map to view axes in the
+  // wrong order (perm [1, 0]) — no merge; no_copy recomputed to false.
+  reloc::PlanBuilder builder(makeType({dim(4), dim(6)}));
+  ASSERT_TRUE(succeeded(reloc::foldTranspose(builder, {1, 0})));
+  reloc::PlanAttr raw = finalize(builder);
+  ASSERT_TRUE(raw);
+  reloc::PlanAttr canon =
+      reloc::canonicalizePlan(raw, UnknownLoc::get(&context));
+  ASSERT_TRUE(canon);
+  EXPECT_EQ(canon.getAxes().size(), 2u);
+  EXPECT_FALSE(canon.getNoCopy());
+  EXPECT_EQ(applyPlan(canon, noBindings), applyPlan(raw, noBindings));
+}
+
+TEST_F(PlanBuilderTest, CanonicalizeMergeCascadesToFixpoint) {
+  // Identity over [6, 4, 2] fully collapses to one axis of 48.
+  reloc::PlanBuilder builder(makeType({dim(6), dim(4), dim(2)}));
+  reloc::PlanAttr canon =
+      reloc::canonicalizePlan(finalize(builder), UnknownLoc::get(&context));
+  ASSERT_TRUE(canon);
+  ASSERT_EQ(canon.getAxes().size(), 1u);
+  EXPECT_EQ(canon.getAxes()[0].getExtent(), dim(48));
+  EXPECT_TRUE(canon.getNoCopy());
+}
+
+TEST_F(PlanBuilderTest, CanonicalizePadBlocksMergeAndKeepsNoCopyUnset) {
+  reloc::PlanBuilder builder(makeType({dim(6), dim(4)}));
+  ASSERT_TRUE(succeeded(reloc::foldPad(builder, 0, dim(1), dim(1), fill(0.0))));
+  reloc::PlanAttr raw = finalize(builder);
+  ASSERT_TRUE(raw);
+  reloc::PlanAttr canon =
+      reloc::canonicalizePlan(raw, UnknownLoc::get(&context));
+  ASSERT_TRUE(canon);
+  EXPECT_EQ(canon.getAxes().size(), 2u); // padded axis never merges
+  ASSERT_EQ(canon.getPadFill().size(), 1u);
+  EXPECT_EQ(canon.getPadFill()[0].getDstAxis(), 0);
+  EXPECT_FALSE(canon.getNoCopy());
+  EXPECT_EQ(applyPlan(canon, noBindings), applyPlan(raw, noBindings));
+}
+
+TEST_F(PlanBuilderTest, CanonicalizeClearsWrongNoCopy) {
+  // Hand-assemble a plan claiming no_copy on a non-pure view (the plan
+  // verifier does not police the flag; canonicalization must).
+  reloc::PlanBuilder builder(makeType({dim(4), dim(6)}));
+  ASSERT_TRUE(succeeded(reloc::foldTranspose(builder, {1, 0})));
+  reloc::PlanAttr raw = finalize(builder);
+  ASSERT_TRUE(raw);
+  reloc::PlanAttr lying = reloc::PlanAttr::get(
+      &context, raw.getSrc(), raw.getDst(), raw.getPerm(), raw.getAxes(),
+      raw.getPadFill(), raw.getDivisibility(), raw.getAlignment(),
+      raw.getContiguity(), /*noCopy=*/true, raw.getRuntimePadCheck(),
+      raw.getInverse());
+  reloc::PlanAttr canon =
+      reloc::canonicalizePlan(lying, UnknownLoc::get(&context));
+  ASSERT_TRUE(canon);
+  EXPECT_FALSE(canon.getNoCopy());
+}
+
+TEST_F(PlanBuilderTest, CanonicalizeConstantFolds) {
+  // Bypass parse-time simplification with a raw BinaryExprAttr (4 + 4).
+  Attribute rawSum = sym::BinaryExprAttr::get(
+      &context, sym::SymbolicExprOp::Add, dim(4), dim(4));
+  reloc::PlanBuilder builder(makeType({rawSum}));
+  reloc::PlanAttr raw = finalize(builder);
+  ASSERT_TRUE(raw);
+  EXPECT_EQ(raw.getAxes()[0].getExtent(), rawSum); // builder kept it raw
+  reloc::PlanAttr canon =
+      reloc::canonicalizePlan(raw, UnknownLoc::get(&context));
+  ASSERT_TRUE(canon);
+  EXPECT_EQ(canon.getAxes()[0].getExtent(), dim(8));
+}
+
+TEST_F(PlanBuilderTest, CanonicalizeIsIdempotent) {
+  reloc::PlanBuilder builder(makeType({dim(8), dim(128)}));
+  reloc::PlanAttr once =
+      reloc::canonicalizePlan(finalize(builder), UnknownLoc::get(&context));
+  ASSERT_TRUE(once);
+  // Attributes are uniqued: a truly idempotent canonicalization returns
+  // the identical attribute.
+  EXPECT_EQ(reloc::canonicalizePlan(once, UnknownLoc::get(&context)), once);
+}
+
+TEST_F(PlanBuilderTest, CanonicalizeSafeSubsetForNonFoldNormalPlans) {
+  // Explicit dst strides: no axis merging, but no_copy is still
+  // recomputed and expressions still fold. Build a pure-view plan with
+  // explicit (row-major) dst strides and a stale no_copy=false.
+  MLIRContext *ctx = &context;
+  Attribute zero = dim(0);
+  auto desc = [&](ArrayRef<Attribute> extents, ArrayRef<Attribute> strides) {
+    return reloc::TensorDescAttr::get(ctx, extents, strides, zero,
+                                      Float32Type::get(ctx));
+  };
+  SmallVector<reloc::AxisInfoAttr> axes = {
+      reloc::AxisInfoAttr::get(ctx, "o", dim(8), dim(128), dim(128)),
+      reloc::AxisInfoAttr::get(ctx, "i", dim(128), dim(1), dim(1))};
+  auto plan = reloc::PlanAttr::get(
+      ctx, desc({dim(8), dim(128)}, {}),
+      desc({dim(8), dim(128)}, {dim(128), dim(1)}),
+      DenseI64ArrayAttr::get(ctx, {0, 1}), axes, {}, {}, {},
+      DenseBoolArrayAttr::get(ctx, ArrayRef<bool>()), /*noCopy=*/false,
+      /*runtimePadCheck=*/false,
+      AffineMapAttr::get(AffineMap::getMultiDimIdentityMap(2, ctx)));
+  reloc::PlanAttr canon =
+      reloc::canonicalizePlan(plan, UnknownLoc::get(&context));
+  ASSERT_TRUE(canon);
+  EXPECT_EQ(canon.getAxes().size(), 2u); // no merging in the safe subset
+  EXPECT_TRUE(canon.getNoCopy());        // but no_copy is recomputed
+}
+
 } // namespace
