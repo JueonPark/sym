@@ -16,9 +16,12 @@ them; it is the runtime half of the compiler → runtime handoff.
 - Include paths: the repository's root CMake globally injects MLIR include
   directories; this is include-path-only pollution, tolerated for v0
   (issue #41). Do not include MLIR headers from libreloc sources.
-- Compile flags are inherited from the repository's LLVM configuration
-  (HandleLLVMOptions). Revisit per-target (exceptions/RTTI) when the
-  pybind11 bindings land (#C6).
+- `reloc_runtime` is a plain `add_library`, so it does not go through
+  `llvm_update_compile_flags`: only the repository's global
+  warning/codegen flags are inherited, and **exceptions and RTTI stay ON**
+  for this target (LLVM's tree-wide `-fno-exceptions -fno-rtti` is not
+  applied here). This is exactly what pybind11 (#C6) needs; #C6 should
+  still re-verify this when the bindings land.
 
 ## Building
 

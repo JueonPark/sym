@@ -70,6 +70,36 @@ jobs:
                 exit 1
               fi
               echo "libreloc_runtime.so is MLIR/LLVM-free ($(wc -l < /tmp/reloc-syms.txt) dynamic symbols checked)"
+
+              # nm only sees symbols; a link-only dependency (e.g. a
+              # gratuitous target_link_libraries) can add a DT_NEEDED entry
+              # with zero undefined symbols, invisible to the check above.
+              readelf -d build/sym/libreloc/libreloc_runtime.so > /tmp/reloc-dyn.txt
+              if grep -iE "NEEDED.*(mlir|llvm)" /tmp/reloc-dyn.txt; then
+                echo "ERROR: MLIR/LLVM DT_NEEDED entry in libreloc_runtime.so" >&2
+                exit 1
+              fi
+
+              # nm/readelf are both blind to header-only MLIR/LLVM usage
+              # (inline-only code exports no symbols and needs no link);
+              # grep the sources directly for visibility in CI logs (the
+              # authoritative check is the reloc-runtime-no-mlir-includes
+              # CTest test, which also runs in this job). Assert grep
+              # exits exactly 1: 0 = violating include found, 2 = the scan
+              # itself failed (e.g. a scanned directory was renamed away)
+              # — treating 2 as "no match" would silently disable this
+              # guard forever.
+              set +e
+              grep -rE '"'"'#include *["<](mlir|llvm)[/"]'"'"' libreloc/src libreloc/include libreloc/cuda
+              scan=$?
+              set -e
+              if [ "$scan" -eq 0 ]; then
+                echo "ERROR: MLIR/LLVM header included in libreloc sources" >&2
+                exit 1
+              elif [ "$scan" -ne 1 ]; then
+                echo "ERROR: include scan failed (exit $scan; missing dir?)" >&2
+                exit 1
+              fi
             '
 
       - name: Upload build artifacts
