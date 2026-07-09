@@ -69,3 +69,39 @@ func.func @pad_negative_width(%t: !sym.tensor<[6], f32>) {
   %0 = reloc.pad %t axis 0 lo 0 - 1 hi 1 value (0.0 : f32) : !sym.tensor<[6], f32> -> !sym.tensor<[6], f32>
   return
 }
+
+// -----
+
+// plan_result: input rank must match the plan's src rank.
+func.func @plan_result_bad_input_rank(%t: !sym.tensor<[2, 4], f32>) {
+  // expected-error @below {{input rank (2) must match the plan src rank (1)}}
+  %0 = reloc.plan_result %t plan(#reloc.plan<src = tensor<[8], f32>, dst = tensor<[8], f32>, perm = [0], axes = [{name = "x", extent = 8, src_stride = 1, dst_stride = 1}], inverse = affine_map<(d0) -> (d0)>>) : !sym.tensor<[2, 4], f32> -> !sym.tensor<[8], f32>
+  return
+}
+
+// -----
+
+// plan_result: provably mismatched input extent.
+func.func @plan_result_bad_input_extent(%t: !sym.tensor<[7], f32>) {
+  // expected-error @below {{input dimension 0 provably disagrees with the plan src extent}}
+  %0 = reloc.plan_result %t plan(#reloc.plan<src = tensor<[8], f32>, dst = tensor<[8], f32>, perm = [0], axes = [{name = "x", extent = 8, src_stride = 1, dst_stride = 1}], inverse = affine_map<(d0) -> (d0)>>) : !sym.tensor<[7], f32> -> !sym.tensor<[8], f32>
+  return
+}
+
+// -----
+
+// plan_result: element types must match the plan.
+func.func @plan_result_bad_elem_type(%t: !sym.tensor<[8], i32>) {
+  // expected-error @below {{input element type ('i32') must match the plan src element type ('f32')}}
+  %0 = reloc.plan_result %t plan(#reloc.plan<src = tensor<[8], f32>, dst = tensor<[8], f32>, perm = [0], axes = [{name = "x", extent = 8, src_stride = 1, dst_stride = 1}], inverse = affine_map<(d0) -> (d0)>>) : !sym.tensor<[8], i32> -> !sym.tensor<[8], f32>
+  return
+}
+
+// -----
+
+// plan_result: provably mismatched result extent against the plan dst.
+func.func @plan_result_bad_result_extent(%t: !sym.tensor<[8], f32>) {
+  // expected-error @below {{result dimension 0 provably disagrees with the plan dst extent}}
+  %0 = reloc.plan_result %t plan(#reloc.plan<src = tensor<[8], f32>, dst = tensor<[8], f32>, perm = [0], axes = [{name = "x", extent = 8, src_stride = 1, dst_stride = 1}], inverse = affine_map<(d0) -> (d0)>>) : !sym.tensor<[8], f32> -> !sym.tensor<[9], f32>
+  return
+}

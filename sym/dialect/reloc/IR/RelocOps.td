@@ -101,4 +101,36 @@ def Reloc_PadOp : Reloc_Op<"pad", [Pure]> {
   let hasVerifier = 1;
 }
 
+// #reloc.plan referenced via a predicate (like Reloc_SymTensor above) so no
+// attribute TableGen files need to be included here.
+def Reloc_PlanAttrParam : Attr<
+    CPred<"::mlir::isa<::mlir::reloc::PlanAttr>($_self)">,
+    "reloc plan attribute"> {
+  let storageType = [{ ::mlir::reloc::PlanAttr }];
+  let returnType = [{ ::mlir::reloc::PlanAttr }];
+  let convertFromStorage = "$_self";
+  let constBuilderCall = "$0";
+}
+
+def Reloc_PlanResultOp : Reloc_Op<"plan_result", [Pure]> {
+  let summary = "Materialized relocation plan applied to a source tensor";
+  let description = [{
+    First-class result of the --reloc-fold pass: `input` relocated
+    according to `plan`. Replaces a folded straight-line reloc.* chain so
+    later passes can consume the #reloc.plan attribute directly.
+
+    Example:
+    ```mlir
+    %0 = reloc.plan_result %t plan(#reloc.plan<...>)
+        : !sym.tensor<[64, 32], f32> -> !sym.tensor<[32, 64], f32>
+    ```
+  }];
+
+  let arguments = (ins Reloc_SymTensor:$input, Reloc_PlanAttrParam:$plan);
+  let results = (outs Reloc_SymTensor:$result);
+
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
+}
+
 #endif // RELOC_OPS_TD

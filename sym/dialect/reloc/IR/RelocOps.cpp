@@ -332,6 +332,75 @@ LogicalResult PadOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// PlanResultOp
+//===----------------------------------------------------------------------===//
+
+ParseResult PlanResultOp::parse(OpAsmParser &parser, OperationState &result) {
+  OpAsmParser::UnresolvedOperand input;
+  PlanAttr plan;
+  if (parser.parseOperand(input) || parser.parseKeyword("plan") ||
+      parser.parseLParen() || parser.parseAttribute(plan) ||
+      parser.parseRParen())
+    return failure();
+  result.addAttribute(getPlanAttrName(result.name), plan);
+  if (parser.parseOptionalAttrDict(result.attributes))
+    return failure();
+  Type inputType, resultType;
+  if (parseOpTypes(parser, inputType, resultType) ||
+      parser.resolveOperand(input, inputType, result.operands))
+    return failure();
+  result.addTypes(resultType);
+  return success();
+}
+
+void PlanResultOp::print(OpAsmPrinter &printer) {
+  printer << " " << getInput() << " plan(";
+  printer.printAttribute(getPlan());
+  printer << ")";
+  printer.printOptionalAttrDict((*this)->getAttrs(),
+                                /*elidedAttrs=*/{getPlanAttrName()});
+  printOpTypes(printer, getInput().getType(), getResult().getType());
+}
+
+LogicalResult PlanResultOp::verify() {
+  auto inputType = cast<sym::SymbolicTensorType>(getInput().getType());
+  auto resultType = cast<sym::SymbolicTensorType>(getResult().getType());
+  PlanAttr plan = getPlan();
+  ArrayRef<Attribute> srcExtents = plan.getSrc().getExtents();
+  ArrayRef<Attribute> dstExtents = plan.getDst().getExtents();
+
+  if (inputType.getShape().size() != srcExtents.size())
+    return emitOpError() << "input rank (" << inputType.getShape().size()
+                         << ") must match the plan src rank ("
+                         << srcExtents.size() << ")";
+  if (resultType.getShape().size() != dstExtents.size())
+    return emitOpError() << "result rank (" << resultType.getShape().size()
+                         << ") must match the plan dst rank ("
+                         << dstExtents.size() << ")";
+  if (inputType.getElementType() != plan.getSrc().getElementType())
+    return emitOpError() << "input element type (" << inputType.getElementType()
+                         << ") must match the plan src element type ("
+                         << plan.getSrc().getElementType() << ")";
+  if (resultType.getElementType() != plan.getDst().getElementType())
+    return emitOpError() << "result element type ("
+                         << resultType.getElementType()
+                         << ") must match the plan dst element type ("
+                         << plan.getDst().getElementType() << ")";
+
+  // Disproven-only extent checks (mirrors the plan verifier's philosophy:
+  // reject only provable mismatches; symbolic Unknowns pass).
+  for (size_t k = 0; k < srcExtents.size(); ++k)
+    if (proveEqual(inputType.getShape()[k], srcExtents[k]) == Proof::Disproven)
+      return emitOpError() << "input dimension " << k
+                           << " provably disagrees with the plan src extent";
+  for (size_t k = 0; k < dstExtents.size(); ++k)
+    if (proveEqual(resultType.getShape()[k], dstExtents[k]) == Proof::Disproven)
+      return emitOpError() << "result dimension " << k
+                           << " provably disagrees with the plan dst extent";
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // TableGen'd Operation Definitions
 //===----------------------------------------------------------------------===//
 
