@@ -14,6 +14,10 @@ add_library(reloc_runtime SHARED
   src/Bind.cpp
   src/Execute.cpp
   src/CopyRun.cpp
+  src/HostBackend.cpp
+  src/PinnedBufferPool.cpp
+  src/ChunkSchedule.cpp
+  src/Pipeline.cpp
 )
 
 target_compile_features(reloc_runtime PUBLIC cxx_std_17)
@@ -23,11 +27,11 @@ target_include_directories(reloc_runtime PUBLIC
 )
 
 if(RELOC_ENABLE_CUDA)
-  # #C5 adds cuda/*.cu translation units here; until then the option only
-  # wires the dependency and the feature macro.
   enable_language(CUDA)
   find_package(CUDAToolkit REQUIRED)
   target_compile_definitions(reloc_runtime PUBLIC RELOC_ENABLE_CUDA=1)
+  target_sources(reloc_runtime PRIVATE cuda/CudaBackend.cu)
+  set_source_files_properties(cuda/CudaBackend.cu PROPERTIES LANGUAGE CUDA)
   target_link_libraries(reloc_runtime PRIVATE CUDA::cudart)
 endif()
 

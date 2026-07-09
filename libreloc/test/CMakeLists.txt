@@ -7,6 +7,11 @@ add_executable(libreloc-test
   EvalTest.cpp
   BindTest.cpp
   ExecuteTest.cpp
+  BackendTest.cpp
+  PoolTest.cpp
+  ChunkScheduleTest.cpp
+  PipelineTest.cpp
+  CudaPipelineTest.cpp
 )
 
 target_link_libraries(libreloc-test PRIVATE
@@ -14,6 +19,10 @@ target_link_libraries(libreloc-test PRIVATE
   llvm_gtest
   llvm_gtest_main
 )
+
+if(RELOC_ENABLE_CUDA)
+  target_link_libraries(libreloc-test PRIVATE CUDA::cudart)
+endif()
 
 add_test(NAME libreloc-test COMMAND libreloc-test)
 

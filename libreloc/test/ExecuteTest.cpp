@@ -175,6 +175,21 @@ TEST(Execute, GatherChunkCoversOuterSubrange) {
   EXPECT_EQ(std::memcmp(partial.data(), full.data(), 2 * 3 * 4), 0);
 }
 
+TEST(Execute, ScatterChunkCoversOuterSubrange) {
+  // scatterChunk over the whole outer range == executeD2H; a partial range
+  // reconstructs only its outer slice. Mirror of
+  // GatherChunkCoversOuterSubrange.
+  BoundPlan b = makeBound({4, 3}, {3, 1}, {3, 1}, 4);
+  std::vector<uint8_t> src = iotaBytes(12, 4);
+  std::vector<uint8_t> dst = referenceH2D(b, src);
+  std::vector<uint8_t> full(12 * 4, 0xAB);
+  reloc::executeD2H(b, dst.data(), full.data());
+  std::vector<uint8_t> partial(12 * 4, 0xAB);
+  reloc::scatterChunk(b, dst.data(), partial.data(), 0, 2);
+  // Valid outer rows 0..1 reconstructed; check they match executeD2H's output.
+  EXPECT_EQ(std::memcmp(partial.data(), full.data(), 2 * 3 * 4), 0);
+}
+
 TEST(Execute, ReferencePlanN4096) {
   // End-to-end: decode the reference golden, bind, execute. This plan's
   // axis formulas (block tiling of size 64, with the n0/n1 stride tied to
