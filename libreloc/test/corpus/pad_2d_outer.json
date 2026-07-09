@@ -1,0 +1,21 @@
+{
+  "dtype": "f32",
+  "element_size": 4,
+  "generator_seed": 0,
+  "mlir": "func.func @pad_2d_outer(%arg0: !sym.tensor<[6, 4], f32>) -> !sym.tensor<[8, 4], f32> {\n  %0 = reloc.pad %arg0 axis 0 lo 1 hi 1 value (-2.500000e+00 : f32) : !sym.tensor<[6, 4], f32> -> !sym.tensor<[8, 4], f32>\n  return %0 : !sym.tensor<[8, 4], f32>\n}\n",
+  "name": "pad_2d_outer",
+  "ops": [
+    {
+      "axis": 0,
+      "hi": 1,
+      "kind": "pad",
+      "lo": 1,
+      "value": -2.5
+    }
+  ],
+  "src_shape": [
+    6,
+    4
+  ],
+  "symbols": {}
+}

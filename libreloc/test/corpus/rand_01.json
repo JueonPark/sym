@@ -1,0 +1,28 @@
+{
+  "dtype": "f16",
+  "element_size": 2,
+  "generator_seed": 0,
+  "mlir": "func.func @rand_01(%arg0: !sym.tensor<[2, 8], f16>) -> !sym.tensor<[2, 8], f16> {\n  %0 = reloc.transpose %arg0 perm [1, 0] : !sym.tensor<[2, 8], f16> -> !sym.tensor<[8, 2], f16>\n  %1 = reloc.transpose %0 perm [1, 0] : !sym.tensor<[8, 2], f16> -> !sym.tensor<[2, 8], f16>\n  return %1 : !sym.tensor<[2, 8], f16>\n}\n",
+  "name": "rand_01",
+  "ops": [
+    {
+      "kind": "transpose",
+      "perm": [
+        1,
+        0
+      ]
+    },
+    {
+      "kind": "transpose",
+      "perm": [
+        1,
+        0
+      ]
+    }
+  ],
+  "src_shape": [
+    2,
+    8
+  ],
+  "symbols": {}
+}

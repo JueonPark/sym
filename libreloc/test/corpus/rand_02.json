@@ -1,0 +1,36 @@
+{
+  "dtype": "i8",
+  "element_size": 1,
+  "generator_seed": 0,
+  "mlir": "func.func @rand_02(%arg0: !sym.tensor<[4, 8, 3], i8>) -> !sym.tensor<[2, 2, 24], i8> {\n  %0 = reloc.reshape %arg0 to [8, 12] : !sym.tensor<[4, 8, 3], i8> -> !sym.tensor<[8, 12], i8>\n  %1 = reloc.reshape %0 to [96] : !sym.tensor<[8, 12], i8> -> !sym.tensor<[96], i8>\n  %2 = reloc.reshape %1 to [2, 2, 24] : !sym.tensor<[96], i8> -> !sym.tensor<[2, 2, 24], i8>\n  return %2 : !sym.tensor<[2, 2, 24], i8>\n}\n",
+  "name": "rand_02",
+  "ops": [
+    {
+      "kind": "reshape",
+      "to": [
+        8,
+        12
+      ]
+    },
+    {
+      "kind": "reshape",
+      "to": [
+        96
+      ]
+    },
+    {
+      "kind": "reshape",
+      "to": [
+        2,
+        2,
+        24
+      ]
+    }
+  ],
+  "src_shape": [
+    4,
+    8,
+    3
+  ],
+  "symbols": {}
+}

@@ -1,0 +1,35 @@
+{
+  "dtype": "f32",
+  "element_size": 4,
+  "generator_seed": 0,
+  "mlir": "func.func @rand_06(%arg0: !sym.tensor<[2, 8], f32>) -> !sym.tensor<[2, 8], f32> {\n  %0 = reloc.reshape %arg0 to [2, 8] : !sym.tensor<[2, 8], f32> -> !sym.tensor<[2, 8], f32>\n  %1 = reloc.transpose %0 perm [1, 0] : !sym.tensor<[2, 8], f32> -> !sym.tensor<[8, 2], f32>\n  %2 = reloc.transpose %1 perm [1, 0] : !sym.tensor<[8, 2], f32> -> !sym.tensor<[2, 8], f32>\n  return %2 : !sym.tensor<[2, 8], f32>\n}\n",
+  "name": "rand_06",
+  "ops": [
+    {
+      "kind": "reshape",
+      "to": [
+        2,
+        8
+      ]
+    },
+    {
+      "kind": "transpose",
+      "perm": [
+        1,
+        0
+      ]
+    },
+    {
+      "kind": "transpose",
+      "perm": [
+        1,
+        0
+      ]
+    }
+  ],
+  "src_shape": [
+    2,
+    8
+  ],
+  "symbols": {}
+}

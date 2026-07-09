@@ -1,0 +1,21 @@
+{
+  "dtype": "i8",
+  "element_size": 1,
+  "generator_seed": 0,
+  "mlir": "func.func @transpose_2d_i8(%arg0: !sym.tensor<[32, 64], i8>) -> !sym.tensor<[64, 32], i8> {\n  %0 = reloc.transpose %arg0 perm [1, 0] : !sym.tensor<[32, 64], i8> -> !sym.tensor<[64, 32], i8>\n  return %0 : !sym.tensor<[64, 32], i8>\n}\n",
+  "name": "transpose_2d_i8",
+  "ops": [
+    {
+      "kind": "transpose",
+      "perm": [
+        1,
+        0
+      ]
+    }
+  ],
+  "src_shape": [
+    32,
+    64
+  ],
+  "symbols": {}
+}

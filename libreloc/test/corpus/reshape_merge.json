@@ -1,0 +1,20 @@
+{
+  "dtype": "f32",
+  "element_size": 4,
+  "generator_seed": 0,
+  "mlir": "func.func @reshape_merge(%arg0: !sym.tensor<[4, 6], f32>) -> !sym.tensor<[24], f32> {\n  %0 = reloc.reshape %arg0 to [24] : !sym.tensor<[4, 6], f32> -> !sym.tensor<[24], f32>\n  return %0 : !sym.tensor<[24], f32>\n}\n",
+  "name": "reshape_merge",
+  "ops": [
+    {
+      "kind": "reshape",
+      "to": [
+        24
+      ]
+    }
+  ],
+  "src_shape": [
+    4,
+    6
+  ],
+  "symbols": {}
+}

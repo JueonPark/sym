@@ -1,0 +1,21 @@
+{
+  "dtype": "f32",
+  "element_size": 4,
+  "generator_seed": 0,
+  "mlir": "func.func @transpose_2d_f32(%arg0: !sym.tensor<[32, 64], f32>) -> !sym.tensor<[64, 32], f32> {\n  %0 = reloc.transpose %arg0 perm [1, 0] : !sym.tensor<[32, 64], f32> -> !sym.tensor<[64, 32], f32>\n  return %0 : !sym.tensor<[64, 32], f32>\n}\n",
+  "name": "transpose_2d_f32",
+  "ops": [
+    {
+      "kind": "transpose",
+      "perm": [
+        1,
+        0
+      ]
+    }
+  ],
+  "src_shape": [
+    32,
+    64
+  ],
+  "symbols": {}
+}
