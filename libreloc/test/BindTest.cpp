@@ -289,4 +289,49 @@ TEST(Bind, BindCostUnderBudget) {
   std::cout << "[ bind cost ] " << meanNs << " ns/bind\n";
 }
 
+TEST(Bind, NegativePadWidthRejectedWithoutRuntimeCheck) {
+  // Negative pad width is a domain invariant, independent of
+  // runtime_pad_check. With the flag off, a huge negative hi must still be
+  // rejected (else it yields a negative padded extent / negative
+  // totalBytes), not bind "successfully".
+  RelocationPlan plan = decoded(kDegradedHex);
+  plan.runtimePadCheck = false;
+  plan.padFill[0].hi = {reloc::ExprToken{reloc::ExprOp::PushConst, -1000000}};
+  EXPECT_NE(bindErr(plan, {{"N", 1000}}).find("negative"), std::string::npos);
+}
+
+TEST(Bind, AlignmentAxisRemappedThroughCoalescing) {
+  // Reference plan coalesces 4->3 axes: original b0(1)+b1(2) merge into
+  // coalesced axis 1, so the original->coalesced map is 0->0,1->1,2->1,3->2.
+  // An alignment on original axis 2 must land on coalesced axis 1.
+  RelocationPlan plan = decoded(kReferenceHex);
+  plan.alignment = {reloc::Alignment{2, 128}};
+  BoundPlan bound = bindOk(plan, {{"N", 32768}});
+  ASSERT_EQ(bound.requiredAlignments.size(), 1u);
+  EXPECT_EQ(bound.requiredAlignments[0].axis, 1u);
+  EXPECT_EQ(bound.requiredAlignments[0].bytes, 128);
+  EXPECT_LT(bound.requiredAlignments[0].axis, bound.extents.size());
+}
+
+TEST(Bind, AlignmentAxisRemappedTrailingAxis) {
+  // Original axis 3 (n1) -> coalesced axis 2.
+  RelocationPlan plan = decoded(kReferenceHex);
+  plan.alignment = {reloc::Alignment{3, 256}};
+  BoundPlan bound = bindOk(plan, {{"N", 32768}});
+  ASSERT_EQ(bound.requiredAlignments.size(), 1u);
+  EXPECT_EQ(bound.requiredAlignments[0].axis, 2u);
+  EXPECT_EQ(bound.requiredAlignments[0].bytes, 256);
+  EXPECT_LT(bound.requiredAlignments[0].axis, bound.extents.size());
+}
+
+TEST(Bind, AlignmentAxisOutOfRangeRejected) {
+  // A hand-built alignment.axis past the plan's axis count must be a hard
+  // bind error (guarding the original->coalesced remap index), not an OOB
+  // read/crash. bind is public and may be handed an unvetted plan.
+  RelocationPlan plan = decoded(kDegradedHex);
+  plan.alignment = {reloc::Alignment{999999, 64}};
+  EXPECT_NE(bindErr(plan, {{"N", 1000}}).find("out of range"),
+            std::string::npos);
+}
+
 } // namespace

@@ -65,7 +65,10 @@ struct BoundPlan {
   bool noCopy = false;
   Strategy strategy = Strategy::Auto;
   int64_t L = 1; // innermost coalesced contiguous run length, elements
-  std::vector<Alignment> requiredAlignments; // execute-time downgrade input
+  // Execute-time downgrade input. Each Alignment::axis is in coalesced
+  // BoundPlan::extents index space (remapped through coalescing, matching
+  // PadRegion::axis) -- NOT the plan's original axis numbering.
+  std::vector<Alignment> requiredAlignments;
 };
 
 struct BindError {

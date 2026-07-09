@@ -90,6 +90,11 @@ bool evalExpr(const ExprStream &stream, const SymbolValues &symbols,
     case ExprOp::Mul:
     case ExprOp::FloorDiv:
     case ExprOp::Mod: {
+      // The decoder enforces stack discipline, but evalExpr is public and
+      // may be handed a hand-built stream; guard defensively (mirrors the
+      // PushSym index guard) to avoid pop_back UB on an empty vector.
+      if (stack.size() < 2)
+        return (error = "expression stack underflow"), false;
       int64_t b = stack.back();
       stack.pop_back();
       int64_t a = stack.back();
@@ -184,9 +189,12 @@ BindResult bind(const RelocationPlan &plan, const SymbolMap &symbolMap,
     axis.padded = true;
     axis.lo = lo;
     axis.hi = hi;
+    // Negative pad width is a domain invariant (like extent >= 1),
+    // independent of runtime_pad_check: a negative width would produce a
+    // negative padded extent and negative totalBytes. Reject unconditionally.
+    if (lo < 0 || hi < 0)
+      return BindError{"pad width negative"};
     if (plan.runtimePadCheck) {
-      if (lo < 0 || hi < 0)
-        return BindError{"pad width negative under runtime_pad_check"};
       // The decoder guarantees pad.dstAxis < plan.axes.size() (so the
       // axes[] access above is safe) but not < dst.extents.size(); a
       // hand-crafted blob with dst rank < axes count would OOB here.
@@ -208,7 +216,10 @@ BindResult bind(const RelocationPlan &plan, const SymbolMap &symbolMap,
   }
 
   // 4. Coalesce adjacent axes contiguous on both sides (padded axes never
-  // merge). Fixpoint.
+  // merge). Fixpoint. `absorbed[c]` tracks how many ORIGINAL axes each
+  // surviving coalesced axis covers, so alignment.axis (in original index
+  // space) can be remapped to coalesced index space afterward.
+  std::vector<size_t> absorbed(axes.size(), 1);
   bool changed = true;
   while (changed) {
     changed = false;
@@ -225,10 +236,19 @@ BindResult bind(const RelocationPlan &plan, const SymbolMap &symbolMap,
         continue;
       axes[k] = ConcreteAxis{extProd, i.srcStride, i.dstStride, false, 0, 0};
       axes.erase(axes.begin() + k + 1);
+      absorbed[k] += absorbed[k + 1];
+      absorbed.erase(absorbed.begin() + k + 1);
       changed = true;
       break;
     }
   }
+  // Build the original-axis -> coalesced-axis index map: coalesced axis c
+  // spans the next absorbed[c] consecutive original indices. Well-defined
+  // because pad-carrying (and any non-merged) axes stay 1:1.
+  std::vector<size_t> originalToCoalesced(plan.axes.size());
+  for (size_t c = 0, orig = 0; c < absorbed.size(); ++c)
+    for (size_t j = 0; j < absorbed[c]; ++j)
+      originalToCoalesced[orig++] = c;
 
   // 5. Assemble BoundPlan.
   BoundPlan bound;
@@ -239,8 +259,19 @@ BindResult bind(const RelocationPlan &plan, const SymbolMap &symbolMap,
                      "in v0"};
   bound.elementSize = bitwidth / 8;
   bound.noCopy = plan.noCopy;
-  for (const Alignment &a : plan.alignment)
-    bound.requiredAlignments.push_back(a);
+  // alignment.axis is in original-axis index space; remap it to coalesced
+  // BoundPlan::extents index space (mirrors PadRegion.axis). The decoder
+  // guarantees a.axis < plan.axes.size(), but bind is public and may be
+  // handed a hand-built plan; guard the index (same public-trust-boundary
+  // class as the pad dst.extents guard). A structurally-malformed axis is
+  // a hard error -- the "alignment never fails bind" rule is about
+  // semantic alignment shortfalls, not structural malformation.
+  for (const Alignment &a : plan.alignment) {
+    if (a.axis >= plan.axes.size())
+      return BindError{"alignment axis out of range"};
+    bound.requiredAlignments.push_back(
+        Alignment{(uint32_t)originalToCoalesced[a.axis], a.bytes});
+  }
   int64_t totalElements = 1;
   for (size_t k = 0; k < axes.size(); ++k) {
     bound.extents.push_back(axes[k].extent);

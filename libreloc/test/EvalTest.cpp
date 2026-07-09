@@ -102,4 +102,14 @@ TEST(Eval, PushDimIsErrorInPlanContext) {
             std::string::npos);
 }
 
+TEST(Eval, StackUnderflowIsError) {
+  // A binary op with too few operands must be rejected, not pop past the
+  // end of the stack (heap-buffer-overflow UB). evalExpr is public and may
+  // be handed a hand-built stream the decoder never vetted.
+  EXPECT_NE(evalErr({op(ExprOp::Add)}, {}).find("underflow"),
+            std::string::npos);
+  EXPECT_NE(evalErr({konst(1), op(ExprOp::Add)}, {}).find("underflow"),
+            std::string::npos);
+}
+
 } // namespace
