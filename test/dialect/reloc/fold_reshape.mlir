@@ -42,12 +42,3 @@ func.func @symbolic_passthrough_merge(%t: !sym.tensor<["N", 4, 2], f32>) -> !sym
   %0 = reloc.reshape %t to [N, 8] : !sym.tensor<["N", 4, 2], f32> -> !sym.tensor<["N", 8], f32>
   return %0 : !sym.tensor<["N", 8], f32>
 }
-
-// A pad breaks the chain (#B3 folds it later): the suffix after the pad
-// folds standalone, seeded from the pad's result type.
-func.func @chain_after_pad(%t: !sym.tensor<[6], f32>) -> !sym.tensor<[2, 4], f32> {
-  %0 = reloc.pad %t axis 0 lo 1 hi 1 value (0.0 : f32) : !sym.tensor<[6], f32> -> !sym.tensor<[8], f32>
-  // expected-remark @below {{folded plan: #reloc.plan<src = tensor<[8], f32>, dst = tensor<[2, 4], f32>, perm = [0, 1], axes = [{name = "d0", extent = 2, src_stride = 4, dst_stride = 4}, {name = "d1", extent = 4, src_stride = 1, dst_stride = 1}], constraints = {contiguous = [false, true], no_copy = false}, inverse = affine_map<(d0, d1) -> (d0, d1)>>}}
-  %1 = reloc.reshape %0 to [2, 4] : !sym.tensor<[8], f32> -> !sym.tensor<[2, 4], f32>
-  return %1 : !sym.tensor<[2, 4], f32>
-}

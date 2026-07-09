@@ -24,3 +24,12 @@ func.func @midchain_bail(%t: !sym.tensor<[4, 6], f32>) -> !sym.tensor<[24], f32>
   %2 = reloc.transpose %1 perm [0] : !sym.tensor<[24], f32> -> !sym.tensor<[24], f32>
   return %2 : !sym.tensor<[24], f32>
 }
+
+// Pad-then-split on the padded axis bails (issue #15 design decision 3):
+// the valid region is not expressible per-axis after the split.
+func.func @pad_then_split_bails(%t: !sym.tensor<[6], f32>) -> !sym.tensor<[2, 4], f32> {
+  %0 = reloc.pad %t axis 0 lo 1 hi 1 value (0.0 : f32) : !sym.tensor<[6], f32> -> !sym.tensor<[8], f32>
+  // expected-remark @below {{fold bail: reloc.reshape}}
+  %1 = reloc.reshape %0 to [2, 4] : !sym.tensor<[8], f32> -> !sym.tensor<[2, 4], f32>
+  return %1 : !sym.tensor<[2, 4], f32>
+}

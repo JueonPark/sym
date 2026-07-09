@@ -97,6 +97,34 @@ static Tensor reshapeRef(const Tensor &t, ArrayRef<int64_t> shape) {
   return result;
 }
 
+/// NumPy-pad reference: grows `axis` by `lo` leading and `hi` trailing
+/// cells that keep the -1 sentinel (the oracle checks pad GEOMETRY; fill
+/// values are compared at the attribute level).
+static Tensor padRef(const Tensor &t, int64_t axis, int64_t lo, int64_t hi) {
+  Tensor result;
+  result.shape.assign(t.shape.begin(), t.shape.end());
+  result.shape[axis] += lo + hi;
+  result.data.assign(product(result.shape), -1);
+  SmallVector<int64_t> oldStrides = rowMajorStrides(t.shape);
+  SmallVector<int64_t> newStrides = rowMajorStrides(result.shape);
+  SmallVector<int64_t> index(t.shape.size(), 0);
+  for (size_t n = 0; n < t.data.size(); ++n) {
+    int64_t oldOff = 0, newOff = 0;
+    for (size_t k = 0; k < t.shape.size(); ++k) {
+      int64_t shifted = index[k] + (static_cast<int64_t>(k) == axis ? lo : 0);
+      oldOff += index[k] * oldStrides[k];
+      newOff += shifted * newStrides[k];
+    }
+    result.data[newOff] = t.data[oldOff];
+    for (int64_t k = static_cast<int64_t>(t.shape.size()) - 1; k >= 0; --k) {
+      if (++index[k] < t.shape[k])
+        break;
+      index[k] = 0;
+    }
+  }
+  return result;
+}
+
 //===----------------------------------------------------------------------===//
 // Plan evaluation (the index-table side of the oracle)
 //===----------------------------------------------------------------------===//
@@ -151,13 +179,23 @@ applyPlan(reloc::PlanAttr plan, const llvm::StringMap<int64_t> &bindings) {
     dstStrides.push_back(evalExpr(axis.getDstStride(), bindings));
   }
   int64_t srcOffset = evalExpr(plan.getSrc().getOffset(), bindings);
-  std::vector<int64_t> dst(product(extents), -1);
+  // Pads: valid data lands at index + lo on padded axes; dst cells outside
+  // the valid region keep the -1 sentinel. Without pads this reduces to
+  // the previous behavior (dst extents == axis extents, lo == 0).
+  SmallVector<int64_t> lo(rank, 0);
+  for (reloc::PadFillAttr pad : plan.getPadFill())
+    lo[pad.getDstAxis()] = evalExpr(pad.getLo(), bindings);
+  SmallVector<int64_t> paddedExtents;
+  for (Attribute extent : plan.getDst().getExtents())
+    paddedExtents.push_back(evalExpr(extent, bindings));
+  std::vector<int64_t> dst(product(paddedExtents), -1);
   SmallVector<int64_t> index(rank, 0);
-  for (size_t n = 0; n < dst.size(); ++n) {
+  const size_t total = static_cast<size_t>(product(extents));
+  for (size_t n = 0; n < total; ++n) {
     int64_t srcOff = srcOffset, dstOff = 0;
     for (int64_t k = 0; k < rank; ++k) {
       srcOff += index[k] * srcStrides[k];
-      dstOff += index[k] * dstStrides[k];
+      dstOff += (index[k] + lo[k]) * dstStrides[k];
     }
     dst[dstOff] = srcOff;
     for (int64_t k = rank - 1; k >= 0; --k) {
@@ -192,6 +230,20 @@ protected:
   Attribute mul(int64_t lhs, Attribute rhs) {
     return sym::getSimplifiedBinaryExpr(&context, sym::SymbolicExprOp::Mul,
                                         dim(lhs), rhs);
+  }
+  TypedAttr fill(double value) {
+    return FloatAttr::get(Float32Type::get(&context), value);
+  }
+  Attribute alignUpPad(Attribute extent, int64_t align) {
+    // ((extent + align - 1) floordiv align) * align - extent
+    Attribute sum = sym::getSimplifiedBinaryExpr(
+        &context, sym::SymbolicExprOp::Add, extent, dim(align - 1));
+    Attribute quotient = sym::getSimplifiedBinaryExpr(
+        &context, sym::SymbolicExprOp::Div, sum, dim(align));
+    Attribute rounded = sym::getSimplifiedBinaryExpr(
+        &context, sym::SymbolicExprOp::Mul, quotient, dim(align));
+    return sym::getSimplifiedBinaryExpr(&context, sym::SymbolicExprOp::Sub,
+                                        rounded, extent);
   }
   sym::SymbolicTensorType makeType(ArrayRef<Attribute> shape) {
     return sym::SymbolicTensorType::get(&context, shape,
@@ -481,6 +533,159 @@ TEST_F(PlanBuilderTest, ReferenceChainMatchesBuildDocConstraintSet) {
   Tensor expected =
       transposeRef(reshapeRef(iota({128, 128}), {2, 64, 2, 64}), {2, 0, 1, 3});
   EXPECT_EQ(applyPlan(plan, bindings), expected.data);
+}
+
+TEST_F(PlanBuilderTest, PadMatchesOracle) {
+  reloc::PlanBuilder builder(makeType({dim(6)}));
+  ASSERT_TRUE(succeeded(reloc::foldPad(builder, 0, dim(1), dim(1), fill(1.0))));
+  reloc::PlanAttr plan = finalize(builder);
+  ASSERT_TRUE(plan);
+  ASSERT_EQ(plan.getPadFill().size(), 1u);
+  EXPECT_EQ(plan.getPadFill()[0].getDstAxis(), 0);
+  EXPECT_EQ(plan.getPadFill()[0].getValue(), fill(1.0));
+  EXPECT_FALSE(plan.getRuntimePadCheck()); // static pad range is Proven
+  EXPECT_EQ(plan.getAxes()[0].getExtent(), dim(6)); // valid extent kept
+  EXPECT_EQ(applyPlan(plan, noBindings), padRef(iota({6}), 0, 1, 1).data);
+}
+
+TEST_F(PlanBuilderTest, RepeatedSameValuePadsMerge) {
+  reloc::PlanBuilder builder(makeType({dim(6)}));
+  ASSERT_TRUE(succeeded(reloc::foldPad(builder, 0, dim(1), dim(0), fill(0.0))));
+  ASSERT_TRUE(succeeded(reloc::foldPad(builder, 0, dim(2), dim(3), fill(0.0))));
+  ASSERT_EQ(builder.pads.size(), 1u); // merged, not stacked
+  reloc::PlanAttr plan = finalize(builder);
+  ASSERT_TRUE(plan);
+  // Second pad wraps the first: total lo = 3, hi = 3.
+  Tensor expected = padRef(padRef(iota({6}), 0, 1, 0), 0, 2, 3);
+  EXPECT_EQ(applyPlan(plan, noBindings), expected.data);
+}
+
+TEST_F(PlanBuilderTest, DifferentFillValueSecondPadBails) {
+  reloc::PlanBuilder builder(makeType({dim(6)}));
+  ASSERT_TRUE(succeeded(reloc::foldPad(builder, 0, dim(1), dim(0), fill(0.0))));
+  EXPECT_TRUE(failed(reloc::foldPad(builder, 0, dim(0), dim(1), fill(1.0))));
+  EXPECT_EQ(builder.pads.size(), 1u); // untouched by the bail
+}
+
+TEST_F(PlanBuilderTest, ZeroPadIsNoOp) {
+  reloc::PlanBuilder builder(makeType({dim(6)}));
+  ASSERT_TRUE(succeeded(reloc::foldPad(builder, 0, dim(0), dim(0), fill(0.0))));
+  EXPECT_TRUE(builder.pads.empty());
+  reloc::PlanAttr plan = finalize(builder);
+  ASSERT_TRUE(plan);
+  EXPECT_TRUE(plan.getPadFill().empty());
+  EXPECT_EQ(applyPlan(plan, noBindings), iota({6}).data);
+}
+
+TEST_F(PlanBuilderTest, NegativePadWidthBails) {
+  reloc::PlanBuilder builder(makeType({dim(6)}));
+  EXPECT_TRUE(failed(reloc::foldPad(builder, 0, dim(-1), dim(0), fill(0.0))));
+  EXPECT_TRUE(failed(reloc::foldPad(builder, 5, dim(1), dim(0), fill(0.0))));
+  EXPECT_TRUE(builder.pads.empty());
+}
+
+TEST_F(PlanBuilderTest, AlignmentPadFoldsAndBinds) {
+  // Issue #23 acceptance: hi = align_up(N, A) - N for A in {64, 128} on a
+  // non-multiple extent; the pad range is symbolically Unknown, so the
+  // plan must carry runtime_pad_check.
+  for (int64_t align : {int64_t(64), int64_t(128)}) {
+    Attribute n = dim("N");
+    reloc::PlanBuilder builder(makeType({n}));
+    ASSERT_TRUE(succeeded(
+        reloc::foldPad(builder, 0, dim(0), alignUpPad(n, align), fill(0.0))));
+    reloc::PlanAttr plan = finalize(builder);
+    ASSERT_TRUE(plan);
+    EXPECT_TRUE(plan.getRuntimePadCheck());
+    llvm::StringMap<int64_t> bindings;
+    bindings["N"] = 150; // align_up: 192 (A=64) / 256 (A=128)
+    int64_t hi = align == 64 ? 42 : 106;
+    EXPECT_EQ(applyPlan(plan, bindings), padRef(iota({150}), 0, 0, hi).data);
+  }
+}
+
+TEST_F(PlanBuilderTest, PadThenTransposeRenumbersPad) {
+  reloc::PlanBuilder builder(makeType({dim(4), dim(6)}));
+  ASSERT_TRUE(succeeded(reloc::foldPad(builder, 1, dim(0), dim(2), fill(0.0))));
+  ASSERT_TRUE(succeeded(reloc::foldTranspose(builder, {1, 0})));
+  ASSERT_EQ(builder.pads.size(), 1u);
+  EXPECT_EQ(builder.pads[0].axis, 0); // padded axis moved to dst position 0
+  reloc::PlanAttr plan = finalize(builder);
+  ASSERT_TRUE(plan);
+  Tensor expected = transposeRef(padRef(iota({4, 6}), 1, 0, 2), {1, 0});
+  EXPECT_EQ(applyPlan(plan, noBindings), expected.data);
+}
+
+TEST_F(PlanBuilderTest, PadThenSplitOnPaddedAxisBails) {
+  // Issue #15 design decision 3: the valid region is not expressible
+  // per-axis after splitting a padded axis.
+  reloc::PlanBuilder builder(makeType({dim(6)}));
+  ASSERT_TRUE(succeeded(reloc::foldPad(builder, 0, dim(1), dim(1), fill(0.0))));
+  EXPECT_TRUE(failed(reloc::foldReshape(builder, {dim(2), dim(4)})));
+  // Bail leaves the builder untouched: the pad-only plan still holds.
+  EXPECT_EQ(builder.axes.size(), 1u);
+  EXPECT_EQ(builder.pads.size(), 1u);
+  reloc::PlanAttr plan = finalize(builder);
+  ASSERT_TRUE(plan);
+  EXPECT_EQ(applyPlan(plan, noBindings), padRef(iota({6}), 0, 1, 1).data);
+}
+
+TEST_F(PlanBuilderTest, PadThenMergeWithPaddedAxisBails) {
+  reloc::PlanBuilder builder(makeType({dim(6), dim(4)}));
+  ASSERT_TRUE(succeeded(reloc::foldPad(builder, 0, dim(1), dim(1), fill(0.0))));
+  // Padded view is [8, 4]; merging to [32] would fold the pad into the
+  // merged axis -> bail.
+  EXPECT_TRUE(failed(reloc::foldReshape(builder, {dim(32)})));
+  EXPECT_EQ(builder.axes.size(), 2u);
+}
+
+TEST_F(PlanBuilderTest, PadSurvivesReshapeKeepAndRemaps) {
+  reloc::PlanBuilder builder(makeType({dim(6), dim(4)}));
+  ASSERT_TRUE(succeeded(reloc::foldPad(builder, 0, dim(1), dim(1), fill(0.0))));
+  // Padded view is [8, 4]; the reshape keeps the padded axis 1:1 (target
+  // entry 8 == padded extent) and splits the unpadded 4 into (2, 2).
+  ASSERT_TRUE(succeeded(reloc::foldReshape(builder, {dim(8), dim(2), dim(2)})));
+  ASSERT_EQ(builder.pads.size(), 1u);
+  EXPECT_EQ(builder.pads[0].axis, 0);
+  EXPECT_EQ(builder.axes[0].extent, dim(6)); // valid extent preserved
+  reloc::PlanAttr plan = finalize(builder);
+  ASSERT_TRUE(plan);
+  Tensor expected = reshapeRef(padRef(iota({6, 4}), 0, 1, 1), {8, 2, 2});
+  EXPECT_EQ(applyPlan(plan, noBindings), expected.data);
+}
+
+TEST_F(PlanBuilderTest, PadRemapsWhenPrecedingAxesMerge) {
+  // Merge (2, 3) -> 6 before a padded 1:1-kept axis: the pad's index must
+  // remap from 2 to 1.
+  reloc::PlanBuilder builder(makeType({dim(2), dim(3), dim(6)}));
+  ASSERT_TRUE(succeeded(reloc::foldPad(builder, 2, dim(1), dim(1), fill(0.0))));
+  ASSERT_TRUE(succeeded(reloc::foldReshape(builder, {dim(6), dim(8)})));
+  ASSERT_EQ(builder.pads.size(), 1u);
+  EXPECT_EQ(builder.pads[0].axis, 1);
+  EXPECT_EQ(builder.axes[1].extent, dim(6)); // valid extent preserved
+  reloc::PlanAttr plan = finalize(builder);
+  ASSERT_TRUE(plan);
+  Tensor expected = reshapeRef(padRef(iota({2, 3, 6}), 2, 1, 1), {6, 8});
+  EXPECT_EQ(applyPlan(plan, noBindings), expected.data);
+}
+
+TEST_F(PlanBuilderTest, TwoPadsOnDifferentAxesRenumberThroughTranspose) {
+  reloc::PlanBuilder builder(makeType({dim(4), dim(6)}));
+  ASSERT_TRUE(succeeded(reloc::foldPad(builder, 0, dim(1), dim(0), fill(0.0))));
+  ASSERT_TRUE(succeeded(reloc::foldPad(builder, 1, dim(0), dim(2), fill(0.0))));
+  ASSERT_TRUE(succeeded(reloc::foldTranspose(builder, {1, 0})));
+  ASSERT_EQ(builder.pads.size(), 2u);
+  // The axis-0 pad (lo 1) moved to dst position 1; the axis-1 pad (hi 2)
+  // moved to dst position 0.
+  const reloc::PlanPad *padOnZero = builder.findPad(0);
+  const reloc::PlanPad *padOnOne = builder.findPad(1);
+  ASSERT_TRUE(padOnZero && padOnOne);
+  EXPECT_EQ(padOnZero->hi, dim(2));
+  EXPECT_EQ(padOnOne->lo, dim(1));
+  reloc::PlanAttr plan = finalize(builder);
+  ASSERT_TRUE(plan);
+  Tensor expected =
+      transposeRef(padRef(padRef(iota({4, 6}), 0, 1, 0), 1, 0, 2), {1, 0});
+  EXPECT_EQ(applyPlan(plan, noBindings), expected.data);
 }
 
 } // namespace
