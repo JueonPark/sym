@@ -66,10 +66,14 @@ def RelocFoldPass : Pass<"reloc-fold", "::mlir::ModuleOp"> {
     all-or-nothing per chain: when a transfer function bails, a non-reloc
     op interrupts the chain, or an intermediate value has multiple uses,
     every op in the chain is marked with a `reloc.fallback` unit attribute
-    and left intact (per-op fallback). Ops already marked reloc.fallback
-    are skipped, which also makes the pass idempotent. Every produced plan
-    passes the #reloc.plan verifier; a verification failure is a pass
-    error, never a silent skip.
+    and left intact (per-op fallback). A chain containing an already-marked
+    op (previous bail or manual opt-out) is itself marked in full rather
+    than being left alone, which preserves the invariant that after the
+    pass every foldable reloc op is either folded into a reloc.plan_result
+    or carries reloc.fallback; re-marking is idempotent, so the pass is
+    still a no-op on its own output. Every produced plan passes the
+    #reloc.plan verifier; a verification failure is a pass error, never a
+    silent skip.
   }];
 
   let dependentDialects = [

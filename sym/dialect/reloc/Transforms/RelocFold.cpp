@@ -61,11 +61,16 @@ struct RelocFoldPass : public impl::RelocFoldPassBase<RelocFoldPass> {
     }
     std::reverse(chain.begin(), chain.end());
 
-    // Already marked (previous bail or manual opt-out): leave alone. This
-    // also makes the pass idempotent on bailed chains.
+    // Already marked (previous bail or manual opt-out): re-mark the whole
+    // chain rather than leaving it alone. A prior pass (or a hand-authored
+    // marker on any single member) must not leave the chain's other members
+    // in a third state that is neither folded nor marked; re-marking closes
+    // that gap. markFallback sets the same uniqued UnitAttr on every member,
+    // so this is idempotent — a second run over already-marked output is
+    // byte-identical.
     for (Operation *op : chain)
       if (op->hasAttr(kFallbackAttrName))
-        return success();
+        return markFallback(chain);
 
     // Structural bail (a): a non-tail member's value escapes the chain;
     // folding it away would need partial folding (and erasing it would be
@@ -77,7 +82,10 @@ struct RelocFoldPass : public impl::RelocFoldPassBase<RelocFoldPass> {
     // Structural bail (b) — sandwich interruption: a non-reloc op sits
     // between two foldable segments (reloc -> X -> reloc). Both segments
     // fall back rather than folding partially; each side detects X from its
-    // own end.
+    // own end. The upstream and downstream checks below are depth-1 mirrors
+    // of each other (X's operand-defs vs. X's result-users): whichever side
+    // of the sandwich a chain sits on, it self-detects X, so marking is
+    // order-independent between the two segments.
     if (Operation *rootDef = chain.front()->getOperand(0).getDefiningOp())
       if (!isFoldableChainOp(rootDef) && !isa<PlanResultOp>(rootDef))
         for (Value operand : rootDef->getOperands())

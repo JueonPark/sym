@@ -82,3 +82,36 @@ func.func @manual_fallback_respected(%t: !sym.tensor<[4, 6], f32>) -> !sym.tenso
   %0 = reloc.transpose %t perm [1, 0] {reloc.fallback} : !sym.tensor<[4, 6], f32> -> !sym.tensor<[6, 4], f32>
   return %0 : !sym.tensor<[6, 4], f32>
 }
+
+// Mark-on-skip: a diamond off a multi-use intermediate. The transpose ->
+// reshape chain is processed first and bails on the multi-use rule, marking
+// the transpose and the reshape. The transpose -> pad chain is processed
+// second; its root (the transpose) is already marked, so mark-on-skip marks
+// the whole second chain too, landing the pad. All three ops end up marked
+// -- none are left in a third state that is neither folded nor marked.
+// CHECK-LABEL: func.func @diamond_marks_all
+func.func @diamond_marks_all(%t: !sym.tensor<[4, 6], f32>) -> (!sym.tensor<[24], f32>, !sym.tensor<[8, 4], f32>) {
+  // CHECK-NOT: reloc.plan_result
+  // CHECK: reloc.transpose %{{.*}} perm [1, 0] {reloc.fallback}
+  // CHECK: reloc.reshape %{{.*}} to [24] {reloc.fallback}
+  // CHECK: reloc.pad %{{.*}} axis 0 lo 1 hi 1 value{{.*}} {reloc.fallback}
+  %0 = reloc.transpose %t perm [1, 0] : !sym.tensor<[4, 6], f32> -> !sym.tensor<[6, 4], f32>
+  %1 = reloc.reshape %0 to [24] : !sym.tensor<[6, 4], f32> -> !sym.tensor<[24], f32>
+  %2 = reloc.pad %0 axis 0 lo 1 hi 1 value (0.0 : f32) : !sym.tensor<[6, 4], f32> -> !sym.tensor<[8, 4], f32>
+  return %1, %2 : !sym.tensor<[24], f32>, !sym.tensor<[8, 4], f32>
+}
+
+// Mark-on-skip: a clean transpose feeds a reshape that already carries a
+// manual reloc.fallback opt-out. The reshape is the chain tail (its user
+// is the func.return, not a foldable op), so the chain is [transpose,
+// reshape]; the pre-marked reshape triggers the skip path, and mark-on-skip
+// marks the transpose too, even though the transpose itself was clean.
+// CHECK-LABEL: func.func @marked_consumer_marks_chain
+func.func @marked_consumer_marks_chain(%t: !sym.tensor<[4, 6], f32>) -> !sym.tensor<[24], f32> {
+  // CHECK-NOT: reloc.plan_result
+  // CHECK: reloc.transpose %{{.*}} perm [1, 0] {reloc.fallback}
+  // CHECK: reloc.reshape %{{.*}} to [24] {reloc.fallback}
+  %0 = reloc.transpose %t perm [1, 0] : !sym.tensor<[4, 6], f32> -> !sym.tensor<[6, 4], f32>
+  %1 = reloc.reshape %0 to [24] {reloc.fallback} : !sym.tensor<[6, 4], f32> -> !sym.tensor<[24], f32>
+  return %1 : !sym.tensor<[24], f32>
+}
