@@ -23,6 +23,15 @@ them; it is the runtime half of the compiler → runtime handoff.
   applied here). This is exactly what pybind11 (#C6) needs; #C6 should
   still re-verify this when the bindings land.
 
+## Surface
+
+- `reloc::decodePlan` (`reloc/Decode.h`) — wire-format v0 in
+  (`docs/reloc-plan-format.md`), `RelocationPlan` out; strict validation
+  with byte-offset diagnostics. The decoder is the trust boundary: every
+  count is sanity-capped against the remaining byte budget before it gates
+  an allocation, and hostile inputs are rejected by construction and
+  fuzz-tested (`libreloc/test/DecodeTest.cpp`).
+
 ## Building
 
 Built as part of the normal repository build; no extra steps:
