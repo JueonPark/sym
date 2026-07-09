@@ -10,6 +10,7 @@ add_executable(libreloc-test
   BackendTest.cpp
   PoolTest.cpp
   ChunkScheduleTest.cpp
+  PipelineTest.cpp
 )
 
 target_link_libraries(libreloc-test PRIVATE
