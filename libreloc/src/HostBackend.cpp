@@ -81,7 +81,13 @@ bool HostBackend::queryEvent(EventHandle ev) {
     return true;
   std::lock_guard<std::mutex> lk(mu_);
   auto it = done_.find(ev);
-  return it != done_.end() && it->second;
+  // Unknown handle => complete, mirroring CudaBackend::queryEvent (a handle
+  // absent from the tracking map means there is nothing left to wait on).
+  // A known-but-pending handle still reports its stored (false) flag, so
+  // this only changes behavior for handles queryEvent was never told about.
+  if (it == done_.end())
+    return true;
+  return it->second;
 }
 
 void HostBackend::setCopyHook(std::function<void()> hook) {

@@ -21,6 +21,8 @@ void fillStagingWindow(const BoundPlan &b, void *staging, size_t bytes) {
     return;
   const uint32_t es = b.elementSize;
   uint64_t bits = b.padRegions.front().fillBits;
+  for (const PadRegion &p : b.padRegions)
+    assert(p.fillBits == bits && "v0 supports a single fill value");
   auto *p = static_cast<uint8_t *>(staging);
   for (size_t off = 0; off + es <= bytes; off += es)
     std::memcpy(p + off, &bits, es);
@@ -99,9 +101,13 @@ void executeD2HPipelined(const BoundPlan &bound, const void *deviceSrc,
     EventHandle ev = backend.recordEvent(q);
     pool.setEvent(i, ev);
     inflight.push_back({i, ev, k});
-    // Keep at most nBuffers copies outstanding; drain the oldest (which uses
-    // the buffer we are about to reuse next) before it is overwritten.
-    if (static_cast<int>(inflight.size()) == nBuffers) {
+    // Keep at most pool.nBuffers() copies outstanding; drain the oldest
+    // (which uses the buffer we are about to reuse next) before it is
+    // overwritten. The deferred scatterOne(front) below (waitEvent + scatter)
+    // runs synchronously on this single driver thread strictly before the
+    // next acquire() reuses that same buffer, so the buffer is fully drained
+    // and scattered before any new D2H copy overwrites it.
+    if (static_cast<int>(inflight.size()) == pool.nBuffers()) {
       scatterOne(inflight.front());
       inflight.pop_front();
     }

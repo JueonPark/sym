@@ -65,8 +65,6 @@ ChunkSchedule planChunks(const BoundPlan &bound, int nBuffers,
                                                       static_cast<size_t>(s.rowBytes)))
           : paddedOuter;
   rowsPerChunk = std::min<int64_t>(rowsPerChunk, paddedOuter);
-  if (rowsPerChunk < 1)
-    rowsPerChunk = paddedOuter;
 
   for (int64_t pb = 0; pb < paddedOuter; pb += rowsPerChunk) {
     int64_t pe = std::min<int64_t>(pb + rowsPerChunk, paddedOuter);
