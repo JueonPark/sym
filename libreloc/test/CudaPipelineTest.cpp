@@ -8,10 +8,10 @@
 
 #ifdef RELOC_ENABLE_CUDA
 
-#include "reloc/CudaBackend.h"
-#include "reloc/Pipeline.h"
-#include "reloc/Execute.h"
 #include "reloc/Bind.h"
+#include "reloc/CudaBackend.h"
+#include "reloc/Execute.h"
+#include "reloc/Pipeline.h"
 #include "gtest/gtest.h"
 
 #include <cuda_runtime.h>
@@ -33,7 +33,8 @@ std::vector<uint8_t> iotaBytes(int64_t elements, uint32_t elementSize) {
   std::vector<uint8_t> buf(static_cast<size_t>(elements) * elementSize);
   for (int64_t e = 0; e < elements; ++e)
     for (uint32_t b = 0; b < elementSize; ++b)
-      buf[e * elementSize + b] = static_cast<uint8_t>((e * 131 + b * 17) & 0xff);
+      buf[e * elementSize + b] =
+          static_cast<uint8_t>((e * 131 + b * 17) & 0xff);
   return buf;
 }
 

@@ -177,7 +177,8 @@ TEST(Execute, GatherChunkCoversOuterSubrange) {
 
 TEST(Execute, ScatterChunkCoversOuterSubrange) {
   // scatterChunk over the whole outer range == executeD2H; a partial range
-  // reconstructs only its outer slice. Mirror of GatherChunkCoversOuterSubrange.
+  // reconstructs only its outer slice. Mirror of
+  // GatherChunkCoversOuterSubrange.
   BoundPlan b = makeBound({4, 3}, {3, 1}, {3, 1}, 4);
   std::vector<uint8_t> src = iotaBytes(12, 4);
   std::vector<uint8_t> dst = referenceH2D(b, src);

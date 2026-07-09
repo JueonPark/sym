@@ -54,15 +54,16 @@ ChunkSchedule planChunks(const BoundPlan &bound, int nBuffers,
   }
 
   s.serialized = false;
-  size_t target = chunkSizeOverride != 0
-                      ? chunkSizeOverride
-                      : std::clamp<size_t>(static_cast<size_t>(bound.totalBytes) /
-                                               (2u * static_cast<size_t>(nBuffers)),
-                                           kMinChunkBytes, kMaxChunkBytes);
+  size_t target =
+      chunkSizeOverride != 0
+          ? chunkSizeOverride
+          : std::clamp<size_t>(static_cast<size_t>(bound.totalBytes) /
+                                   (2u * static_cast<size_t>(nBuffers)),
+                               kMinChunkBytes, kMaxChunkBytes);
   int64_t rowsPerChunk =
       s.rowBytes > 0
-          ? std::max<int64_t>(1, static_cast<int64_t>(target /
-                                                      static_cast<size_t>(s.rowBytes)))
+          ? std::max<int64_t>(1, static_cast<int64_t>(
+                                     target / static_cast<size_t>(s.rowBytes)))
           : paddedOuter;
   rowsPerChunk = std::min<int64_t>(rowsPerChunk, paddedOuter);
 

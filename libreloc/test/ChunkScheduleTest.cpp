@@ -43,8 +43,8 @@ void expectContiguousCover(const ChunkSchedule &s, int64_t paddedOuter,
   for (const Chunk &c : s.chunks) {
     EXPECT_EQ(c.paddedBegin, expectBegin);
     EXPECT_EQ(c.byteOffset, c.paddedBegin * s.rowBytes);
-    EXPECT_EQ(c.bytes, static_cast<size_t>((c.paddedEnd - c.paddedBegin) *
-                                           s.rowBytes));
+    EXPECT_EQ(c.bytes,
+              static_cast<size_t>((c.paddedEnd - c.paddedBegin) * s.rowBytes));
     EXPECT_LE(c.bytes, s.maxChunkBytes);
     expectBegin = c.paddedEnd;
     coveredBytes += static_cast<int64_t>(c.bytes);
@@ -78,7 +78,8 @@ TEST(ChunkSchedule, OuterPadCountsPadRowsAndClampsValid) {
   PadRegion pad{0, 1, 1};
   pad.fillBits = 0xDEADBEEF;
   BoundPlan b = makeBound({6, 4}, {4, 1}, {4, 1}, 4, {pad});
-  ChunkSchedule s = planChunks(b, /*nBuffers=*/2, /*override=*/16); // rowBytes=16
+  ChunkSchedule s =
+      planChunks(b, /*nBuffers=*/2, /*override=*/16); // rowBytes=16
   EXPECT_EQ(s.outerLo, 1);
   expectContiguousCover(s, /*paddedOuter=*/8, b.totalBytes);
   // First chunk is a leading pad row: no valid rows.

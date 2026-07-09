@@ -20,17 +20,17 @@
 namespace reloc {
 
 /// Default chunk-byte clamp (design decision 4). Named so P3 can retune them.
-constexpr size_t kMinChunkBytes = 8ull * 1024 * 1024;    // 8 MB
-constexpr size_t kMaxChunkBytes = 256ull * 1024 * 1024;  // 256 MB
+constexpr size_t kMinChunkBytes = 8ull * 1024 * 1024;   // 8 MB
+constexpr size_t kMaxChunkBytes = 256ull * 1024 * 1024; // 256 MB
 
 /// One pipeline chunk: a contiguous run of physical outer (axis-0) rows.
 struct Chunk {
   int64_t paddedBegin; // physical outer-row range [begin,end), incl. pad rows
   int64_t paddedEnd;
-  int64_t validBegin;  // valid (unpadded) outer indices to gather/scatter
+  int64_t validBegin; // valid (unpadded) outer indices to gather/scatter
   int64_t validEnd;
-  int64_t byteOffset;  // device byte offset of this chunk's dst window
-  size_t bytes;        // window size in bytes
+  int64_t byteOffset; // device byte offset of this chunk's dst window
+  size_t bytes;       // window size in bytes
 };
 
 struct ChunkSchedule {

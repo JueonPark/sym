@@ -9,8 +9,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "reloc/Pipeline.h"
-#include "reloc/Execute.h"
 #include "reloc/Bind.h"
+#include "reloc/Execute.h"
 #include "reloc/HostBackend.h"
 #include "gtest/gtest.h"
 
@@ -34,7 +34,8 @@ std::vector<uint8_t> iotaBytes(int64_t elements, uint32_t elementSize) {
   std::vector<uint8_t> buf(static_cast<size_t>(elements) * elementSize);
   for (int64_t e = 0; e < elements; ++e)
     for (uint32_t b = 0; b < elementSize; ++b)
-      buf[e * elementSize + b] = static_cast<uint8_t>((e * 131 + b * 17) & 0xff);
+      buf[e * elementSize + b] =
+          static_cast<uint8_t>((e * 131 + b * 17) & 0xff);
   return buf;
 }
 
@@ -124,7 +125,8 @@ void expectPipelineExactD2H(const BoundPlan &b, int nBuffers, int nStreams,
   reloc::executeH2D(b, src.data(), device.data()); // build the dst layout
 
   HostBackend backend(nStreams);
-  std::vector<uint8_t> back(static_cast<size_t>(srcElems) * b.elementSize, 0xCD);
+  std::vector<uint8_t> back(static_cast<size_t>(srcElems) * b.elementSize,
+                            0xCD);
   reloc::executeD2HPipelined(b, device.data(), back.data(), backend, nBuffers,
                              chunkOverride);
   EXPECT_EQ(back, src) << "nBuffers=" << nBuffers << " nStreams=" << nStreams

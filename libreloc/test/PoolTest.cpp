@@ -1,7 +1,7 @@
 //===- PoolTest.cpp - PinnedBufferPool tests ------------------------------===//
 
-#include "reloc/PinnedBufferPool.h"
 #include "reloc/HostBackend.h"
+#include "reloc/PinnedBufferPool.h"
 #include "gtest/gtest.h"
 
 #include <atomic>

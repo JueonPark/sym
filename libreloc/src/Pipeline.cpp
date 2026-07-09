@@ -58,9 +58,8 @@ void executeH2DPipelined(const BoundPlan &bound, const void *srcBase,
                   c.validBegin, c.validEnd);
 
     int q = static_cast<int>(k % static_cast<size_t>(nStreams));
-    backend.copyAsync(q,
-                      static_cast<uint8_t *>(deviceDst) + c.byteOffset, staging,
-                      c.bytes, CopyDir::HostToDevice);
+    backend.copyAsync(q, static_cast<uint8_t *>(deviceDst) + c.byteOffset,
+                      staging, c.bytes, CopyDir::HostToDevice);
     pool.setEvent(i, backend.recordEvent(q));
   }
   pool.drain();
