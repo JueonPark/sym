@@ -27,11 +27,11 @@ target_include_directories(reloc_runtime PUBLIC
 )
 
 if(RELOC_ENABLE_CUDA)
-  # #C5 adds cuda/*.cu translation units here; until then the option only
-  # wires the dependency and the feature macro.
   enable_language(CUDA)
   find_package(CUDAToolkit REQUIRED)
   target_compile_definitions(reloc_runtime PUBLIC RELOC_ENABLE_CUDA=1)
+  target_sources(reloc_runtime PRIVATE cuda/CudaBackend.cu)
+  set_source_files_properties(cuda/CudaBackend.cu PROPERTIES LANGUAGE CUDA)
   target_link_libraries(reloc_runtime PRIVATE CUDA::cudart)
 endif()
 

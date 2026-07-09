@@ -43,6 +43,18 @@ them; it is the runtime half of the compiler → runtime handoff.
   `BoundPlan`; `no_copy` view publish, single- and multi-thread strided copy
   with an AVX2 inner run, and the CPU D2H scatter; the gather primitive is
   #C5's per-chunk form (`libreloc/test/ExecuteTest.cpp`).
+- `reloc::executeH2DPipelined` / `executeD2HPipelined` (`reloc/Pipeline.h`) —
+  Strategy 4: chunked, pinned-staged, event-recycled H2D and its symmetric D2H
+  inverse. Written once against the `reloc::CopyBackend` interface
+  (`reloc/Backend.h`): `HostBackend` (`reloc/HostBackend.h`, worker threads +
+  condition variables) makes the ring-buffer / chunk / synchronization logic
+  byte-exact-testable in CPU-only CI; `CudaBackend` (`reloc/CudaBackend.h`,
+  `cudaHostAlloc` / `cudaMemcpyAsync` / `cudaEvent`) runs it on the GPU under
+  `RELOC_ENABLE_CUDA`. `PinnedBufferPool` (`reloc/PinnedBufferPool.h`) gates
+  buffer reuse on event completion; `ChunkSchedule` (`reloc/ChunkSchedule.h`)
+  cuts the outermost coalesced axis with a fixed byte heuristic plus an
+  override (design decision 4). Output is bit-identical to `executeH2D` /
+  `executeD2H` (`libreloc/test/PipelineTest.cpp`, `CudaPipelineTest.cpp`).
 
 ## Building
 
@@ -54,9 +66,9 @@ Built as part of the normal repository build; no extra steps:
 
     cmake ... -DRELOC_ENABLE_CUDA=ON
 
-Gates the CUDA toolkit dependency and (from #C5) the `cuda/*.cu`
-translation units. With the option OFF the library builds and every
-non-GPU test passes on a CUDA-less machine — CPU-only CI builds this
+Gates the CUDA toolkit dependency and the `cuda/CudaBackend.cu` translation
+unit (the `CudaBackend` CopyBackend). With the option OFF the library builds
+and every non-GPU test passes on a CUDA-less machine — CPU-only CI builds this
 configuration.
 
 ## Tests
