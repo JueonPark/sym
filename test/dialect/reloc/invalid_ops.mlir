@@ -105,3 +105,14 @@ func.func @plan_result_bad_result_extent(%t: !sym.tensor<[8], f32>) {
   %0 = reloc.plan_result %t plan(#reloc.plan<src = tensor<[8], f32>, dst = tensor<[8], f32>, perm = [0], axes = [{name = "x", extent = 8, src_stride = 1, dst_stride = 1}], inverse = affine_map<(d0) -> (d0)>>) : !sym.tensor<[8], f32> -> !sym.tensor<[9], f32>
   return
 }
+
+// -----
+
+// plan_result: on a rank mismatch (result rank 2 vs plan dst rank 1), the
+// element counts must not provably disagree (rank-collapsed canonical
+// plans are legal; wrong sizes are not: 3*3 == 9 != 8).
+func.func @plan_result_rank_mismatch_bad_count(%t: !sym.tensor<[8], f32>) {
+  // expected-error @below {{result element count provably disagrees with the plan dst}}
+  %0 = reloc.plan_result %t plan(#reloc.plan<src = tensor<[8], f32>, dst = tensor<[8], f32>, perm = [0], axes = [{name = "x", extent = 8, src_stride = 1, dst_stride = 1}], inverse = affine_map<(d0) -> (d0)>>) : !sym.tensor<[8], f32> -> !sym.tensor<[3, 3], f32>
+  return
+}

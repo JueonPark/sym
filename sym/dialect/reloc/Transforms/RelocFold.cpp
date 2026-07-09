@@ -116,6 +116,11 @@ struct RelocFoldPass : public impl::RelocFoldPassBase<RelocFoldPass> {
     if (!plan)
       return failure(); // getChecked already emitted the diagnostic
 
+    // #B5: canonicalize so equivalent chains materialize identical plans.
+    plan = canonicalizePlan(plan, tail->getLoc());
+    if (!plan)
+      return failure(); // getChecked already emitted the diagnostic
+
     OpBuilder rewriter(tail);
     auto materialized = rewriter.create<PlanResultOp>(
         tail->getLoc(), tail->getResult(0).getType(), root, plan);

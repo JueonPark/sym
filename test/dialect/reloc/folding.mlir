@@ -4,12 +4,16 @@
 
 // The static analogue of the build-doc reference chain: 2D -> 4D blocked
 // view -> transpose folds to ONE plan_result; the chain ops disappear.
-// CHECK: #map = affine_map<(d0, d1, d2, d3) -> (d1, d2, d0, d3)>
+// #B5 canonicalization collapses the plan's rank-2 dst back down to the
+// two axes that actually vary independently; the op's own result type
+// stays the original (uncollapsed) [2, 2, 64, 64], which is legal per the
+// plan_result rank relaxation.
+// CHECK: #map = affine_map<(d0, d1, d2) -> (d1, d0, d2)>
 // CHECK-LABEL: func.func @full_chain
 func.func @full_chain(%t: !sym.tensor<[128, 128], f32>) -> !sym.tensor<[2, 2, 64, 64], f32> {
   // CHECK-NOT: reloc.reshape
   // CHECK-NOT: reloc.transpose
-  // CHECK: %[[R:.*]] = reloc.plan_result %{{.*}} plan(#reloc.plan<src = tensor<[128, 128], f32>, dst = tensor<[2, 2, 64, 64], f32>, perm = [2, 0, 1, 3], axes = [{name = "d2", extent = 2, src_stride = 64, dst_stride = 8192}, {name = "d0", extent = 2, src_stride = 8192, dst_stride = 4096}, {name = "d1", extent = 64, src_stride = 128, dst_stride = 64}, {name = "d3", extent = 64, src_stride = 1, dst_stride = 1}], constraints = {contiguous = [false, false, false, true], no_copy = false}, inverse = #map>) : !sym.tensor<[128, 128], f32> -> !sym.tensor<[2, 2, 64, 64], f32>
+  // CHECK: %[[R:.*]] = reloc.plan_result %{{.*}} plan(#reloc.plan<src = tensor<[128, 128], f32>, dst = tensor<[2, 128, 64], f32>, perm = [1, 0, 2], axes = [{name = "d0", extent = 2, src_stride = 64, dst_stride = 8192}, {name = "d1", extent = 128, src_stride = 128, dst_stride = 64}, {name = "d2", extent = 64, src_stride = 1, dst_stride = 1}], constraints = {contiguous = [false, false, true], no_copy = false}, inverse = #map>) : !sym.tensor<[128, 128], f32> -> !sym.tensor<[2, 2, 64, 64], f32>
   // CHECK: return %[[R]]
   %0 = reloc.reshape %t to [2, 64, 2, 64] : !sym.tensor<[128, 128], f32> -> !sym.tensor<[2, 64, 2, 64], f32>
   %1 = reloc.transpose %0 perm [2, 0, 1, 3] : !sym.tensor<[2, 64, 2, 64], f32> -> !sym.tensor<[2, 2, 64, 64], f32>
