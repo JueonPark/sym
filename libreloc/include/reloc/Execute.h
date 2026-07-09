@@ -44,6 +44,13 @@ void fillDst(const BoundPlan &bound, void *dstBase);
 void gatherChunk(const BoundPlan &bound, const void *srcBase, void *dstBase,
                  int64_t outerBegin, int64_t outerEnd);
 
+/// The D2H primitive: reconstruct ONLY the valid src cells for outer-axis
+/// indices [outerBegin, outerEnd), reading from a dst-layout buffer. Mirror of
+/// gatherChunk. `dstBaseV` is the address at which dst element offset 0 would
+/// land (rebase it for a staging chunk); `srcBaseV` is the full valid buffer.
+void scatterChunk(const BoundPlan &bound, const void *dstBaseV, void *srcBaseV,
+                  int64_t outerBegin, int64_t outerEnd);
+
 /// Strategy 2: single-thread H2D copy = gatherChunk over the whole outer
 /// range. `dstBase` sized bound.totalBytes.
 void executeH2D(const BoundPlan &bound, const void *srcBase, void *dstBase);

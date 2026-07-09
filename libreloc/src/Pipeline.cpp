@@ -9,6 +9,7 @@
 #include <cassert>
 #include <cstdint>
 #include <cstring>
+#include <deque>
 
 namespace reloc {
 namespace {
@@ -63,8 +64,51 @@ void executeH2DPipelined(const BoundPlan &bound, const void *srcBase,
   pool.drain();
 }
 
-// Temporary stub; implemented in Task 5.
-void executeD2HPipelined(const BoundPlan &, const void *, void *, CopyBackend &,
-                         int, size_t) {}
+void executeD2HPipelined(const BoundPlan &bound, const void *deviceSrc,
+                         void *srcBaseV, CopyBackend &backend, int nBuffers,
+                         size_t chunkSizeOverride) {
+  assert(nBuffers >= 1 && "nBuffers must be >= 1");
+  ChunkSchedule sched = planChunks(bound, nBuffers, chunkSizeOverride);
+  PinnedBufferPool pool(backend, nBuffers, sched.maxChunkBytes);
+  const int nStreams = backend.numQueues();
+
+  struct InFlight {
+    int buf;
+    EventHandle ev;
+    size_t chunk;
+  };
+  std::deque<InFlight> inflight;
+
+  // Wait for a chunk's D2H copy to land, then scatter its valid cells from the
+  // staging buffer into srcBaseV. Frees the staging buffer for reuse.
+  auto scatterOne = [&](const InFlight &f) {
+    const Chunk &c = sched.chunks[f.chunk];
+    backend.waitEvent(f.ev);
+    if (c.validEnd > c.validBegin)
+      scatterChunk(bound, rebase(pool.buffer(f.buf), bound, c.paddedBegin),
+                   srcBaseV, c.validBegin, c.validEnd);
+  };
+
+  for (size_t k = 0; k < sched.chunks.size(); ++k) {
+    const Chunk &c = sched.chunks[k];
+    int i = pool.acquire(); // blocks on this buffer's prior copy event
+    int q = static_cast<int>(k % static_cast<size_t>(nStreams));
+    backend.copyAsync(q, pool.buffer(i),
+                      static_cast<const uint8_t *>(deviceSrc) + c.byteOffset,
+                      c.bytes, CopyDir::DeviceToHost);
+    EventHandle ev = backend.recordEvent(q);
+    pool.setEvent(i, ev);
+    inflight.push_back({i, ev, k});
+    // Keep at most nBuffers copies outstanding; drain the oldest (which uses
+    // the buffer we are about to reuse next) before it is overwritten.
+    if (static_cast<int>(inflight.size()) == nBuffers) {
+      scatterOne(inflight.front());
+      inflight.pop_front();
+    }
+  }
+  for (const InFlight &f : inflight)
+    scatterOne(f);
+  pool.drain();
+}
 
 } // namespace reloc

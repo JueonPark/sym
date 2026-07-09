@@ -114,4 +114,46 @@ TEST(Pipeline, H2DSingleBufferSerializes) {
   expectPipelineExactH2D(b, /*nBuffers=*/1, /*nStreams=*/2, /*override=*/64);
 }
 
+// Run executeD2HPipelined over HostBackend and assert it reconstructs src
+// byte-exact (== executeD2H). `dst` is a known-good dst-layout buffer.
+void expectPipelineExactD2H(const BoundPlan &b, int nBuffers, int nStreams,
+                            size_t chunkOverride) {
+  int64_t srcElems = product(b.extents);
+  std::vector<uint8_t> src = iotaBytes(srcElems, b.elementSize);
+  std::vector<uint8_t> device(static_cast<size_t>(b.totalBytes), 0xAB);
+  reloc::executeH2D(b, src.data(), device.data()); // build the dst layout
+
+  HostBackend backend(nStreams);
+  std::vector<uint8_t> back(static_cast<size_t>(srcElems) * b.elementSize, 0xCD);
+  reloc::executeD2HPipelined(b, device.data(), back.data(), backend, nBuffers,
+                             chunkOverride);
+  EXPECT_EQ(back, src) << "nBuffers=" << nBuffers << " nStreams=" << nStreams
+                       << " override=" << chunkOverride;
+}
+
+TEST(Pipeline, D2HByteExactMatrix) {
+  for (const BoundPlan &b : plans())
+    for (int nBuffers : {1, 2, 4})
+      for (int nStreams : {1, 2})
+        for (size_t override : {size_t(0), size_t(16), size_t(64)})
+          expectPipelineExactD2H(b, nBuffers, nStreams, override);
+}
+
+TEST(Pipeline, RoundTripH2DThenD2H) {
+  // D2H(H2D(x)) == x, both through the pipeline, across buffer counts.
+  BoundPlan b = makeBound({64, 16}, {16, 1}, {16, 1}, 4);
+  int64_t elems = product(b.extents);
+  std::vector<uint8_t> src = iotaBytes(elems, b.elementSize);
+  for (int nBuffers : {1, 2, 4}) {
+    HostBackend backend(2);
+    std::vector<uint8_t> device(static_cast<size_t>(b.totalBytes), 0xAB);
+    reloc::executeH2DPipelined(b, src.data(), device.data(), backend, nBuffers,
+                               /*override=*/64);
+    std::vector<uint8_t> back(static_cast<size_t>(elems) * b.elementSize, 0xCD);
+    reloc::executeD2HPipelined(b, device.data(), back.data(), backend, nBuffers,
+                               /*override=*/64);
+    EXPECT_EQ(back, src) << "nBuffers=" << nBuffers;
+  }
+}
+
 } // namespace

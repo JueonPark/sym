@@ -206,16 +206,21 @@ void executeH2DThreaded(const BoundPlan &bound, const void *srcBase,
     t.join();
 }
 
-void executeD2H(const BoundPlan &bound, const void *dstBaseV, void *srcBaseV) {
-  const auto *dst = static_cast<const uint8_t *>(dstBaseV);
+void scatterChunk(const BoundPlan &bound, const void *dstBaseV, void *srcBaseV,
+                  int64_t outerBegin, int64_t outerEnd) {
   auto *src = static_cast<uint8_t *>(srcBaseV);
+  const auto *dst = static_cast<const uint8_t *>(dstBaseV);
   const size_t r = bound.extents.size();
   assert(r >= 1 && "bound plan has no axes");
   std::vector<int64_t> lo(r, 0);
   for (const PadRegion &p : bound.padRegions)
     lo[p.axis] = p.lo;
-  scatterWalk(bound, src, dst, lo, /*depth=*/0, 0, bound.extents[0],
+  scatterWalk(bound, src, dst, lo, /*depth=*/0, outerBegin, outerEnd,
               /*srcOff=*/0, /*dstOff=*/0);
+}
+
+void executeD2H(const BoundPlan &bound, const void *dstBaseV, void *srcBaseV) {
+  scatterChunk(bound, dstBaseV, srcBaseV, 0, bound.extents[0]);
 }
 
 ViewDescriptor executeView(const BoundPlan &bound, const void *srcBase) {
