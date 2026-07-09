@@ -299,4 +299,16 @@ TEST(Execute, ThreadedTransposeAndPadExact) {
   EXPECT_EQ(tgot, referenceH2D(tiny, tsrc));
 }
 
+TEST(Execute, ThreadedOverlappingDstMatchesSingleThread) {
+  // dstStrides[0]=1 < inner span (3) -> rows alias; threaded MUST fall back
+  // to single-thread and stay byte-identical (and race-free).
+  reloc::BoundPlan b = makeBound({8, 3}, {3, 1}, {1, 1}, 4);
+  std::vector<uint8_t> src = iotaBytes(product(b.extents), 4);
+  std::vector<uint8_t> single(product(b.extents) * 4, 0);
+  std::vector<uint8_t> multi(product(b.extents) * 4, 0);
+  reloc::executeH2D(b, src.data(), single.data());
+  reloc::executeH2DThreaded(b, src.data(), multi.data(), 8);
+  EXPECT_EQ(single, multi);
+}
+
 } // namespace

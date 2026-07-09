@@ -50,7 +50,11 @@ void executeH2D(const BoundPlan &bound, const void *srcBase, void *dstBase);
 
 /// Strategy 3: multi-thread tiled H2D. Partitions the outer axis into
 /// contiguous ranges, one gatherChunk per worker. `threads == 0` uses
-/// std::thread::hardware_concurrency(). Bit-identical to executeH2D.
+/// std::thread::hardware_concurrency(). Falls back to a single
+/// single-threaded gatherChunk call (no threads spawned) when distinct
+/// outer rows are not provably disjoint in dst -- e.g. dstStrides[0]
+/// smaller than the inner block span -- so the result is always
+/// bit-identical to executeH2D and never racy.
 void executeH2DThreaded(const BoundPlan &bound, const void *srcBase,
                         void *dstBase, unsigned threads = 0);
 

@@ -112,10 +112,31 @@ void executeH2DThreaded(const BoundPlan &bound, const void *srcBase,
     threads = std::thread::hardware_concurrency();
   if (threads == 0)
     threads = 1;
-  // Never spawn more workers than outer rows; each row is disjoint in dst
-  // (distinct outer index -> distinct dst offset range), so no data race.
+
+  // Partitioning by outer index is race-free only when distinct outer rows
+  // provably write disjoint dst byte ranges. With all strides >= 0 (an
+  // invariant bind() guarantees), the dst offsets touched while holding
+  // the outer index fixed at i0 span [base(i0), base(i0) + innerSpan]
+  // where innerSpan = sum over inner axes k in [1, rank) of
+  // (extents[k]-1)*dstStrides[k] (the per-axis pad shift `lo` is identical
+  // for every outer row and cancels out of this disjointness check, so we
+  // can ignore it). Adjacent rows i0 and i0+1 are guaranteed disjoint iff
+  // dstStrides[0] >= innerSpan + 1. This is a conservative (sufficient,
+  // not necessary) test: canonical bind() output is dense/row-major-ish
+  // and always satisfies it, but a hand-built BoundPlan can violate it
+  // (e.g. dstStrides[0] smaller than the inner block span), in which case
+  // distinct outer indices alias the same dst bytes and splitting them
+  // across workers would race. When the check fails we fall back to a
+  // single gatherChunk call over the whole outer range -- i.e. exactly
+  // executeH2D's single-thread path -- so the result stays deterministic
+  // and bit-identical to executeH2D instead of racy UB.
+  int64_t innerSpan = 0;
+  for (size_t k = 1; k < bound.dstStrides.size(); ++k)
+    innerSpan += (bound.extents[k] - 1) * bound.dstStrides[k];
+  const bool rowsDisjoint = bound.dstStrides[0] >= innerSpan + 1;
+
   int64_t workers = std::min<int64_t>(threads, outer);
-  if (workers <= 1) {
+  if (!rowsDisjoint || workers <= 1) {
     gatherChunk(bound, srcBase, dstBase, 0, outer);
     return;
   }
@@ -130,10 +151,24 @@ void executeH2DThreaded(const BoundPlan &bound, const void *srcBase,
     auto body = [&bound, srcBase, dstBase, begin, end]() {
       gatherChunk(bound, srcBase, dstBase, begin, end);
     };
-    if (w + 1 == workers)
+    if (w + 1 == workers) {
       body(); // run the last partition on this thread
-    else
-      pool.emplace_back(body);
+    } else {
+      // Exceptions are enabled for this target (see libreloc/README.md's
+      // "Linkage contract"): if std::thread's constructor throws (e.g.
+      // resource exhaustion) partway through this loop, join every
+      // already-spawned worker before rethrowing so stack unwinding does
+      // not destroy a still-joinable std::thread and call
+      // std::terminate().
+      try {
+        pool.emplace_back(body);
+      } catch (...) {
+        for (std::thread &t : pool)
+          if (t.joinable())
+            t.join();
+        throw;
+      }
+    }
   }
   for (std::thread &t : pool)
     t.join();
