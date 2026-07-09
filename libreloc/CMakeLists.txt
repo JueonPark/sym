@@ -12,6 +12,8 @@ add_library(reloc_runtime SHARED
   src/Version.cpp
   src/Decode.cpp
   src/Bind.cpp
+  src/Execute.cpp
+  src/CopyRun.cpp
 )
 
 target_compile_features(reloc_runtime PUBLIC cxx_std_17)
