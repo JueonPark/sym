@@ -259,10 +259,11 @@ TEST(Bind, BindCostUnderBudget) {
   //     6-9 us regression here is caught rather than sailing through.
   //   * Debug (-O0, no inlining, per-iteration heap alloc for the small
   //     vectors + a std::map symbol lookup): the identical arithmetic
-  //     measures ~3.8-5.6 us/bind on an idle-to-moderately-loaded box.
-  //     The 10 us Debug bound is NOT the E9 budget -- it only guards
-  //     against a gross (order-of-magnitude) regression when developing
-  //     locally against an unoptimized build.
+  //     measures ~3.8-5.6 us/bind. Wall-clock in an unoptimized build on
+  //     a shared many-core box is too noisy for a hard bound (it drifts
+  //     into the microseconds under load), so Debug only PRINTS the
+  //     measurement -- the assertion runs solely under NDEBUG, which is
+  //     where E9's budget is authoritative and where CI runs.
   RelocationPlan plan = decoded(kReferenceHex);
   reloc::SymbolMap symbols = {{"N", 32768}};
   const int iterations = 1000000;
@@ -276,17 +277,13 @@ TEST(Bind, BindCostUnderBudget) {
       std::chrono::duration_cast<std::chrono::nanoseconds>(end - start)
           .count() /
       double(iterations);
-#ifdef NDEBUG
-  constexpr double kBudgetNs =
-      5000.0; // Release/-O3 (CI): issue #43's < 5 us criterion
-#else
-  constexpr double kBudgetNs =
-      10000.0; // Debug (-O0, no inlining, per-iter heap alloc)
-#endif
-  EXPECT_LT(meanNs, kBudgetNs)
-      << "bind mean " << meanNs << " ns exceeds " << kBudgetNs << " ns";
-  // Informational: record the measurement.
+  // Always record the measurement; assert only in Release, where the
+  // budget is authoritative and the timing is stable.
   std::cout << "[ bind cost ] " << meanNs << " ns/bind\n";
+#ifdef NDEBUG
+  EXPECT_LT(meanNs, 5000.0) // issue #43's < 5 us criterion
+      << "bind mean " << meanNs << " ns exceeds the 5 us budget";
+#endif
 }
 
 TEST(Bind, NegativePadWidthRejectedWithoutRuntimeCheck) {
