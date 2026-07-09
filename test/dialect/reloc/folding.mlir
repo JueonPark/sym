@@ -1,4 +1,6 @@
-// RUN: sym-opt --reloc-fold %s | FileCheck %s
+// RUN: sym-opt --allow-unregistered-dialect --reloc-fold %s | FileCheck %s
+// Idempotence: a second run must be a no-op on the first run's output.
+// RUN: sym-opt --allow-unregistered-dialect --reloc-fold %s | sym-opt --allow-unregistered-dialect --reloc-fold | FileCheck %s
 
 // The static analogue of the build-doc reference chain: 2D -> 4D blocked
 // view -> transpose folds to ONE plan_result; the chain ops disappear.
@@ -56,4 +58,27 @@ func.func @tail_multiuse_folds(%t: !sym.tensor<[4, 6], f32>) -> (!sym.tensor<[6,
   // CHECK: return %[[P]], %[[P]]
   %0 = reloc.transpose %t perm [1, 0] : !sym.tensor<[4, 6], f32> -> !sym.tensor<[6, 4], f32>
   return %0, %0 : !sym.tensor<[6, 4], f32>, !sym.tensor<[6, 4], f32>
+}
+
+// Non-reloc op interrupting a reloc pipeline: both segments bail.
+// CHECK-LABEL: func.func @interrupted_chain_bails
+func.func @interrupted_chain_bails(%t: !sym.tensor<[4, 6], f32>) -> !sym.tensor<[24], f32> {
+  // CHECK-NOT: reloc.plan_result
+  // CHECK: reloc.transpose %{{.*}} perm [1, 0] {reloc.fallback}
+  // CHECK: "test.barrier"
+  // CHECK: reloc.reshape %{{.*}} to [24] {reloc.fallback}
+  %0 = reloc.transpose %t perm [1, 0] : !sym.tensor<[4, 6], f32> -> !sym.tensor<[6, 4], f32>
+  %1 = "test.barrier"(%0) : (!sym.tensor<[6, 4], f32>) -> !sym.tensor<[6, 4], f32>
+  %2 = reloc.reshape %1 to [24] : !sym.tensor<[6, 4], f32> -> !sym.tensor<[24], f32>
+  return %2 : !sym.tensor<[24], f32>
+}
+
+// A pre-existing reloc.fallback marker is a manual opt-out: the chain is
+// left untouched even though it would fold.
+// CHECK-LABEL: func.func @manual_fallback_respected
+func.func @manual_fallback_respected(%t: !sym.tensor<[4, 6], f32>) -> !sym.tensor<[6, 4], f32> {
+  // CHECK-NOT: reloc.plan_result
+  // CHECK: reloc.transpose %{{.*}} perm [1, 0] {reloc.fallback}
+  %0 = reloc.transpose %t perm [1, 0] {reloc.fallback} : !sym.tensor<[4, 6], f32> -> !sym.tensor<[6, 4], f32>
+  return %0 : !sym.tensor<[6, 4], f32>
 }

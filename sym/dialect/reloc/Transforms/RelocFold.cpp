@@ -74,6 +74,23 @@ struct RelocFoldPass : public impl::RelocFoldPassBase<RelocFoldPass> {
       if (op != tail && !op->getResult(0).hasOneUse())
         return markFallback(chain);
 
+    // Structural bail (b) — sandwich interruption: a non-reloc op sits
+    // between two foldable segments (reloc -> X -> reloc). Both segments
+    // fall back rather than folding partially; each side detects X from its
+    // own end.
+    if (Operation *rootDef = chain.front()->getOperand(0).getDefiningOp())
+      if (!isFoldableChainOp(rootDef) && !isa<PlanResultOp>(rootDef))
+        for (Value operand : rootDef->getOperands())
+          if (operand.getDefiningOp() &&
+              isFoldableChainOp(operand.getDefiningOp()))
+            return markFallback(chain);
+    for (Operation *user : tail->getResult(0).getUsers())
+      if (!isFoldableChainOp(user) && !isa<PlanResultOp>(user))
+        for (Value result : user->getResults())
+          for (Operation *downstream : result.getUsers())
+            if (isFoldableChainOp(downstream))
+              return markFallback(chain);
+
     // Fold front-to-back; any transfer-function bail falls the whole
     // chain back (all-or-nothing).
     Value root = chain.front()->getOperand(0);
