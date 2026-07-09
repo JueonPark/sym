@@ -44,4 +44,4 @@ add_test(NAME reloc-runtime-mlir-free
 # directory was renamed away) — a bare `! grep` would negate 2 into a
 # false PASS and silently disable this guard forever.
 add_test(NAME reloc-runtime-no-mlir-includes
-         COMMAND bash -c "grep -rE '#include *[\"<](mlir|llvm)[/\"]' ${CMAKE_CURRENT_SOURCE_DIR}/../src ${CMAKE_CURRENT_SOURCE_DIR}/../include ${CMAKE_CURRENT_SOURCE_DIR}/../cuda; test \$? -eq 1")
+         COMMAND bash -c "grep -rE '#include *[\"<](mlir|llvm)[/\"]' ${CMAKE_CURRENT_SOURCE_DIR}/../src ${CMAKE_CURRENT_SOURCE_DIR}/../include ${CMAKE_CURRENT_SOURCE_DIR}/../cuda ${CMAKE_CURRENT_SOURCE_DIR}/../python; test \$? -eq 1")
