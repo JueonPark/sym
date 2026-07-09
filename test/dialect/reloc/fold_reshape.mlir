@@ -1,10 +1,8 @@
 // RUN: sym-opt --test-reloc-transfer --verify-diagnostics %s
 
-// NOTE: symbolic-split reshapes (e.g. [N] -> [N floordiv 64, 64]) cannot be
-// written here: the !sym.tensor TYPE grammar cannot express binary-expr
-// dims, so such ops have no writable result type (pre-existing sym gap).
-// Symbolic splits and the build-doc reference chain are covered by the
-// C++ oracle tests in unittest/reloc/PlanBuilderTest.cpp.
+// NOTE: symbolic-split result types are writable since issue #31; the
+// C++ oracle tests in unittest/reloc/PlanBuilderTest.cpp remain the
+// semantic authority (they bind N and compare index tables).
 
 // Static split: [4096] -> [64, 64]; strides peel right-to-left.
 func.func @static_split(%t: !sym.tensor<[4096], f32>) -> !sym.tensor<[64, 64], f32> {
@@ -41,4 +39,12 @@ func.func @symbolic_passthrough_merge(%t: !sym.tensor<["N", 4, 2], f32>) -> !sym
   // expected-remark @below {{folded plan: #reloc.plan<src = tensor<[N, 4, 2], f32>, dst = tensor<[N, 8], f32>, perm = [0, 1], axes = [{name = "d0", extent = N, src_stride = 8, dst_stride = 8}, {name = "d1", extent = 8, src_stride = 1, dst_stride = 1}], constraints = {contiguous = [false, true], no_copy = false}, inverse = affine_map<(d0, d1) -> (d0, d1)>>}}
   %0 = reloc.reshape %t to [N, 8] : !sym.tensor<["N", 4, 2], f32> -> !sym.tensor<["N", 8], f32>
   return %0 : !sym.tensor<["N", 8], f32>
+}
+
+// Symbolic split emits the divisibility constraint — in lit for the
+// first time (issue #31 unblocked the result type).
+func.func @symbolic_split(%t: !sym.tensor<["N", 4], f32>) -> !sym.tensor<["N" floordiv 8, 8, 4], f32> {
+  // expected-remark @below {{folded plan: #reloc.plan<src = tensor<[N, 4], f32>, dst = tensor<[N floordiv 8, 8, 4], f32>, perm = [0, 1, 2], axes = [{name = "d0", extent = N floordiv 8, src_stride = 32, dst_stride = 32}, {name = "d1", extent = 8, src_stride = 4, dst_stride = 4}, {name = "d2", extent = 4, src_stride = 1, dst_stride = 1}], constraints = {divisible(N, 8), contiguous = [false, false, true], no_copy = false}, inverse = affine_map<(d0, d1, d2) -> (d0, d1, d2)>>}}
+  %0 = reloc.reshape %t to [N floordiv 8, 8, 4] : !sym.tensor<["N", 4], f32> -> !sym.tensor<["N" floordiv 8, 8, 4], f32>
+  return %0 : !sym.tensor<["N" floordiv 8, 8, 4], f32>
 }
