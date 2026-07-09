@@ -42,7 +42,7 @@ them; it is the runtime half of the compiler → runtime handoff.
   `executeD2H` (`reloc/Execute.h`) — CPU relocation executors over a
   `BoundPlan`; `no_copy` view publish, single- and multi-thread strided copy
   with an AVX2 inner run, and the CPU D2H scatter; the gather primitive is
-  #C5's per-chunk form.
+  #C5's per-chunk form (`libreloc/test/ExecuteTest.cpp`).
 
 ## Building
 
