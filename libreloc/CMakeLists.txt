@@ -14,6 +14,7 @@ add_library(reloc_runtime SHARED
   src/Bind.cpp
   src/Execute.cpp
   src/CopyRun.cpp
+  src/HostBackend.cpp
 )
 
 target_compile_features(reloc_runtime PUBLIC cxx_std_17)
