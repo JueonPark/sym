@@ -239,6 +239,19 @@ TEST(Bind, NegativeStrideRejected) {
   EXPECT_NE(bindErr(plan, {{"N", 1000}}).find("stride"), std::string::npos);
 }
 
+TEST(Bind, RejectsRankZeroPlan) {
+  // A plan with zero axes must be a hard bind error, not a BoundPlan with
+  // extents.size()==0: executors index bound.extents[0] unconditionally
+  // (assuming rank >= 1), so bind() must guarantee that precondition
+  // rather than let a rank-0 plan reach execute() and null-deref. Built
+  // from scratch (not a decoded()-mutated plan) with no pad_fill, since a
+  // pad targeting axis 0 would otherwise trip the unrelated "pad dst_axis
+  // out of range" guard once axes is empty and mask what's under test.
+  RelocationPlan plan;
+  plan.dst.elementType.bitwidth = 32;
+  EXPECT_NE(bindErr(plan, {}).find("axis"), std::string::npos);
+}
+
 TEST(Bind, EvaluationOverflowRejected) {
   RelocationPlan plan = decoded(kDegradedHex);
   plan.axes[0].extent = {reloc::ExprToken{reloc::ExprOp::PushConst,

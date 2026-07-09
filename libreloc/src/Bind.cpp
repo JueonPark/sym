@@ -161,6 +161,9 @@ BindResult bind(const RelocationPlan &plan, const SymbolMap &symbolMap,
                        " not divisible by " + std::to_string(d.divisor)};
   }
 
+  if (plan.axes.empty())
+    return BindError{"plan must have >= 1 axis (v0)"};
+
   // 2. Evaluate axes into concrete form; attach pad widths.
   std::vector<ConcreteAxis> axes(plan.axes.size());
   for (size_t k = 0; k < plan.axes.size(); ++k) {
