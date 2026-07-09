@@ -11,6 +11,7 @@
 #include "SymDialect.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Location.h"
+#include "mlir/IR/OpImplementation.h"
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
@@ -80,6 +81,32 @@ private:
   MLIRContext *context;
   Location loc;
 };
+
+//===----------------------------------------------------------------------===//
+// Compact expression syntax
+//===----------------------------------------------------------------------===//
+//
+// Grammar (left-associative; * floordiv mod bind tighter than + -):
+//   expr   := term  (('+' | '-') term)*
+//   term   := factor (('*' | 'floordiv' | 'div' | 'mod') factor)*
+//   factor := INTEGER | IDENT | STRING | full sym-expression attribute
+//           | '(' expr ')'
+//
+// Parsing builds through sym::getSimplifiedBinaryExpr, so expressions
+// simplify at parse time exactly like #sym.binary. Shared by the
+// !sym.tensor type grammar and the reloc attribute/op surface.
+
+/// Parse a compact symbolic expression. Returns the parsed sym expression
+/// attribute, or null after emitting a located error.
+Attribute parseSymExpr(AsmParser &parser);
+
+/// Print a sym expression attribute in the compact syntax with minimal
+/// parentheses. `expr` must satisfy isSymExpr().
+void printSymExpr(AsmPrinter &printer, Attribute expr);
+
+/// True if `attr` is a sym expression attribute (SymbolExprAttr,
+/// ConstantExprAttr, or BinaryExprAttr).
+bool isSymExpr(Attribute attr);
 
 } // namespace sym
 } // namespace mlir
