@@ -55,6 +55,17 @@ them; it is the runtime half of the compiler → runtime handoff.
   cuts the outermost coalesced axis with a fixed byte heuristic plus an
   override (design decision 4). Output is bit-identical to `executeH2D` /
   `executeD2H` (`libreloc/test/PipelineTest.cpp`, `CudaPipelineTest.cpp`).
+- `reloc::GatherPool` (`reloc/GatherPool.h`) — D1's persistent worker pool
+  (issue #65): the pipeline partitions each chunk's valid outer rows across
+  the pool's threads (`gatherThreads` argument or a caller-owned pool), with
+  a per-worker byte floor (`kMinGatherBytesPerWorker`) so tiny chunks stay
+  inline, and a counting barrier before `copyAsync` / staging reuse.
+  Conservative safety guards fall back to inline gather/scatter — serialized
+  (non-row-disjoint-dst) schedules for H2D, non-injective src layouts for
+  D2H — so output stays bit-identical to `executeH2D`/`executeD2H`, and
+  `gatherThreads == 1` never constructs a pool. Explicit `close()` lifecycle
+  for pybind, dispatches and `close()` are serialized internally, so
+  concurrent use from multiple threads is safe (`libreloc/test/GatherPoolTest.cpp`).
 
 ## Python bindings (pyreloc)
 
@@ -63,7 +74,12 @@ Python (issue #46): `load_plan(bytes) -> PlanHandle`,
 `bind(plan, {symbol: value}, strategy="auto") -> BoundPlan`,
 `relocate` / `relocate_inverse` (host CPU strategies), and `h2d` / `d2h`
 (the C5 pinned/stream pipeline, `RELOC_ENABLE_CUDA` builds only;
-`pyreloc.cuda_enabled` reports which you have). Buffers are passed as
+`pyreloc.cuda_enabled` reports which you have).
+`relocate`/`h2d`/`d2h` accept `gather_threads=` (0 = all cores) or a
+reusable `gather_pool=pyreloc.GatherPool(threads)` — a context manager
+whose `close()` joins its workers deterministically, so no pool threads
+outlive the interpreter (issue #65).
+Buffers are passed as
 `(pointer, nbytes)` integer pairs — design decision 2;
 `pyreloc.torch_interop.as_ptr` maps torch tensors / numpy arrays without
 any C++ torch dependency. Decode/bind failures raise

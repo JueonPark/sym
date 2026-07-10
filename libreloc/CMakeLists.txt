@@ -17,6 +17,7 @@ add_library(reloc_runtime SHARED
   src/HostBackend.cpp
   src/PinnedBufferPool.cpp
   src/ChunkSchedule.cpp
+  src/GatherPool.cpp
   src/Pipeline.cpp
 )
 
