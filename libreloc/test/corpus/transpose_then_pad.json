@@ -1,0 +1,28 @@
+{
+  "dtype": "f32",
+  "element_size": 4,
+  "generator_seed": 0,
+  "mlir": "func.func @transpose_then_pad(%arg0: !sym.tensor<[32, 64], f32>) -> !sym.tensor<[66, 32], f32> {\n  %0 = reloc.transpose %arg0 perm [1, 0] : !sym.tensor<[32, 64], f32> -> !sym.tensor<[64, 32], f32>\n  %1 = reloc.pad %0 axis 0 lo 1 hi 1 value (0.000000e+00 : f32) : !sym.tensor<[64, 32], f32> -> !sym.tensor<[66, 32], f32>\n  return %1 : !sym.tensor<[66, 32], f32>\n}\n",
+  "name": "transpose_then_pad",
+  "ops": [
+    {
+      "kind": "transpose",
+      "perm": [
+        1,
+        0
+      ]
+    },
+    {
+      "axis": 0,
+      "hi": 1,
+      "kind": "pad",
+      "lo": 1,
+      "value": 0.0
+    }
+  ],
+  "src_shape": [
+    32,
+    64
+  ],
+  "symbols": {}
+}

@@ -1,0 +1,19 @@
+{
+  "dtype": "f32",
+  "element_size": 4,
+  "generator_seed": 0,
+  "mlir": "func.func @identity_1d(%arg0: !sym.tensor<[8], f32>) -> !sym.tensor<[8], f32> {\n  %0 = reloc.transpose %arg0 perm [0] : !sym.tensor<[8], f32> -> !sym.tensor<[8], f32>\n  return %0 : !sym.tensor<[8], f32>\n}\n",
+  "name": "identity_1d",
+  "ops": [
+    {
+      "kind": "transpose",
+      "perm": [
+        0
+      ]
+    }
+  ],
+  "src_shape": [
+    8
+  ],
+  "symbols": {}
+}

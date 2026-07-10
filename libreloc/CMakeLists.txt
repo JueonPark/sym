@@ -36,3 +36,4 @@ if(RELOC_ENABLE_CUDA)
 endif()
 
 add_subdirectory(test)
+add_subdirectory(python)

@@ -1,0 +1,23 @@
+{
+  "dtype": "f16",
+  "element_size": 2,
+  "generator_seed": 0,
+  "mlir": "func.func @transpose_3d_f16(%arg0: !sym.tensor<[4, 5, 6], f16>) -> !sym.tensor<[6, 4, 5], f16> {\n  %0 = reloc.transpose %arg0 perm [2, 0, 1] : !sym.tensor<[4, 5, 6], f16> -> !sym.tensor<[6, 4, 5], f16>\n  return %0 : !sym.tensor<[6, 4, 5], f16>\n}\n",
+  "name": "transpose_3d_f16",
+  "ops": [
+    {
+      "kind": "transpose",
+      "perm": [
+        2,
+        0,
+        1
+      ]
+    }
+  ],
+  "src_shape": [
+    4,
+    5,
+    6
+  ],
+  "symbols": {}
+}

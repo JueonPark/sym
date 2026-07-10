@@ -1,0 +1,281 @@
+//===- PyReloc.cpp - pybind11 bindings for libreloc -----------------------===//
+//
+// The Python surface of P2 (issue #46): load_plan/bind plus the host and
+// CUDA executors. Pointers cross this boundary as integers (issue #40
+// design decision 2); torch/numpy mapping lives in pure Python
+// (pyreloc/torch_interop.py) so libtorch is never linked. Decode/bind
+// failures surface as pyreloc.DecodeError / pyreloc.BindError carrying the
+// C++ diagnostic string.
+//
+//===----------------------------------------------------------------------===//
+
+#include "reloc/Bind.h"
+#include "reloc/Decode.h"
+#include "reloc/Execute.h"
+#include "reloc/HostBackend.h"
+#include "reloc/Pipeline.h"
+#ifdef RELOC_ENABLE_CUDA
+#include "reloc/CudaBackend.h"
+#endif
+
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
+
+#include <cstdint>
+#include <map>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <variant>
+
+namespace py = pybind11;
+
+namespace {
+
+struct DecodeException : std::runtime_error {
+  using std::runtime_error::runtime_error;
+};
+
+reloc::RelocationPlan loadPlan(const py::bytes &data) {
+  std::string buf = data;
+  auto result = reloc::decodePlan(reinterpret_cast<const uint8_t *>(buf.data()),
+                                  buf.size());
+  if (auto *err = std::get_if<reloc::DecodeError>(&result))
+    throw DecodeException("decode error at byte offset " +
+                          std::to_string(err->offset) + ": " + err->message);
+  return std::get<reloc::RelocationPlan>(std::move(result));
+}
+
+uint32_t planElementSize(const reloc::RelocationPlan &plan) {
+  return plan.dst.elementType.bitwidth / 8;
+}
+
+struct BindException : std::runtime_error {
+  using std::runtime_error::runtime_error;
+};
+
+const char *strategyName(reloc::Strategy s) {
+  switch (s) {
+  case reloc::Strategy::Auto:
+    return "auto";
+  case reloc::Strategy::ViewNoCopy:
+    return "view_no_copy";
+  case reloc::Strategy::SingleThreadSimd:
+    return "single_thread_simd";
+  case reloc::Strategy::MultiThreadTiled:
+    return "multi_thread_tiled";
+  case reloc::Strategy::ChunkedPipeline:
+    return "chunked_pipeline";
+  }
+  return "unknown";
+}
+
+reloc::Strategy parseStrategy(const std::string &name) {
+  for (reloc::Strategy s :
+       {reloc::Strategy::Auto, reloc::Strategy::ViewNoCopy,
+        reloc::Strategy::SingleThreadSimd, reloc::Strategy::MultiThreadTiled,
+        reloc::Strategy::ChunkedPipeline})
+    if (name == strategyName(s))
+      return s;
+  throw py::value_error("unknown strategy '" + name +
+                        "' (expected auto/view_no_copy/single_thread_simd/"
+                        "multi_thread_tiled/chunked_pipeline)");
+}
+
+// Byte span a source buffer must cover: max element offset reachable via
+// srcStrides over the valid index space, plus one element.
+size_t minSrcBytes(const reloc::BoundPlan &b) {
+  int64_t maxOff = 0;
+  for (size_t k = 0; k < b.extents.size(); ++k)
+    maxOff += (b.extents[k] - 1) * b.srcStrides[k];
+  return static_cast<size_t>(maxOff + 1) * b.elementSize;
+}
+
+int64_t validElements(const reloc::BoundPlan &b) {
+  int64_t n = 1;
+  for (int64_t e : b.extents)
+    n *= e;
+  return n;
+}
+
+// Validate a (ptr, nbytes) pair against a required byte count. Runs with
+// the GIL held (before any release), so py::value_error is safe.
+void checkBuffer(const char *what, uintptr_t ptr, size_t nbytes,
+                 size_t required) {
+  if (ptr == 0)
+    throw py::value_error(std::string(what) + " pointer is null");
+  if (nbytes < required)
+    throw py::value_error(std::string(what) +
+                          " buffer too small: " + std::to_string(nbytes) +
+                          " bytes, plan requires " + std::to_string(required));
+}
+
+reloc::BoundPlan bindPlan(const reloc::RelocationPlan &plan,
+                          const std::map<std::string, int64_t> &symbols,
+                          const std::string &strategy) {
+  auto result = reloc::bind(plan, symbols, parseStrategy(strategy));
+  if (auto *err = std::get_if<reloc::BindError>(&result))
+    throw BindException(err->message);
+  return std::get<reloc::BoundPlan>(std::move(result));
+}
+
+void relocateHost(const reloc::BoundPlan &b, uintptr_t srcPtr, size_t srcBytes,
+                  uintptr_t dstPtr, size_t dstBytes) {
+  checkBuffer("src", srcPtr, srcBytes, minSrcBytes(b));
+  checkBuffer("dst", dstPtr, dstBytes, static_cast<size_t>(b.totalBytes));
+  const void *src = reinterpret_cast<const void *>(srcPtr);
+  void *dst = reinterpret_cast<void *>(dstPtr);
+  py::gil_scoped_release release;
+  switch (b.strategy) {
+  case reloc::Strategy::MultiThreadTiled:
+    reloc::executeH2DThreaded(b, src, dst);
+    break;
+  case reloc::Strategy::ChunkedPipeline: {
+    reloc::HostBackend backend(2);
+    reloc::executeH2DPipelined(b, src, dst, backend, /*nBuffers=*/2);
+    break;
+  }
+  default:
+    // Auto / ViewNoCopy / SingleThreadSimd all materialize via the
+    // single-thread copy (a no_copy view has nothing to publish across a
+    // language boundary that handed us a destination buffer).
+    reloc::executeH2D(b, src, dst);
+    break;
+  }
+}
+
+void relocateInverseHost(const reloc::BoundPlan &b, uintptr_t dstPtr,
+                         size_t dstBytes, uintptr_t srcPtr, size_t srcBytes) {
+  checkBuffer("dst", dstPtr, dstBytes, static_cast<size_t>(b.totalBytes));
+  checkBuffer("src(out)", srcPtr, srcBytes, minSrcBytes(b));
+  const void *dst = reinterpret_cast<const void *>(dstPtr);
+  void *src = reinterpret_cast<void *>(srcPtr);
+  py::gil_scoped_release release;
+  reloc::executeD2H(b, dst, src);
+}
+
+void h2dCuda(const reloc::BoundPlan &b, uintptr_t srcPtr, size_t srcBytes,
+             uintptr_t dstPtr, size_t dstBytes, int nBuffers, int nStreams) {
+#ifdef RELOC_ENABLE_CUDA
+  checkBuffer("src", srcPtr, srcBytes, minSrcBytes(b));
+  checkBuffer("dst", dstPtr, dstBytes, static_cast<size_t>(b.totalBytes));
+  const void *src = reinterpret_cast<const void *>(srcPtr);
+  void *dst = reinterpret_cast<void *>(dstPtr);
+  py::gil_scoped_release release;
+  reloc::CudaBackend backend(nStreams);
+  reloc::executeH2DPipelined(b, src, dst, backend, nBuffers);
+#else
+  (void)b, (void)srcPtr, (void)srcBytes, (void)dstPtr, (void)dstBytes;
+  (void)nBuffers, (void)nStreams;
+  throw std::runtime_error("pyreloc was built without RELOC_ENABLE_CUDA");
+#endif
+}
+
+void d2hCuda(const reloc::BoundPlan &b, uintptr_t dstPtr, size_t dstBytes,
+             uintptr_t srcPtr, size_t srcBytes, int nBuffers, int nStreams) {
+#ifdef RELOC_ENABLE_CUDA
+  checkBuffer("dst", dstPtr, dstBytes, static_cast<size_t>(b.totalBytes));
+  checkBuffer("src(out)", srcPtr, srcBytes, minSrcBytes(b));
+  const void *dst = reinterpret_cast<const void *>(dstPtr);
+  void *src = reinterpret_cast<void *>(srcPtr);
+  py::gil_scoped_release release;
+  reloc::CudaBackend backend(nStreams);
+  reloc::executeD2HPipelined(b, dst, src, backend, nBuffers);
+#else
+  (void)b, (void)dstPtr, (void)dstBytes, (void)srcPtr, (void)srcBytes;
+  (void)nBuffers, (void)nStreams;
+  throw std::runtime_error("pyreloc was built without RELOC_ENABLE_CUDA");
+#endif
+}
+
+} // namespace
+
+PYBIND11_MODULE(_pyreloc, m) {
+  m.doc() = "libreloc Python bindings (issue #46). Buffers are passed as "
+            "(pointer, nbytes) integer pairs -- see pyreloc.torch_interop.";
+
+  py::register_exception<DecodeException>(m, "DecodeError");
+
+  py::class_<reloc::RelocationPlan>(m, "PlanHandle")
+      .def_property_readonly(
+          "symbols", [](const reloc::RelocationPlan &p) { return p.symbols; })
+      .def_property_readonly(
+          "num_axes",
+          [](const reloc::RelocationPlan &p) { return p.axes.size(); })
+      .def_property_readonly("element_size", &planElementSize)
+      .def_property_readonly(
+          "no_copy", [](const reloc::RelocationPlan &p) { return p.noCopy; })
+      .def("__repr__", [](const reloc::RelocationPlan &p) {
+        std::ostringstream os;
+        os << "PlanHandle(symbols=[";
+        for (size_t i = 0; i < p.symbols.size(); ++i)
+          os << (i ? ", " : "") << "'" << p.symbols[i] << "'";
+        os << "], axes=" << p.axes.size()
+           << ", element_size=" << planElementSize(p)
+           << ", no_copy=" << (p.noCopy ? "True" : "False") << ")";
+        return os.str();
+      });
+
+  m.def("load_plan", &loadPlan, py::arg("data"),
+        "Decode a wire-format-v0 plan blob. Raises DecodeError with the "
+        "byte offset and diagnostic on invalid input.");
+
+  py::register_exception<BindException>(m, "BindError");
+
+  py::class_<reloc::BoundPlan>(m, "BoundPlan")
+      .def_property_readonly(
+          "extents", [](const reloc::BoundPlan &b) { return b.extents; })
+      .def_property_readonly(
+          "src_strides", [](const reloc::BoundPlan &b) { return b.srcStrides; })
+      .def_property_readonly(
+          "dst_strides", [](const reloc::BoundPlan &b) { return b.dstStrides; })
+      .def_property_readonly(
+          "element_size",
+          [](const reloc::BoundPlan &b) { return b.elementSize; })
+      .def_property_readonly(
+          "total_bytes", [](const reloc::BoundPlan &b) { return b.totalBytes; })
+      .def_property_readonly("no_copy",
+                             [](const reloc::BoundPlan &b) { return b.noCopy; })
+      .def_property_readonly(
+          "strategy",
+          [](const reloc::BoundPlan &b) { return strategyName(b.strategy); })
+      .def_property_readonly("valid_elements", &validElements)
+      .def_property_readonly("min_src_bytes", &minSrcBytes)
+      .def("__repr__", [](const reloc::BoundPlan &b) {
+        std::ostringstream os;
+        os << "BoundPlan(extents=[";
+        for (size_t i = 0; i < b.extents.size(); ++i)
+          os << (i ? ", " : "") << b.extents[i];
+        os << "], total_bytes=" << b.totalBytes << ", strategy='"
+           << strategyName(b.strategy) << "')";
+        return os.str();
+      });
+
+  m.def("bind", &bindPlan, py::arg("plan"), py::arg("symbols"),
+        py::arg("strategy") = "auto",
+        "Bind a plan against {symbol: value}. Raises BindError on symbol "
+        "mismatch or violated correctness constraints.");
+  m.def("relocate", &relocateHost, py::arg("bound"), py::arg("src_ptr"),
+        py::arg("src_nbytes"), py::arg("dst_ptr"), py::arg("dst_nbytes"),
+        "Host relocation (CPU strategies): src -> dst-layout buffer.");
+  m.def("relocate_inverse", &relocateInverseHost, py::arg("bound"),
+        py::arg("dst_ptr"), py::arg("dst_nbytes"), py::arg("src_ptr"),
+        py::arg("src_nbytes"),
+        "Host inverse: reconstruct the source from a dst-layout buffer.");
+  m.def("h2d", &h2dCuda, py::arg("bound"), py::arg("src_ptr"),
+        py::arg("src_nbytes"), py::arg("dst_ptr"), py::arg("dst_nbytes"),
+        py::arg("n_buffers") = 4, py::arg("n_streams") = 2,
+        "Pinned/stream pipeline H2D (CUDA builds; dst_ptr is a device "
+        "pointer). Raises RuntimeError without RELOC_ENABLE_CUDA.");
+  m.def("d2h", &d2hCuda, py::arg("bound"), py::arg("dst_ptr"),
+        py::arg("dst_nbytes"), py::arg("src_ptr"), py::arg("src_nbytes"),
+        py::arg("n_buffers") = 4, py::arg("n_streams") = 2,
+        "Pinned/stream pipeline D2H inverse (CUDA builds; dst_ptr is a "
+        "device pointer). Raises RuntimeError without RELOC_ENABLE_CUDA.");
+
+#ifdef RELOC_ENABLE_CUDA
+  m.attr("cuda_enabled") = true;
+#else
+  m.attr("cuda_enabled") = false;
+#endif
+}

@@ -1,0 +1,26 @@
+{
+  "dtype": "f32",
+  "element_size": 4,
+  "generator_seed": 0,
+  "mlir": "func.func @reshape_split_sym(%arg0: !sym.tensor<[\"N\"], f32>) -> !sym.tensor<[\"N\" floordiv 64, 64], f32> {\n  %0 = reloc.reshape %arg0 to [N floordiv 64, 64] : !sym.tensor<[\"N\"], f32> -> !sym.tensor<[\"N\" floordiv 64, 64], f32>\n  return %0 : !sym.tensor<[\"N\" floordiv 64, 64], f32>\n}\n",
+  "name": "reshape_split_sym",
+  "ops": [
+    {
+      "kind": "reshape",
+      "to": [
+        "N floordiv 64",
+        64
+      ]
+    }
+  ],
+  "src_shape": [
+    "N"
+  ],
+  "symbols": {
+    "N": {
+      "max_factor": 3,
+      "min_factor": 1,
+      "multiple_of": 64
+    }
+  }
+}
