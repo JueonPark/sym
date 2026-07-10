@@ -80,9 +80,9 @@ speedup is < 1× (~0.48×) regardless of which median one picks.
 
 | N | tensor bytes | chunk_bytes | ours median (ms) | baseline median (ms) | speedup v2 (Release) | v1 (`-O0`) |
 |---|---|---|---|---|---|---|
-| 4096 | 64 MiB | 4 MiB | 13.6 | 3.20 | 0.236 | 0.13–0.23× (smoke)† |
+| 4096 | 64 MiB | 4 MiB | 13.6 | 3.21 | 0.236 | 0.13–0.23× (smoke)† |
 | 8192 | 256 MiB | 16 MiB | 34.4 | 12.0 | 0.350 | 0.13–0.23× (smoke)† |
-| 16384 | 1 GiB | 64 MiB | 110.0 | 47.5 | 0.426 | — (not run in v1) |
+| 16384 | 1 GiB | 64 MiB | 111.4 | 47.5 | 0.426 | — (not run in v1) |
 | 32768 | 4 GiB | 64 MiB | 393.8 | 188.5 | 0.479 | 0.362× (committed)‡ |
 
 Speedup rises monotonically with N (0.236 → 0.350 → 0.426 → 0.479) but never
@@ -113,7 +113,7 @@ Interpretation (grounded in the numbers above):
 
 - **The gather is host-memory-bandwidth-bound at Release.** 16 threads buy only
   1.10× over 1 thread (see below), so D1's parallelism cannot close the gap to
-  the ~23 GB/s PCIe copy rate the pipeline would need to become copy-bound.
+  the ~24 GB/s PCIe copy rate the pipeline would need to become copy-bound.
 - **The `-O0` build had made the gather look compute-bound.** v1's committed
   `gather_bw_n4096.json` (`-O0`) showed 2.04 → 6.5 GB/s, a 3.2× gain from 32
   threads — the kind of scaling a compute-bound workload shows, and the premise
