@@ -1,0 +1,7 @@
+{
+  "config": {"benchmark": "gather_bw", "plan": "reference", "N": 4096, "total_bytes": 67108864, "threads_multi": 32, "min_rows_per_worker": 1, "warmup": 10, "iters": 50, "reruns": 3},
+  "methods": {
+    "gather_1thread": {"wall_ms": {"reruns": [{"median": 52.899, "q1": 52.7968, "q3": 52.9646, "iqr": 0.167838, "n": 50}, {"median": 33.3162, "q1": 33.1067, "q3": 33.6171, "iqr": 0.510428, "n": 50}, {"median": 33.2473, "q1": 33.1381, "q3": 33.3533, "iqr": 0.215206, "n": 50}], "median_spread_pct": 59.108}, "gb_per_s": [1.26862, 2.0143, 2.01848]},
+    "gather_multithread": {"wall_ms": {"reruns": [{"median": 10.4896, "q1": 10.4094, "q3": 10.6211, "iqr": 0.211724, "n": 50}, {"median": 10.3797, "q1": 10.2988, "q3": 10.5175, "iqr": 0.218731, "n": 50}, {"median": 10.5598, "q1": 10.4071, "q3": 10.6914, "iqr": 0.284234, "n": 50}], "median_spread_pct": 1.73539}, "gb_per_s": [6.39763, 6.46538, 6.3551]}
+  }
+}
