@@ -1,8 +1,9 @@
 # pyreloc: the pybind11 extension (issue #46). Optional by design -- a
 # build without pybind11 (e.g. a bare local checkout) skips it with a
-# notice and everything else still builds; CI installs pybind11 and the
-# pytest step fails loudly if the module is missing, so the skip cannot
-# silently pass CI.
+# notice and everything else still builds; CI installs pybind11 and its
+# test job runs an explicit `python3 -c "import pyreloc"` gate before
+# pytest, so a missing module fails CI loudly instead of converting the
+# suite (which importorskips pyreloc) into silent skips.
 find_package(pybind11 CONFIG QUIET)
 if(NOT pybind11_FOUND)
   message(STATUS

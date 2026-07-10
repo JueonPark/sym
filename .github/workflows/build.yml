@@ -227,5 +227,6 @@ jobs:
             bash -c '
               pip install -q lit pytest numpy && \
               lit -sv build/sym/test && \
+              PYTHONPATH=/workspace/build/sym/python python3 -c "import pyreloc" && \
               PYTHONPATH=/workspace/build/sym/python python3 -m pytest libreloc/python/tests -q
             '
