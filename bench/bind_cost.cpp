@@ -102,9 +102,17 @@ int main(int argc, char **argv) {
       return 2;
     }
   }
-  if (n % 64 != 0) {
-    std::fprintf(stderr, "error: N must be divisible by 64 (got %lld)\n",
+  if (n <= 0 || n % 64 != 0) {
+    std::fprintf(stderr,
+                 "error: N must be positive and divisible by 64 (got %lld)\n",
                  static_cast<long long>(n));
+    return 2;
+  }
+  if (warmup < 0 || iters < 1 || reruns < 1) {
+    std::fprintf(stderr,
+                 "error: warmup must be >= 0 and iters/reruns must be >= 1 "
+                 "(got warmup=%d, iters=%d, reruns=%d)\n",
+                 warmup, iters, reruns);
     return 2;
   }
   return run(n, jsonPath, warmup, iters, reruns);
