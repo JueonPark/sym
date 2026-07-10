@@ -314,11 +314,13 @@ PYBIND11_MODULE(_pyreloc, m) {
            "Join all workers. Idempotent.")
       .def("__enter__",
            [](const std::shared_ptr<reloc::GatherPool> &p) { return p; })
-      .def("__exit__", [](reloc::GatherPool &p, const py::object &,
-                          const py::object &, const py::object &) {
-        p.close();
-        return false;
-      });
+      .def("__exit__",
+           [](reloc::GatherPool &p, const py::object &, const py::object &,
+              const py::object &) {
+             p.close();
+             return false;
+           },
+           py::call_guard<py::gil_scoped_release>());
 
   m.def("relocate", &relocateHost, py::arg("bound"), py::arg("src_ptr"),
         py::arg("src_nbytes"), py::arg("dst_ptr"), py::arg("dst_nbytes"),
@@ -335,15 +337,15 @@ PYBIND11_MODULE(_pyreloc, m) {
         py::arg("n_buffers") = 4, py::arg("n_streams") = 2,
         py::arg("gather_threads") = 1, py::arg("gather_pool") = nullptr,
         "Pinned/stream pipeline H2D (CUDA builds; dst_ptr is a device "
-        "pointer). gather_threads/gather_pool parallelize per-chunk gather (scatter for d2h). "
+        "pointer). gather_threads/gather_pool parallelize per-chunk gather. "
         "Raises RuntimeError without RELOC_ENABLE_CUDA.");
   m.def("d2h", &d2hCuda, py::arg("bound"), py::arg("dst_ptr"),
         py::arg("dst_nbytes"), py::arg("src_ptr"), py::arg("src_nbytes"),
         py::arg("n_buffers") = 4, py::arg("n_streams") = 2,
         py::arg("gather_threads") = 1, py::arg("gather_pool") = nullptr,
         "Pinned/stream pipeline D2H inverse (CUDA builds; dst_ptr is a "
-        "device pointer). gather_threads/gather_pool parallelize per-chunk gather (scatter for d2h). "
-        "Raises RuntimeError without RELOC_ENABLE_CUDA.");
+        "device pointer). gather_threads/gather_pool parallelize per-chunk "
+        "scatter. Raises RuntimeError without RELOC_ENABLE_CUDA.");
 
 #ifdef RELOC_ENABLE_CUDA
   m.attr("cuda_enabled") = true;

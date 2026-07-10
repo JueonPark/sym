@@ -30,6 +30,10 @@ GatherPool::GatherPool(unsigned threads) {
 GatherPool::~GatherPool() { close(); }
 
 void GatherPool::close() {
+  // Serialize concurrent close() calls (pybind exposes close() with the
+  // GIL released): the loser blocks until the winner has joined every
+  // worker, so "close() returned" always means "threads are gone".
+  std::lock_guard<std::mutex> closeLk(closeMu_);
   if (closed_)
     return;
   {

@@ -63,6 +63,7 @@ private:
   std::atomic<bool> closed_{false};
   std::vector<std::thread> workers_; // threads_ - 1 entries
 
+  std::mutex closeMu_; // serializes close(); never held while mu_ waits
   std::mutex mu_;                // guards everything below
   std::condition_variable cv_;   // wakes workers (new work or stop)
   std::condition_variable done_; // wakes the parallelFor barrier
