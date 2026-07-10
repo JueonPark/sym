@@ -51,16 +51,27 @@ Context from Task 4's small-N smokes: N = 4096/8192 showed 0.13–0.23×
 kernel at small scale). At full size (N = 32768, 4 GiB), the ratio
 improves somewhat (0.36× vs 0.13–0.23×) but ours remains substantially
 slower than the baseline rather than crossing 1× or reaching the ~2×
-expectation. The likely qualitative explanation (offered as context for
-the schedule discussion, not as a justification to re-tune the
-benchmark): the baseline is a single whole-tensor `cudaMemcpyAsync` +
-one kernel launch over the full 4 GiB, so its fixed per-call overhead is
-paid once, whereas the pipelined strategy splits the same 4 GiB into
-256 MiB chunks (16 chunks at N = 32768) across 2 buffers/2 streams,
-paying host-side coordination and per-chunk launch overhead repeatedly;
-at this problem size that repeated overhead is not being hidden well
-enough by the double buffering to beat the baseline's single large
-transfer + kernel.
+expectation. The root cause (traced in code, not speculative — offered
+as context for the schedule discussion, not as a justification to
+re-tune the benchmark): double buffering in `executeH2DPipelined` is
+doing its job — each chunk's `cudaMemcpyAsync` overlaps with gathering
+the *next* chunk, so the H2D copies are fully hidden behind the CPU
+work. The bottleneck is what they're hidden behind: `gatherChunk` runs
+synchronously on a single CPU thread and performs the entire strided
+transpose (the 4 GiB of blocked-layout reshuffling) before each
+256 MiB chunk is handed to the async copy. That single core sustains
+~8.6 GB/s of strided gather, so ours is CPU-gather-bound end to end.
+The baseline, by contrast, issues one whole-tensor `cudaMemcpyAsync` of
+already-contiguous pinned memory (~23.7 GB/s, PCIe-DMA-bound) and does
+the transpose in a massively parallel GPU kernel instead of on one CPU
+core. This is a compute-placement and parallelism gap, not a launch-
+overhead or buffer-tuning gap: no choice of chunk size, buffer count,
+or stream count changes which thread performs the gather. Closing it
+requires parallelizing the per-chunk gather feeding the pipeline (the
+repo already has a multi-threaded CPU gather, `executeH2DThreaded` in
+`libreloc/src/Execute.cpp`, that the pipeline does not currently use)
+and/or moving the relocation itself onto the GPU, the way the baseline
+does.
 
 No deviations from the planned protocol: preflight passed cleanly
 (GPU idle, no other CUDA processes; ~19 GiB RAM available, above the
