@@ -12,6 +12,7 @@
 #include "reloc/Bind.h"
 #include "reloc/Decode.h"
 #include "reloc/Execute.h"
+#include "reloc/GatherPool.h"
 #include "reloc/HostBackend.h"
 #include "reloc/Pipeline.h"
 #ifdef RELOC_ENABLE_CUDA
@@ -23,6 +24,7 @@
 
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -110,6 +112,17 @@ void checkBuffer(const char *what, uintptr_t ptr, size_t nbytes,
                           " bytes, plan requires " + std::to_string(required));
 }
 
+// Shared validation for the gather-parallelism kwargs. Runs with the GIL
+// held (before any release), so py::value_error is safe. gather_pool wins
+// over gather_threads when both are given.
+void checkGatherArgs(int gatherThreads,
+                     const std::shared_ptr<reloc::GatherPool> &pool) {
+  if (gatherThreads < 0)
+    throw py::value_error("gather_threads must be >= 0 (0 = all cores)");
+  if (pool && pool->closed())
+    throw py::value_error("gather_pool is closed");
+}
+
 reloc::BoundPlan bindPlan(const reloc::RelocationPlan &plan,
                           const std::map<std::string, int64_t> &symbols,
                           const std::string &strategy) {
@@ -120,9 +133,11 @@ reloc::BoundPlan bindPlan(const reloc::RelocationPlan &plan,
 }
 
 void relocateHost(const reloc::BoundPlan &b, uintptr_t srcPtr, size_t srcBytes,
-                  uintptr_t dstPtr, size_t dstBytes) {
+                  uintptr_t dstPtr, size_t dstBytes, int gatherThreads,
+                  std::shared_ptr<reloc::GatherPool> gatherPool) {
   checkBuffer("src", srcPtr, srcBytes, minSrcBytes(b));
   checkBuffer("dst", dstPtr, dstBytes, static_cast<size_t>(b.totalBytes));
+  checkGatherArgs(gatherThreads, gatherPool);
   const void *src = reinterpret_cast<const void *>(srcPtr);
   void *dst = reinterpret_cast<void *>(dstPtr);
   py::gil_scoped_release release;
@@ -132,7 +147,13 @@ void relocateHost(const reloc::BoundPlan &b, uintptr_t srcPtr, size_t srcBytes,
     break;
   case reloc::Strategy::ChunkedPipeline: {
     reloc::HostBackend backend(2);
-    reloc::executeH2DPipelined(b, src, dst, backend, /*nBuffers=*/2);
+    if (gatherPool)
+      reloc::executeH2DPipelined(b, src, dst, backend, /*nBuffers=*/2,
+                                 /*chunkSizeOverride=*/0, *gatherPool);
+    else
+      reloc::executeH2DPipelined(b, src, dst, backend, /*nBuffers=*/2,
+                                 /*chunkSizeOverride=*/0,
+                                 static_cast<unsigned>(gatherThreads));
     break;
   }
   default:
@@ -155,35 +176,51 @@ void relocateInverseHost(const reloc::BoundPlan &b, uintptr_t dstPtr,
 }
 
 void h2dCuda(const reloc::BoundPlan &b, uintptr_t srcPtr, size_t srcBytes,
-             uintptr_t dstPtr, size_t dstBytes, int nBuffers, int nStreams) {
+             uintptr_t dstPtr, size_t dstBytes, int nBuffers, int nStreams,
+             int gatherThreads, std::shared_ptr<reloc::GatherPool> gatherPool) {
 #ifdef RELOC_ENABLE_CUDA
   checkBuffer("src", srcPtr, srcBytes, minSrcBytes(b));
   checkBuffer("dst", dstPtr, dstBytes, static_cast<size_t>(b.totalBytes));
+  checkGatherArgs(gatherThreads, gatherPool);
   const void *src = reinterpret_cast<const void *>(srcPtr);
   void *dst = reinterpret_cast<void *>(dstPtr);
   py::gil_scoped_release release;
   reloc::CudaBackend backend(nStreams);
-  reloc::executeH2DPipelined(b, src, dst, backend, nBuffers);
+  if (gatherPool)
+    reloc::executeH2DPipelined(b, src, dst, backend, nBuffers,
+                               /*chunkSizeOverride=*/0, *gatherPool);
+  else
+    reloc::executeH2DPipelined(b, src, dst, backend, nBuffers,
+                               /*chunkSizeOverride=*/0,
+                               static_cast<unsigned>(gatherThreads));
 #else
   (void)b, (void)srcPtr, (void)srcBytes, (void)dstPtr, (void)dstBytes;
-  (void)nBuffers, (void)nStreams;
+  (void)nBuffers, (void)nStreams, (void)gatherThreads, (void)gatherPool;
   throw std::runtime_error("pyreloc was built without RELOC_ENABLE_CUDA");
 #endif
 }
 
 void d2hCuda(const reloc::BoundPlan &b, uintptr_t dstPtr, size_t dstBytes,
-             uintptr_t srcPtr, size_t srcBytes, int nBuffers, int nStreams) {
+             uintptr_t srcPtr, size_t srcBytes, int nBuffers, int nStreams,
+             int gatherThreads, std::shared_ptr<reloc::GatherPool> gatherPool) {
 #ifdef RELOC_ENABLE_CUDA
   checkBuffer("dst", dstPtr, dstBytes, static_cast<size_t>(b.totalBytes));
   checkBuffer("src(out)", srcPtr, srcBytes, minSrcBytes(b));
+  checkGatherArgs(gatherThreads, gatherPool);
   const void *dst = reinterpret_cast<const void *>(dstPtr);
   void *src = reinterpret_cast<void *>(srcPtr);
   py::gil_scoped_release release;
   reloc::CudaBackend backend(nStreams);
-  reloc::executeD2HPipelined(b, dst, src, backend, nBuffers);
+  if (gatherPool)
+    reloc::executeD2HPipelined(b, dst, src, backend, nBuffers,
+                               /*chunkSizeOverride=*/0, *gatherPool);
+  else
+    reloc::executeD2HPipelined(b, dst, src, backend, nBuffers,
+                               /*chunkSizeOverride=*/0,
+                               static_cast<unsigned>(gatherThreads));
 #else
   (void)b, (void)dstPtr, (void)dstBytes, (void)srcPtr, (void)srcBytes;
-  (void)nBuffers, (void)nStreams;
+  (void)nBuffers, (void)nStreams, (void)gatherThreads, (void)gatherPool;
   throw std::runtime_error("pyreloc was built without RELOC_ENABLE_CUDA");
 #endif
 }
@@ -255,9 +292,40 @@ PYBIND11_MODULE(_pyreloc, m) {
         py::arg("strategy") = "auto",
         "Bind a plan against {symbol: value}. Raises BindError on symbol "
         "mismatch or violated correctness constraints.");
+
+  py::class_<reloc::GatherPool, std::shared_ptr<reloc::GatherPool>>(
+      m, "GatherPool",
+      "Persistent gather/scatter worker pool (issue #65). threads == 0 "
+      "resolves to the hardware thread count; the pool owns threads-1 OS "
+      "workers (the calling thread is the last worker of each dispatch). "
+      "close() joins every worker deterministically -- also usable as a "
+      "context manager. A closed pool cannot be passed to relocate/h2d/d2h.")
+      .def(py::init([](int threads) {
+             if (threads < 0)
+               throw py::value_error("threads must be >= 0 (0 = all cores)");
+             return std::make_shared<reloc::GatherPool>(
+                 static_cast<unsigned>(threads));
+           }),
+           py::arg("threads") = 0)
+      .def_property_readonly("threads", &reloc::GatherPool::threadCount)
+      .def_property_readonly("closed", &reloc::GatherPool::closed)
+      .def("close", &reloc::GatherPool::close,
+           py::call_guard<py::gil_scoped_release>(),
+           "Join all workers. Idempotent.")
+      .def("__enter__",
+           [](const std::shared_ptr<reloc::GatherPool> &p) { return p; })
+      .def("__exit__", [](reloc::GatherPool &p, const py::object &,
+                          const py::object &, const py::object &) {
+        p.close();
+        return false;
+      });
+
   m.def("relocate", &relocateHost, py::arg("bound"), py::arg("src_ptr"),
         py::arg("src_nbytes"), py::arg("dst_ptr"), py::arg("dst_nbytes"),
-        "Host relocation (CPU strategies): src -> dst-layout buffer.");
+        py::arg("gather_threads") = 1, py::arg("gather_pool") = nullptr,
+        "Host relocation (CPU strategies): src -> dst-layout buffer. "
+        "gather_threads / gather_pool parallelize the chunked_pipeline "
+        "strategy's per-chunk gather (0 = all cores; a given pool wins).");
   m.def("relocate_inverse", &relocateInverseHost, py::arg("bound"),
         py::arg("dst_ptr"), py::arg("dst_nbytes"), py::arg("src_ptr"),
         py::arg("src_nbytes"),
@@ -265,13 +333,17 @@ PYBIND11_MODULE(_pyreloc, m) {
   m.def("h2d", &h2dCuda, py::arg("bound"), py::arg("src_ptr"),
         py::arg("src_nbytes"), py::arg("dst_ptr"), py::arg("dst_nbytes"),
         py::arg("n_buffers") = 4, py::arg("n_streams") = 2,
+        py::arg("gather_threads") = 1, py::arg("gather_pool") = nullptr,
         "Pinned/stream pipeline H2D (CUDA builds; dst_ptr is a device "
-        "pointer). Raises RuntimeError without RELOC_ENABLE_CUDA.");
+        "pointer). gather_threads/gather_pool parallelize per-chunk gather (scatter for d2h). "
+        "Raises RuntimeError without RELOC_ENABLE_CUDA.");
   m.def("d2h", &d2hCuda, py::arg("bound"), py::arg("dst_ptr"),
         py::arg("dst_nbytes"), py::arg("src_ptr"), py::arg("src_nbytes"),
         py::arg("n_buffers") = 4, py::arg("n_streams") = 2,
+        py::arg("gather_threads") = 1, py::arg("gather_pool") = nullptr,
         "Pinned/stream pipeline D2H inverse (CUDA builds; dst_ptr is a "
-        "device pointer). Raises RuntimeError without RELOC_ENABLE_CUDA.");
+        "device pointer). gather_threads/gather_pool parallelize per-chunk gather (scatter for d2h). "
+        "Raises RuntimeError without RELOC_ENABLE_CUDA.");
 
 #ifdef RELOC_ENABLE_CUDA
   m.attr("cuda_enabled") = true;

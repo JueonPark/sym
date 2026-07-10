@@ -13,6 +13,7 @@
 #ifndef RELOC_GATHERPOOL_H
 #define RELOC_GATHERPOOL_H
 
+#include <atomic>
 #include <condition_variable>
 #include <cstdint>
 #include <functional>
@@ -59,7 +60,7 @@ private:
   void workerLoop();
 
   int threads_ = 1;
-  bool closed_ = false;
+  std::atomic<bool> closed_{false};
   std::vector<std::thread> workers_; // threads_ - 1 entries
 
   std::mutex mu_;                // guards everything below
