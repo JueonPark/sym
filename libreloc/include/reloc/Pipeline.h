@@ -58,10 +58,19 @@ void executeH2DPipelined(const BoundPlan &bound, const void *srcBase,
                          PinnedBufferPool &pool, size_t chunkSizeOverride = 0,
                          GatherPool *gather = nullptr);
 
-/// Strategy 4 inverse (D2H). Added in Task 5.
+/// Strategy 4 inverse (D2H). gatherThreads parallelizes each chunk's
+/// scatter (0 = hardware concurrency; 1 = inline, the pre-D1 behavior).
+/// Non-injective src layouts (aliasing/broadcast strides) scatter inline
+/// regardless, so the result is always bit-identical to executeD2H.
 void executeD2HPipelined(const BoundPlan &bound, const void *deviceSrc,
                          void *srcBaseV, CopyBackend &backend, int nBuffers,
-                         size_t chunkSizeOverride = 0);
+                         size_t chunkSizeOverride = 0,
+                         unsigned gatherThreads = 1);
+
+/// As above with a CALLER-OWNED GatherPool (reused across calls).
+void executeD2HPipelined(const BoundPlan &bound, const void *deviceSrc,
+                         void *srcBaseV, CopyBackend &backend, int nBuffers,
+                         size_t chunkSizeOverride, GatherPool &gather);
 
 } // namespace reloc
 

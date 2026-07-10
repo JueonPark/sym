@@ -13,6 +13,7 @@
 #include <cstring>
 #include <deque>
 #include <functional>
+#include <utility>
 #include <vector>
 
 namespace reloc {
@@ -56,6 +57,90 @@ void dispatchRows(GatherPool *gather, bool parallelSafe, int64_t rowBytes,
       1, static_cast<int64_t>(kMinGatherBytesPerWorker) /
              std::max<int64_t>(1, rowBytes));
   gather->parallelFor(begin, end, minRows, op);
+}
+
+// Sufficient condition for parallel scatter: valid index tuples map
+// injectively to src element offsets, so workers holding disjoint outer
+// ranges write disjoint src bytes -- interleaved (e.g. transposed src) is
+// fine, colliding is not. Standard mixed-radix test over stride-sorted
+// axes; broadcast/degenerate strides (<= 0 with extent > 1) fail.
+// Conservative: false only costs parallelism (scatter runs inline), never
+// correctness.
+bool srcRowsWriteDisjoint(const BoundPlan &b) {
+  std::vector<std::pair<int64_t, int64_t>> ax; // (stride, extent), extent > 1
+  for (size_t k = 0; k < b.extents.size(); ++k) {
+    if (b.extents[k] <= 1)
+      continue;
+    if (b.srcStrides[k] <= 0)
+      return false;
+    ax.emplace_back(b.srcStrides[k], b.extents[k]);
+  }
+  std::sort(ax.begin(), ax.end());
+  int64_t span = 0; // max element offset reachable by smaller-stride axes
+  for (const auto &se : ax) {
+    if (se.first <= span)
+      return false;
+    span += (se.second - 1) * se.first;
+  }
+  return true;
+}
+
+void d2hPipelinedImpl(const BoundPlan &bound, const void *deviceSrc,
+                      void *srcBaseV, CopyBackend &backend, int nBuffers,
+                      size_t chunkSizeOverride, GatherPool *gather) {
+  assert(nBuffers >= 1 && "nBuffers must be >= 1");
+  ChunkSchedule sched = planChunks(bound, nBuffers, chunkSizeOverride);
+  PinnedBufferPool pool(backend, nBuffers, sched.maxChunkBytes);
+  const int nStreams = backend.numQueues();
+  const bool parallelSafe = srcRowsWriteDisjoint(bound);
+
+  struct InFlight {
+    int buf;
+    EventHandle ev;
+    size_t chunk;
+  };
+  std::deque<InFlight> inflight;
+
+  // Wait for a chunk's D2H copy to land, then scatter its valid cells from the
+  // staging buffer into srcBaseV. Frees the staging buffer for reuse. The
+  // dispatchRows barrier returns only after every sub-range completed, so the
+  // buffer-reuse reasoning below is unchanged by parallel scatter.
+  auto scatterOne = [&](const InFlight &f) {
+    const Chunk &c = sched.chunks[f.chunk];
+    backend.waitEvent(f.ev);
+    if (c.validEnd > c.validBegin) {
+      const uint8_t *dstBase = rebase(pool.buffer(f.buf), bound, c.paddedBegin);
+      dispatchRows(gather, parallelSafe, sched.rowBytes, c.validBegin,
+                   c.validEnd, [&](int64_t rb, int64_t re) {
+                     scatterChunk(bound, dstBase, srcBaseV, rb, re);
+                   });
+    }
+  };
+
+  for (size_t k = 0; k < sched.chunks.size(); ++k) {
+    const Chunk &c = sched.chunks[k];
+    int i = pool.acquire(); // blocks on this buffer's prior copy event
+    int q = static_cast<int>(k % static_cast<size_t>(nStreams));
+    backend.copyAsync(q, pool.buffer(i),
+                      static_cast<const uint8_t *>(deviceSrc) + c.byteOffset,
+                      c.bytes, CopyDir::DeviceToHost);
+    EventHandle ev = backend.recordEvent(q);
+    pool.setEvent(i, ev);
+    inflight.push_back({i, ev, k});
+    // Keep at most pool.nBuffers() copies outstanding; drain the oldest
+    // (which uses the buffer we are about to reuse next) before it is
+    // overwritten. The deferred scatterOne(front) below (waitEvent + scatter)
+    // runs synchronously on this single driver thread strictly before the
+    // next acquire() reuses that same buffer, so the buffer is fully drained
+    // and scattered before any new D2H copy overwrites it.
+    if (static_cast<int>(inflight.size()) == pool.nBuffers()) {
+      scatterOne(inflight.front());
+      inflight.pop_front();
+    }
+  }
+  for (const InFlight &f : inflight)
+    scatterOne(f);
+  pool.drain();
 }
 
 } // namespace
@@ -128,53 +213,22 @@ void executeH2DPipelined(const BoundPlan &bound, const void *srcBase,
 
 void executeD2HPipelined(const BoundPlan &bound, const void *deviceSrc,
                          void *srcBaseV, CopyBackend &backend, int nBuffers,
-                         size_t chunkSizeOverride) {
-  assert(nBuffers >= 1 && "nBuffers must be >= 1");
-  ChunkSchedule sched = planChunks(bound, nBuffers, chunkSizeOverride);
-  PinnedBufferPool pool(backend, nBuffers, sched.maxChunkBytes);
-  const int nStreams = backend.numQueues();
-
-  struct InFlight {
-    int buf;
-    EventHandle ev;
-    size_t chunk;
-  };
-  std::deque<InFlight> inflight;
-
-  // Wait for a chunk's D2H copy to land, then scatter its valid cells from the
-  // staging buffer into srcBaseV. Frees the staging buffer for reuse.
-  auto scatterOne = [&](const InFlight &f) {
-    const Chunk &c = sched.chunks[f.chunk];
-    backend.waitEvent(f.ev);
-    if (c.validEnd > c.validBegin)
-      scatterChunk(bound, rebase(pool.buffer(f.buf), bound, c.paddedBegin),
-                   srcBaseV, c.validBegin, c.validEnd);
-  };
-
-  for (size_t k = 0; k < sched.chunks.size(); ++k) {
-    const Chunk &c = sched.chunks[k];
-    int i = pool.acquire(); // blocks on this buffer's prior copy event
-    int q = static_cast<int>(k % static_cast<size_t>(nStreams));
-    backend.copyAsync(q, pool.buffer(i),
-                      static_cast<const uint8_t *>(deviceSrc) + c.byteOffset,
-                      c.bytes, CopyDir::DeviceToHost);
-    EventHandle ev = backend.recordEvent(q);
-    pool.setEvent(i, ev);
-    inflight.push_back({i, ev, k});
-    // Keep at most pool.nBuffers() copies outstanding; drain the oldest
-    // (which uses the buffer we are about to reuse next) before it is
-    // overwritten. The deferred scatterOne(front) below (waitEvent + scatter)
-    // runs synchronously on this single driver thread strictly before the
-    // next acquire() reuses that same buffer, so the buffer is fully drained
-    // and scattered before any new D2H copy overwrites it.
-    if (static_cast<int>(inflight.size()) == pool.nBuffers()) {
-      scatterOne(inflight.front());
-      inflight.pop_front();
-    }
+                         size_t chunkSizeOverride, unsigned gatherThreads) {
+  if (gatherThreads == 1) {
+    d2hPipelinedImpl(bound, deviceSrc, srcBaseV, backend, nBuffers,
+                     chunkSizeOverride, /*gather=*/nullptr);
+    return;
   }
-  for (const InFlight &f : inflight)
-    scatterOne(f);
-  pool.drain();
+  GatherPool gather(gatherThreads);
+  d2hPipelinedImpl(bound, deviceSrc, srcBaseV, backend, nBuffers,
+                   chunkSizeOverride, &gather);
+}
+
+void executeD2HPipelined(const BoundPlan &bound, const void *deviceSrc,
+                         void *srcBaseV, CopyBackend &backend, int nBuffers,
+                         size_t chunkSizeOverride, GatherPool &gather) {
+  d2hPipelinedImpl(bound, deviceSrc, srcBaseV, backend, nBuffers,
+                   chunkSizeOverride, &gather);
 }
 
 } // namespace reloc

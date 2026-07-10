@@ -168,7 +168,7 @@ TEST(Pipeline, CallerOwnedGatherPoolReusedAcrossCalls) {
 // Run executeD2HPipelined over HostBackend and assert it reconstructs src
 // byte-exact (== executeD2H). `dst` is a known-good dst-layout buffer.
 void expectPipelineExactD2H(const BoundPlan &b, int nBuffers, int nStreams,
-                            size_t chunkOverride) {
+                            size_t chunkOverride, unsigned gatherThreads = 1) {
   int64_t srcElems = product(b.extents);
   std::vector<uint8_t> src = iotaBytes(srcElems, b.elementSize);
   std::vector<uint8_t> device(static_cast<size_t>(b.totalBytes), 0xAB);
@@ -178,9 +178,10 @@ void expectPipelineExactD2H(const BoundPlan &b, int nBuffers, int nStreams,
   std::vector<uint8_t> back(static_cast<size_t>(srcElems) * b.elementSize,
                             0xCD);
   reloc::executeD2HPipelined(b, device.data(), back.data(), backend, nBuffers,
-                             chunkOverride);
+                             chunkOverride, gatherThreads);
   EXPECT_EQ(back, src) << "nBuffers=" << nBuffers << " nStreams=" << nStreams
-                       << " override=" << chunkOverride;
+                       << " override=" << chunkOverride
+                       << " gatherThreads=" << gatherThreads;
 }
 
 TEST(Pipeline, D2HByteExactMatrix) {
@@ -188,7 +189,8 @@ TEST(Pipeline, D2HByteExactMatrix) {
     for (int nBuffers : {1, 2, 4})
       for (int nStreams : {1, 2})
         for (size_t override : {size_t(0), size_t(16), size_t(64)})
-          expectPipelineExactD2H(b, nBuffers, nStreams, override);
+          for (unsigned threads : {1u, 2u, 0u}) // 0 == hardware concurrency
+            expectPipelineExactD2H(b, nBuffers, nStreams, override, threads);
 }
 
 TEST(Pipeline, RoundTripH2DThenD2H) {
@@ -205,6 +207,58 @@ TEST(Pipeline, RoundTripH2DThenD2H) {
     reloc::executeD2HPipelined(b, device.data(), back.data(), backend, nBuffers,
                                /*override=*/64);
     EXPECT_EQ(back, src) << "nBuffers=" << nBuffers;
+  }
+}
+
+TEST(Pipeline, D2HParallelScatterEngagesWorkers) {
+  // Transposed src (srcStrides {1, 4096}): outer rows INTERLEAVE in src byte
+  // space but the layout is injective, so the reverse disjointness argument
+  // holds and parallel scatter must engage AND stay exact. Same sizing logic
+  // as H2DParallelGatherEngagesWorkers so the byte floor yields 2 workers
+  // per chunk. Meaningful under TSan.
+  BoundPlan b = makeBound({4096, 1024}, {1, 4096}, {1024, 1}, 4);
+  for (unsigned threads : {2u, 0u})
+    expectPipelineExactD2H(b, /*nBuffers=*/2, /*nStreams=*/2,
+                           /*override=*/size_t(2) << 20, threads);
+}
+
+TEST(Pipeline, D2HAliasedSrcSerializesScatter) {
+  // srcStrides {1, 1}: indices (i, j) and (i+1, j-1) hit the SAME src
+  // element, so partitioned scatter would race. The injectivity guard must
+  // serialize the scatter; the result must equal executeD2H exactly
+  // (identical row order => identical last-writer on aliased cells).
+  BoundPlan b = makeBound({16, 4}, {1, 1}, {4, 1}, 4);
+  int64_t srcElems = product(b.extents); // oversized; aliased reads stay inside
+  std::vector<uint8_t> src = iotaBytes(srcElems, b.elementSize);
+  std::vector<uint8_t> device(static_cast<size_t>(b.totalBytes), 0xAB);
+  reloc::executeH2D(b, src.data(), device.data());
+
+  std::vector<uint8_t> want(src.size(), 0xEE), got(src.size(), 0xEE);
+  reloc::executeD2H(b, device.data(), want.data());
+  HostBackend backend(2);
+  reloc::executeD2HPipelined(b, device.data(), got.data(), backend,
+                             /*nBuffers=*/2, /*override=*/16,
+                             /*gatherThreads=*/8);
+  EXPECT_EQ(got, want);
+}
+
+TEST(Pipeline, D2HCallerOwnedGatherPool) {
+  // The caller-owned-pool overload must match the per-call overload.
+  BoundPlan b = makeBound({4096, 1024}, {1, 4096}, {1024, 1}, 4);
+  int64_t srcElems = product(b.extents);
+  std::vector<uint8_t> src = iotaBytes(srcElems, b.elementSize);
+  std::vector<uint8_t> device(static_cast<size_t>(b.totalBytes), 0xAB);
+  reloc::executeH2D(b, src.data(), device.data());
+
+  HostBackend backend(2);
+  reloc::GatherPool gather(4);
+  for (int call = 0; call < 2; ++call) {
+    std::vector<uint8_t> back(static_cast<size_t>(srcElems) * b.elementSize,
+                              0xCD);
+    reloc::executeD2HPipelined(b, device.data(), back.data(), backend,
+                               /*nBuffers=*/2, /*override=*/size_t(2) << 20,
+                               gather);
+    EXPECT_EQ(back, src) << "call " << call;
   }
 }
 
