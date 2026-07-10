@@ -40,11 +40,11 @@ uint8_t *rebase(void *staging, const BoundPlan &b, int64_t paddedBegin) {
 } // namespace
 
 void executeH2DPipelined(const BoundPlan &bound, const void *srcBase,
-                         void *deviceDst, CopyBackend &backend, int nBuffers,
-                         size_t chunkSizeOverride) {
-  assert(nBuffers >= 1 && "nBuffers must be >= 1");
-  ChunkSchedule sched = planChunks(bound, nBuffers, chunkSizeOverride);
-  PinnedBufferPool pool(backend, nBuffers, sched.maxChunkBytes);
+                         void *deviceDst, CopyBackend &backend,
+                         PinnedBufferPool &pool, size_t chunkSizeOverride) {
+  ChunkSchedule sched = planChunks(bound, pool.nBuffers(), chunkSizeOverride);
+  assert(pool.bufferBytes() >= sched.maxChunkBytes &&
+         "caller-owned staging pool too small for this plan's chunks");
   const int nStreams = backend.numQueues();
 
   for (size_t k = 0; k < sched.chunks.size(); ++k) {
@@ -63,6 +63,16 @@ void executeH2DPipelined(const BoundPlan &bound, const void *srcBase,
     pool.setEvent(i, backend.recordEvent(q));
   }
   pool.drain();
+}
+
+void executeH2DPipelined(const BoundPlan &bound, const void *srcBase,
+                         void *deviceDst, CopyBackend &backend, int nBuffers,
+                         size_t chunkSizeOverride) {
+  assert(nBuffers >= 1 && "nBuffers must be >= 1");
+  ChunkSchedule sched = planChunks(bound, nBuffers, chunkSizeOverride);
+  PinnedBufferPool pool(backend, nBuffers, sched.maxChunkBytes);
+  executeH2DPipelined(bound, srcBase, deviceDst, backend, pool,
+                      chunkSizeOverride);
 }
 
 void executeD2HPipelined(const BoundPlan &bound, const void *deviceSrc,

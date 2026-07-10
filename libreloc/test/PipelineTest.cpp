@@ -10,8 +10,10 @@
 
 #include "reloc/Pipeline.h"
 #include "reloc/Bind.h"
+#include "reloc/ChunkSchedule.h"
 #include "reloc/Execute.h"
 #include "reloc/HostBackend.h"
+#include "reloc/PinnedBufferPool.h"
 #include "gtest/gtest.h"
 
 #include <cstdint>
@@ -155,6 +157,28 @@ TEST(Pipeline, RoundTripH2DThenD2H) {
     reloc::executeD2HPipelined(b, device.data(), back.data(), backend, nBuffers,
                                /*override=*/64);
     EXPECT_EQ(back, src) << "nBuffers=" << nBuffers;
+  }
+}
+
+TEST(Pipeline, CallerOwnedPoolReusedAcrossCalls) {
+  // The pool-reuse overload must be byte-identical to the pool-per-call
+  // entry point, and the same pool must be safely reusable across
+  // consecutive calls (drain leaves no pending events behind).
+  BoundPlan b = makeBound({64, 16}, {16, 1}, {16, 1}, 4);
+  int64_t srcElems = product(b.extents);
+  std::vector<uint8_t> src = iotaBytes(srcElems, b.elementSize);
+  std::vector<uint8_t> reference(static_cast<size_t>(b.totalBytes), 0xAB);
+  reloc::executeH2D(b, src.data(), reference.data());
+
+  HostBackend backend(2);
+  reloc::ChunkSchedule sched = reloc::planChunks(b, /*nBuffers=*/2,
+                                                 /*override=*/64);
+  reloc::PinnedBufferPool pool(backend, 2, sched.maxChunkBytes);
+  for (int call = 0; call < 3; ++call) {
+    std::vector<uint8_t> device(static_cast<size_t>(b.totalBytes), 0xCD);
+    reloc::executeH2DPipelined(b, src.data(), device.data(), backend, pool,
+                               /*override=*/64);
+    EXPECT_EQ(device, reference) << "call " << call;
   }
 }
 
