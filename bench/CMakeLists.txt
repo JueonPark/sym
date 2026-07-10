@@ -20,6 +20,17 @@ target_link_libraries(bench-bind-cost PRIVATE reloc_runtime)
 add_test(NAME bench-bind-cost-smoke
          COMMAND bench-bind-cost --n 4096 --json - --warmup 2 --iters 5 --reruns 2)
 
+add_executable(bench-gather-bw gather_bw.cpp)
+target_include_directories(bench-gather-bw PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_features(bench-gather-bw PRIVATE cxx_std_17)
+target_link_libraries(bench-gather-bw PRIVATE reloc_runtime)
+# Smoke-run under ctest (same rationale as bench-bind-cost-smoke): proves the
+# D1 gather-BW driver runs end-to-end -- including its parallel-vs-executeH2D
+# byte-exactness gate -- on every CI run. Tiny counts; not a measurement.
+add_test(NAME bench-gather-bw-smoke
+         COMMAND bench-gather-bw --n 256 --threads 2 --json - --warmup 1
+                 --iters 3 --reruns 2)
+
 if(RELOC_ENABLE_CUDA)
   # The C7 PoC driver. GPU-only, never in CI (mirrors libreloc's CUDA
   # gating); run locally on the desktop per docs/poc-reproduction.md.

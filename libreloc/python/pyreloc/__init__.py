@@ -9,6 +9,7 @@ from ._pyreloc import (  # noqa: F401
     BindError,
     BoundPlan,
     DecodeError,
+    GatherPool,
     PlanHandle,
     bind,
     cuda_enabled,
