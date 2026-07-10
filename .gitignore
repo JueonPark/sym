@@ -13,3 +13,4 @@ llvm-build
 *.whl
 **/*.egg-info/
 /Testing/.venv
+.superpowers
