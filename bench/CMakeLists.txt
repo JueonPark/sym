@@ -19,3 +19,24 @@ target_link_libraries(bench-bind-cost PRIVATE reloc_runtime)
 # this is a does-it-work gate, not a measurement.
 add_test(NAME bench-bind-cost-smoke
          COMMAND bench-bind-cost --n 4096 --json - --warmup 2 --iters 5 --reruns 2)
+
+if(RELOC_ENABLE_CUDA)
+  # The C7 PoC driver. GPU-only, never in CI (mirrors libreloc's CUDA
+  # gating); run locally on the desktop per docs/poc-reproduction.md.
+  # enable_language(CUDA) and find_package(CUDAToolkit) are re-issued here
+  # (libreloc/CMakeLists.txt already called both) because CMake scopes
+  # per-language build rules and imported targets to the directory that
+  # created them and its descendants, not to sibling directories:
+  # libreloc/ and bench/ are siblings under the root CMakeLists.txt, so
+  # neither is visible here without this. Both calls are safe to repeat
+  # (enable_language no-ops after first detection; FindCUDAToolkit.cmake
+  # guards each add_library() with if(NOT TARGET ...)).
+  enable_language(CUDA)
+  find_package(CUDAToolkit REQUIRED)
+  add_executable(bench-poc-transpose poc_transpose.cu)
+  target_include_directories(bench-poc-transpose
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_compile_features(bench-poc-transpose PRIVATE cxx_std_17)
+  target_link_libraries(bench-poc-transpose PRIVATE reloc_runtime
+    CUDA::cudart)
+endif()
