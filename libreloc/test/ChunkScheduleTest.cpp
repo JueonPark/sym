@@ -64,13 +64,50 @@ TEST(ChunkSchedule, TinyOverrideForcesManyChunks) {
 }
 
 TEST(ChunkSchedule, HeuristicClampsToMinForSmallTensor) {
-  // Small tensor: totalBytes << 8 MB, so the heuristic clamps up to a chunk
-  // bigger than the whole tensor -> a single chunk.
+  // Small tensor: totalBytes << the 4 MiB floor, so the heuristic clamps up
+  // to a chunk bigger than the whole tensor -> a single chunk.
   BoundPlan b = makeBound({8, 128}, {128, 1}, {128, 1}, 4);
   ChunkSchedule s = planChunks(b, /*nBuffers=*/4, /*override=*/0);
   EXPECT_FALSE(s.serialized);
   EXPECT_EQ(s.chunks.size(), 1u);
   expectContiguousCover(s, /*paddedOuter=*/8, b.totalBytes);
+}
+
+TEST(ChunkSchedule, HeuristicTargetsEightChunksPerBuffer) {
+  // 64 MiB dst, 2 buffers: target = clamp(64Mi/(8*2) = 4 MiB, 4 MiB,
+  // 64 MiB) = 4 MiB -> exactly kChunksPerBuffer * nBuffers = 16 chunks,
+  // so pipeline fill+drain is ~1/16 of the run (issue #66's <= ~3% bar
+  // at 2 buffers).
+  BoundPlan b = makeBound({1024, 16384}, {16384, 1}, {16384, 1}, 4);
+  ChunkSchedule s = planChunks(b, /*nBuffers=*/2, /*override=*/0);
+  EXPECT_FALSE(s.serialized);
+  EXPECT_EQ(s.chunks.size(), 16u);
+  expectContiguousCover(s, /*paddedOuter=*/1024, b.totalBytes);
+}
+
+TEST(ChunkSchedule, HeuristicCapsPoolFootprintAtReferenceScale) {
+  // Issue #66 acceptance: 4 GiB dst with defaults and 2 buffers must plan
+  // >= 16 chunks and a pinned-pool footprint of at most 2 x 64 MiB =
+  // 128 MiB (planChunks is pure planning -- no buffer is allocated here,
+  // so a 4 GiB plan is fine in a unit test).
+  BoundPlan b = makeBound({65536, 16384}, {16384, 1}, {16384, 1}, 4);
+  ASSERT_EQ(b.totalBytes, 4ll << 30);
+  ChunkSchedule s = planChunks(b, /*nBuffers=*/2, /*override=*/0);
+  EXPECT_FALSE(s.serialized);
+  EXPECT_GE(s.chunks.size(), 16u);
+  EXPECT_LE(s.maxChunkBytes * 2, 128ull << 20);
+  expectContiguousCover(s, /*paddedOuter=*/65536, b.totalBytes);
+}
+
+TEST(ChunkSchedule, HeuristicFloorStopsShredding) {
+  // 8 MiB dst, 4 buffers: raw target 8Mi/(8*4) = 256 KiB clamps UP to the
+  // 4 MiB floor -> 2 chunks, not 32. Pinned-copy bandwidth saturates well
+  // above 4 MiB; small tensors must not shred into launch overhead.
+  BoundPlan b = makeBound({128, 16384}, {16384, 1}, {16384, 1}, 4);
+  ChunkSchedule s = planChunks(b, /*nBuffers=*/4, /*override=*/0);
+  EXPECT_FALSE(s.serialized);
+  EXPECT_EQ(s.chunks.size(), 2u);
+  expectContiguousCover(s, /*paddedOuter=*/128, b.totalBytes);
 }
 
 TEST(ChunkSchedule, OuterPadCountsPadRowsAndClampsValid) {
