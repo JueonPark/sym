@@ -34,5 +34,6 @@ add_subdirectory(sym)
 # the libreloc-test target).
 enable_testing()
 add_subdirectory(libreloc)
+add_subdirectory(bench)
 add_subdirectory(unittest)
 add_subdirectory(test)

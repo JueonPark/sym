@@ -1,0 +1,4 @@
+{
+  "config": {"benchmark": "bind_cost", "plan": "reference", "N": 4096, "warmup": 10, "iters": 50, "reruns": 3},
+  "methods": {"bind_reference_plan": {"wall_ms": {"reruns": [{"median": 0.0069465, "q1": 0.00685625, "q3": 0.00703525, "iqr": 0.000179, "n": 50}, {"median": 0.006883, "q1": 0.006782, "q3": 0.00697875, "iqr": 0.00019675, "n": 50}, {"median": 0.006861, "q1": 0.0067845, "q3": 0.00690725, "iqr": 0.00012275, "n": 50}], "median_spread_pct": 1.24617}}}
+}

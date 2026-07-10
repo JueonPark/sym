@@ -1,0 +1,42 @@
+# bench/: the E4 measurement-protocol skeleton (protocol.h, issue #47) and
+# its consumers. CPU targets always build and run under ctest (CI); the
+# PoC GPU driver is gated on RELOC_ENABLE_CUDA like libreloc's backend.
+# Plain add_executable by intent (same rationale as libreloc/test): these
+# tools may use llvm_gtest, but bench code includes no MLIR/LLVM headers.
+add_executable(bench-protocol-test ProtocolTest.cpp)
+target_include_directories(bench-protocol-test
+  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_features(bench-protocol-test PRIVATE cxx_std_17)
+target_link_libraries(bench-protocol-test PRIVATE llvm_gtest llvm_gtest_main)
+add_test(NAME bench-protocol-test COMMAND bench-protocol-test)
+
+add_executable(bench-bind-cost bind_cost.cpp)
+target_include_directories(bench-bind-cost PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_features(bench-bind-cost PRIVATE cxx_std_17)
+target_link_libraries(bench-bind-cost PRIVATE reloc_runtime)
+# Smoke-run under ctest: proves bench/protocol.h is reused by a second
+# micro-measurement (issue #47 acceptance) on every CI run. Tiny counts --
+# this is a does-it-work gate, not a measurement.
+add_test(NAME bench-bind-cost-smoke
+         COMMAND bench-bind-cost --n 4096 --json - --warmup 2 --iters 5 --reruns 2)
+
+if(RELOC_ENABLE_CUDA)
+  # The C7 PoC driver. GPU-only, never in CI (mirrors libreloc's CUDA
+  # gating); run locally on the desktop per docs/poc-reproduction.md.
+  # enable_language(CUDA) and find_package(CUDAToolkit) are re-issued here
+  # (libreloc/CMakeLists.txt already called both) because CMake scopes
+  # per-language build rules and imported targets to the directory that
+  # created them and its descendants, not to sibling directories:
+  # libreloc/ and bench/ are siblings under the root CMakeLists.txt, so
+  # neither is visible here without this. Both calls are safe to repeat
+  # (enable_language no-ops after first detection; FindCUDAToolkit.cmake
+  # guards each add_library() with if(NOT TARGET ...)).
+  enable_language(CUDA)
+  find_package(CUDAToolkit REQUIRED)
+  add_executable(bench-poc-transpose poc_transpose.cu)
+  target_include_directories(bench-poc-transpose
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_compile_features(bench-poc-transpose PRIVATE cxx_std_17)
+  target_link_libraries(bench-poc-transpose PRIVATE reloc_runtime
+    CUDA::cudart)
+endif()
