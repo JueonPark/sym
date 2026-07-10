@@ -30,13 +30,36 @@ recorded in the doc. No bare-metal box is available now ("maybe later"): the
 doc carries an explicitly marked empty **bare-metal confirmation** slot to be
 appended if one becomes available.
 
+### Build configuration (amended 2026-07-11)
+
+Discovery during planning: the existing `build/cuda` tree has an empty
+`CMAKE_BUILD_TYPE` — all host C++ (including the gather) was compiled at
+`-O0` with `-D_DEBUG -UNDEBUG`. The C7 0.36× headline and D1's committed
+`gather_bw_n4096.json` were measured under that tree, biasing every
+CPU-vs-GPU comparison against the CPU path (the baseline's cost is mostly
+GPU-side work nvcc optimizes regardless of host flags).
+
+**Decision (user): Release only.** Treat `-O0` as a measurement bug. All D3
+measurements run from a fresh `build/cuda-release` tree configured with
+`-DCMAKE_BUILD_TYPE=Release`; both methods (ours *and* baseline) are re-run
+under it, so the reported ratio is internally consistent. The v2 doc reports
+the `-O0` discovery and the build-type change prominently: the v1 headline is
+quoted as "0.36× as measured at `-O0`", and the v2 vs v1 comparison is
+explicitly flagged as spanning a build-config change. The old `build/cuda`
+tree is left untouched for archaeology.
+
 ## Execution plan
 
 ### 1. Preflight
 
 - GPU idle, no other CUDA processes; RAM headroom ≥ 14 GiB (C7's floor).
-- Clean rebuild of `bench-poc-transpose` and `bench-gather-bw` at the recorded
-  commit.
+- Fresh Release tree: `cmake -G Ninja -S . -B build/cuda-release
+  -DCMAKE_BUILD_TYPE=Release
+  -DMLIR_DIR=build/llvm-project/build/lib/cmake/mlir -DRELOC_ENABLE_CUDA=ON
+  -DCMAKE_CUDA_ARCHITECTURES=89`; build `bench-poc-transpose`,
+  `bench-gather-bw`, `libreloc-test`.
+- Correctness gate under Release before any timing: `libreloc-test` passes
+  (guards against optimization-revealed bugs, e.g. races the -O0 build hid).
 - Confirm D2 defaults are live: output JSON's `chunk_bytes` must show 64 MiB
   at N = 32768 (not the old 256 MiB).
 
@@ -63,7 +86,7 @@ Same brief as #47's trace (`bench/results/poc_overlap_summary.md`):
 
 ```
 nsys profile -t cuda,osrt --force-overwrite true -o bench/results/poc_overlap_v2 \
-  build/cuda/bench/bench-poc-transpose --n 16384 --warmup 2 --iters 5 --reruns 1 --json -
+  build/cuda-release/bench/bench-poc-transpose --n 16384 --warmup 2 --iters 5 --reruns 1 --json -
 ```
 
 CSV extraction via `nsys stats --report cuda_gpu_trace` with the
@@ -86,7 +109,8 @@ as in C7.
 largest N whose ~2× footprint fits host RAM (target N = 32768 ≈ 8 GiB; if it
 doesn't fit, the largest that does, stated in the doc) →
 `bench/results/gather_bw_n<N>_v2.json`. Reported as a GB/s pair
-(1 thread vs T threads) for E2/P3.
+(1 thread vs T threads) for E2/P3. D1's committed `gather_bw_n4096.json` was
+an `-O0` measurement; the v2 numbers supersede it for E2/P3 purposes.
 
 ### 6. `docs/poc-reproduction-v2.md`
 
@@ -94,8 +118,9 @@ Supersedes `docs/poc-reproduction.md` (v1 not edited). Contents:
 
 - Headline result vs C7's 0.36×, with the three criteria verdicts in priority
   order, each explicit.
-- What changed since v1: D1 parallel gather (#68), D2 64 MiB chunking (#69);
-  protocol unchanged.
+- What changed since v1: D1 parallel gather (#68), D2 64 MiB chunking (#69),
+  and the Release build (v1 was `-O0`; see Build configuration above);
+  bench protocol (flags, iteration counts, verification) unchanged.
 - Size-scaling table (step 3) with the old small-N smokes for contrast.
 - Gather-scaling GB/s pair (step 5).
 - Honest-reporting notes in the v1 style: deviations (or none), stability
