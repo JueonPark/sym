@@ -62,9 +62,10 @@ transpose (the 4 GiB of blocked-layout reshuffling) before each
 256 MiB chunk is handed to the async copy. That single core sustains
 ~8.6 GB/s of strided gather, so ours is CPU-gather-bound end to end.
 The baseline, by contrast, issues one whole-tensor `cudaMemcpyAsync` of
-already-contiguous pinned memory (~23.7 GB/s, PCIe-DMA-bound) and does
-the transpose in a massively parallel GPU kernel instead of on one CPU
-core. This is a compute-placement and parallelism gap, not a launch-
+already-contiguous pinned memory and does the transpose in a massively
+parallel GPU kernel instead of on one CPU core; its end-to-end rate is
+~23.7 GB/s (4 GiB / 180.95 ms wall — memcpy + kernel serialized on one
+stream; the DMA alone is faster still). This is a compute-placement and parallelism gap, not a launch-
 overhead or buffer-tuning gap: no choice of chunk size, buffer count,
 or stream count changes which thread performs the gather. Closing it
 requires parallelizing the per-chunk gather feeding the pipeline (the
