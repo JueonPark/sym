@@ -1,5 +1,4 @@
-//===- protocol.h - E4 measurement-protocol skeleton (issue #47) -*- C++
-//-*-===//
+//===- protocol.h - E4 measurement-protocol skeleton (#47) ------*- C++ -*-===//
 //
 // The build-doc §3 measurement protocol as a reusable header: warmup +
 // timed iterations, median + IQR summaries, and re-run analysis for
