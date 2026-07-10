@@ -4,12 +4,16 @@
 
 #include "reloc/ChunkSchedule.h"
 #include "reloc/Execute.h"
+#include "reloc/GatherPool.h"
 #include "reloc/PinnedBufferPool.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <cstring>
 #include <deque>
+#include <functional>
+#include <vector>
 
 namespace reloc {
 namespace {
@@ -37,15 +41,38 @@ uint8_t *rebase(void *staging, const BoundPlan &b, int64_t paddedBegin) {
              static_cast<size_t>(b.dstStrides[0]) * b.elementSize;
 }
 
+// Run op over rows [begin, end) through `gather` when parallelism is safe
+// and the pool is real; inline otherwise. The per-worker floor is
+// kMinGatherBytesPerWorker expressed in rows of this chunk schedule's
+// rowBytes, so a worker never receives less than ~1 MiB of gather work.
+void dispatchRows(GatherPool *gather, bool parallelSafe, int64_t rowBytes,
+                  int64_t begin, int64_t end,
+                  const std::function<void(int64_t, int64_t)> &op) {
+  if (!gather || !parallelSafe || gather->threadCount() <= 1) {
+    op(begin, end);
+    return;
+  }
+  const int64_t minRows = std::max<int64_t>(
+      1, static_cast<int64_t>(kMinGatherBytesPerWorker) /
+             std::max<int64_t>(1, rowBytes));
+  gather->parallelFor(begin, end, minRows, op);
+}
+
 } // namespace
 
 void executeH2DPipelined(const BoundPlan &bound, const void *srcBase,
                          void *deviceDst, CopyBackend &backend,
-                         PinnedBufferPool &pool, size_t chunkSizeOverride) {
+                         PinnedBufferPool &pool, size_t chunkSizeOverride,
+                         GatherPool *gather) {
   ChunkSchedule sched = planChunks(bound, pool.nBuffers(), chunkSizeOverride);
   assert(pool.bufferBytes() >= sched.maxChunkBytes &&
          "caller-owned staging pool too small for this plan's chunks");
   const int nStreams = backend.numQueues();
+  // A serialized schedule means outer rows are NOT provably disjoint in dst
+  // (see planChunks): partitioning the whole-tensor chunk across workers
+  // would race, so gather stays inline -- same fallback executeH2DThreaded
+  // makes.
+  const bool parallelSafe = !sched.serialized;
 
   for (size_t k = 0; k < sched.chunks.size(); ++k) {
     const Chunk &c = sched.chunks[k];
@@ -53,9 +80,15 @@ void executeH2DPipelined(const BoundPlan &bound, const void *srcBase,
     void *staging = pool.buffer(i);
 
     fillStagingWindow(bound, staging, c.bytes);
-    if (c.validEnd > c.validBegin)
-      gatherChunk(bound, srcBase, rebase(staging, bound, c.paddedBegin),
-                  c.validBegin, c.validEnd);
+    if (c.validEnd > c.validBegin) {
+      uint8_t *dstBase = rebase(staging, bound, c.paddedBegin);
+      // The counting barrier inside dispatchRows completes before copyAsync
+      // may read the staging bytes.
+      dispatchRows(gather, parallelSafe, sched.rowBytes, c.validBegin,
+                   c.validEnd, [&](int64_t rb, int64_t re) {
+                     gatherChunk(bound, srcBase, dstBase, rb, re);
+                   });
+    }
 
     int q = static_cast<int>(k % static_cast<size_t>(nStreams));
     backend.copyAsync(q, static_cast<uint8_t *>(deviceDst) + c.byteOffset,
@@ -67,12 +100,30 @@ void executeH2DPipelined(const BoundPlan &bound, const void *srcBase,
 
 void executeH2DPipelined(const BoundPlan &bound, const void *srcBase,
                          void *deviceDst, CopyBackend &backend, int nBuffers,
-                         size_t chunkSizeOverride) {
+                         size_t chunkSizeOverride, unsigned gatherThreads) {
+  assert(nBuffers >= 1 && "nBuffers must be >= 1");
+  ChunkSchedule sched = planChunks(bound, nBuffers, chunkSizeOverride);
+  PinnedBufferPool pool(backend, nBuffers, sched.maxChunkBytes);
+  if (gatherThreads == 1) {
+    // Regression guard (issue #65): threads == 1 must not even construct a
+    // GatherPool -- bit-identical behavior to the pre-D1 pipeline.
+    executeH2DPipelined(bound, srcBase, deviceDst, backend, pool,
+                        chunkSizeOverride, /*gather=*/nullptr);
+    return;
+  }
+  GatherPool gather(gatherThreads);
+  executeH2DPipelined(bound, srcBase, deviceDst, backend, pool,
+                      chunkSizeOverride, &gather);
+}
+
+void executeH2DPipelined(const BoundPlan &bound, const void *srcBase,
+                         void *deviceDst, CopyBackend &backend, int nBuffers,
+                         size_t chunkSizeOverride, GatherPool &gather) {
   assert(nBuffers >= 1 && "nBuffers must be >= 1");
   ChunkSchedule sched = planChunks(bound, nBuffers, chunkSizeOverride);
   PinnedBufferPool pool(backend, nBuffers, sched.maxChunkBytes);
   executeH2DPipelined(bound, srcBase, deviceDst, backend, pool,
-                      chunkSizeOverride);
+                      chunkSizeOverride, &gather);
 }
 
 void executeD2HPipelined(const BoundPlan &bound, const void *deviceSrc,

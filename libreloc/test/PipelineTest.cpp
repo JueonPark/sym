@@ -12,6 +12,7 @@
 #include "reloc/Bind.h"
 #include "reloc/ChunkSchedule.h"
 #include "reloc/Execute.h"
+#include "reloc/GatherPool.h"
 #include "reloc/HostBackend.h"
 #include "reloc/PinnedBufferPool.h"
 #include "gtest/gtest.h"
@@ -66,8 +67,9 @@ BoundPlan makeBound(std::vector<int64_t> extents,
 }
 
 // Run executeH2DPipelined over HostBackend and assert byte-exact vs executeH2D.
+// gatherThreads: 0 = hardware concurrency, 1 = the inline regression path.
 void expectPipelineExactH2D(const BoundPlan &b, int nBuffers, int nStreams,
-                            size_t chunkOverride) {
+                            size_t chunkOverride, unsigned gatherThreads = 1) {
   int64_t srcElems = product(b.extents);
   std::vector<uint8_t> src = iotaBytes(srcElems, b.elementSize);
   std::vector<uint8_t> reference(static_cast<size_t>(b.totalBytes), 0xAB);
@@ -76,10 +78,10 @@ void expectPipelineExactH2D(const BoundPlan &b, int nBuffers, int nStreams,
   HostBackend backend(nStreams);
   std::vector<uint8_t> device(static_cast<size_t>(b.totalBytes), 0xCD);
   reloc::executeH2DPipelined(b, src.data(), device.data(), backend, nBuffers,
-                             chunkOverride);
+                             chunkOverride, gatherThreads);
   EXPECT_EQ(device, reference)
       << "nBuffers=" << nBuffers << " nStreams=" << nStreams
-      << " override=" << chunkOverride;
+      << " override=" << chunkOverride << " gatherThreads=" << gatherThreads;
 }
 
 const std::vector<BoundPlan> &plans() {
@@ -101,7 +103,8 @@ TEST(Pipeline, H2DByteExactMatrix) {
     for (int nBuffers : {1, 2, 4})
       for (int nStreams : {1, 2})
         for (size_t override : {size_t(0), size_t(16), size_t(64)})
-          expectPipelineExactH2D(b, nBuffers, nStreams, override);
+          for (unsigned threads : {1u, 2u, 0u}) // 0 == hardware concurrency
+            expectPipelineExactH2D(b, nBuffers, nStreams, override, threads);
 }
 
 TEST(Pipeline, H2DInterleavingStress) {
@@ -115,6 +118,51 @@ TEST(Pipeline, H2DSingleBufferSerializes) {
   // 1 buffer = fully serialized; must still complete and be exact.
   BoundPlan b = makeBound({64, 16}, {16, 1}, {16, 1}, 4);
   expectPipelineExactH2D(b, /*nBuffers=*/1, /*nStreams=*/2, /*override=*/64);
+}
+
+TEST(Pipeline, H2DParallelGatherEngagesWorkers) {
+  // 4096 rows x 4 KiB = 16 MiB. A 2 MiB chunk override gives 512-row chunks,
+  // and the 1 MiB/worker byte floor yields 2 workers per chunk -- unlike the
+  // tiny matrix plans (which collapse to the inline path via the floor), this
+  // actually exercises concurrent gatherChunk sub-ranges. Meaningful under
+  // TSan.
+  BoundPlan b = makeBound({4096, 1024}, {1024, 1}, {1024, 1}, 4);
+  for (unsigned threads : {2u, 0u})
+    expectPipelineExactH2D(b, /*nBuffers=*/2, /*nStreams=*/2,
+                           /*override=*/size_t(2) << 20, threads);
+}
+
+TEST(Pipeline, H2DNonDisjointDstStaysExactWithThreads) {
+  // Column-major dst: outer rows interleave in dst byte space, planChunks
+  // serializes to one whole-tensor chunk, and the gather guard must keep
+  // that chunk single-threaded (partitioning it would race). Exactness with
+  // threads requested is the assertion.
+  BoundPlan b = makeBound({16, 4}, {4, 1}, {1, 16}, 4);
+  expectPipelineExactH2D(b, /*nBuffers=*/2, /*nStreams=*/2, /*override=*/0,
+                         /*gatherThreads=*/8);
+}
+
+TEST(Pipeline, CallerOwnedGatherPoolReusedAcrossCalls) {
+  // One GatherPool across several pipeline calls: byte-exact every time,
+  // close() observable afterwards (the pybind context object relies on
+  // exactly this reuse pattern).
+  BoundPlan b = makeBound({4096, 1024}, {1024, 1}, {1024, 1}, 4);
+  int64_t srcElems = product(b.extents);
+  std::vector<uint8_t> src = iotaBytes(srcElems, b.elementSize);
+  std::vector<uint8_t> reference(static_cast<size_t>(b.totalBytes), 0xAB);
+  reloc::executeH2D(b, src.data(), reference.data());
+
+  HostBackend backend(2);
+  reloc::GatherPool gather(4);
+  for (int call = 0; call < 3; ++call) {
+    std::vector<uint8_t> device(static_cast<size_t>(b.totalBytes), 0xCD);
+    reloc::executeH2DPipelined(b, src.data(), device.data(), backend,
+                               /*nBuffers=*/2, /*override=*/size_t(2) << 20,
+                               gather);
+    EXPECT_EQ(device, reference) << "call " << call;
+  }
+  gather.close();
+  EXPECT_TRUE(gather.closed());
 }
 
 // Run executeD2HPipelined over HostBackend and assert it reconstructs src
