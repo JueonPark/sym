@@ -119,11 +119,16 @@ Interpretation (grounded in the numbers above):
   threads — the kind of scaling a compute-bound workload shows, and the premise
   D1's design rested on. At Release the optimizer delivered the ~6× that
   thread-parallelism was supposed to deliver, and the remaining wall is memory
-  bandwidth, which more threads do not move.
+  bandwidth, which more threads do not move. One caveat: this contrast also
+  spans a size change (N = 4096 → 32768) with no same-config A/B run, so
+  "`-O0` masked the memory wall" is the most plausible explanation, not a
+  controlled result.
 - **The in-pipeline effective gather (~9.5 GB/s) is below the pure-CPU bench
   (14.3 GB/s).** Concurrent H2D DMA traffic competes with the gather for the
   same host memory bandwidth, so the gather runs slower inside the live
-  pipeline than it does in isolation.
+  pipeline than it does in isolation. The chunk-issue period also absorbs
+  pipeline producer stalls (buffer-recycling waits), so DMA contention is a
+  contributor to this gap, not necessarily the whole of it.
 
 This is why the pipeline stays sub-1×: double-buffering the H2D copies has
 diminishing returns while the gather feeding them is the slower stage, and the
@@ -142,7 +147,10 @@ Release tree:
 Multi-thread speedup ≈ **1.10×**. Both configs cleared the 5% stability bar.
 This is the memory-bandwidth ceiling that explains criterion 1's failure: with
 only 1.10× headroom from parallelism, the gather cannot be sped up to the copy
-rate by adding threads.
+rate by adding threads. Note these GB/s figures count tensor bytes once; the
+strided gather's actual memory traffic is at least 2× that (read + write), so
+~13–14 GB/s of tensor throughput is consistent with saturating practical host
+memory bandwidth.
 
 These v2 numbers supersede D1's committed `gather_bw_n4096.json` for E2/P3
 purposes: that file was an `-O0` measurement (N = 4096, `threads_multi = 32`,

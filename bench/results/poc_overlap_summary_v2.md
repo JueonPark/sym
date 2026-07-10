@@ -122,7 +122,7 @@ MiB) together produced a large, real improvement in absolute terms: the
 chunk-issue period dropped from v1's ~43 ms to ~7.07 ms (≈6.1× faster), the
 per-chunk copy dropped from ~10.6 ms to ~2.75 ms (≈3.9× faster, tracking the
 4× smaller chunk size, as expected for a bandwidth-bound copy), and
-copy-engine utilization roughly-tripled-in-relative-terms from 25.6% to
+copy-engine utilization improved 1.53× in relative terms, from 25.6% to
 39.2%. Recall v1's numbers were measured on a `-O0` build; part of the
 absolute-time improvement here also reflects the switch to the Release tree,
 not D1/D2 alone, though the utilization and period/copy-ratio metrics (being

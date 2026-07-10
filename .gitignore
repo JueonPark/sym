@@ -14,3 +14,6 @@ llvm-build
 **/*.egg-info/
 /Testing/
 .venv
+bench/results/*.nsys-rep
+bench/results/*.sqlite
+bench/results/*_cuda_gpu_trace.csv
