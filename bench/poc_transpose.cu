@@ -165,6 +165,7 @@ int run(const Options &opt) {
         cudaMemcpyAsync(dSrc, hSrc, bytes, cudaMemcpyHostToDevice, stream));
     relocateKernel<<<static_cast<unsigned>(kGrid), kBlock, 0, stream>>>(
         dSrc, dDst, axes, totalElems);
+    CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaEventRecord(evStop, stream));
     CUDA_CHECK(cudaEventSynchronize(evStop));
     float ms = 0;
@@ -179,6 +180,8 @@ int run(const Options &opt) {
     std::vector<uint8_t> ref(bytes), got(bytes);
     reloc::executeH2D(*bound, hSrc, ref.data());
     CUDA_CHECK(cudaMemset(dDst, 0, bytes));
+    CUDA_CHECK(cudaDeviceSynchronize()); // order the memset before
+                                         // non-blocking-stream writes
     oursIter();
     CUDA_CHECK(cudaMemcpy(got.data(), dDst, bytes, cudaMemcpyDeviceToHost));
     if (std::memcmp(got.data(), ref.data(), bytes) != 0) {
@@ -186,6 +189,8 @@ int run(const Options &opt) {
       return 1;
     }
     CUDA_CHECK(cudaMemset(dDst, 0, bytes));
+    CUDA_CHECK(cudaDeviceSynchronize()); // order the memset before
+                                         // non-blocking-stream writes
     (void)baselineIter();
     CUDA_CHECK(cudaMemcpy(got.data(), dDst, bytes, cudaMemcpyDeviceToHost));
     if (std::memcmp(got.data(), ref.data(), bytes) != 0) {
