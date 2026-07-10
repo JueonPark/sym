@@ -101,8 +101,9 @@ TEST(ChunkSchedule, HeuristicCapsPoolFootprintAtReferenceScale) {
 
 TEST(ChunkSchedule, HeuristicFloorStopsShredding) {
   // 8 MiB dst, 4 buffers: raw target 8Mi/(8*4) = 256 KiB clamps UP to the
-  // 4 MiB floor -> 2 chunks, not 32. Pinned-copy bandwidth saturates well
-  // above 4 MiB; small tensors must not shred into launch overhead.
+  // 4 MiB floor -> 2 chunks, not 32. Pinned-copy bandwidth is already
+  // saturated by 4 MiB copies; small tensors must not shred into launch
+  // overhead.
   BoundPlan b = makeBound({128, 16384}, {16384, 1}, {16384, 1}, 4);
   ChunkSchedule s = planChunks(b, /*nBuffers=*/4, /*override=*/0);
   EXPECT_FALSE(s.serialized);
