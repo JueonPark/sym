@@ -43,12 +43,15 @@ jobs:
             -w /workspace \
             ${{ env.REGISTRY }}/${{ steps.image.outputs.name }}:${{ steps.llvm-version.outputs.short_commit }} \
             bash -c '
+              apt-get update -qq && apt-get install -y -qq python3-dev >/dev/null && \
+              pip3 install -q pybind11 && \
               cmake -G Ninja -S . -B build/sym \
                 -DCMAKE_BUILD_TYPE=Release \
                 -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
                 -DMLIR_DIR=/opt/llvm/lib/cmake/mlir \
                 -DLLVM_DIR=/opt/llvm/lib/cmake/llvm \
-                -DLLVM_EXTERNAL_LIT=$(which lit) && \
+                -DLLVM_EXTERNAL_LIT=$(which lit) \
+                -Dpybind11_DIR=$(python3 -m pybind11 --cmakedir) && \
               ninja -C build/sym -j$(nproc) && \
               ctest --test-dir build/sym --output-on-failure && \
               ninja -C build/sym check-sym
@@ -118,6 +121,9 @@ jobs:
             build/sym/libreloc/libreloc_runtime.so
             build/sym/libreloc/test/libreloc-test
             build/sym/test/lit.site.cfg.py
+            build/sym/python/pyreloc/_pyreloc*.so
+            build/sym/python/pyreloc/__init__.py
+            build/sym/python/pyreloc/torch_interop.py
 
   clang-tidy:
     name: clang-tidy
@@ -219,6 +225,7 @@ jobs:
             -e LLVM_TOOLS_DIR=/opt/llvm/bin \
             ${{ env.REGISTRY }}/${{ steps.image.outputs.name }}:${{ steps.llvm-version.outputs.short_commit }} \
             bash -c '
-              pip install lit && \
-              lit -sv build/sym/test
+              pip install -q lit pytest numpy && \
+              lit -sv build/sym/test && \
+              PYTHONPATH=/workspace/build/sym/python python3 -m pytest libreloc/python/tests -q
             '
