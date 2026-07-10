@@ -299,7 +299,10 @@ PYBIND11_MODULE(_pyreloc, m) {
       "resolves to the hardware thread count; the pool owns threads-1 OS "
       "workers (the calling thread is the last worker of each dispatch). "
       "close() joins every worker deterministically -- also usable as a "
-      "context manager. A closed pool cannot be passed to relocate/h2d/d2h.")
+      "context manager. Dispatches and close() are serialized internally, "
+      "so a pool shared between Python threads is safe -- parallelized "
+      "calls simply run one at a time. A closed pool cannot be passed to "
+      "relocate/h2d/d2h.")
       .def(py::init([](int threads) {
              if (threads < 0)
                throw py::value_error("threads must be >= 0 (0 = all cores)");

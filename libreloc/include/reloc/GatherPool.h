@@ -38,8 +38,9 @@ public:
   int threadCount() const { return threads_; }
   bool closed() const { return closed_; }
 
-  /// Join every worker. Idempotent. Must not be called while a parallelFor
-  /// is in flight (single-driver contract, asserted).
+  /// Join every worker. Idempotent, and safe against concurrent close()
+  /// calls or an in-flight parallelFor: it serializes behind them, so
+  /// "close() returned" always means "workers are gone".
   void close();
 
   /// Partition [begin, end) into <= threadCount() contiguous sub-ranges of
@@ -47,8 +48,13 @@ public:
   /// workers; blocks until every sub-range completed. Collapses to a plain
   /// inline fn(begin, end) -- no locks, no worker wakeup -- when only one
   /// sub-range results, so the threads==1 path is bit-identical in behavior
-  /// to calling fn directly. Not reentrant (one dispatch at a time); fn must
-  /// not throw; must not be called after close().
+  /// to calling fn directly. Concurrent dispatches from multiple driver
+  /// threads are serialized internally (each runs to completion before the
+  /// next starts), and a dispatch that loses a race with close() runs fn
+  /// inline instead of handing work to joined workers. Not reentrant from
+  /// within fn; fn must not throw. Calling after close() is a contract
+  /// violation (asserted in debug); in release it degrades to the inline
+  /// path.
   void parallelFor(int64_t begin, int64_t end, int64_t minPerWorker,
                    const std::function<void(int64_t, int64_t)> &fn);
 
@@ -63,7 +69,9 @@ private:
   std::atomic<bool> closed_{false};
   std::vector<std::thread> workers_; // threads_ - 1 entries
 
-  std::mutex closeMu_; // serializes close(); never held while mu_ waits
+  std::mutex driverMu_; // serializes whole dispatches and close() against
+                        // each other (pybind exposes both to arbitrary
+                        // Python threads with the GIL released)
   std::mutex mu_;                // guards everything below
   std::condition_variable cv_;   // wakes workers (new work or stop)
   std::condition_variable done_; // wakes the parallelFor barrier

@@ -64,7 +64,8 @@ them; it is the runtime half of the compiler → runtime handoff.
   (non-row-disjoint-dst) schedules for H2D, non-injective src layouts for
   D2H — so output stays bit-identical to `executeH2D`/`executeD2H`, and
   `gatherThreads == 1` never constructs a pool. Explicit `close()` lifecycle
-  for pybind, `close()` is safe to call from concurrent threads (serialized internally) (`libreloc/test/GatherPoolTest.cpp`).
+  for pybind, dispatches and `close()` are serialized internally, so
+  concurrent use from multiple threads is safe (`libreloc/test/GatherPoolTest.cpp`).
 
 ## Python bindings (pyreloc)
 

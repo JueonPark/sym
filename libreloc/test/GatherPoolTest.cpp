@@ -81,6 +81,28 @@ TEST(GatherPool, ReusableAcrossDispatches) {
   }
 }
 
+TEST(GatherPool, ConcurrentDispatchesSerialize) {
+  // Two driver threads share one pool (the pybind surface allows exactly
+  // this; release builds have no asserts). Internal serialization must keep
+  // every dispatch's coverage and barrier intact.
+  GatherPool pool(4);
+  std::vector<std::atomic<int>> hits(2048);
+  for (auto &h : hits)
+    h.store(0);
+  auto driver = [&](int64_t base) {
+    for (int r = 0; r < 20; ++r)
+      pool.parallelFor(base, base + 1024, 1, [&](int64_t b, int64_t e) {
+        for (int64_t i = b; i < e; ++i)
+          hits[static_cast<size_t>(i)].fetch_add(1);
+      });
+  };
+  std::thread other(driver, 1024);
+  driver(0);
+  other.join();
+  for (size_t i = 0; i < hits.size(); ++i)
+    ASSERT_EQ(hits[i].load(), 20) << "index " << i;
+}
+
 TEST(GatherPool, CloseIsIdempotentAndObservable) {
   GatherPool pool(4);
   EXPECT_FALSE(pool.closed());
