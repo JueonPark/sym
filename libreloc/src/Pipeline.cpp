@@ -53,9 +53,9 @@ void dispatchRows(GatherPool *gather, bool parallelSafe, int64_t rowBytes,
     op(begin, end);
     return;
   }
-  const int64_t minRows = std::max<int64_t>(
-      1, static_cast<int64_t>(kMinGatherBytesPerWorker) /
-             std::max<int64_t>(1, rowBytes));
+  const int64_t minRows =
+      std::max<int64_t>(1, static_cast<int64_t>(kMinGatherBytesPerWorker) /
+                               std::max<int64_t>(1, rowBytes));
   gather->parallelFor(begin, end, minRows, op);
 }
 

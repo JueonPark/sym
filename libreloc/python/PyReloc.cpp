@@ -317,13 +317,14 @@ PYBIND11_MODULE(_pyreloc, m) {
            "Join all workers. Idempotent.")
       .def("__enter__",
            [](const std::shared_ptr<reloc::GatherPool> &p) { return p; })
-      .def("__exit__",
-           [](reloc::GatherPool &p, const py::object &, const py::object &,
-              const py::object &) {
-             p.close();
-             return false;
-           },
-           py::call_guard<py::gil_scoped_release>());
+      .def(
+          "__exit__",
+          [](reloc::GatherPool &p, const py::object &, const py::object &,
+             const py::object &) {
+            p.close();
+            return false;
+          },
+          py::call_guard<py::gil_scoped_release>());
 
   m.def("relocate", &relocateHost, py::arg("bound"), py::arg("src_ptr"),
         py::arg("src_nbytes"), py::arg("dst_ptr"), py::arg("dst_nbytes"),

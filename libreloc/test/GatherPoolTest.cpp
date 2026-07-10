@@ -24,8 +24,8 @@ using reloc::GatherPool;
 
 TEST(GatherPool, ParallelForCoversRangeExactlyOnce) {
   for (unsigned threads : {1u, 2u, 4u, 16u})
-    for (int64_t n : {int64_t(0), int64_t(1), int64_t(7), int64_t(64),
-                      int64_t(1000)})
+    for (int64_t n :
+         {int64_t(0), int64_t(1), int64_t(7), int64_t(64), int64_t(1000)})
       for (int64_t minPer : {int64_t(1), int64_t(4), int64_t(100)}) {
         GatherPool pool(threads);
         std::vector<std::atomic<int>> hits(static_cast<size_t>(n) + 1);

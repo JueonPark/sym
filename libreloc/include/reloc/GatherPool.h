@@ -72,12 +72,12 @@ private:
   std::mutex driverMu_; // serializes whole dispatches and close() against
                         // each other (pybind exposes both to arbitrary
                         // Python threads with the GIL released)
-  std::mutex mu_;                // guards everything below
+  std::mutex mu_;       // guards everything below
   std::condition_variable cv_;   // wakes workers (new work or stop)
   std::condition_variable done_; // wakes the parallelFor barrier
   const std::function<void(int64_t, int64_t)> *fn_ = nullptr; // live dispatch
-  std::vector<Range> pending_;   // sub-ranges not yet claimed
-  int outstanding_ = 0;          // handed to workers, not yet finished
+  std::vector<Range> pending_; // sub-ranges not yet claimed
+  int outstanding_ = 0;        // handed to workers, not yet finished
   bool stop_ = false;
 };
 

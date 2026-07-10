@@ -43,8 +43,8 @@ struct Measurement {
 };
 
 Measurement measureGather(const reloc::BoundPlan &b, const uint8_t *src,
-                          uint8_t *dst, unsigned threads, int warmup,
-                          int iters, int reruns) {
+                          uint8_t *dst, unsigned threads, int warmup, int iters,
+                          int reruns) {
   reloc::GatherPool pool(threads);
   const int64_t outer = b.extents[0];
   const int64_t minRows = minRowsPerWorker(b);
@@ -62,10 +62,9 @@ Measurement measureGather(const reloc::BoundPlan &b, const uint8_t *src,
   Measurement m;
   m.wall = bench::analyzeReruns(wallPerRerun);
   for (const bench::Stats &st : m.wall.reruns)
-    m.gbPerS.push_back(st.median > 0
-                           ? static_cast<double>(b.totalBytes) /
-                                 (st.median * 1e-3) / 1e9
-                           : 0.0);
+    m.gbPerS.push_back(st.median > 0 ? static_cast<double>(b.totalBytes) /
+                                           (st.median * 1e-3) / 1e9
+                                     : 0.0);
   return m;
 }
 
@@ -126,8 +125,8 @@ int run(int64_t n, unsigned threads, const char *jsonPath, int warmup,
   reloc::GatherPool probe(threads); // resolve 0 -> hw for reporting
   const int threadsResolved = probe.threadCount();
   probe.close();
-  Measurement multi = measureGather(*b, src.data(), dst.data(), threads,
-                                    warmup, iters, reruns);
+  Measurement multi =
+      measureGather(*b, src.data(), dst.data(), threads, warmup, iters, reruns);
 
   std::string doc =
       "{\n  \"config\": {\"benchmark\": \"gather_bw\", \"plan\": "
