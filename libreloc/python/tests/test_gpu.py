@@ -33,6 +33,12 @@ def test_pinned_h2d_matches_cpu_and_round_trips(n_buffers):
 
     src = torch.randn(32, 64, dtype=torch.float32).pin_memory()
     dev = torch.zeros(bound.total_bytes, dtype=torch.uint8, device="cuda")
+    # torch.zeros enqueues its fill on PyTorch's current stream; libreloc's
+    # pipeline writes through its own non-blocking streams with no ordering
+    # against it. Per the torch CUDA-interop contract, synchronize before
+    # handing the tensor's memory to an external-stream writer, or the fill
+    # can land AFTER the pipeline's copies (intermittent all-zero readback).
+    torch.cuda.synchronize()
     pyreloc.h2d(bound, *as_ptr(src), *as_ptr(dev), n_buffers=n_buffers)
 
     ref = np.zeros(bound.total_bytes, dtype=np.uint8)
