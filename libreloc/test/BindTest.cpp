@@ -2,6 +2,7 @@
 
 #include "reloc/Bind.h"
 #include "reloc/Decode.h"
+#include "reloc/Execute.h"
 #include "gtest/gtest.h"
 
 #include <algorithm>
@@ -33,33 +34,23 @@ std::vector<uint8_t> fromHex(const char *hex) {
 }
 
 // Copied verbatim from serialize.mlir's `plan_hex(reference):` CHECK line.
-const char *kReferenceHex = "52504c4e0000000001000000010000004e0200000001000000"
-                            "00000000000100000000000000"
-                            "00020000000100000000000000000100000001010000000000"
-                            "00000100000001000000000000"
-                            "00000020000000040000000300000000000000000140000000"
-                            "00000000050100000001400000"
-                            "00000000000100000001400000000000000003000000000000"
-                            "00000140000000000000000500"
-                            "00000001000000010000000000000000002000000004000000"
-                            "01000000000000000200000003"
-                            "00000004000000020000006e30030000000000000000014000"
-                            "00000000000005010000000140"
-                            "00000000000000050000000100100000000000000000000000"
-                            "01400000000000000005040200"
-                            "00006230010000000140000000000000000300000001400000"
-                            "00000000000000000000040500"
-                            "00000140000000000000000000000000014000000000000000"
-                            "05040200000062310100000001"
-                            "40000000000000000100000000000000000300000000000000"
-                            "00014000000000000000050200"
-                            "00006e31030000000000000000014000000000000000050100"
-                            "00000101000000000000000100"
-                            "00000101000000000000000000000001000000010000000000"
-                            "00000040000000000000000000"
-                            "00000400000000000001000004000000040000000100000007"
-                            "01000000010000000700000000"
-                            "010000000702000000010000000703000000";
+const char *kReferenceHex = "52504c4e0000000001000000010000004e02000000010000000000000000"
+                            "010000000000000000020000000100000000000000000100000001010000"
+                            "000000000001000000010000000000000000002000000004000000030000"
+                            "000000000000014000000000000000050100000001400000000000000001"
+                            "000000014000000000000000030000000000000000014000000000000000"
+                            "050000000001000000010000000000000000002000000004000000010000"
+                            "000000000002000000030000000400000002000000623001000000014000"
+                            "000000000000010000000000000000050000000000000000000000000001"
+                            "40000000000000000504020000006e300300000000000000000140000000"
+                            "000000000503000000014000000000000000000000000004010000000000"
+                            "000000020000006231010000000140000000000000000300000000000000"
+                            "000140000000000000000503000000000000000001400000000000000005"
+                            "020000006e31030000000000000000014000000000000000050100000001"
+                            "010000000000000001000000010100000000000000000000000100000001"
+                            "000000000000000040000000000000000000000004000000000000010000"
+                            "040000000400000001000000070100000001000000070000000001000000"
+                            "0702000000010000000703000000";
 
 // Copied verbatim from serialize.mlir's `plan_hex(degraded):` CHECK line.
 const char *kDegradedHex = "52504c4e0000000001000000010000004e01000000010000000"
@@ -155,18 +146,18 @@ TEST(Bind, RejectsPadAxisOutOfRangeForDstExtents) {
 
 TEST(Bind, ReferencePlanN32768CoalescesToThreeAxes) {
   BoundPlan bound = bindOk(decoded(kReferenceHex), {{"N", 32768}});
-  // 4 -> 3 axes: n0, merged(b0,b1), n1.
+  // 4 -> 3 axes: b0, n0, merged(b1,n1).
   ASSERT_EQ(bound.extents.size(), 3u);
-  EXPECT_EQ(bound.extents[0], 512); // n0
-  EXPECT_EQ(bound.srcStrides[0], 64);
-  EXPECT_EQ(bound.dstStrides[0], 2097152);
-  EXPECT_EQ(bound.extents[1], 4096); // merged b0+b1
-  EXPECT_EQ(bound.srcStrides[1], 32768);
-  EXPECT_EQ(bound.dstStrides[1], 512);
-  EXPECT_EQ(bound.extents[2], 512); // n1
+  EXPECT_EQ(bound.extents[0], 64); // b0
+  EXPECT_EQ(bound.srcStrides[0], 32768);
+  EXPECT_EQ(bound.dstStrides[0], 16777216);
+  EXPECT_EQ(bound.extents[1], 512); // n0
+  EXPECT_EQ(bound.srcStrides[1], 2097152);
+  EXPECT_EQ(bound.dstStrides[1], 32768);
+  EXPECT_EQ(bound.extents[2], 32768); // merged b1+n1
   EXPECT_EQ(bound.srcStrides[2], 1);
   EXPECT_EQ(bound.dstStrides[2], 1);
-  EXPECT_EQ(bound.L, 512); // N/64
+  EXPECT_EQ(bound.L, 32768); // N
   EXPECT_EQ(bound.elementSize, 4u);
   EXPECT_EQ(bound.totalBytes, int64_t(512) * 64 * 64 * 512 * 4); // 4 GiB
   EXPECT_FALSE(bound.noCopy);
@@ -182,7 +173,7 @@ TEST(Bind, CoalescingPreservesOffsetMapSmall) {
     int64_t ext, src, dst;
   };
   std::vector<A> orig = {
-      {2, 64, 8192}, {64, 8192, 128}, {64, 128, 2}, {2, 1, 1}};
+      {64, 128, 256}, {2, 8192, 128}, {64, 2, 2}, {2, 1, 1}};
   auto enumerate = [](const std::vector<A> &axes) {
     std::vector<std::pair<int64_t, int64_t>> pairs; // (dstOff, srcOff)
     std::vector<int64_t> idx(axes.size(), 0);
@@ -211,6 +202,40 @@ TEST(Bind, CoalescingPreservesOffsetMapSmall) {
     coalesced.push_back(
         {bound.extents[k], bound.srcStrides[k], bound.dstStrides[k]});
   EXPECT_EQ(enumerate(orig), enumerate(coalesced));
+}
+
+// The reference plan must implement its documented semantics -- the blocked
+// transpose x.view(N/64, 64, 64, N/64).transpose(0, 1) -- not merely a map
+// that executeH2D and the pipeline agree on. The expected cell is computed
+// from (row, col) index math alone, never through the plan's own strides,
+// so this is an oracle the golden blob cannot satisfy vacuously. Guards
+// against the issue #63 mis-authored golden (src strides cross-wired),
+// which every self-referential --verify passed. N = 256 keeps the
+// enumeration at 64K cells.
+TEST(Bind, ReferencePlanMatchesBlockedTransposeOracle) {
+  const int64_t N = 256, O = N / 64;
+  BoundPlan bound = bindOk(decoded(kReferenceHex), {{"N", N}});
+  ASSERT_EQ(bound.totalBytes, N * N * 4);
+  // Size src by the max element offset reachable via the bound srcStrides
+  // (not N^2), so a mis-authored plan reads sentinels, not out of bounds.
+  int64_t maxOff = 0;
+  for (size_t k = 0; k < bound.extents.size(); ++k)
+    maxOff += (bound.extents[k] - 1) * bound.srcStrides[k];
+  std::vector<int32_t> src(static_cast<size_t>(maxOff) + 1, -1);
+  for (int64_t i = 0; i < N * N; ++i)
+    src[static_cast<size_t>(i)] = static_cast<int32_t>(i);
+  std::vector<int32_t> dst(static_cast<size_t>(N * N), -2);
+  reloc::executeH2D(bound, src.data(), dst.data());
+  // Oracle: Y[b, a, c, d] = x[64a + b, c*(N/64) + d], with Y stored
+  // row-major over (64, N/64, 64, N/64).
+  for (int64_t row = 0; row < N; ++row)
+    for (int64_t col = 0; col < N; ++col) {
+      int64_t a = row / 64, b = row % 64, c = col / O, d = col % O;
+      int64_t dstOff = ((b * O + a) * 64 + c) * O + d;
+      ASSERT_EQ(dst[static_cast<size_t>(dstOff)],
+                static_cast<int32_t>(row * N + col))
+          << "x(" << row << ", " << col << ") landed wrong";
+    }
 }
 
 TEST(Bind, DegradedPadRangeFailsWhenRelationBroken) {
@@ -311,14 +336,15 @@ TEST(Bind, NegativePadWidthRejectedWithoutRuntimeCheck) {
 }
 
 TEST(Bind, AlignmentAxisRemappedThroughCoalescing) {
-  // Reference plan coalesces 4->3 axes: original b0(1)+b1(2) merge into
-  // coalesced axis 1, so the original->coalesced map is 0->0,1->1,2->1,3->2.
-  // An alignment on original axis 2 must land on coalesced axis 1.
+  // Reference plan coalesces 4->3 axes: original b1(2)+n1(3) merge into
+  // coalesced axis 2, so the original->coalesced map is 0->0,1->1,2->2,3->2.
+  // An alignment on original axis 2 (the LEADING member of the merged
+  // pair) must land on coalesced axis 2.
   RelocationPlan plan = decoded(kReferenceHex);
   plan.alignment = {reloc::Alignment{2, 128}};
   BoundPlan bound = bindOk(plan, {{"N", 32768}});
   ASSERT_EQ(bound.requiredAlignments.size(), 1u);
-  EXPECT_EQ(bound.requiredAlignments[0].axis, 1u);
+  EXPECT_EQ(bound.requiredAlignments[0].axis, 2u);
   EXPECT_EQ(bound.requiredAlignments[0].bytes, 128);
   EXPECT_LT(bound.requiredAlignments[0].axis, bound.extents.size());
 }

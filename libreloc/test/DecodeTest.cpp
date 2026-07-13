@@ -46,33 +46,23 @@ const char *kIdentityHex =
     "000000000000000000000000000000000100000001000000010000000700000000";
 
 // Copied verbatim from serialize.mlir's `plan_hex(reference):` CHECK line.
-const char *kReferenceHex = "52504c4e0000000001000000010000004e0200000001000000"
-                            "00000000000100000000000000"
-                            "00020000000100000000000000000100000001010000000000"
-                            "00000100000001000000000000"
-                            "00000020000000040000000300000000000000000140000000"
-                            "00000000050100000001400000"
-                            "00000000000100000001400000000000000003000000000000"
-                            "00000140000000000000000500"
-                            "00000001000000010000000000000000002000000004000000"
-                            "01000000000000000200000003"
-                            "00000004000000020000006e30030000000000000000014000"
-                            "00000000000005010000000140"
-                            "00000000000000050000000100100000000000000000000000"
-                            "01400000000000000005040200"
-                            "00006230010000000140000000000000000300000001400000"
-                            "00000000000000000000040500"
-                            "00000140000000000000000000000000014000000000000000"
-                            "05040200000062310100000001"
-                            "40000000000000000100000000000000000300000000000000"
-                            "00014000000000000000050200"
-                            "00006e31030000000000000000014000000000000000050100"
-                            "00000101000000000000000100"
-                            "00000101000000000000000000000001000000010000000000"
-                            "00000040000000000000000000"
-                            "00000400000000000001000004000000040000000100000007"
-                            "01000000010000000700000000"
-                            "010000000702000000010000000703000000";
+const char *kReferenceHex = "52504c4e0000000001000000010000004e02000000010000000000000000"
+                            "010000000000000000020000000100000000000000000100000001010000"
+                            "000000000001000000010000000000000000002000000004000000030000"
+                            "000000000000014000000000000000050100000001400000000000000001"
+                            "000000014000000000000000030000000000000000014000000000000000"
+                            "050000000001000000010000000000000000002000000004000000010000"
+                            "000000000002000000030000000400000002000000623001000000014000"
+                            "000000000000010000000000000000050000000000000000000000000001"
+                            "40000000000000000504020000006e300300000000000000000140000000"
+                            "000000000503000000014000000000000000000000000004010000000000"
+                            "000000020000006231010000000140000000000000000300000000000000"
+                            "000140000000000000000503000000000000000001400000000000000005"
+                            "020000006e31030000000000000000014000000000000000050100000001"
+                            "010000000000000001000000010100000000000000000000000100000001"
+                            "000000000000000040000000000000000000000004000000000000010000"
+                            "040000000400000001000000070100000001000000070000000001000000"
+                            "0702000000010000000703000000";
 
 // Copied verbatim from serialize.mlir's `plan_hex(pad):` CHECK line.
 const char *kPadHex = "52504c4e00000000000000000100000001000000011e000000000000"
@@ -180,11 +170,11 @@ TEST(Decode, IdentityGoldenDecodesStructurally) {
 // #reloc.plan<src = tensor<[N, N], f32, strides = [N, 1]>,
 //             dst = tensor<[N floordiv 64, 64, 64, N floordiv 64], f32>,
 //             perm = [1, 0, 2, 3],
-//             axes = [{name = "n0", extent = N floordiv 64, src_stride = 64,
-//                      dst_stride = 4096 * (N floordiv 64)},
-//                     {name = "b0", extent = 64, src_stride = 64 * N,
-//                      dst_stride = 64 * (N floordiv 64)},
-//                     {name = "b1", extent = 64, src_stride = N,
+//             axes = [{name = "b0", extent = 64, src_stride = N,
+//                      dst_stride = N * (N floordiv 64)},
+//                     {name = "n0", extent = N floordiv 64,
+//                      src_stride = 64 * N, dst_stride = N},
+//                     {name = "b1", extent = 64, src_stride = N floordiv 64,
 //                      dst_stride = N floordiv 64},
 //                     {name = "n1", extent = N floordiv 64, src_stride = 1,
 //                      dst_stride = 1}],
@@ -231,32 +221,27 @@ TEST(Decode, ReferenceGoldenDecodesStructurally) {
 
   ASSERT_EQ(plan.axes.size(), 4u);
 
-  EXPECT_EQ(plan.axes[0].name, "n0");
-  expectStreamEq(plan.axes[0].extent, nFloorDiv64, "axis n0 extent");
-  expectStreamEq(plan.axes[0].srcStride, constant(64), "axis n0 src stride");
-  // 4096 * (N floordiv 64): PUSH_CONST 4096, [nFloorDiv64], MUL.
-  ExprStream n0Dst = {
-      ExprToken{ExprOp::PushConst, 4096}, ExprToken{ExprOp::PushSym, 0},
-      ExprToken{ExprOp::PushConst, 64}, ExprToken{ExprOp::FloorDiv, 0},
-      ExprToken{ExprOp::Mul, 0}};
-  expectStreamEq(plan.axes[0].dstStride, n0Dst, "axis n0 dst stride");
-
-  EXPECT_EQ(plan.axes[1].name, "b0");
-  expectStreamEq(plan.axes[1].extent, constant(64), "axis b0 extent");
-  // 64 * N: PUSH_CONST 64, PUSH_SYM 0, MUL.
-  ExprStream b0Src = {ExprToken{ExprOp::PushConst, 64},
-                      ExprToken{ExprOp::PushSym, 0}, ExprToken{ExprOp::Mul, 0}};
-  expectStreamEq(plan.axes[1].srcStride, b0Src, "axis b0 src stride");
-  // 64 * (N floordiv 64): PUSH_CONST 64, [nFloorDiv64], MUL.
+  EXPECT_EQ(plan.axes[0].name, "b0");
+  expectStreamEq(plan.axes[0].extent, constant(64), "axis b0 extent");
+  expectStreamEq(plan.axes[0].srcStride, symbol(0), "axis b0 src stride");
+  // N * (N floordiv 64): PUSH_SYM 0, [nFloorDiv64], MUL.
   ExprStream b0Dst = {
-      ExprToken{ExprOp::PushConst, 64}, ExprToken{ExprOp::PushSym, 0},
+      ExprToken{ExprOp::PushSym, 0}, ExprToken{ExprOp::PushSym, 0},
       ExprToken{ExprOp::PushConst, 64}, ExprToken{ExprOp::FloorDiv, 0},
       ExprToken{ExprOp::Mul, 0}};
-  expectStreamEq(plan.axes[1].dstStride, b0Dst, "axis b0 dst stride");
+  expectStreamEq(plan.axes[0].dstStride, b0Dst, "axis b0 dst stride");
+
+  EXPECT_EQ(plan.axes[1].name, "n0");
+  expectStreamEq(plan.axes[1].extent, nFloorDiv64, "axis n0 extent");
+  // 64 * N: PUSH_CONST 64, PUSH_SYM 0, MUL.
+  ExprStream n0Src = {ExprToken{ExprOp::PushConst, 64},
+                      ExprToken{ExprOp::PushSym, 0}, ExprToken{ExprOp::Mul, 0}};
+  expectStreamEq(plan.axes[1].srcStride, n0Src, "axis n0 src stride");
+  expectStreamEq(plan.axes[1].dstStride, symbol(0), "axis n0 dst stride");
 
   EXPECT_EQ(plan.axes[2].name, "b1");
   expectStreamEq(plan.axes[2].extent, constant(64), "axis b1 extent");
-  expectStreamEq(plan.axes[2].srcStride, symbol(0), "axis b1 src stride");
+  expectStreamEq(plan.axes[2].srcStride, nFloorDiv64, "axis b1 src stride");
   expectStreamEq(plan.axes[2].dstStride, nFloorDiv64, "axis b1 dst stride");
 
   EXPECT_EQ(plan.axes[3].name, "n1");
@@ -663,13 +648,13 @@ TEST(Decode, RejectsInverseArityMismatch) {
 TEST(Decode, RejectsBadContiguityByte) {
   // The identity golden has contiguity count 0 (nothing to patch), so use
   // the reference golden, whose contiguity section holds 4 real flag
-  // bytes. contiguity[0] is at offset 462 (derived by walking the same
+  // bytes. contiguity[0] is at offset 444 (derived by walking the same
   // section order as above through the reference plan's larger src/dst
   // descriptors, axes, and divisibility section; contiguity count is at
-  // 458, so entry 0 follows immediately at 462). Patch it to 2.
-  std::vector<uint8_t> bytes = patched(kReferenceHex, 462, {2});
+  // 440, so entry 0 follows immediately at 444). Patch it to 2.
+  std::vector<uint8_t> bytes = patched(kReferenceHex, 444, {2});
   DecodeError error = decodeErr(bytes);
-  EXPECT_EQ(error.offset, 462u);
+  EXPECT_EQ(error.offset, 444u);
   EXPECT_NE(error.message.find("contiguity"), std::string::npos);
 }
 
@@ -753,13 +738,13 @@ TEST(Decode, RejectsPermSizeMismatch) {
 }
 
 TEST(Decode, RejectsBadContiguityCount) {
-  // Patch the reference golden's contiguity count @458 (derived from the
-  // same section walk as RejectsBadContiguityByte: entry 0 is @462, so
-  // the count u32 is @458) from 4 to 2: nonzero and != the axis count
+  // Patch the reference golden's contiguity count @440 (derived from the
+  // same section walk as RejectsBadContiguityByte: entry 0 is @444, so
+  // the count u32 is @440) from 4 to 2: nonzero and != the axis count
   // (4). The count/axis-count check fires before any flag byte is read.
-  std::vector<uint8_t> bytes = patched(kReferenceHex, 458, {2, 0, 0, 0});
+  std::vector<uint8_t> bytes = patched(kReferenceHex, 440, {2, 0, 0, 0});
   DecodeError error = decodeErr(bytes);
-  EXPECT_EQ(error.offset, 458u);
+  EXPECT_EQ(error.offset, 440u);
   EXPECT_NE(error.message.find("contiguity count"), std::string::npos);
 }
 
