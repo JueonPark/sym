@@ -5,7 +5,54 @@
 #include "QuantKernels.h"
 
 #include <cassert>
+#include <climits>
+#include <cstdint>
 #include <immintrin.h>
+
+namespace {
+
+// Shared body: quantize 16 gathered floats and store. `Prefetch` pulls the
+// next-but-one iteration's lines (each strided element usually sits on its
+// own cache line, so one prefetch per lane).
+template <bool Prefetch>
+void quantRunAVX512Impl(const float *src, int64_t srcStride, int8_t *dst,
+                        int64_t n, float invScale) {
+  using reloc::quant::detail::quantOne;
+  if (srcStride == 1) {
+    reloc::quant::detail::quantizePackAVX512(src, dst, n, invScale);
+    return;
+  }
+  // i32gather indices are signed 32-bit, scaled by 4 bytes.
+  assert(srcStride > 0 && srcStride <= (INT32_MAX / 16) &&
+         "gather index would overflow i32");
+  const __m512 vinv = _mm512_set1_ps(invScale);
+  const __m512 vlo = _mm512_set1_ps(-128.0f);
+  const __m512 vhi = _mm512_set1_ps(127.0f);
+  const __m512i lane =
+      _mm512_setr_epi32(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
+  const __m512i vidx =
+      _mm512_mullo_epi32(lane, _mm512_set1_epi32(static_cast<int>(srcStride)));
+  constexpr int64_t kPfDist = 32; // elements ahead = 2 vector iterations
+  int64_t i = 0;
+  for (; i + 16 <= n; i += 16) {
+    if (Prefetch && i + kPfDist + 16 <= n) {
+      const float *pf = src + (i + kPfDist) * srcStride;
+      for (int k = 0; k < 16; ++k)
+        _mm_prefetch(reinterpret_cast<const char *>(pf + k * srcStride),
+                     _MM_HINT_T0);
+    }
+    __m512 v = _mm512_i32gather_ps(vidx, src + i * srcStride, 4);
+    v = _mm512_mul_ps(v, vinv);
+    v = _mm512_max_ps(v, vlo);
+    v = _mm512_min_ps(v, vhi);
+    _mm_storeu_si128(reinterpret_cast<__m128i *>(dst + i),
+                     _mm512_cvtsepi32_epi8(_mm512_cvtps_epi32(v)));
+  }
+  for (; i < n; ++i)
+    dst[i] = quantOne(src[i * srcStride], invScale);
+}
+
+} // namespace
 
 namespace reloc {
 namespace quant {
@@ -62,6 +109,16 @@ void packS8S4AVX512(const int8_t *src, uint8_t *dst, int64_t pairs) {
   for (; i < pairs; ++i)
     dst[i] = static_cast<uint8_t>(nibbleSat(src[2 * i]) |
                                   (nibbleSat(src[2 * i + 1]) << 4));
+}
+
+void quantRunAVX512(const float *src, int64_t srcStride, int8_t *dst,
+                    int64_t n, float invScale) {
+  quantRunAVX512Impl<false>(src, srcStride, dst, n, invScale);
+}
+
+void quantRunAVX512Pf(const float *src, int64_t srcStride, int8_t *dst,
+                      int64_t n, float invScale) {
+  quantRunAVX512Impl<true>(src, srcStride, dst, n, invScale);
 }
 
 } // namespace detail

@@ -208,7 +208,12 @@ void gatherQuantizeF32S8(const BoundPlan &bound, const float *srcBase,
          "dst innermost axis must be contiguous");
   const Variant r = resolveFor(Kernel::GatherQuantize, v);
   detail::QuantRunFn run = detail::quantRunScalar;
-  (void)r; // SIMD runs land in Task 7
+#if defined(RELOC_QUANT_HAVE_X86_SIMD)
+  if (r == Variant::AVX512)
+    run = detail::quantRunAVX512;
+  else if (r == Variant::AVX512Pf)
+    run = detail::quantRunAVX512Pf;
+#endif
   quantWalk(bound, srcBase, dstBase, invScales, /*depth=*/0, outerBegin,
             outerEnd, /*srcOff=*/0, /*dstOff=*/0, /*invScale=*/0.0f, run);
 }

@@ -301,6 +301,55 @@ TEST(GatherQuantize, ChunkedEqualsWholeRange) {
   EXPECT_EQ(0, std::memcmp(whole.data(), chunked.data(), total));
 }
 
+TEST(GatherQuantize, SimdVariantsBitExactVsScalar) {
+  if (!reloc::quant::cpuSupports(Variant::AVX512))
+    GTEST_SKIP() << "AVX-512 unsupported on this host";
+  struct PlanCase {
+    const char *name;
+    reloc::BoundPlan b;
+  };
+  std::vector<PlanCase> plans;
+  plans.push_back({"transpose 129x517", transposePlan(129, 517)});
+  plans.push_back({"transpose 16x16", transposePlan(16, 16)});
+  {
+    reloc::BoundPlan b; // contiguous inner fast path
+    b.extents = {7, 133};
+    b.srcStrides = {140, 1};
+    b.dstStrides = {133, 1};
+    b.elementSize = 4;
+    b.totalBytes = 7 * 133 * 4;
+    plans.push_back({"contiguous inner", b});
+  }
+  {
+    reloc::BoundPlan b; // large stride: distinct cache line per gather lane
+    b.extents = {3, 65};
+    b.srcStrides = {1, 8192};
+    b.dstStrides = {65, 1};
+    b.elementSize = 4;
+    b.totalBytes = 3 * 65 * 4;
+    plans.push_back({"stride 8192", b});
+  }
+  for (auto &pc : plans) {
+    std::vector<float> src =
+        randomFloats(maxSrcOffset(pc.b) + 1, 21, -300.f, 300.f);
+    std::vector<float> inv(pc.b.extents[0]);
+    for (size_t c = 0; c < inv.size(); ++c)
+      inv[c] = 0.03f + 0.11f * static_cast<float>(c);
+    const size_t total = static_cast<size_t>(pc.b.totalBytes / 4);
+    std::vector<int8_t> ref(total, 0);
+    reloc::quant::gatherQuantizeF32S8(pc.b, src.data(), ref.data(),
+                                      inv.data(), 0, pc.b.extents[0],
+                                      Variant::Scalar);
+    for (Variant v : {Variant::AVX512, Variant::AVX512Pf}) {
+      std::vector<int8_t> got(total, 1);
+      reloc::quant::gatherQuantizeF32S8(pc.b, src.data(), got.data(),
+                                        inv.data(), 0, pc.b.extents[0], v);
+      ASSERT_EQ(0, std::memcmp(ref.data(), got.data(), total))
+          << pc.name << " variant=" << static_cast<int>(v);
+    }
+  }
+}
+
 uint8_t refNibble(int8_t v) {
   int x = v < -8 ? -8 : (v > 7 ? 7 : v);
   return static_cast<uint8_t>(x & 0xF);
