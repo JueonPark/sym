@@ -131,6 +131,25 @@ __global__ void quantizeF32S8Kernel(const float *src, int8_t *dst,
   dst[i] = static_cast<int8_t>(__float2int_rn(y));
 }
 
+__global__ void dequantS8F32Kernel(const int8_t *src, float *dst,
+                                   int64_t channelSize, const float *scales,
+                                   int64_t total) {
+  int64_t i = blockIdx.x * static_cast<int64_t>(blockDim.x) + threadIdx.x;
+  if (i >= total)
+    return;
+  dst[i] = static_cast<float>(src[i]) * scales[i / channelSize];
+}
+
+__global__ void unpackS4S8Kernel(const uint8_t *src, int8_t *dst,
+                                 int64_t pairs) {
+  int64_t i = blockIdx.x * static_cast<int64_t>(blockDim.x) + threadIdx.x;
+  if (i >= pairs)
+    return;
+  const uint8_t b = src[i];
+  dst[2 * i] = static_cast<int8_t>(static_cast<uint8_t>(b << 4)) >> 4;
+  dst[2 * i + 1] = static_cast<int8_t>(b) >> 4;
+}
+
 } // namespace
 
 void copyF32(const float *dSrc, float *dDst, int64_t count, void *stream) {
@@ -178,6 +197,20 @@ void quantizeF32S8(const float *dSrc, int8_t *dDst, int64_t channels,
   quantizeF32S8Kernel<<<static_cast<unsigned>(gridFor(total)), kThreads, 0,
                         asStream(stream)>>>(dSrc, dDst, channelSize, dInvScales,
                                             total);
+}
+
+void dequantS8F32(const int8_t *dSrc, float *dDst, int64_t channels,
+                  int64_t channelSize, const float *dScales, void *stream) {
+  int64_t total = channels * channelSize;
+  dequantS8F32Kernel<<<static_cast<unsigned>(gridFor(total)), kThreads, 0,
+                       asStream(stream)>>>(dSrc, dDst, channelSize, dScales,
+                                           total);
+}
+
+void unpackS4S8(const uint8_t *dSrc, int8_t *dDst, int64_t pairs,
+                void *stream) {
+  unpackS4S8Kernel<<<static_cast<unsigned>(gridFor(pairs)), kThreads, 0,
+                     asStream(stream)>>>(dSrc, dDst, pairs);
 }
 
 } // namespace cuda

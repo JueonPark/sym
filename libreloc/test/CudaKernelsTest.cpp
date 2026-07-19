@@ -208,6 +208,57 @@ TEST(CudaQuantize, BitExactVsCpuScalar) {
   ASSERT_EQ(0, std::memcmp(want.data(), got.data(), want.size()));
 }
 
+TEST(CudaDequant, ExactVsHostReference) {
+  const int64_t channels = 7, chSize = 517;
+  std::mt19937 rng(37);
+  std::vector<int8_t> src(static_cast<size_t>(channels * chSize));
+  for (int8_t &v : src)
+    v = static_cast<int8_t>(rng());
+  std::vector<float> scales(channels);
+  for (int64_t c = 0; c < channels; ++c)
+    scales[c] = 0.013f * static_cast<float>(c + 1);
+  std::vector<float> want(src.size());
+  for (size_t i = 0; i < src.size(); ++i)
+    want[i] =
+        static_cast<float>(src[i]) * scales[static_cast<int64_t>(i) / chSize];
+  DeviceBuffer dSrc(src.size()), dScales(scales.size() * 4),
+      dDst(want.size() * 4);
+  ASSERT_TRUE(dSrc.valid());
+  ASSERT_TRUE(dScales.valid());
+  ASSERT_TRUE(dDst.valid());
+  upload(dSrc, src);
+  upload(dScales, scales);
+  reloc::cuda::dequantS8F32(dSrc.as<int8_t>(), dDst.as<float>(), channels,
+                            chSize, dScales.as<float>());
+  ASSERT_EQ(cudaSuccess, cudaDeviceSynchronize());
+  std::vector<float> got = download<float>(dDst, want.size());
+  ASSERT_EQ(0, std::memcmp(want.data(), got.data(), want.size() * 4));
+}
+
+TEST(CudaUnpack, InverseOfCpuPack) {
+  const int64_t pairs = 100003;
+  std::mt19937 rng(41);
+  std::vector<int8_t> orig(static_cast<size_t>(2 * pairs));
+  for (int8_t &v : orig)
+    v = static_cast<int8_t>(rng()); // full range: saturation exercised
+  std::vector<uint8_t> packed(static_cast<size_t>(pairs));
+  reloc::quant::packS8S4(orig.data(), packed.data(), pairs);
+  // Expected after round-trip: clamp(orig, -8, 7).
+  std::vector<int8_t> want(orig.size());
+  for (size_t i = 0; i < orig.size(); ++i)
+    want[i] = static_cast<int8_t>(orig[i] < -8  ? -8
+                                  : orig[i] > 7 ? 7
+                                                : orig[i]);
+  DeviceBuffer dPacked(packed.size()), dOut(want.size());
+  ASSERT_TRUE(dPacked.valid());
+  ASSERT_TRUE(dOut.valid());
+  upload(dPacked, packed);
+  reloc::cuda::unpackS4S8(dPacked.as<uint8_t>(), dOut.as<int8_t>(), pairs);
+  ASSERT_EQ(cudaSuccess, cudaDeviceSynchronize());
+  std::vector<int8_t> got = download<int8_t>(dOut, want.size());
+  ASSERT_EQ(0, std::memcmp(want.data(), got.data(), want.size()));
+}
+
 } // namespace
 
 #endif // RELOC_ENABLE_CUDA

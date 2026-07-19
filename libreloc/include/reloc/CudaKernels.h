@@ -50,6 +50,19 @@ void quantizeF32S8(const float *dSrc, int8_t *dDst, int64_t channels,
                    int64_t channelSize, const float *dInvScales,
                    void *stream = nullptr);
 
+/// `dequant_s8_f32` (Method A dtype-only receive path): contiguous
+/// per-channel int8 -> fp32, out = (float)s8 * scale[channel]. Exact fp32
+/// arithmetic. dScales: device array of `channels` floats.
+void dequantS8F32(const int8_t *dSrc, float *dDst, int64_t channels,
+                  int64_t channelSize, const float *dScales,
+                  void *stream = nullptr);
+
+/// `unpack_s4_s8` (Method A r=0.125 receive path): int4 nibble unpack,
+/// exact inverse of the CPU packS8S4 on saturated values. Byte i ->
+/// dDst[2i] = sign-extended low nibble, dDst[2i+1] = high nibble.
+void unpackS4S8(const uint8_t *dSrc, int8_t *dDst, int64_t pairs,
+                void *stream = nullptr);
+
 } // namespace cuda
 } // namespace reloc
 
