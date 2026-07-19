@@ -387,9 +387,10 @@ TEST(PackS8S4, Avx512BitExactVsScalar) {
 
 TEST(QuantParallel, AllWrappersMatchSerial) {
   reloc::GatherPool pool(4);
-  // quantize_pack: 13 channels x 1031 elements (odd split boundaries)
+  // quantize_pack: 1037 channels x 1031 elements: > 2 chunks past the 1
+  // MiB/worker floor, odd split boundaries
   {
-    const int64_t ch = 13, cs = 1031;
+    const int64_t ch = 1037, cs = 1031;
     std::vector<float> src = randomFloats(ch * cs, 31, -300.f, 300.f);
     std::vector<float> inv(ch, 0.21f);
     std::vector<int8_t> a(ch * cs, 0), b(ch * cs, 1);
@@ -398,24 +399,26 @@ TEST(QuantParallel, AllWrappersMatchSerial) {
                                             cs, inv.data());
     ASSERT_EQ(0, std::memcmp(a.data(), b.data(), a.size()));
   }
-  // gather_quantize on a transpose plan
+  // gather_quantize on a transpose plan: 4099 rows x 263 cols: > 2 chunks
+  // past the 1 MiB/worker floor, odd split boundaries
   {
-    auto p = transposePlan(517, 263);
+    auto p = transposePlan(4099, 263);
     std::vector<float> src =
         randomFloats(maxSrcOffset(p) + 1, 33, -300.f, 300.f);
-    std::vector<float> inv(517);
+    std::vector<float> inv(4099);
     for (size_t c = 0; c < inv.size(); ++c)
       inv[c] = 0.02f + 0.001f * static_cast<float>(c);
-    std::vector<int8_t> a(517 * 263, 0), b(517 * 263, 1);
+    std::vector<int8_t> a(4099 * 263, 0), b(4099 * 263, 1);
     reloc::quant::gatherQuantizeF32S8(p, src.data(), a.data(), inv.data(), 0,
                                       p.extents[0]);
     reloc::quant::gatherQuantizeF32S8Parallel(pool, p, src.data(), b.data(),
                                               inv.data());
     ASSERT_EQ(0, std::memcmp(a.data(), b.data(), a.size()));
   }
-  // pack_s8_s4
+  // pack_s8_s4: 2097157 pairs: > 2 chunks past the 1 MiB/worker floor, odd
+  // split boundaries
   {
-    const int64_t pairs = 100003;
+    const int64_t pairs = 2097157;
     std::mt19937 rng(35);
     std::vector<int8_t> src(2 * pairs);
     for (int8_t &x : src)

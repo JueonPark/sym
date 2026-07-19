@@ -246,6 +246,8 @@ void gatherQuantizeF32S8Parallel(GatherPool &pool, const BoundPlan &bound,
                                  const float *invScales, Variant v) {
   // Outer rows must write disjoint dst bytes to split across workers --
   // the same conservative guard as executeH2DThreaded (Execute.cpp).
+  // extents/dstStrides share rank (BoundPlan invariant, asserted by the
+  // serial kernel).
   int64_t innerSpan = 0;
   for (size_t k = 1; k < bound.dstStrides.size(); ++k)
     innerSpan += (bound.extents[k] - 1) * bound.dstStrides[k];
