@@ -79,6 +79,18 @@ them; it is the runtime half of the compiler → runtime handoff.
   with the pipeline's per-worker byte floor
   (`libreloc/test/QuantTest.cpp`; bandwidth: `bench/quant_bw.cpp`,
   pinning via `taskset` documented in that driver's header).
+- `reloc::cuda` (`reloc/CudaKernels.h`) — R0.2's GPU kernels (issue #75),
+  compiled for sm_75 + sm_89 under `RELOC_ENABLE_CUDA`: the JustCopy
+  ceiling (`copyF32`), plan-driven strided relocate in naive
+  (`relocateNaiveF32`) and SMEM-tiled 32×32 forms (`relocateF32`, tiled
+  when the coalesced plan is a 2-D transpose, naive fallback otherwise,
+  bit-identical either way), GPU-side per-channel quantize
+  (`quantizeF32S8`, bit-identical to the CPU scalar contract), the
+  Method-A receive paths (`dequantS8F32`, `unpackS4S8`,
+  `dequantRelocateS8F32`), and the EXP-4 pathological scatter
+  (`scatterRandomF32`). Streams are type-erased to `void *`; launches are
+  async, caller synchronizes (`libreloc/test/CudaKernelsTest.cpp`, local
+  GPU only, never CI).
 
 ## Python bindings (pyreloc)
 
