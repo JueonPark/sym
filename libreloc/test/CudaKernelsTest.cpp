@@ -178,7 +178,9 @@ TEST(CudaQuantize, BitExactVsCpuScalar) {
   const int64_t channels = 5, chSize = 1031;
   std::vector<float> src =
       randomFloats(static_cast<size_t>(channels * chSize), 31, -300.f, 300.f);
-  // Poke the clamp/NaN/tie lanes.
+  // Poke the clamp/NaN/tie lanes. These land in channel 0 (see inv below),
+  // whose unit scale feeds them through unmodified so they hit RNE ties and
+  // saturation verbatim instead of being scaled away from x.5 / +-127/-128.
   src[0] = NAN;
   src[1] = HUGE_VALF;
   src[2] = -HUGE_VALF;
@@ -189,7 +191,7 @@ TEST(CudaQuantize, BitExactVsCpuScalar) {
   src[7] = -200.0f;
   std::vector<float> inv(channels);
   for (int64_t c = 0; c < channels; ++c)
-    inv[c] = 0.05f + 0.9f * static_cast<float>(c);
+    inv[c] = c == 0 ? 1.0f : 0.05f + 0.9f * static_cast<float>(c);
   std::vector<int8_t> want(static_cast<size_t>(channels * chSize), 0);
   reloc::quant::quantizePackF32S8(src.data(), want.data(), channels, chSize,
                                   inv.data(), reloc::quant::Variant::Scalar);
