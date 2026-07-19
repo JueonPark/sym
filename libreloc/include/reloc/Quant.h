@@ -55,6 +55,12 @@ void quantizePackF32S8(const float *src, int8_t *dst, int64_t channels,
                        int64_t channelSize, const float *invScales,
                        Variant v = Variant::Auto);
 
+/// K4, issue #74's `convert_f32_f16`: contiguous fp32 -> IEEE binary16
+/// (round-to-nearest-even, subnormals preserved, overflow -> inf). Scalar
+/// output is bit-identical to F16C/AVX-512 VCVTPS2PH for non-NaN inputs.
+void convertF32F16(const float *src, uint16_t *dst, int64_t count,
+                   Variant v = Variant::Auto);
+
 } // namespace quant
 } // namespace reloc
 

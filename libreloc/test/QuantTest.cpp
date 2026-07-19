@@ -135,4 +135,66 @@ TEST(QuantizePack, SimdVariantsBitExactVsScalar) {
     GTEST_SKIP() << "no SIMD tier supported on this host";
 }
 
+TEST(ConvertF32F16, ScalarSpecials) {
+  struct Case {
+    float in;
+    uint16_t want;
+  } cases[] = {
+      {0.0f, 0x0000},          {-0.0f, 0x8000},
+      {1.0f, 0x3C00},          {-2.0f, 0xC000},
+      {65504.0f, 0x7BFF},      {65519.0f, 0x7BFF}, // below RNE-to-inf cut
+      {65520.0f, 0x7C00},      {HUGE_VALF, 0x7C00},
+      {-HUGE_VALF, 0xFC00},
+      {5.9604645e-8f, 0x0001}, // 2^-24, smallest half subnormal
+      {2.9802322e-8f, 0x0000}, // 2^-25: tie, rounds to even (zero)
+      {4.4703484e-8f, 0x0001}, // 1.5 * 2^-25: rounds up
+      {6.1035156e-5f, 0x0400}, // 2^-14, smallest half normal
+      {0.1f, 0x2E66},          {3.14159265f, 0x4248},
+  };
+  for (const Case &c : cases) {
+    uint16_t out = 0;
+    reloc::quant::convertF32F16(&c.in, &out, 1, Variant::Scalar);
+    EXPECT_EQ(out, c.want) << "in=" << c.in;
+  }
+  float nan = NAN;
+  uint16_t h = 0;
+  reloc::quant::convertF32F16(&nan, &h, 1, Variant::Scalar);
+  EXPECT_EQ(h & 0x7C00u, 0x7C00u);
+  EXPECT_NE(h & 0x3FFu, 0u); // still a NaN, not inf
+}
+
+TEST(ConvertF32F16, SimdVariantsBitExactVsScalar) {
+  bool ranAny = false;
+  for (Variant v : {Variant::AVX2, Variant::AVX512}) {
+    if (!reloc::quant::cpuSupports(v))
+      continue;
+    ranAny = true;
+    std::mt19937 rng(11);
+    for (int64_t n : {1, 7, 8, 9, 16, 33, 100000}) {
+      // Random BIT PATTERNS: covers normals, subnormals, inf, both signs,
+      // every exponent. This empirically pins the scalar converter to the
+      // hardware VCVTPS2PH result. NaNs are tested semantically below.
+      std::vector<float> src(n);
+      for (float &f : src) {
+        uint32_t bits = rng();
+        float x;
+        std::memcpy(&x, &bits, sizeof(x));
+        f = std::isnan(x) ? 1.0f : x;
+      }
+      std::vector<uint16_t> a(n, 0xDEAD), b(n, 0xBEEF);
+      reloc::quant::convertF32F16(src.data(), a.data(), n, Variant::Scalar);
+      reloc::quant::convertF32F16(src.data(), b.data(), n, v);
+      ASSERT_EQ(0, std::memcmp(a.data(), b.data(), n * sizeof(uint16_t)))
+          << "variant=" << static_cast<int>(v) << " n=" << n;
+    }
+    float nan = NAN;
+    uint16_t h = 0;
+    reloc::quant::convertF32F16(&nan, &h, 1, v);
+    EXPECT_EQ(h & 0x7C00u, 0x7C00u);
+    EXPECT_NE(h & 0x3FFu, 0u);
+  }
+  if (!ranAny)
+    GTEST_SKIP() << "no SIMD tier supported on this host";
+}
+
 } // namespace

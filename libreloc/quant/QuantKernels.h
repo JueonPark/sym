@@ -30,12 +30,17 @@ inline int8_t quantOne(float x, float invScale) {
 void quantizePackScalar(const float *src, int8_t *dst, int64_t n,
                         float invScale);
 
+uint16_t f32ToF16Scalar(float f);
+void convertF32F16Scalar(const float *src, uint16_t *dst, int64_t n);
+
 #if defined(RELOC_QUANT_HAVE_X86_SIMD)
 // Defined in QuantAVX2.cpp / QuantAVX512.cpp (per-TU -m flags).
 void quantizePackAVX2(const float *src, int8_t *dst, int64_t n,
                       float invScale);
 void quantizePackAVX512(const float *src, int8_t *dst, int64_t n,
                         float invScale);
+void convertF32F16F16C(const float *src, uint16_t *dst, int64_t n);
+void convertF32F16AVX512(const float *src, uint16_t *dst, int64_t n);
 #endif
 
 } // namespace detail

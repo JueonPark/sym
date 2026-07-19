@@ -30,6 +30,18 @@ void quantizePackAVX512(const float *src, int8_t *dst, int64_t n,
     dst[i] = quantOne(src[i], invScale);
 }
 
+void convertF32F16AVX512(const float *src, uint16_t *dst, int64_t n) {
+  int64_t i = 0;
+  for (; i + 16 <= n; i += 16) {
+    __m512 v = _mm512_loadu_ps(src + i);
+    _mm256_storeu_si256(
+        reinterpret_cast<__m256i *>(dst + i),
+        _mm512_cvtps_ph(v, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC));
+  }
+  for (; i < n; ++i)
+    dst[i] = f32ToF16Scalar(src[i]);
+}
+
 } // namespace detail
 } // namespace quant
 } // namespace reloc
