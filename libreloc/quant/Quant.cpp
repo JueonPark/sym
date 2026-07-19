@@ -3,6 +3,10 @@
 #include "reloc/Quant.h"
 #include "QuantKernels.h"
 
+#include "reloc/GatherPool.h"
+#include "reloc/Pipeline.h"
+
+#include <algorithm>
 #include <cassert>
 #include <cstring>
 
@@ -26,6 +30,13 @@ void quantWalk(const reloc::BoundPlan &b, const float *src, int8_t *dst,
               srcOff + i * b.srcStrides[depth],
               dstOff + i * b.dstStrides[depth],
               depth == 0 ? invScales[i] : invScale, run);
+}
+
+// Per-worker floor in outer units, from the pipeline's byte floor.
+int64_t minPerWorker(int64_t bytesPerUnit) {
+  return std::max<int64_t>(
+      1, static_cast<int64_t>(reloc::kMinGatherBytesPerWorker) /
+             std::max<int64_t>(1, bytesPerUnit));
 }
 
 } // namespace
@@ -216,6 +227,55 @@ void gatherQuantizeF32S8(const BoundPlan &bound, const float *srcBase,
 #endif
   quantWalk(bound, srcBase, dstBase, invScales, /*depth=*/0, outerBegin,
             outerEnd, /*srcOff=*/0, /*dstOff=*/0, /*invScale=*/0.0f, run);
+}
+
+void quantizePackF32S8Parallel(GatherPool &pool, const float *src,
+                               int8_t *dst, int64_t channels,
+                               int64_t channelSize, const float *invScales,
+                               Variant v) {
+  pool.parallelFor(0, channels, minPerWorker(channelSize * 4),
+                   [&](int64_t cb, int64_t ce) {
+                     quantizePackF32S8(src + cb * channelSize,
+                                       dst + cb * channelSize, ce - cb,
+                                       channelSize, invScales + cb, v);
+                   });
+}
+
+void gatherQuantizeF32S8Parallel(GatherPool &pool, const BoundPlan &bound,
+                                 const float *srcBase, int8_t *dstBase,
+                                 const float *invScales, Variant v) {
+  // Outer rows must write disjoint dst bytes to split across workers --
+  // the same conservative guard as executeH2DThreaded (Execute.cpp).
+  int64_t innerSpan = 0;
+  for (size_t k = 1; k < bound.dstStrides.size(); ++k)
+    innerSpan += (bound.extents[k] - 1) * bound.dstStrides[k];
+  if (bound.dstStrides[0] < innerSpan + 1) {
+    gatherQuantizeF32S8(bound, srcBase, dstBase, invScales, 0,
+                        bound.extents[0], v);
+    return;
+  }
+  int64_t rowElems = 1;
+  for (size_t k = 1; k < bound.extents.size(); ++k)
+    rowElems *= bound.extents[k];
+  pool.parallelFor(0, bound.extents[0], minPerWorker(rowElems * 4),
+                   [&](int64_t rb, int64_t re) {
+                     gatherQuantizeF32S8(bound, srcBase, dstBase, invScales,
+                                         rb, re, v);
+                   });
+}
+
+void packS8S4Parallel(GatherPool &pool, const int8_t *src, uint8_t *dst,
+                      int64_t pairs, Variant v) {
+  pool.parallelFor(0, pairs, minPerWorker(2), [&](int64_t pb, int64_t pe) {
+    packS8S4(src + 2 * pb, dst + pb, pe - pb, v);
+  });
+}
+
+void convertF32F16Parallel(GatherPool &pool, const float *src, uint16_t *dst,
+                           int64_t count, Variant v) {
+  pool.parallelFor(0, count, minPerWorker(4), [&](int64_t b, int64_t e) {
+    convertF32F16(src + b, dst + b, e - b, v);
+  });
 }
 
 } // namespace quant

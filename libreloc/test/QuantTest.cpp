@@ -2,6 +2,8 @@
 
 #include "reloc/Quant.h"
 
+#include "reloc/GatherPool.h"
+
 #include "gtest/gtest.h"
 
 #include <cmath>
@@ -381,6 +383,81 @@ TEST(PackS8S4, Avx512BitExactVsScalar) {
     reloc::quant::packS8S4(src.data(), b.data(), pairs, Variant::AVX512);
     ASSERT_EQ(0, std::memcmp(a.data(), b.data(), pairs)) << "pairs=" << pairs;
   }
+}
+
+TEST(QuantParallel, AllWrappersMatchSerial) {
+  reloc::GatherPool pool(4);
+  // quantize_pack: 13 channels x 1031 elements (odd split boundaries)
+  {
+    const int64_t ch = 13, cs = 1031;
+    std::vector<float> src = randomFloats(ch * cs, 31, -300.f, 300.f);
+    std::vector<float> inv(ch, 0.21f);
+    std::vector<int8_t> a(ch * cs, 0), b(ch * cs, 1);
+    reloc::quant::quantizePackF32S8(src.data(), a.data(), ch, cs, inv.data());
+    reloc::quant::quantizePackF32S8Parallel(pool, src.data(), b.data(), ch,
+                                            cs, inv.data());
+    ASSERT_EQ(0, std::memcmp(a.data(), b.data(), a.size()));
+  }
+  // gather_quantize on a transpose plan
+  {
+    auto p = transposePlan(517, 263);
+    std::vector<float> src =
+        randomFloats(maxSrcOffset(p) + 1, 33, -300.f, 300.f);
+    std::vector<float> inv(517);
+    for (size_t c = 0; c < inv.size(); ++c)
+      inv[c] = 0.02f + 0.001f * static_cast<float>(c);
+    std::vector<int8_t> a(517 * 263, 0), b(517 * 263, 1);
+    reloc::quant::gatherQuantizeF32S8(p, src.data(), a.data(), inv.data(), 0,
+                                      p.extents[0]);
+    reloc::quant::gatherQuantizeF32S8Parallel(pool, p, src.data(), b.data(),
+                                              inv.data());
+    ASSERT_EQ(0, std::memcmp(a.data(), b.data(), a.size()));
+  }
+  // pack_s8_s4
+  {
+    const int64_t pairs = 100003;
+    std::mt19937 rng(35);
+    std::vector<int8_t> src(2 * pairs);
+    for (int8_t &x : src)
+      x = static_cast<int8_t>(rng());
+    std::vector<uint8_t> a(pairs, 0), b(pairs, 1);
+    reloc::quant::packS8S4(src.data(), a.data(), pairs);
+    reloc::quant::packS8S4Parallel(pool, src.data(), b.data(), pairs);
+    ASSERT_EQ(0, std::memcmp(a.data(), b.data(), pairs));
+  }
+  // convert_f32_f16
+  {
+    const int64_t n = (1 << 20) + 37;
+    std::vector<float> src = randomFloats(n, 37, -70000.f, 70000.f);
+    std::vector<uint16_t> a(n, 0), b(n, 1);
+    reloc::quant::convertF32F16(src.data(), a.data(), n);
+    reloc::quant::convertF32F16Parallel(pool, src.data(), b.data(), n);
+    ASSERT_EQ(0, std::memcmp(a.data(), b.data(), n * sizeof(uint16_t)));
+  }
+  pool.close();
+}
+
+TEST(QuantParallel, NonDisjointDstRowsFallBackInline) {
+  // dstStrides[0] < inner span: outer rows alias in dst, so the parallel
+  // wrapper must serialize (same guard as executeH2DThreaded) and still
+  // produce exactly the serial result.
+  reloc::BoundPlan b;
+  b.extents = {6, 8};
+  b.srcStrides = {8, 1};
+  b.dstStrides = {4, 1}; // rows overlap: span 7 >= stride 4
+  b.elementSize = 4;
+  b.totalBytes = (5 * 4 + 7 + 1) * 4;
+  std::vector<float> src = randomFloats(maxSrcOffset(b) + 1, 41, -10.f, 10.f);
+  std::vector<float> inv(6, 1.0f);
+  const size_t total = 5 * 4 + 7 + 1;
+  std::vector<int8_t> a(total, 0), c(total, 1);
+  reloc::quant::gatherQuantizeF32S8(b, src.data(), a.data(), inv.data(), 0, 6,
+                                    Variant::Scalar);
+  reloc::GatherPool pool(4);
+  reloc::quant::gatherQuantizeF32S8Parallel(pool, b, src.data(), c.data(),
+                                            inv.data(), Variant::Scalar);
+  pool.close();
+  EXPECT_EQ(0, std::memcmp(a.data(), c.data(), total));
 }
 
 } // namespace

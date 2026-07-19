@@ -80,6 +80,24 @@ void gatherQuantizeF32S8(const BoundPlan &bound, const float *srcBase,
                          int64_t outerBegin, int64_t outerEnd,
                          Variant v = Variant::Auto);
 
+/// Multi-thread wrappers over a caller-owned GatherPool (D-track parallel
+/// producer, issue #65): partition with the pipeline's per-worker byte
+/// floor (kMinGatherBytesPerWorker) so small inputs stay inline. Output is
+/// byte-identical to the serial kernel. Thread PINNING is the caller's job
+/// (taskset/numactl); the pool does not pin.
+void quantizePackF32S8Parallel(GatherPool &pool, const float *src,
+                               int8_t *dst, int64_t channels,
+                               int64_t channelSize, const float *invScales,
+                               Variant v = Variant::Auto);
+void gatherQuantizeF32S8Parallel(GatherPool &pool, const BoundPlan &bound,
+                                 const float *srcBase, int8_t *dstBase,
+                                 const float *invScales,
+                                 Variant v = Variant::Auto);
+void packS8S4Parallel(GatherPool &pool, const int8_t *src, uint8_t *dst,
+                      int64_t pairs, Variant v = Variant::Auto);
+void convertF32F16Parallel(GatherPool &pool, const float *src, uint16_t *dst,
+                           int64_t count, Variant v = Variant::Auto);
+
 } // namespace quant
 } // namespace reloc
 
