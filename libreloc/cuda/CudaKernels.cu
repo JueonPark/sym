@@ -89,6 +89,36 @@ __global__ void relocateNaiveKernel(const float *src, float *dst, Axes a,
   dst[dstOff] = src[srcOff];
 }
 
+constexpr int kTile = 32;
+constexpr int kBlockRows = 8;
+
+// Coalesced 2-D transpose: read a 32x32 tile of `in` coalesced, write it
+// back transposed and coalesced; +1 padding kills SMEM bank conflicts.
+// `in` is inRows x inCols row-major; out[c][r] = in[r][c].
+__global__ void transposeTiledKernel(const float *in, float *out,
+                                     int64_t inRows, int64_t inCols) {
+  __shared__ float tile[kTile][kTile + 1];
+  int64_t x = blockIdx.x * static_cast<int64_t>(kTile) + threadIdx.x;
+  int64_t y = blockIdx.y * static_cast<int64_t>(kTile) + threadIdx.y;
+  for (int j = 0; j < kTile; j += kBlockRows)
+    if (x < inCols && y + j < inRows)
+      tile[threadIdx.y + j][threadIdx.x] = in[(y + j) * inCols + x];
+  __syncthreads();
+  x = blockIdx.y * static_cast<int64_t>(kTile) + threadIdx.x; // out col
+  y = blockIdx.x * static_cast<int64_t>(kTile) + threadIdx.y; // out row
+  for (int j = 0; j < kTile; j += kBlockRows)
+    if (x < inRows && y + j < inCols)
+      out[(y + j) * inRows + x] = tile[threadIdx.x][threadIdx.y + j];
+}
+
+// relocate_f32's fast path applies when the coalesced plan is exactly a
+// 2-D transpose: dst [R,C] dense row-major, src read column-major.
+bool isTranspose2D(const reloc::BoundPlan &b) {
+  return b.extents.size() == 2 && b.srcStrides[0] == 1 &&
+         b.srcStrides[1] == b.extents[0] && b.dstStrides[1] == 1 &&
+         b.dstStrides[0] == b.extents[1];
+}
+
 } // namespace
 
 void copyF32(const float *dSrc, float *dDst, int64_t count, void *stream) {
@@ -113,10 +143,21 @@ void relocateNaiveF32(const BoundPlan &bound, const float *dSrc, float *dDst,
                         asStream(stream)>>>(dSrc, dDst, a, total);
 }
 
-// Task 3 replaces this forward with the tiled dispatch.
 void relocateF32(const BoundPlan &bound, const float *dSrc, float *dDst,
                  void *stream) {
-  relocateNaiveF32(bound, dSrc, dDst, stream);
+  if (!isTranspose2D(bound)) {
+    relocateNaiveF32(bound, dSrc, dDst, stream);
+    return;
+  }
+  // Plan dst[r][c] = src[c*R + r]: view src as (C x R) row-major `in`,
+  // dst as out with out[r][c] = in[c][r] -> launch with inRows=C, inCols=R.
+  const int64_t R = bound.extents[0], C = bound.extents[1];
+  dim3 block(kTile, kBlockRows);
+  dim3 grid(static_cast<unsigned>((R + kTile - 1) / kTile),
+            static_cast<unsigned>((C + kTile - 1) / kTile));
+  transposeTiledKernel<<<grid, block, 0, asStream(stream)>>>(dSrc, dDst,
+                                                             /*inRows=*/C,
+                                                             /*inCols=*/R);
 }
 
 } // namespace cuda

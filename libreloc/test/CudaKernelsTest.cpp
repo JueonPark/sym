@@ -136,6 +136,44 @@ TEST(CudaRelocateNaive, Rank3MatchesCpu) {
   expectRelocateMatchesCpu(b, 7, /*tiled=*/false);
 }
 
+TEST(CudaRelocateTiled, TransposeShapesMatchCpu) {
+  // multiples of 32, remainder tiles both axes, tiny, tall/wide
+  expectRelocateMatchesCpu(transposePlan(1024, 1024), 11, /*tiled=*/true);
+  expectRelocateMatchesCpu(transposePlan(129, 517), 13, /*tiled=*/true);
+  expectRelocateMatchesCpu(transposePlan(32, 32), 17, /*tiled=*/true);
+  expectRelocateMatchesCpu(transposePlan(1, 4096), 19, /*tiled=*/true);
+}
+
+TEST(CudaRelocateTiled, NonTransposePlanFallsBackBitExact) {
+  // 3-D plan: not 2-D-transpose-shaped -> must take the naive fallback and
+  // still match the CPU oracle.
+  reloc::BoundPlan b;
+  b.extents = {4, 6, 33};
+  b.srcStrides = {2, 9, 100};
+  b.dstStrides = {198, 33, 1};
+  b.elementSize = 4;
+  b.totalBytes = 4 * 6 * 33 * 4;
+  expectRelocateMatchesCpu(b, 23, /*tiled=*/true);
+}
+
+TEST(CudaRelocateTiled, TiledIdenticalToNaive) {
+  auto b = transposePlan(801, 333); // remainder tiles, non-square
+  std::vector<float> src =
+      randomFloats(static_cast<size_t>(maxSrcOffset(b) + 1), 29, -1e6f, 1e6f);
+  DeviceBuffer dSrc(src.size() * 4), dA(static_cast<size_t>(b.totalBytes)),
+      dB(static_cast<size_t>(b.totalBytes));
+  ASSERT_TRUE(dSrc.valid());
+  ASSERT_TRUE(dA.valid());
+  ASSERT_TRUE(dB.valid());
+  upload(dSrc, src);
+  reloc::cuda::relocateF32(b, dSrc.as<float>(), dA.as<float>());
+  reloc::cuda::relocateNaiveF32(b, dSrc.as<float>(), dB.as<float>());
+  ASSERT_EQ(cudaSuccess, cudaDeviceSynchronize());
+  size_t n = static_cast<size_t>(b.totalBytes / 4);
+  std::vector<float> a = download<float>(dA, n), c = download<float>(dB, n);
+  ASSERT_EQ(0, std::memcmp(a.data(), c.data(), n * 4));
+}
+
 } // namespace
 
 #endif // RELOC_ENABLE_CUDA
