@@ -1,6 +1,7 @@
 //===- Quant.cpp - R0.1 quant kernel dispatch + scalar variants -----------===//
 
 #include "reloc/Quant.h"
+#include "QuantKernels.h"
 
 #include <cassert>
 
@@ -57,6 +58,26 @@ Variant resolveFor(Kernel k, Variant v) {
   if (kernelHasVariant(k, Variant::AVX2) && cpuSupports(Variant::AVX2))
     return Variant::AVX2;
   return Variant::Scalar;
+}
+
+namespace detail {
+
+void quantizePackScalar(const float *src, int8_t *dst, int64_t n,
+                        float invScale) {
+  for (int64_t i = 0; i < n; ++i)
+    dst[i] = quantOne(src[i], invScale);
+}
+
+} // namespace detail
+
+void quantizePackF32S8(const float *src, int8_t *dst, int64_t channels,
+                       int64_t channelSize, const float *invScales,
+                       Variant v) {
+  const Variant r = resolveFor(Kernel::QuantizePack, v);
+  (void)r; // scalar-only until the SIMD TUs land (Task 3)
+  for (int64_t c = 0; c < channels; ++c)
+    detail::quantizePackScalar(src + c * channelSize, dst + c * channelSize,
+                               channelSize, invScales[c]);
 }
 
 } // namespace quant

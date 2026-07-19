@@ -47,6 +47,14 @@ bool kernelHasVariant(Kernel k, Variant v);
 /// cpuSupports(v).
 Variant resolveFor(Kernel k, Variant v);
 
+/// K1, issue #74's `quantize_pack_f32_s8`: contiguous fp32 -> contiguous
+/// int8 with a per-channel scale. `src`/`dst` hold channels * channelSize
+/// elements; channel c covers [c * channelSize, (c+1) * channelSize) and
+/// is quantized with invScales[c] (q = rne(clamp(x * invScale))).
+void quantizePackF32S8(const float *src, int8_t *dst, int64_t channels,
+                       int64_t channelSize, const float *invScales,
+                       Variant v = Variant::Auto);
+
 } // namespace quant
 } // namespace reloc
 
