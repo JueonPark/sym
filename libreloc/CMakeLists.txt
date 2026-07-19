@@ -47,8 +47,15 @@ if(RELOC_ENABLE_CUDA)
   enable_language(CUDA)
   find_package(CUDAToolkit REQUIRED)
   target_compile_definitions(reloc_runtime PUBLIC RELOC_ENABLE_CUDA=1)
-  target_sources(reloc_runtime PRIVATE cuda/CudaBackend.cu)
+  target_sources(reloc_runtime PRIVATE
+    cuda/CudaBackend.cu
+    cuda/CudaKernels.cu
+  )
   set_source_files_properties(cuda/CudaBackend.cu PROPERTIES LANGUAGE CUDA)
+  set_source_files_properties(cuda/CudaKernels.cu PROPERTIES LANGUAGE CUDA)
+  # R0.2 (issue #75): fatbin for Turing (the 2080 Ti box, M0) and Ada (the
+  # dev box). sm_75 is compile-proof until M0 lands.
+  set_target_properties(reloc_runtime PROPERTIES CUDA_ARCHITECTURES "75;89")
   target_link_libraries(reloc_runtime PRIVATE CUDA::cudart)
 endif()
 

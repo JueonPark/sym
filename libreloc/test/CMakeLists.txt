@@ -13,6 +13,7 @@ add_executable(libreloc-test
   ChunkScheduleTest.cpp
   PipelineTest.cpp
   CudaPipelineTest.cpp
+  CudaKernelsTest.cpp
   QuantTest.cpp
 )
 
