@@ -174,6 +174,38 @@ TEST(CudaRelocateTiled, TiledIdenticalToNaive) {
   ASSERT_EQ(0, std::memcmp(a.data(), c.data(), n * 4));
 }
 
+TEST(CudaQuantize, BitExactVsCpuScalar) {
+  const int64_t channels = 5, chSize = 1031;
+  std::vector<float> src =
+      randomFloats(static_cast<size_t>(channels * chSize), 31, -300.f, 300.f);
+  // Poke the clamp/NaN/tie lanes.
+  src[0] = NAN;
+  src[1] = HUGE_VALF;
+  src[2] = -HUGE_VALF;
+  src[3] = 0.5f;
+  src[4] = 2.5f;
+  src[5] = -2.5f;
+  src[6] = 200.0f;
+  src[7] = -200.0f;
+  std::vector<float> inv(channels);
+  for (int64_t c = 0; c < channels; ++c)
+    inv[c] = 0.05f + 0.9f * static_cast<float>(c);
+  std::vector<int8_t> want(static_cast<size_t>(channels * chSize), 0);
+  reloc::quant::quantizePackF32S8(src.data(), want.data(), channels, chSize,
+                                  inv.data(), reloc::quant::Variant::Scalar);
+  DeviceBuffer dSrc(src.size() * 4), dInv(inv.size() * 4), dDst(want.size());
+  ASSERT_TRUE(dSrc.valid());
+  ASSERT_TRUE(dInv.valid());
+  ASSERT_TRUE(dDst.valid());
+  upload(dSrc, src);
+  upload(dInv, inv);
+  reloc::cuda::quantizeF32S8(dSrc.as<float>(), dDst.as<int8_t>(), channels,
+                             chSize, dInv.as<float>());
+  ASSERT_EQ(cudaSuccess, cudaDeviceSynchronize());
+  std::vector<int8_t> got = download<int8_t>(dDst, want.size());
+  ASSERT_EQ(0, std::memcmp(want.data(), got.data(), want.size()));
+}
+
 } // namespace
 
 #endif // RELOC_ENABLE_CUDA

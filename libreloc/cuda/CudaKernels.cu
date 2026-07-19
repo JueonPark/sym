@@ -160,6 +160,26 @@ void relocateF32(const BoundPlan &bound, const float *dSrc, float *dDst,
                                                              /*inCols=*/R);
 }
 
+__global__ void quantizeF32S8Kernel(const float *src, int8_t *dst,
+                                    int64_t channelSize, const float *invScales,
+                                    int64_t total) {
+  int64_t i = blockIdx.x * static_cast<int64_t>(blockDim.x) + threadIdx.x;
+  if (i >= total)
+    return;
+  float y = src[i] * invScales[i / channelSize];
+  y = fmaxf(y, -128.0f); // NaN -> -128, matching the CPU quantOne contract
+  y = fminf(y, 127.0f);
+  dst[i] = static_cast<int8_t>(__float2int_rn(y));
+}
+
+void quantizeF32S8(const float *dSrc, int8_t *dDst, int64_t channels,
+                   int64_t channelSize, const float *dInvScales, void *stream) {
+  int64_t total = channels * channelSize;
+  quantizeF32S8Kernel<<<static_cast<unsigned>(gridFor(total)), kThreads, 0,
+                        asStream(stream)>>>(dSrc, dDst, channelSize, dInvScales,
+                                            total);
+}
+
 } // namespace cuda
 } // namespace reloc
 

@@ -42,6 +42,14 @@ void relocateNaiveF32(const BoundPlan &bound, const float *dSrc, float *dDst,
 void relocateF32(const BoundPlan &bound, const float *dSrc, float *dDst,
                  void *stream = nullptr);
 
+/// `quantize_f32_s8` (GPU side, Method B for EXP-2's quantize workloads):
+/// contiguous per-channel int8 quantize, BIT-IDENTICAL to the CPU scalar
+/// contract (fmaxf-then-fminf clamp so NaN -> -128; __float2int_rn = RNE).
+/// dInvScales: device array of `channels` floats.
+void quantizeF32S8(const float *dSrc, int8_t *dDst, int64_t channels,
+                   int64_t channelSize, const float *dInvScales,
+                   void *stream = nullptr);
+
 } // namespace cuda
 } // namespace reloc
 
