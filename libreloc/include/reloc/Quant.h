@@ -67,6 +67,19 @@ void convertF32F16(const float *src, uint16_t *dst, int64_t count,
 void packS8S4(const int8_t *src, uint8_t *dst, int64_t pairs,
               Variant v = Variant::Auto);
 
+/// K2, issue #74's `gather_quantize_f32_s8` (the Case-1a kernel): strided
+/// fp32 reads through the BoundPlan's stride sets, fused per-channel int8
+/// quantize, contiguous int8 writes at the plan's dst element offsets
+/// (1 byte per element -- an int8 image of the dst layout). Chunked outer
+/// form mirroring gatherChunk: writes ONLY outer indices [outerBegin,
+/// outerEnd). Channel = coalesced outer axis: invScales has extents[0]
+/// entries. v0 preconditions (asserted): elementSize == 4, no padRegions,
+/// rank >= 2, dstStrides.back() == 1.
+void gatherQuantizeF32S8(const BoundPlan &bound, const float *srcBase,
+                         int8_t *dstBase, const float *invScales,
+                         int64_t outerBegin, int64_t outerEnd,
+                         Variant v = Variant::Auto);
+
 } // namespace quant
 } // namespace reloc
 

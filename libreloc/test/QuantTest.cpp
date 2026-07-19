@@ -197,6 +197,110 @@ TEST(ConvertF32F16, SimdVariantsBitExactVsScalar) {
     GTEST_SKIP() << "no SIMD tier supported on this host";
 }
 
+// Hand-built 2-D transpose-style plan: dst is rows x cols dense row-major,
+// src is read with swapped strides (mirrors what bind() produces for
+// reloc.transpose; ExecuteTest builds plans the same way).
+reloc::BoundPlan transposePlan(int64_t rows, int64_t cols) {
+  reloc::BoundPlan b;
+  b.extents = {rows, cols};
+  b.srcStrides = {1, rows};
+  b.dstStrides = {cols, 1};
+  b.elementSize = 4;
+  b.totalBytes = rows * cols * 4;
+  return b;
+}
+
+int64_t maxSrcOffset(const reloc::BoundPlan &b) {
+  int64_t off = 0;
+  for (size_t k = 0; k < b.extents.size(); ++k)
+    off += (b.extents[k] - 1) * b.srcStrides[k];
+  return off;
+}
+
+// Naive full-index-space walk: the independent oracle for the fused kernel.
+void refGatherQuantize(const reloc::BoundPlan &b, const float *src,
+                       int8_t *dst, const float *invScales) {
+  const size_t r = b.extents.size();
+  std::vector<int64_t> idx(r, 0);
+  while (true) {
+    int64_t so = 0, dso = 0;
+    for (size_t k = 0; k < r; ++k) {
+      so += idx[k] * b.srcStrides[k];
+      dso += idx[k] * b.dstStrides[k];
+    }
+    dst[dso] = refQuantOne(src[so], invScales[idx[0]]);
+    size_t k = r;
+    for (;;) {
+      if (k == 0)
+        return;
+      --k;
+      if (++idx[k] < b.extents[k])
+        break;
+      idx[k] = 0;
+    }
+  }
+}
+
+TEST(GatherQuantize, ScalarMatchesNaiveWalk2D) {
+  auto b = transposePlan(5, 67); // strided inner reads + remainder tail
+  std::vector<float> src = randomFloats(maxSrcOffset(b) + 1, 3, -300.f, 300.f);
+  std::vector<float> inv = {0.9f, 0.1f, 1.7f, 0.03f, 2.5f};
+  const size_t total = 5 * 67;
+  std::vector<int8_t> got(total, 42), want(total, 24);
+  refGatherQuantize(b, src.data(), want.data(), inv.data());
+  reloc::quant::gatherQuantizeF32S8(b, src.data(), got.data(), inv.data(), 0,
+                                    b.extents[0], Variant::Scalar);
+  EXPECT_EQ(0, std::memcmp(got.data(), want.data(), total));
+}
+
+TEST(GatherQuantize, ContiguousInnerFastPath) {
+  // srcStrides.back() == 1: rows with a gap between them (row-major copy
+  // out of a larger parent buffer) -- exercises the stride-1 fast path.
+  reloc::BoundPlan b;
+  b.extents = {4, 33};
+  b.srcStrides = {40, 1};
+  b.dstStrides = {33, 1};
+  b.elementSize = 4;
+  b.totalBytes = 4 * 33 * 4;
+  std::vector<float> src = randomFloats(maxSrcOffset(b) + 1, 5, -300.f, 300.f);
+  std::vector<float> inv = {1.0f, 0.5f, 0.25f, 2.0f};
+  std::vector<int8_t> got(4 * 33, 0), want(4 * 33, 1);
+  refGatherQuantize(b, src.data(), want.data(), inv.data());
+  reloc::quant::gatherQuantizeF32S8(b, src.data(), got.data(), inv.data(), 0,
+                                    b.extents[0], Variant::Scalar);
+  EXPECT_EQ(0, std::memcmp(got.data(), want.data(), got.size()));
+}
+
+TEST(GatherQuantize, ScalarMatchesNaiveWalk3D) {
+  reloc::BoundPlan b;
+  b.extents = {4, 6, 33};
+  b.srcStrides = {2, 9, 100}; // arbitrary positive, strided innermost
+  b.dstStrides = {198, 33, 1}; // dense row-major dst
+  b.elementSize = 4;
+  b.totalBytes = 4 * 6 * 33 * 4;
+  std::vector<float> src = randomFloats(maxSrcOffset(b) + 1, 9, -300.f, 300.f);
+  std::vector<float> inv = {0.4f, 1.1f, 0.7f, 3.0f};
+  std::vector<int8_t> got(4 * 6 * 33, 0), want(4 * 6 * 33, 1);
+  refGatherQuantize(b, src.data(), want.data(), inv.data());
+  reloc::quant::gatherQuantizeF32S8(b, src.data(), got.data(), inv.data(), 0,
+                                    b.extents[0], Variant::Scalar);
+  EXPECT_EQ(0, std::memcmp(got.data(), want.data(), got.size()));
+}
+
+TEST(GatherQuantize, ChunkedEqualsWholeRange) {
+  auto b = transposePlan(5, 67);
+  std::vector<float> src = randomFloats(maxSrcOffset(b) + 1, 3, -300.f, 300.f);
+  std::vector<float> inv = {0.9f, 0.1f, 1.7f, 0.03f, 2.5f};
+  const size_t total = 5 * 67;
+  std::vector<int8_t> whole(total, 0), chunked(total, 1);
+  reloc::quant::gatherQuantizeF32S8(b, src.data(), whole.data(), inv.data(),
+                                    0, 5, Variant::Scalar);
+  for (auto [lo, hi] : {std::pair<int64_t, int64_t>{0, 2}, {2, 4}, {4, 5}})
+    reloc::quant::gatherQuantizeF32S8(b, src.data(), chunked.data(),
+                                      inv.data(), lo, hi, Variant::Scalar);
+  EXPECT_EQ(0, std::memcmp(whole.data(), chunked.data(), total));
+}
+
 uint8_t refNibble(int8_t v) {
   int x = v < -8 ? -8 : (v > 7 ? 7 : v);
   return static_cast<uint8_t>(x & 0xF);

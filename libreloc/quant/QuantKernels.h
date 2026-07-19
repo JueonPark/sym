@@ -40,6 +40,14 @@ inline uint8_t nibbleSat(int8_t v) {
 
 void packS8S4Scalar(const int8_t *src, uint8_t *dst, int64_t pairs);
 
+/// One innermost run of the fused kernel: n elements read at srcStride,
+/// written contiguously. Implementations must be bit-identical.
+using QuantRunFn = void (*)(const float *src, int64_t srcStride, int8_t *dst,
+                            int64_t n, float invScale);
+
+void quantRunScalar(const float *src, int64_t srcStride, int8_t *dst,
+                    int64_t n, float invScale);
+
 #if defined(RELOC_QUANT_HAVE_X86_SIMD)
 // Defined in QuantAVX2.cpp / QuantAVX512.cpp (per-TU -m flags).
 void quantizePackAVX2(const float *src, int8_t *dst, int64_t n,

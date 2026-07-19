@@ -6,6 +6,30 @@
 #include <cassert>
 #include <cstring>
 
+namespace {
+
+// Mirror of Execute.cpp's walk() for the fused kernel: only the top axis is
+// ranged to the chunk; deeper axes cover their full extent. The per-channel
+// invScale is picked at depth 0 and constant below it.
+void quantWalk(const reloc::BoundPlan &b, const float *src, int8_t *dst,
+               const float *invScales, size_t depth, int64_t iBegin,
+               int64_t iEnd, int64_t srcOff, int64_t dstOff, float invScale,
+               reloc::quant::detail::QuantRunFn run) {
+  const size_t r = b.extents.size();
+  if (depth == r - 1) {
+    run(src + srcOff + iBegin * b.srcStrides[depth], b.srcStrides[depth],
+        dst + dstOff + iBegin, iEnd - iBegin, invScale);
+    return;
+  }
+  for (int64_t i = iBegin; i < iEnd; ++i)
+    quantWalk(b, src, dst, invScales, depth + 1, 0, b.extents[depth + 1],
+              srcOff + i * b.srcStrides[depth],
+              dstOff + i * b.dstStrides[depth],
+              depth == 0 ? invScales[i] : invScale, run);
+}
+
+} // namespace
+
 namespace reloc {
 namespace quant {
 
@@ -108,6 +132,16 @@ void packS8S4Scalar(const int8_t *src, uint8_t *dst, int64_t pairs) {
                                   (nibbleSat(src[2 * i + 1]) << 4));
 }
 
+void quantRunScalar(const float *src, int64_t srcStride, int8_t *dst,
+                    int64_t n, float invScale) {
+  if (srcStride == 1) {
+    quantizePackScalar(src, dst, n, invScale);
+    return;
+  }
+  for (int64_t i = 0; i < n; ++i)
+    dst[i] = quantOne(src[i * srcStride], invScale);
+}
+
 } // namespace detail
 
 void quantizePackF32S8(const float *src, int8_t *dst, int64_t channels,
@@ -161,6 +195,22 @@ void packS8S4(const int8_t *src, uint8_t *dst, int64_t pairs, Variant v) {
 #endif
   (void)r;
   detail::packS8S4Scalar(src, dst, pairs);
+}
+
+void gatherQuantizeF32S8(const BoundPlan &bound, const float *srcBase,
+                         int8_t *dstBase, const float *invScales,
+                         int64_t outerBegin, int64_t outerEnd, Variant v) {
+  assert(bound.elementSize == 4 && "fused quantize is fp32-only");
+  assert(bound.padRegions.empty() && "pads unsupported in gatherQuantize v0");
+  assert(bound.extents.size() >= 2 &&
+         "per-channel scale needs a distinct outer axis");
+  assert(bound.dstStrides.back() == 1 &&
+         "dst innermost axis must be contiguous");
+  const Variant r = resolveFor(Kernel::GatherQuantize, v);
+  detail::QuantRunFn run = detail::quantRunScalar;
+  (void)r; // SIMD runs land in Task 7
+  quantWalk(bound, srcBase, dstBase, invScales, /*depth=*/0, outerBegin,
+            outerEnd, /*srcOff=*/0, /*dstOff=*/0, /*invScale=*/0.0f, run);
 }
 
 } // namespace quant
