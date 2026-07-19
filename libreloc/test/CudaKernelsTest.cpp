@@ -77,6 +77,65 @@ TEST(CudaCopy, RoundTripOddCount) {
   ASSERT_EQ(0, std::memcmp(src.data(), out.data(), n * sizeof(float)));
 }
 
+reloc::BoundPlan transposePlan(int64_t rows, int64_t cols) {
+  reloc::BoundPlan b;
+  b.extents = {rows, cols};
+  b.srcStrides = {1, rows};
+  b.dstStrides = {cols, 1};
+  b.elementSize = 4;
+  b.totalBytes = rows * cols * 4;
+  return b;
+}
+
+int64_t maxSrcOffset(const reloc::BoundPlan &b) {
+  int64_t off = 0;
+  for (size_t k = 0; k < b.extents.size(); ++k)
+    off += (b.extents[k] - 1) * b.srcStrides[k];
+  return off;
+}
+
+// CPU oracle: executeH2D over the same plan, on the same host data.
+std::vector<float> cpuRelocate(const reloc::BoundPlan &b,
+                               const std::vector<float> &src) {
+  std::vector<float> dst(static_cast<size_t>(b.totalBytes / 4), 0.0f);
+  reloc::executeH2D(b, src.data(), dst.data());
+  return dst;
+}
+
+void expectRelocateMatchesCpu(const reloc::BoundPlan &b, uint32_t seed,
+                              bool tiled) {
+  std::vector<float> src =
+      randomFloats(static_cast<size_t>(maxSrcOffset(b) + 1), seed, -1e6f, 1e6f);
+  std::vector<float> want = cpuRelocate(b, src);
+  DeviceBuffer dSrc(src.size() * 4), dDst(want.size() * 4);
+  ASSERT_TRUE(dSrc.valid());
+  ASSERT_TRUE(dDst.valid());
+  upload(dSrc, src);
+  ASSERT_EQ(cudaSuccess, cudaMemset(dDst.p, 0xCD, want.size() * 4));
+  if (tiled)
+    reloc::cuda::relocateF32(b, dSrc.as<float>(), dDst.as<float>());
+  else
+    reloc::cuda::relocateNaiveF32(b, dSrc.as<float>(), dDst.as<float>());
+  ASSERT_EQ(cudaSuccess, cudaDeviceSynchronize());
+  std::vector<float> got = download<float>(dDst, want.size());
+  ASSERT_EQ(0, std::memcmp(want.data(), got.data(), want.size() * 4));
+}
+
+TEST(CudaRelocateNaive, TransposeMatchesCpu) {
+  expectRelocateMatchesCpu(transposePlan(129, 517), 3, /*tiled=*/false);
+  expectRelocateMatchesCpu(transposePlan(512, 512), 5, /*tiled=*/false);
+}
+
+TEST(CudaRelocateNaive, Rank3MatchesCpu) {
+  reloc::BoundPlan b;
+  b.extents = {4, 6, 33};
+  b.srcStrides = {2, 9, 100};
+  b.dstStrides = {198, 33, 1};
+  b.elementSize = 4;
+  b.totalBytes = 4 * 6 * 33 * 4;
+  expectRelocateMatchesCpu(b, 7, /*tiled=*/false);
+}
+
 } // namespace
 
 #endif // RELOC_ENABLE_CUDA

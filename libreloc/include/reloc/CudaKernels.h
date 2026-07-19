@@ -28,6 +28,20 @@ namespace cuda {
 void copyF32(const float *dSrc, float *dDst, int64_t count,
              void *stream = nullptr);
 
+/// `relocate_naive_f32`: GMEM->GMEM strided permute over the BoundPlan's
+/// stride sets, one thread per valid element (the hiding-ratio floor for
+/// EXP-4). Preconditions (asserted host-side): elementSize == 4, no pads,
+/// 1 <= rank <= 8.
+void relocateNaiveF32(const BoundPlan &bound, const float *dSrc, float *dDst,
+                      void *stream = nullptr);
+
+/// `relocate_f32`: Method B's transform. SMEM-tiled + padded 32x32
+/// transpose when the coalesced plan is 2-D-transpose-shaped; falls back
+/// to the naive kernel otherwise. Output bit-identical to
+/// relocateNaiveF32 either way. Same preconditions.
+void relocateF32(const BoundPlan &bound, const float *dSrc, float *dDst,
+                 void *stream = nullptr);
+
 } // namespace cuda
 } // namespace reloc
 
