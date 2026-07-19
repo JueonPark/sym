@@ -72,8 +72,9 @@ them; it is the runtime half of the compiler → runtime handoff.
   kernel over a `BoundPlan` (`gatherQuantizeF32S8`, chunk form mirroring
   `gatherChunk`), int4 nibble pack (`packS8S4`), and fp32→fp16 convert
   (`convertF32F16`). Every kernel has a scalar reference variant plus
-  AVX2/AVX-512 tiers behind runtime dispatch (`Variant`, `cpuSupports`,
-  `resolveFor`), bit-identical across variants by contract, and a
+  SIMD tiers (AVX2 and/or AVX-512, per issue #74's variant table) behind
+  runtime dispatch (`Variant`, `cpuSupports`, `resolveFor`), bit-identical
+  across variants by contract, and a
   `*Parallel` wrapper that partitions over a caller-owned `GatherPool`
   with the pipeline's per-worker byte floor
   (`libreloc/test/QuantTest.cpp`; bandwidth: `bench/quant_bw.cpp`,

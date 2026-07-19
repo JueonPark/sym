@@ -4,7 +4,6 @@
 
 #include "QuantKernels.h"
 
-#include <cassert>
 #include <climits>
 #include <cstdint>
 #include <immintrin.h>
@@ -22,9 +21,13 @@ void quantRunAVX512Impl(const float *src, int64_t srcStride, int8_t *dst,
     reloc::quant::detail::quantizePackAVX512(src, dst, n, invScale);
     return;
   }
-  // i32gather indices are signed 32-bit, scaled by 4 bytes.
-  assert(srcStride > 0 && srcStride <= (INT32_MAX / 16) &&
-         "gather index would overflow i32");
+  if (srcStride <= 0 || srcStride > (INT32_MAX / 16)) {
+    // i32gather indices are signed 32-bit scaled by 4 bytes; out-of-range
+    // strides take the scalar path so the variant contract stays
+    // unconditional in release builds too.
+    reloc::quant::detail::quantRunScalar(src, srcStride, dst, n, invScale);
+    return;
+  }
   const __m512 vinv = _mm512_set1_ps(invScale);
   const __m512 vlo = _mm512_set1_ps(-128.0f);
   const __m512 vhi = _mm512_set1_ps(127.0f);

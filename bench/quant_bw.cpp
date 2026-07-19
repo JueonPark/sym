@@ -98,9 +98,9 @@ std::string vecToJson(const std::vector<double> &v) {
   return out + "]";
 }
 
-std::string entryJson(const std::string &kernel, Variant v, int64_t inB,
-                      int64_t outB, const Timing &t) {
-  return "    \"" + kernel + "\": {\"variant\": \"" + variantName(v) +
+std::string entryJson(const std::string &kernel, const std::string &label,
+                      int64_t inB, int64_t outB, const Timing &t) {
+  return "    \"" + kernel + "\": {\"variant\": \"" + label +
          "\", \"in_bytes\": " + std::to_string(inB) +
          ", \"out_bytes\": " + std::to_string(outB) +
          ", \"wall_ms\": " + bench::seriesToJson(t.wall) +
@@ -355,13 +355,16 @@ int run(const std::string &kernelArg, const Config &c, const char *jsonPath) {
                    k.c_str());
       return 1;
     }
+    auto qk = quantKernelFor(k);
+    const std::string label =
+        qk ? variantName(reloc::quant::resolveFor(*qk, c.variant)) : "n/a";
     if (!body.empty())
       body += ",\n";
-    body += entryJson(k, c.variant, inB, outB, *t);
+    body += entryJson(k, label, inB, outB, *t);
     std::fprintf(stderr,
                  "quant_bw: %-24s %8s T=%d in %.2f GB/s out %.2f GB/s "
                  "(spread %.2f%%)\n",
-                 k.c_str(), variantName(c.variant), pool.threadCount(),
+                 k.c_str(), label.c_str(), pool.threadCount(),
                  t->inGbps.front(), t->outGbps.front(),
                  t->wall.medianSpreadPct);
   }
