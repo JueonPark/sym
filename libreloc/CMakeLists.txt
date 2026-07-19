@@ -19,6 +19,7 @@ add_library(reloc_runtime SHARED
   src/ChunkSchedule.cpp
   src/GatherPool.cpp
   src/Pipeline.cpp
+  quant/Quant.cpp
 )
 
 target_compile_features(reloc_runtime PUBLIC cxx_std_17)
