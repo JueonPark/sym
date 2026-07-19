@@ -167,6 +167,14 @@ __global__ void dequantRelocateKernel(const int8_t *src, float *dst, Axes a,
   dst[dstOff] = static_cast<float>(src[srcOff]) * scales[c0];
 }
 
+__global__ void scatterRandomKernel(const float *src, const int64_t *idx,
+                                    float *dst, int64_t count) {
+  int64_t i = blockIdx.x * static_cast<int64_t>(blockDim.x) + threadIdx.x;
+  if (i >= count)
+    return;
+  dst[idx[i]] = src[i];
+}
+
 } // namespace
 
 void copyF32(const float *dSrc, float *dDst, int64_t count, void *stream) {
@@ -238,6 +246,12 @@ void dequantRelocateS8F32(const BoundPlan &bound, const int8_t *dSrc,
   int64_t total = totalElements(bound);
   dequantRelocateKernel<<<static_cast<unsigned>(gridFor(total)), kThreads, 0,
                           asStream(stream)>>>(dSrc, dDst, a, dScales, total);
+}
+
+void scatterRandomF32(const float *dSrc, const int64_t *dIdx, float *dDst,
+                      int64_t count, void *stream) {
+  scatterRandomKernel<<<static_cast<unsigned>(gridFor(count)), kThreads, 0,
+                        asStream(stream)>>>(dSrc, dIdx, dDst, count);
 }
 
 } // namespace cuda

@@ -17,6 +17,7 @@
 
 #include <cuda_runtime.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -313,6 +314,31 @@ TEST(CudaUnpack, InverseOfCpuPack) {
   ASSERT_EQ(cudaSuccess, cudaDeviceSynchronize());
   std::vector<int8_t> got = download<int8_t>(dOut, want.size());
   ASSERT_EQ(0, std::memcmp(want.data(), got.data(), want.size()));
+}
+
+TEST(CudaScatterRandom, PermutationRoundTrips) {
+  const int64_t n = (1 << 20) + 7;
+  std::vector<float> src =
+      randomFloats(static_cast<size_t>(n), 47, -1e6f, 1e6f);
+  std::vector<int64_t> idx(static_cast<size_t>(n));
+  for (int64_t i = 0; i < n; ++i)
+    idx[static_cast<size_t>(i)] = i;
+  std::mt19937_64 rng(53);
+  std::shuffle(idx.begin(), idx.end(), rng);
+  DeviceBuffer dSrc(src.size() * 4), dIdx(idx.size() * 8), dDst(src.size() * 4);
+  ASSERT_TRUE(dSrc.valid());
+  ASSERT_TRUE(dIdx.valid());
+  ASSERT_TRUE(dDst.valid());
+  upload(dSrc, src);
+  upload(dIdx, idx);
+  reloc::cuda::scatterRandomF32(dSrc.as<float>(), dIdx.as<int64_t>(),
+                                dDst.as<float>(), n);
+  ASSERT_EQ(cudaSuccess, cudaDeviceSynchronize());
+  std::vector<float> got = download<float>(dDst, src.size());
+  for (int64_t i = 0; i < n; ++i)
+    ASSERT_EQ(got[static_cast<size_t>(idx[static_cast<size_t>(i)])],
+              src[static_cast<size_t>(i)])
+        << "i=" << i;
 }
 
 } // namespace

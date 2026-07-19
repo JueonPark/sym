@@ -72,6 +72,13 @@ void dequantRelocateS8F32(const BoundPlan &bound, const int8_t *dSrc,
                           float *dDst, const float *dScales,
                           void *stream = nullptr);
 
+/// `scatter_random_f32` (EXP-4's pathological data-dependent case):
+/// dDst[dIdx[i]] = dSrc[i]. dIdx: device array of `count` int64 indices;
+/// must be a permutation of [0, count) for a deterministic, race-free
+/// result (caller's contract).
+void scatterRandomF32(const float *dSrc, const int64_t *dIdx, float *dDst,
+                      int64_t count, void *stream = nullptr);
+
 } // namespace cuda
 } // namespace reloc
 
