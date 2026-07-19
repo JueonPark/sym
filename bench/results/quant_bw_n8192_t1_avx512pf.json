@@ -1,0 +1,6 @@
+{
+  "config": {"benchmark": "quant_bw", "N": 8192, "threads": 1, "variant": "avx512pf", "warmup": 10, "iters": 50, "reruns": 3},
+  "kernels": {
+    "gather_quantize_f32_s8": {"variant": "avx512pf", "in_bytes": 268435456, "out_bytes": 67108864, "wall_ms": {"reruns": [{"median": 27.7159, "q1": 26.0657, "q3": 30.4527, "iqr": 4.38699, "n": 50}, {"median": 29.3857, "q1": 28.2271, "q3": 31.1984, "iqr": 2.97134, "n": 50}, {"median": 28.803, "q1": 27.0563, "q3": 30.3882, "iqr": 3.33187, "n": 50}], "median_spread_pct": 6.02448}, "in_gb_per_s": [9.68524, 9.13491, 9.3197], "out_gb_per_s": [2.42131, 2.28373, 2.32993]}
+  }
+}

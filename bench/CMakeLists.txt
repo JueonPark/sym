@@ -31,6 +31,18 @@ add_test(NAME bench-gather-bw-smoke
          COMMAND bench-gather-bw --n 256 --threads 2 --json - --warmup 1
                  --iters 3 --reruns 2)
 
+add_executable(bench-quant-bw quant_bw.cpp)
+target_include_directories(bench-quant-bw PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_features(bench-quant-bw PRIVATE cxx_std_17)
+target_link_libraries(bench-quant-bw PRIVATE reloc_runtime)
+# Smoke-run under ctest (same rationale as the other bench smokes): proves
+# every R0.1 kernel runs end-to-end -- including the byte-exactness gate
+# against the serial scalar path -- on every CI run, at whatever SIMD tier
+# the CI host supports (variant=auto). Tiny counts; not a measurement.
+add_test(NAME bench-quant-bw-smoke
+         COMMAND bench-quant-bw --kernel all --n 256 --threads 2
+                 --variant auto --json - --warmup 1 --iters 3 --reruns 2)
+
 if(RELOC_ENABLE_CUDA)
   # The C7 PoC driver. GPU-only, never in CI (mirrors libreloc's CUDA
   # gating); run locally on the desktop per docs/poc-reproduction.md.
