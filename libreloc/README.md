@@ -66,6 +66,18 @@ them; it is the runtime half of the compiler → runtime handoff.
   `gatherThreads == 1` never constructs a pool. Explicit `close()` lifecycle
   for pybind, dispatches and `close()` are serialized internally, so
   concurrent use from multiple threads is safe (`libreloc/test/GatherPoolTest.cpp`).
+- `reloc::quant` (`reloc/Quant.h`) — R0.1's CPU transform kernels
+  (issue #74): contiguous per-channel int8 quantize
+  (`quantizePackF32S8`), the fused strided-gather + quantize Case-1a
+  kernel over a `BoundPlan` (`gatherQuantizeF32S8`, chunk form mirroring
+  `gatherChunk`), int4 nibble pack (`packS8S4`), and fp32→fp16 convert
+  (`convertF32F16`). Every kernel has a scalar reference variant plus
+  AVX2/AVX-512 tiers behind runtime dispatch (`Variant`, `cpuSupports`,
+  `resolveFor`), bit-identical across variants by contract, and a
+  `*Parallel` wrapper that partitions over a caller-owned `GatherPool`
+  with the pipeline's per-worker byte floor
+  (`libreloc/test/QuantTest.cpp`; bandwidth: `bench/quant_bw.cpp`,
+  pinning via `taskset` documented in that driver's header).
 
 ## Python bindings (pyreloc)
 
