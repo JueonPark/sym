@@ -30,6 +30,14 @@ inline int8_t quantOne(float x, float invScale) {
 void quantizePackScalar(const float *src, int8_t *dst, int64_t n,
                         float invScale);
 
+#if defined(RELOC_QUANT_HAVE_X86_SIMD)
+// Defined in QuantAVX2.cpp / QuantAVX512.cpp (per-TU -m flags).
+void quantizePackAVX2(const float *src, int8_t *dst, int64_t n,
+                      float invScale);
+void quantizePackAVX512(const float *src, int8_t *dst, int64_t n,
+                        float invScale);
+#endif
+
 } // namespace detail
 } // namespace quant
 } // namespace reloc

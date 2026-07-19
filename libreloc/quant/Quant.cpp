@@ -74,10 +74,23 @@ void quantizePackF32S8(const float *src, int8_t *dst, int64_t channels,
                        int64_t channelSize, const float *invScales,
                        Variant v) {
   const Variant r = resolveFor(Kernel::QuantizePack, v);
-  (void)r; // scalar-only until the SIMD TUs land (Task 3)
-  for (int64_t c = 0; c < channels; ++c)
-    detail::quantizePackScalar(src + c * channelSize, dst + c * channelSize,
-                               channelSize, invScales[c]);
+  for (int64_t c = 0; c < channels; ++c) {
+    const float *s = src + c * channelSize;
+    int8_t *d = dst + c * channelSize;
+    switch (r) {
+#if defined(RELOC_QUANT_HAVE_X86_SIMD)
+    case Variant::AVX512:
+      detail::quantizePackAVX512(s, d, channelSize, invScales[c]);
+      break;
+    case Variant::AVX2:
+      detail::quantizePackAVX2(s, d, channelSize, invScales[c]);
+      break;
+#endif
+    default:
+      detail::quantizePackScalar(s, d, channelSize, invScales[c]);
+      break;
+    }
+  }
 }
 
 } // namespace quant

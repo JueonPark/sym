@@ -28,6 +28,21 @@ target_include_directories(reloc_runtime PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
+# R0.1 SIMD variants (issue #74): per-TU ISA flags + runtime dispatch via
+# __builtin_cpu_supports, so the shared object runs on any x86-64 host
+# (the 2080 Ti box's CPU may be AVX2-only). Non-x86 builds get scalar only.
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
+  target_sources(reloc_runtime PRIVATE
+    quant/QuantAVX2.cpp
+    quant/QuantAVX512.cpp
+  )
+  set_source_files_properties(quant/QuantAVX2.cpp PROPERTIES
+    COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
+  set_source_files_properties(quant/QuantAVX512.cpp PROPERTIES
+    COMPILE_OPTIONS "-mavx512f;-mavx512bw")
+  target_compile_definitions(reloc_runtime PRIVATE RELOC_QUANT_HAVE_X86_SIMD=1)
+endif()
+
 if(RELOC_ENABLE_CUDA)
   enable_language(CUDA)
   find_package(CUDAToolkit REQUIRED)

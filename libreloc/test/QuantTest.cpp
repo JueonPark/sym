@@ -107,4 +107,32 @@ TEST(QuantizePack, ScalarSpecialValues) {
     EXPECT_EQ(dst[i], want[i]) << "i=" << i;
 }
 
+TEST(QuantizePack, SimdVariantsBitExactVsScalar) {
+  bool ranAny = false;
+  for (Variant v : {Variant::AVX2, Variant::AVX512}) {
+    if (!reloc::quant::cpuSupports(v))
+      continue;
+    ranAny = true;
+    for (int64_t n : {1, 15, 16, 17, 31, 32, 33, 64, 1000, 4099}) {
+      std::vector<float> src =
+          randomFloats(n, static_cast<uint32_t>(7 + n), -300.f, 300.f);
+      // Poke the clamp/NaN lanes inside a full vector when room allows.
+      if (n >= 33) {
+        src[3] = NAN;
+        src[17] = HUGE_VALF;
+        src[32] = -HUGE_VALF;
+      }
+      std::vector<int8_t> a(n, 0), b(n, 0);
+      const float inv = 0.37f;
+      reloc::quant::quantizePackF32S8(src.data(), a.data(), 1, n, &inv,
+                                      Variant::Scalar);
+      reloc::quant::quantizePackF32S8(src.data(), b.data(), 1, n, &inv, v);
+      ASSERT_EQ(0, std::memcmp(a.data(), b.data(), n))
+          << "variant=" << static_cast<int>(v) << " n=" << n;
+    }
+  }
+  if (!ranAny)
+    GTEST_SKIP() << "no SIMD tier supported on this host";
+}
+
 } // namespace
