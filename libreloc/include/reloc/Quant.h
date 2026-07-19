@@ -32,8 +32,12 @@ namespace quant {
 enum class Variant : int { Auto = 0, Scalar, AVX2, AVX512, AVX512Pf };
 
 /// The four issue-#74 kernels, for per-kernel variant queries.
-enum class Kernel : int { QuantizePack, GatherQuantize, PackS8S4,
-                          ConvertF32F16 };
+enum class Kernel : int {
+  QuantizePack,
+  GatherQuantize,
+  PackS8S4,
+  ConvertF32F16
+};
 
 /// True when this host can execute `v`. Auto and Scalar are always true.
 bool cpuSupports(Variant v);
@@ -85,9 +89,9 @@ void gatherQuantizeF32S8(const BoundPlan &bound, const float *srcBase,
 /// floor (kMinGatherBytesPerWorker) so small inputs stay inline. Output is
 /// byte-identical to the serial kernel. Thread PINNING is the caller's job
 /// (taskset/numactl); the pool does not pin.
-void quantizePackF32S8Parallel(GatherPool &pool, const float *src,
-                               int8_t *dst, int64_t channels,
-                               int64_t channelSize, const float *invScales,
+void quantizePackF32S8Parallel(GatherPool &pool, const float *src, int8_t *dst,
+                               int64_t channels, int64_t channelSize,
+                               const float *invScales,
                                Variant v = Variant::Auto);
 void gatherQuantizeF32S8Parallel(GatherPool &pool, const BoundPlan &bound,
                                  const float *srcBase, int8_t *dstBase,

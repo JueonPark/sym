@@ -69,8 +69,8 @@ struct Timing {
 };
 
 template <typename Fn>
-Timing timeIt(Fn &&fn, int64_t inBytes, int64_t outBytes, int warmup,
-              int iters, int reruns) {
+Timing timeIt(Fn &&fn, int64_t inBytes, int64_t outBytes, int warmup, int iters,
+              int reruns) {
   std::vector<std::vector<double>> per;
   for (int r = 0; r < reruns; ++r) {
     bench::RerunSamples s = bench::runOnce(fn, warmup, iters);
@@ -125,17 +125,16 @@ struct Config {
 };
 
 // Returns std::nullopt on a correctness-gate failure (caller exits 1).
-std::optional<Timing> runQuantizePack(reloc::GatherPool &pool,
-                                      const Config &c, int64_t &inB,
-                                      int64_t &outB) {
+std::optional<Timing> runQuantizePack(reloc::GatherPool &pool, const Config &c,
+                                      int64_t &inB, int64_t &outB) {
   const int64_t ch = c.n, cs = c.n; // n x n, per-row scale
   std::vector<float> src = makeFloats(static_cast<size_t>(ch * cs));
   std::vector<float> inv(static_cast<size_t>(ch), 1.0f / 127.0f);
   std::vector<int8_t> dst(static_cast<size_t>(ch * cs), 0);
   {
     std::vector<int8_t> ref(dst.size(), 1);
-    reloc::quant::quantizePackF32S8(src.data(), ref.data(), ch, cs,
-                                    inv.data(), Variant::Scalar);
+    reloc::quant::quantizePackF32S8(src.data(), ref.data(), ch, cs, inv.data(),
+                                    Variant::Scalar);
     reloc::quant::quantizePackF32S8Parallel(pool, src.data(), dst.data(), ch,
                                             cs, inv.data(), c.variant);
     if (std::memcmp(ref.data(), dst.data(), dst.size()) != 0)
@@ -235,9 +234,8 @@ std::optional<Timing> runGatherQuantize(reloc::GatherPool &pool,
     std::vector<int8_t> ref(dst.size(), 1);
     reloc::quant::gatherQuantizeF32S8(b, f.src.data(), ref.data(), inv.data(),
                                       0, b.extents[0], Variant::Scalar);
-    reloc::quant::gatherQuantizeF32S8Parallel(pool, b, f.src.data(),
-                                              dst.data(), inv.data(),
-                                              c.variant);
+    reloc::quant::gatherQuantizeF32S8Parallel(pool, b, f.src.data(), dst.data(),
+                                              inv.data(), c.variant);
     if (std::memcmp(ref.data(), dst.data(), dst.size()) != 0)
       return std::nullopt;
   }
@@ -245,9 +243,8 @@ std::optional<Timing> runGatherQuantize(reloc::GatherPool &pool,
   outB = b.totalBytes / 4;
   return timeIt(
       [&] {
-        reloc::quant::gatherQuantizeF32S8Parallel(pool, b, f.src.data(),
-                                                  dst.data(), inv.data(),
-                                                  c.variant);
+        reloc::quant::gatherQuantizeF32S8Parallel(
+            pool, b, f.src.data(), dst.data(), inv.data(), c.variant);
       },
       inB, outB, c.warmup, c.iters, c.reruns);
 }
@@ -275,10 +272,9 @@ std::optional<Timing> runGatherF32(reloc::GatherPool &pool,
   outB = b.totalBytes;
   return timeIt(
       [&] {
-        pool.parallelFor(0, b.extents[0], minRows,
-                         [&](int64_t rb, int64_t re) {
-                           reloc::gatherChunk(b, srcBytes, dst.data(), rb, re);
-                         });
+        pool.parallelFor(0, b.extents[0], minRows, [&](int64_t rb, int64_t re) {
+          reloc::gatherChunk(b, srcBytes, dst.data(), rb, re);
+        });
       },
       inB, outB, c.warmup, c.iters, c.reruns);
 }
@@ -376,8 +372,8 @@ int run(const std::string &kernelArg, const Config &c, const char *jsonPath) {
       ", \"variant\": \"" + variantName(c.variant) +
       "\", \"warmup\": " + std::to_string(c.warmup) +
       ", \"iters\": " + std::to_string(c.iters) +
-      ", \"reruns\": " + std::to_string(c.reruns) +
-      "},\n  \"kernels\": {\n" + body + "\n  }\n}\n";
+      ", \"reruns\": " + std::to_string(c.reruns) + "},\n  \"kernels\": {\n" +
+      body + "\n  }\n}\n";
   pool.close();
   if (std::strcmp(jsonPath, "-") == 0) {
     std::fputs(doc.c_str(), stdout);

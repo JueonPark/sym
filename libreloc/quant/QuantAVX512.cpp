@@ -114,8 +114,8 @@ void packS8S4AVX512(const int8_t *src, uint8_t *dst, int64_t pairs) {
                                   (nibbleSat(src[2 * i + 1]) << 4));
 }
 
-void quantRunAVX512(const float *src, int64_t srcStride, int8_t *dst,
-                    int64_t n, float invScale) {
+void quantRunAVX512(const float *src, int64_t srcStride, int8_t *dst, int64_t n,
+                    float invScale) {
   quantRunAVX512Impl<false>(src, srcStride, dst, n, invScale);
 }
 

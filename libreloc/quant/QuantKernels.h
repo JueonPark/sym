@@ -45,20 +45,19 @@ void packS8S4Scalar(const int8_t *src, uint8_t *dst, int64_t pairs);
 using QuantRunFn = void (*)(const float *src, int64_t srcStride, int8_t *dst,
                             int64_t n, float invScale);
 
-void quantRunScalar(const float *src, int64_t srcStride, int8_t *dst,
-                    int64_t n, float invScale);
+void quantRunScalar(const float *src, int64_t srcStride, int8_t *dst, int64_t n,
+                    float invScale);
 
 #if defined(RELOC_QUANT_HAVE_X86_SIMD)
 // Defined in QuantAVX2.cpp / QuantAVX512.cpp (per-TU -m flags).
-void quantizePackAVX2(const float *src, int8_t *dst, int64_t n,
-                      float invScale);
+void quantizePackAVX2(const float *src, int8_t *dst, int64_t n, float invScale);
 void quantizePackAVX512(const float *src, int8_t *dst, int64_t n,
                         float invScale);
 void convertF32F16F16C(const float *src, uint16_t *dst, int64_t n);
 void convertF32F16AVX512(const float *src, uint16_t *dst, int64_t n);
 void packS8S4AVX512(const int8_t *src, uint8_t *dst, int64_t pairs);
-void quantRunAVX512(const float *src, int64_t srcStride, int8_t *dst,
-                    int64_t n, float invScale);
+void quantRunAVX512(const float *src, int64_t srcStride, int8_t *dst, int64_t n,
+                    float invScale);
 void quantRunAVX512Pf(const float *src, int64_t srcStride, int8_t *dst,
                       int64_t n, float invScale);
 #endif

@@ -23,19 +23,28 @@ TEST(QuantDispatch, ScalarAndAutoAlwaysSupported) {
 
 TEST(QuantDispatch, KernelVariantTableMatchesIssue74) {
   // quantize_pack: scalar / AVX2 / AVX-512
-  EXPECT_TRUE(reloc::quant::kernelHasVariant(Kernel::QuantizePack, Variant::AVX2));
-  EXPECT_TRUE(reloc::quant::kernelHasVariant(Kernel::QuantizePack, Variant::AVX512));
-  EXPECT_FALSE(reloc::quant::kernelHasVariant(Kernel::QuantizePack, Variant::AVX512Pf));
+  EXPECT_TRUE(
+      reloc::quant::kernelHasVariant(Kernel::QuantizePack, Variant::AVX2));
+  EXPECT_TRUE(
+      reloc::quant::kernelHasVariant(Kernel::QuantizePack, Variant::AVX512));
+  EXPECT_FALSE(
+      reloc::quant::kernelHasVariant(Kernel::QuantizePack, Variant::AVX512Pf));
   // gather_quantize: scalar / AVX-512 gather / prefetch+tiled
-  EXPECT_FALSE(reloc::quant::kernelHasVariant(Kernel::GatherQuantize, Variant::AVX2));
-  EXPECT_TRUE(reloc::quant::kernelHasVariant(Kernel::GatherQuantize, Variant::AVX512));
-  EXPECT_TRUE(reloc::quant::kernelHasVariant(Kernel::GatherQuantize, Variant::AVX512Pf));
+  EXPECT_FALSE(
+      reloc::quant::kernelHasVariant(Kernel::GatherQuantize, Variant::AVX2));
+  EXPECT_TRUE(
+      reloc::quant::kernelHasVariant(Kernel::GatherQuantize, Variant::AVX512));
+  EXPECT_TRUE(reloc::quant::kernelHasVariant(Kernel::GatherQuantize,
+                                             Variant::AVX512Pf));
   // pack_s8_s4: AVX-512 (+ scalar reference)
   EXPECT_FALSE(reloc::quant::kernelHasVariant(Kernel::PackS8S4, Variant::AVX2));
-  EXPECT_TRUE(reloc::quant::kernelHasVariant(Kernel::PackS8S4, Variant::AVX512));
+  EXPECT_TRUE(
+      reloc::quant::kernelHasVariant(Kernel::PackS8S4, Variant::AVX512));
   // convert_f32_f16: F16C (the AVX2 tier) / AVX-512
-  EXPECT_TRUE(reloc::quant::kernelHasVariant(Kernel::ConvertF32F16, Variant::AVX2));
-  EXPECT_TRUE(reloc::quant::kernelHasVariant(Kernel::ConvertF32F16, Variant::AVX512));
+  EXPECT_TRUE(
+      reloc::quant::kernelHasVariant(Kernel::ConvertF32F16, Variant::AVX2));
+  EXPECT_TRUE(
+      reloc::quant::kernelHasVariant(Kernel::ConvertF32F16, Variant::AVX512));
 }
 
 TEST(QuantDispatch, ResolveAutoPicksAnImplementedSupportedTier) {
@@ -97,14 +106,14 @@ TEST(QuantizePack, ScalarMatchesReferencePerChannel) {
 
 TEST(QuantizePack, ScalarSpecialValues) {
   // invScale = 1: RNE ties go to even; saturation clamps; NaN -> -128.
-  const float src[] = {0.0f,   -0.0f,   0.5f, -0.5f, 1.5f,      2.5f, -2.5f,
-                       200.0f, -200.0f, HUGE_VALF, -HUGE_VALF, NAN,  126.6f};
+  const float src[] = {0.0f,       -0.0f, 0.5f,   -0.5f,   1.5f,
+                       2.5f,       -2.5f, 200.0f, -200.0f, HUGE_VALF,
+                       -HUGE_VALF, NAN,   126.6f};
   const int8_t want[] = {0, 0, 0, 0, 2, 2, -2, 127, -128, 127, -128, -128, 127};
   const int64_t n = sizeof(src) / sizeof(src[0]);
   std::vector<int8_t> dst(n, 42);
   const float inv = 1.0f;
-  reloc::quant::quantizePackF32S8(src, dst.data(), 1, n, &inv,
-                                  Variant::Scalar);
+  reloc::quant::quantizePackF32S8(src, dst.data(), 1, n, &inv, Variant::Scalar);
   for (int64_t i = 0; i < n; ++i)
     EXPECT_EQ(dst[i], want[i]) << "i=" << i;
 }
@@ -142,16 +151,21 @@ TEST(ConvertF32F16, ScalarSpecials) {
     float in;
     uint16_t want;
   } cases[] = {
-      {0.0f, 0x0000},          {-0.0f, 0x8000},
-      {1.0f, 0x3C00},          {-2.0f, 0xC000},
-      {65504.0f, 0x7BFF},      {65519.0f, 0x7BFF}, // below RNE-to-inf cut
-      {65520.0f, 0x7C00},      {HUGE_VALF, 0x7C00},
+      {0.0f, 0x0000},
+      {-0.0f, 0x8000},
+      {1.0f, 0x3C00},
+      {-2.0f, 0xC000},
+      {65504.0f, 0x7BFF},
+      {65519.0f, 0x7BFF}, // below RNE-to-inf cut
+      {65520.0f, 0x7C00},
+      {HUGE_VALF, 0x7C00},
       {-HUGE_VALF, 0xFC00},
       {5.9604645e-8f, 0x0001}, // 2^-24, smallest half subnormal
       {2.9802322e-8f, 0x0000}, // 2^-25: tie, rounds to even (zero)
       {4.4703484e-8f, 0x0001}, // 1.5 * 2^-25: rounds up
       {6.1035156e-5f, 0x0400}, // 2^-14, smallest half normal
-      {0.1f, 0x2E66},          {3.14159265f, 0x4248},
+      {0.1f, 0x2E66},
+      {3.14159265f, 0x4248},
   };
   for (const Case &c : cases) {
     uint16_t out = 0;
@@ -220,8 +234,8 @@ int64_t maxSrcOffset(const reloc::BoundPlan &b) {
 }
 
 // Naive full-index-space walk: the independent oracle for the fused kernel.
-void refGatherQuantize(const reloc::BoundPlan &b, const float *src,
-                       int8_t *dst, const float *invScales) {
+void refGatherQuantize(const reloc::BoundPlan &b, const float *src, int8_t *dst,
+                       const float *invScales) {
   const size_t r = b.extents.size();
   std::vector<int64_t> idx(r, 0);
   while (true) {
@@ -276,7 +290,7 @@ TEST(GatherQuantize, ContiguousInnerFastPath) {
 TEST(GatherQuantize, ScalarMatchesNaiveWalk3D) {
   reloc::BoundPlan b;
   b.extents = {4, 6, 33};
-  b.srcStrides = {2, 9, 100}; // arbitrary positive, strided innermost
+  b.srcStrides = {2, 9, 100};  // arbitrary positive, strided innermost
   b.dstStrides = {198, 33, 1}; // dense row-major dst
   b.elementSize = 4;
   b.totalBytes = 4 * 6 * 33 * 4;
@@ -295,11 +309,11 @@ TEST(GatherQuantize, ChunkedEqualsWholeRange) {
   std::vector<float> inv = {0.9f, 0.1f, 1.7f, 0.03f, 2.5f};
   const size_t total = 5 * 67;
   std::vector<int8_t> whole(total, 0), chunked(total, 1);
-  reloc::quant::gatherQuantizeF32S8(b, src.data(), whole.data(), inv.data(),
-                                    0, 5, Variant::Scalar);
+  reloc::quant::gatherQuantizeF32S8(b, src.data(), whole.data(), inv.data(), 0,
+                                    5, Variant::Scalar);
   for (auto [lo, hi] : {std::pair<int64_t, int64_t>{0, 2}, {2, 4}, {4, 5}})
-    reloc::quant::gatherQuantizeF32S8(b, src.data(), chunked.data(),
-                                      inv.data(), lo, hi, Variant::Scalar);
+    reloc::quant::gatherQuantizeF32S8(b, src.data(), chunked.data(), inv.data(),
+                                      lo, hi, Variant::Scalar);
   EXPECT_EQ(0, std::memcmp(whole.data(), chunked.data(), total));
 }
 
@@ -339,9 +353,8 @@ TEST(GatherQuantize, SimdVariantsBitExactVsScalar) {
       inv[c] = 0.03f + 0.11f * static_cast<float>(c);
     const size_t total = static_cast<size_t>(pc.b.totalBytes / 4);
     std::vector<int8_t> ref(total, 0);
-    reloc::quant::gatherQuantizeF32S8(pc.b, src.data(), ref.data(),
-                                      inv.data(), 0, pc.b.extents[0],
-                                      Variant::Scalar);
+    reloc::quant::gatherQuantizeF32S8(pc.b, src.data(), ref.data(), inv.data(),
+                                      0, pc.b.extents[0], Variant::Scalar);
     for (Variant v : {Variant::AVX512, Variant::AVX512Pf}) {
       std::vector<int8_t> got(total, 1);
       reloc::quant::gatherQuantizeF32S8(pc.b, src.data(), got.data(),
@@ -358,14 +371,13 @@ uint8_t refNibble(int8_t v) {
 }
 
 TEST(PackS8S4, ScalarPacksAndSaturates) {
-  const std::vector<int8_t> src = {0,   1,    -1, 7, -8, 8,
-                                   -9,  127,  -128, 3, 5,  -6};
+  const std::vector<int8_t> src = {0, 1, -1, 7, -8, 8, -9, 127, -128, 3, 5, -6};
   const int64_t pairs = 6;
   std::vector<uint8_t> dst(pairs, 0xAA);
   reloc::quant::packS8S4(src.data(), dst.data(), pairs, Variant::Scalar);
   for (int64_t i = 0; i < pairs; ++i) {
-    const uint8_t want = static_cast<uint8_t>(
-        refNibble(src[2 * i]) | (refNibble(src[2 * i + 1]) << 4));
+    const uint8_t want = static_cast<uint8_t>(refNibble(src[2 * i]) |
+                                              (refNibble(src[2 * i + 1]) << 4));
     EXPECT_EQ(dst[i], want) << "i=" << i;
   }
 }
@@ -395,8 +407,8 @@ TEST(QuantParallel, AllWrappersMatchSerial) {
     std::vector<float> inv(ch, 0.21f);
     std::vector<int8_t> a(ch * cs, 0), b(ch * cs, 1);
     reloc::quant::quantizePackF32S8(src.data(), a.data(), ch, cs, inv.data());
-    reloc::quant::quantizePackF32S8Parallel(pool, src.data(), b.data(), ch,
-                                            cs, inv.data());
+    reloc::quant::quantizePackF32S8Parallel(pool, src.data(), b.data(), ch, cs,
+                                            inv.data());
     ASSERT_EQ(0, std::memcmp(a.data(), b.data(), a.size()));
   }
   // gather_quantize on a transpose plan: 4099 rows x 263 cols: > 2 chunks

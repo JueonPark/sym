@@ -143,8 +143,8 @@ void packS8S4Scalar(const int8_t *src, uint8_t *dst, int64_t pairs) {
                                   (nibbleSat(src[2 * i + 1]) << 4));
 }
 
-void quantRunScalar(const float *src, int64_t srcStride, int8_t *dst,
-                    int64_t n, float invScale) {
+void quantRunScalar(const float *src, int64_t srcStride, int8_t *dst, int64_t n,
+                    float invScale) {
   if (srcStride == 1) {
     quantizePackScalar(src, dst, n, invScale);
     return;
@@ -156,8 +156,7 @@ void quantRunScalar(const float *src, int64_t srcStride, int8_t *dst,
 } // namespace detail
 
 void quantizePackF32S8(const float *src, int8_t *dst, int64_t channels,
-                       int64_t channelSize, const float *invScales,
-                       Variant v) {
+                       int64_t channelSize, const float *invScales, Variant v) {
   const Variant r = resolveFor(Kernel::QuantizePack, v);
   for (int64_t c = 0; c < channels; ++c) {
     const float *s = src + c * channelSize;
@@ -178,8 +177,7 @@ void quantizePackF32S8(const float *src, int8_t *dst, int64_t channels,
   }
 }
 
-void convertF32F16(const float *src, uint16_t *dst, int64_t count,
-                   Variant v) {
+void convertF32F16(const float *src, uint16_t *dst, int64_t count, Variant v) {
   const Variant r = resolveFor(Kernel::ConvertF32F16, v);
   switch (r) {
 #if defined(RELOC_QUANT_HAVE_X86_SIMD)
@@ -229,16 +227,14 @@ void gatherQuantizeF32S8(const BoundPlan &bound, const float *srcBase,
             outerEnd, /*srcOff=*/0, /*dstOff=*/0, /*invScale=*/0.0f, run);
 }
 
-void quantizePackF32S8Parallel(GatherPool &pool, const float *src,
-                               int8_t *dst, int64_t channels,
-                               int64_t channelSize, const float *invScales,
-                               Variant v) {
-  pool.parallelFor(0, channels, minPerWorker(channelSize * 4),
-                   [&](int64_t cb, int64_t ce) {
-                     quantizePackF32S8(src + cb * channelSize,
-                                       dst + cb * channelSize, ce - cb,
-                                       channelSize, invScales + cb, v);
-                   });
+void quantizePackF32S8Parallel(GatherPool &pool, const float *src, int8_t *dst,
+                               int64_t channels, int64_t channelSize,
+                               const float *invScales, Variant v) {
+  pool.parallelFor(
+      0, channels, minPerWorker(channelSize * 4), [&](int64_t cb, int64_t ce) {
+        quantizePackF32S8(src + cb * channelSize, dst + cb * channelSize,
+                          ce - cb, channelSize, invScales + cb, v);
+      });
 }
 
 void gatherQuantizeF32S8Parallel(GatherPool &pool, const BoundPlan &bound,
@@ -252,8 +248,8 @@ void gatherQuantizeF32S8Parallel(GatherPool &pool, const BoundPlan &bound,
   for (size_t k = 1; k < bound.dstStrides.size(); ++k)
     innerSpan += (bound.extents[k] - 1) * bound.dstStrides[k];
   if (bound.dstStrides[0] < innerSpan + 1) {
-    gatherQuantizeF32S8(bound, srcBase, dstBase, invScales, 0,
-                        bound.extents[0], v);
+    gatherQuantizeF32S8(bound, srcBase, dstBase, invScales, 0, bound.extents[0],
+                        v);
     return;
   }
   int64_t rowElems = 1;
@@ -261,8 +257,8 @@ void gatherQuantizeF32S8Parallel(GatherPool &pool, const BoundPlan &bound,
     rowElems *= bound.extents[k];
   pool.parallelFor(0, bound.extents[0], minPerWorker(rowElems * 4),
                    [&](int64_t rb, int64_t re) {
-                     gatherQuantizeF32S8(bound, srcBase, dstBase, invScales,
-                                         rb, re, v);
+                     gatherQuantizeF32S8(bound, srcBase, dstBase, invScales, rb,
+                                         re, v);
                    });
 }
 
