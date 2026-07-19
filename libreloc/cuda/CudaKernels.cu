@@ -150,6 +150,23 @@ __global__ void unpackS4S8Kernel(const uint8_t *src, int8_t *dst,
   dst[2 * i + 1] = static_cast<int8_t>(b) >> 4;
 }
 
+__global__ void dequantRelocateKernel(const int8_t *src, float *dst, Axes a,
+                                      const float *scales, int64_t total) {
+  int64_t i = blockIdx.x * static_cast<int64_t>(blockDim.x) + threadIdx.x;
+  if (i >= total)
+    return;
+  int64_t rem = i, srcOff = 0, dstOff = 0, c0 = 0;
+  for (int k = a.rank - 1; k >= 0; --k) {
+    int64_t c = rem % a.ext[k];
+    rem /= a.ext[k];
+    srcOff += c * a.srcStride[k];
+    dstOff += c * a.dstStride[k];
+    if (k == 0)
+      c0 = c;
+  }
+  dst[dstOff] = static_cast<float>(src[srcOff]) * scales[c0];
+}
+
 } // namespace
 
 void copyF32(const float *dSrc, float *dDst, int64_t count, void *stream) {
@@ -211,6 +228,16 @@ void unpackS4S8(const uint8_t *dSrc, int8_t *dDst, int64_t pairs,
                 void *stream) {
   unpackS4S8Kernel<<<static_cast<unsigned>(gridFor(pairs)), kThreads, 0,
                      asStream(stream)>>>(dSrc, dDst, pairs);
+}
+
+void dequantRelocateS8F32(const BoundPlan &bound, const int8_t *dSrc,
+                          float *dDst, const float *dScales, void *stream) {
+  assert(bound.extents.size() >= 2 &&
+         "per-channel scale needs a distinct outer axis");
+  Axes a = packAxes(bound);
+  int64_t total = totalElements(bound);
+  dequantRelocateKernel<<<static_cast<unsigned>(gridFor(total)), kThreads, 0,
+                          asStream(stream)>>>(dSrc, dDst, a, dScales, total);
 }
 
 } // namespace cuda

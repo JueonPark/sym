@@ -63,6 +63,15 @@ void dequantS8F32(const int8_t *dSrc, float *dDst, int64_t channels,
 void unpackS4S8(const uint8_t *dSrc, int8_t *dDst, int64_t pairs,
                 void *stream = nullptr);
 
+/// `dequant_relocate_s8_f32` (Method A's fused receive path; the R0 exit
+/// test's PCIe-hiding candidate on Turing): int8 in the plan's SRC layout
+/// -> fp32 in the plan's DST layout, scaled per coalesced outer channel
+/// (dScales: device array of extents[0] floats). Preconditions (asserted
+/// host-side): elementSize == 4, no pads, 2 <= rank <= 8.
+void dequantRelocateS8F32(const BoundPlan &bound, const int8_t *dSrc,
+                          float *dDst, const float *dScales,
+                          void *stream = nullptr);
+
 } // namespace cuda
 } // namespace reloc
 

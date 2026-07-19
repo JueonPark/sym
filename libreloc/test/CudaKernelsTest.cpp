@@ -235,6 +235,62 @@ TEST(CudaDequant, ExactVsHostReference) {
   ASSERT_EQ(0, std::memcmp(want.data(), got.data(), want.size() * 4));
 }
 
+// Host oracle: odometer over the full index space (independent of the
+// kernel's index decomposition).
+std::vector<float> cpuDequantRelocate(const reloc::BoundPlan &b,
+                                      const std::vector<int8_t> &src,
+                                      const std::vector<float> &scales) {
+  const size_t r = b.extents.size();
+  int64_t total = 1;
+  for (int64_t e : b.extents)
+    total *= e;
+  std::vector<float> dst(static_cast<size_t>(total), 0.0f);
+  std::vector<int64_t> idx(r, 0);
+  while (true) {
+    int64_t so = 0, dso = 0;
+    for (size_t k = 0; k < r; ++k) {
+      so += idx[k] * b.srcStrides[k];
+      dso += idx[k] * b.dstStrides[k];
+    }
+    dst[dso] = static_cast<float>(src[so]) * scales[idx[0]];
+    size_t k = r;
+    for (;;) {
+      if (k == 0)
+        return dst;
+      --k;
+      if (++idx[k] < b.extents[k])
+        break;
+      idx[k] = 0;
+    }
+  }
+}
+
+TEST(CudaDequantRelocate, MatchesHostOracle) {
+  for (auto b : {transposePlan(129, 517), transposePlan(64, 64)}) {
+    std::mt19937 rng(43);
+    std::vector<int8_t> src(static_cast<size_t>(maxSrcOffset(b) + 1));
+    for (int8_t &v : src)
+      v = static_cast<int8_t>(rng());
+    std::vector<float> scales(static_cast<size_t>(b.extents[0]));
+    for (size_t c = 0; c < scales.size(); ++c)
+      scales[c] = 0.007f * static_cast<float>(c + 1);
+    std::vector<float> want = cpuDequantRelocate(b, src, scales);
+    DeviceBuffer dSrc(src.size()), dScales(scales.size() * 4),
+        dDst(want.size() * 4);
+    ASSERT_TRUE(dSrc.valid());
+    ASSERT_TRUE(dScales.valid());
+    ASSERT_TRUE(dDst.valid());
+    upload(dSrc, src);
+    upload(dScales, scales);
+    ASSERT_EQ(cudaSuccess, cudaMemset(dDst.p, 0, want.size() * 4));
+    reloc::cuda::dequantRelocateS8F32(b, dSrc.as<int8_t>(), dDst.as<float>(),
+                                      dScales.as<float>());
+    ASSERT_EQ(cudaSuccess, cudaDeviceSynchronize());
+    std::vector<float> got = download<float>(dDst, want.size());
+    ASSERT_EQ(0, std::memcmp(want.data(), got.data(), want.size() * 4));
+  }
+}
+
 TEST(CudaUnpack, InverseOfCpuPack) {
   const int64_t pairs = 100003;
   std::mt19937 rng(41);
