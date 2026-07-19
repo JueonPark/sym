@@ -42,6 +42,28 @@ void convertF32F16AVX512(const float *src, uint16_t *dst, int64_t n) {
     dst[i] = f32ToF16Scalar(src[i]);
 }
 
+void packS8S4AVX512(const int8_t *src, uint8_t *dst, int64_t pairs) {
+  const __m512i lo8 = _mm512_set1_epi8(-8);
+  const __m512i hi7 = _mm512_set1_epi8(7);
+  const __m512i mask = _mm512_set1_epi16(0x0F0F);
+  int64_t i = 0;
+  for (; i + 32 <= pairs; i += 32) { // 64 int8 in -> 32 packed bytes out
+    __m512i v = _mm512_loadu_si512(src + 2 * i);
+    v = _mm512_max_epi8(v, lo8);
+    v = _mm512_min_epi8(v, hi7);
+    v = _mm512_and_si512(v, mask);
+    // Per epi16 lane: bits 0-3 = even nibble, bits 8-11 = odd nibble.
+    // v | (v >> 4) puts the odd nibble at bits 4-7; VPMOVWB truncates each
+    // lane to its low byte = the packed result.
+    const __m512i t = _mm512_or_si512(v, _mm512_srli_epi16(v, 4));
+    _mm256_storeu_si256(reinterpret_cast<__m256i *>(dst + i),
+                        _mm512_cvtepi16_epi8(t));
+  }
+  for (; i < pairs; ++i)
+    dst[i] = static_cast<uint8_t>(nibbleSat(src[2 * i]) |
+                                  (nibbleSat(src[2 * i + 1]) << 4));
+}
+
 } // namespace detail
 } // namespace quant
 } // namespace reloc

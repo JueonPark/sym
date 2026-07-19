@@ -102,6 +102,12 @@ void convertF32F16Scalar(const float *src, uint16_t *dst, int64_t n) {
     dst[i] = f32ToF16Scalar(src[i]);
 }
 
+void packS8S4Scalar(const int8_t *src, uint8_t *dst, int64_t pairs) {
+  for (int64_t i = 0; i < pairs; ++i)
+    dst[i] = static_cast<uint8_t>(nibbleSat(src[2 * i]) |
+                                  (nibbleSat(src[2 * i + 1]) << 4));
+}
+
 } // namespace detail
 
 void quantizePackF32S8(const float *src, int8_t *dst, int64_t channels,
@@ -143,6 +149,18 @@ void convertF32F16(const float *src, uint16_t *dst, int64_t count,
     detail::convertF32F16Scalar(src, dst, count);
     break;
   }
+}
+
+void packS8S4(const int8_t *src, uint8_t *dst, int64_t pairs, Variant v) {
+  const Variant r = resolveFor(Kernel::PackS8S4, v);
+#if defined(RELOC_QUANT_HAVE_X86_SIMD)
+  if (r == Variant::AVX512) {
+    detail::packS8S4AVX512(src, dst, pairs);
+    return;
+  }
+#endif
+  (void)r;
+  detail::packS8S4Scalar(src, dst, pairs);
 }
 
 } // namespace quant

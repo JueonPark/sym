@@ -33,6 +33,13 @@ void quantizePackScalar(const float *src, int8_t *dst, int64_t n,
 uint16_t f32ToF16Scalar(float f);
 void convertF32F16Scalar(const float *src, uint16_t *dst, int64_t n);
 
+inline uint8_t nibbleSat(int8_t v) {
+  int x = v < -8 ? -8 : (v > 7 ? 7 : v);
+  return static_cast<uint8_t>(x & 0xF);
+}
+
+void packS8S4Scalar(const int8_t *src, uint8_t *dst, int64_t pairs);
+
 #if defined(RELOC_QUANT_HAVE_X86_SIMD)
 // Defined in QuantAVX2.cpp / QuantAVX512.cpp (per-TU -m flags).
 void quantizePackAVX2(const float *src, int8_t *dst, int64_t n,
@@ -41,6 +48,7 @@ void quantizePackAVX512(const float *src, int8_t *dst, int64_t n,
                         float invScale);
 void convertF32F16F16C(const float *src, uint16_t *dst, int64_t n);
 void convertF32F16AVX512(const float *src, uint16_t *dst, int64_t n);
+void packS8S4AVX512(const int8_t *src, uint8_t *dst, int64_t pairs);
 #endif
 
 } // namespace detail

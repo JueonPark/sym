@@ -197,4 +197,37 @@ TEST(ConvertF32F16, SimdVariantsBitExactVsScalar) {
     GTEST_SKIP() << "no SIMD tier supported on this host";
 }
 
+uint8_t refNibble(int8_t v) {
+  int x = v < -8 ? -8 : (v > 7 ? 7 : v);
+  return static_cast<uint8_t>(x & 0xF);
+}
+
+TEST(PackS8S4, ScalarPacksAndSaturates) {
+  const std::vector<int8_t> src = {0,   1,    -1, 7, -8, 8,
+                                   -9,  127,  -128, 3, 5,  -6};
+  const int64_t pairs = 6;
+  std::vector<uint8_t> dst(pairs, 0xAA);
+  reloc::quant::packS8S4(src.data(), dst.data(), pairs, Variant::Scalar);
+  for (int64_t i = 0; i < pairs; ++i) {
+    const uint8_t want = static_cast<uint8_t>(
+        refNibble(src[2 * i]) | (refNibble(src[2 * i + 1]) << 4));
+    EXPECT_EQ(dst[i], want) << "i=" << i;
+  }
+}
+
+TEST(PackS8S4, Avx512BitExactVsScalar) {
+  if (!reloc::quant::cpuSupports(Variant::AVX512))
+    GTEST_SKIP() << "AVX-512 unsupported on this host";
+  std::mt19937 rng(13);
+  for (int64_t pairs : {1, 31, 32, 33, 100, 100003}) {
+    std::vector<int8_t> src(2 * pairs);
+    for (int8_t &b : src)
+      b = static_cast<int8_t>(rng()); // full int8 range incl. saturating
+    std::vector<uint8_t> a(pairs, 0), b(pairs, 1);
+    reloc::quant::packS8S4(src.data(), a.data(), pairs, Variant::Scalar);
+    reloc::quant::packS8S4(src.data(), b.data(), pairs, Variant::AVX512);
+    ASSERT_EQ(0, std::memcmp(a.data(), b.data(), pairs)) << "pairs=" << pairs;
+  }
+}
+
 } // namespace

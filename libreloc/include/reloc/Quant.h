@@ -61,6 +61,12 @@ void quantizePackF32S8(const float *src, int8_t *dst, int64_t channels,
 void convertF32F16(const float *src, uint16_t *dst, int64_t count,
                    Variant v = Variant::Auto);
 
+/// K3, issue #74's `pack_s8_s4`: int8 -> int4 nibble pack for the r=0.125
+/// sweep. Each input is saturated to [-8, 7]; output byte i = low nibble
+/// from src[2i], high nibble from src[2i+1]. Reads 2*pairs, writes pairs.
+void packS8S4(const int8_t *src, uint8_t *dst, int64_t pairs,
+              Variant v = Variant::Auto);
+
 } // namespace quant
 } // namespace reloc
 
