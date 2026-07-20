@@ -81,4 +81,12 @@ if(RELOC_ENABLE_CUDA)
   target_include_directories(bench-rtrack PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
   target_compile_features(bench-rtrack PRIVATE cxx_std_17)
   target_link_libraries(bench-rtrack PRIVATE reloc_runtime CUDA::cudart)
+
+  # M0 bring-up / EXP-3 seed (issue #73): per-GPU and concurrent pinned
+  # copy bandwidth. GPU-only, never in CI.
+  add_executable(bench-multigpu-h2d rtrack/multigpu_h2d.cu)
+  target_include_directories(bench-multigpu-h2d
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_compile_features(bench-multigpu-h2d PRIVATE cxx_std_17)
+  target_link_libraries(bench-multigpu-h2d PRIVATE CUDA::cudart)
 endif()

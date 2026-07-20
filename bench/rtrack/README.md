@@ -87,9 +87,15 @@ nvcc -ccbin g++ -O3 -DNDEBUG -std=c++17 -arch=sm_75 \
 ## Session ritual (environment controls, issue #76)
 
 1. `sudo cpupower frequency-set -g performance` (or the sysfs equivalent).
-2. Fix GPU clocks where the driver allows: `sudo nvidia-smi -lgc <sm_clock>`
-   (`-rgc` to reset afterwards).
-3. Record calibration ONCE per session — this also samples the PCIe link
+2. `sudo nvidia-smi -pm 1` (persistence mode; resets at reboot). Without
+   it links/clocks ramp per process and cold measurements read a fraction
+   of the real bandwidth. Fix GPU clocks where the driver allows:
+   `sudo nvidia-smi -lgc <sm_clock>` (`-rgc` to reset afterwards).
+3. On multi-NUMA boxes, pin the process to the GPU's affinity cores
+   (`nvidia-smi topo -m`; `taskset -c ...`) — see
+   docs/m0-2080ti-bringup.md for why unpinned runs are bimodal on the
+   EPYC box.
+4. Record calibration ONCE per session — this also samples the PCIe link
    **under load** (Gen3/Gen4 cards downtrain to gen1 at idle; idle numbers
    understate the link):
 
@@ -98,7 +104,7 @@ nvcc -ccbin g++ -O3 -DNDEBUG -std=c++17 -arch=sm_75 \
        --load-bin ./bench-rtrack
    ```
 
-4. Run the sweep pinned to one NUMA node when `numactl` is available
+5. Run the sweep pinned to one NUMA node when `numactl` is available
    (`"numactl": "--membind=0 --cpunodebind=0"` in the config; the runner
    warns and continues unpinned when it is not installed):
 
@@ -113,7 +119,7 @@ nvcc -ccbin g++ -O3 -DNDEBUG -std=c++17 -arch=sm_75 \
    `out_csv`, and the driver suppresses `--csv-header` into a non-empty
    file (no mid-file header rows).
 
-5. Figure 1:
+6. Figure 1:
 
    ```sh
    python3 bench/rtrack/figure1.py --csv gen3.csv gen4.csv --out figure1.png
