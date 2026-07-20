@@ -8,6 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rtrack/chunking.h"
+#include "rtrack/csv.h"
 #include "rtrack/plans.h"
 #include "rtrack/rstats.h"
 
@@ -190,6 +191,41 @@ TEST(RtrackStats, NowMsMonotonic) {
   double a = bench::rtrack::nowMs();
   double b = bench::rtrack::nowMs();
   EXPECT_GE(b, a);
+}
+
+size_t commaCount(const std::string &s) {
+  return static_cast<size_t>(std::count(s.begin(), s.end(), ','));
+}
+
+TEST(RtrackCsv, HeaderAndRowFieldCountsMatch) {
+  bench::rtrack::CsvRow row;
+  EXPECT_EQ(commaCount(bench::rtrack::csvHeaderLine()),
+            commaCount(bench::rtrack::csvRowLine(row)));
+}
+
+TEST(RtrackCsv, RowGolden) {
+  bench::rtrack::CsvRow r;
+  r.machine = "epyc-2080ti";
+  r.gpu = "NVIDIA GeForce RTX 2080 Ti";
+  r.method = "a";
+  r.transform = "transpose";
+  r.dtypeOut = "s8";
+  r.n = 8192;
+  r.r = 0.25;
+  r.threads = 8;
+  r.chunkReqBytes = 4ll << 20;
+  r.stagingBytes = 4ll << 20;
+  r.nChunks = 16;
+  r.wall = {12.5, 12.0, 13.75, 2.4, false, 30};
+  r.gpuPipe = {12.4, 0, 0, 0, false, 30};
+  r.cpuStage = {8.0, 0, 0, 0, false, 30};
+  r.h2d = {2.75, 0, 0, 0, false, 30};
+  r.gpuKernel = {0.0, 0, 0, 0, false, 30};
+  r.effectiveInputGbps = 21.47;
+  r.verified = true;
+  EXPECT_EQ(bench::rtrack::csvRowLine(r),
+            "epyc-2080ti,NVIDIA GeForce RTX 2080 Ti,a,transpose,8192,s8,0.25,"
+            "8,4,4194304,16,12.5,12,13.75,2.4,0,21.47,12.4,8,2.75,0,1");
 }
 
 } // namespace
