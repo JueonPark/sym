@@ -1,0 +1,14 @@
+{
+  "machine": "epyc7351-2080ti",
+  "bin": "../../../bench-rtrack",
+  "numactl": "--membind=0 --cpunodebind=0",
+  "transforms": ["T1", "T1b", "T2", "T3", "T4", "T5"],
+  "methods": "both",
+  "n": [2048, 4096, 8192, 16384],
+  "chunk_mib": [4, 16, 64, 256],
+  "threads": [1, 2, 4, 8],
+  "warmup": 5,
+  "iters": 30,
+  "calibration": "calibration.json",
+  "out_csv": "rtrack.csv"
+}
