@@ -14,6 +14,7 @@ downtrain at idle, so idle lspci/nvidia-smi numbers understate the link).
 """
 
 import argparse
+import glob
 import json
 import os
 import shutil
@@ -27,11 +28,16 @@ TRIAD_C = r"""
 #include <stdlib.h>
 #include <time.h>
 /* Schoolbook triad a[i] = b[i] + s*c[i] (NOT the licensed STREAM code).
-   3 arrays x 8 bytes per element move per iteration; best of 5. */
+   3 arrays x 8 bytes per element move per iteration; best of 5. The init
+   loop is parallel too: first-touch page placement must match the triad
+   threads or a multi-NUMA-node host measures remote-node bandwidth.
+   Casts keep this valid C++ for the g++ fallback. */
 int main(void) {
   const long n = 1L << 26; /* 3 x 512 MiB */
-  double *a = malloc(n * 8), *b = malloc(n * 8), *c = malloc(n * 8);
+  double *a = (double *)malloc(n * 8), *b = (double *)malloc(n * 8),
+         *c = (double *)malloc(n * 8);
   if (!a || !b || !c) return 1;
+#pragma omp parallel for
   for (long i = 0; i < n; ++i) { b[i] = 1.5; c[i] = 2.5; a[i] = 0.0; }
   double best = 0;
   for (int rep = 0; rep < 5; ++rep) {
@@ -79,10 +85,8 @@ def probe_cpu(notes):
             model = line.split(":", 1)[1].strip()
             break
     governors = sorted({
-        g for g in (read_file(p) for p in
-                    sorted(__import__("glob").glob(
-                        "/sys/devices/system/cpu/cpu*/cpufreq/"
-                        "scaling_governor")))
+        g for g in (read_file(p) for p in glob.glob(
+            "/sys/devices/system/cpu/cpu*/cpufreq/scaling_governor"))
         if g
     })
     if not governors:
@@ -118,28 +122,42 @@ def probe_pcie_under_load(load_bin, notes):
     if not load_bin:
         notes.append("pcie_under_load skipped: no --load-bin")
         return None
+    # Small N so the driver reaches its copy loop quickly; sample the link
+    # once per second for up to 25 s and keep the MAX gen/width observed --
+    # a single fixed-delay sample can land during CUDA-context/fixture
+    # setup while the bus is still idle and downtrained.
     proc = subprocess.Popen(
-        [load_bin, "--transform", "T1", "--method", "b", "--n", "8192",
-         "--chunk-mib", "64", "--warmup", "0", "--iters", "200",
+        [load_bin, "--transform", "T1", "--method", "b", "--n", "4096",
+         "--chunk-mib", "64", "--warmup", "0", "--iters", "100000",
          "--no-verify", "--csv", os.devnull],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    best = None
     try:
-        time.sleep(3)  # let the copy loop reach steady state
-        out = run(["nvidia-smi",
-                   "--query-gpu=pcie.link.gen.current,"
-                   "pcie.link.width.current",
-                   "--format=csv,noheader", "-i", "0"])
+        deadline = time.time() + 25
+        while time.time() < deadline and proc.poll() is None:
+            time.sleep(1)
+            out = run(["nvidia-smi",
+                       "--query-gpu=pcie.link.gen.current,"
+                       "pcie.link.width.current",
+                       "--format=csv,noheader", "-i", "0"])
+            if out is None:
+                continue
+            try:
+                gen, width = [int(p.strip()) for p in out.split(",")[:2]]
+            except ValueError:
+                continue
+            if best is None or (gen, width) > best:
+                best = (gen, width)
     finally:
         proc.terminate()
         try:
             proc.wait(timeout=30)
         except subprocess.TimeoutExpired:
             proc.kill()
-    if out is None:
+    if best is None:
         notes.append("pcie_under_load sample failed")
         return None
-    gen, width = [p.strip() for p in out.split(",")][:2]
-    return {"gen": gen, "width": width}
+    return {"gen": str(best[0]), "width": str(best[1])}
 
 
 def probe_triad(notes):

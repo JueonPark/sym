@@ -62,6 +62,12 @@ struct Workload {
   GpuStage gpuStage;
 };
 
+/// NOTE (quant workloads): the quantization channel is the plan's
+/// coalesced OUTER axis -- the gatherQuantizeF32S8 contract -- so T4's
+/// scales are per BATCH image, not per C channel (a per-C NHWC quantize
+/// is not expressible with the R0 kernel set). Read T4 as "strided
+/// relocation + fused int8 with batch-granular scales" in R1 analysis.
+
 inline const std::vector<Workload> &allWorkloads() {
   static const std::vector<Workload> ws = {
       {"T1", "transpose", DtypeOut::F32, 1.0, &transposePlan,

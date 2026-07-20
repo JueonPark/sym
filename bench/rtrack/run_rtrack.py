@@ -6,9 +6,12 @@
 Loads the session calibration (running calibrate.py first when the file
 is missing), writes '#'-prefixed metadata lines plus the driver's header
 row, then invokes bench-rtrack once per (n, threads) point with the full
-transform/method/chunk sweep, streaming its stdout rows into the CSV.
-A nonzero driver exit (e.g. a verify-gate failure) aborts the run with
-the failing command echoed. stdlib only.
+transform/method/chunk sweep, streaming its stdout rows into the CSV as
+they are produced. Relative paths in the config resolve against the
+CURRENT working directory (the session ritual runs everything from one
+directory). A nonzero driver exit (e.g. a verify-gate failure) aborts the
+run with the failing command echoed; an existing non-empty out_csv is
+never overwritten. stdlib only.
 """
 
 import argparse
@@ -37,16 +40,14 @@ def main():
 
     with open(args.config) as f:
         cfg = json.load(f)
-    cfg_dir = os.path.dirname(os.path.abspath(args.config))
 
-    def resolve(path):
-        return path if os.path.isabs(path) else os.path.join(cfg_dir, path)
-
-    bin_path = resolve(cfg["bin"])
+    # Absolute so Popen executes the file instead of searching PATH when
+    # the config says just "bench-rtrack".
+    bin_path = os.path.abspath(cfg["bin"])
     if not os.path.exists(bin_path):
         sys.exit(f"error: driver binary not found: {bin_path}")
 
-    cal_path = resolve(cfg.get("calibration", "calibration.json"))
+    cal_path = cfg.get("calibration", "calibration.json")
     if not os.path.exists(cal_path):
         print(f"run_rtrack: {cal_path} missing, running calibrate.py",
               file=sys.stderr)
@@ -67,12 +68,17 @@ def main():
             numactl_prefix = ["numactl", *numactl_cfg.split()]
 
     methods = cfg.get("methods", "both")
-    transforms = ",".join(cfg.get(
-        "transforms", ["T1", "T1b", "T2", "T3", "T4", "T5"]))
+    transforms = cfg.get("transforms", "all")
+    if isinstance(transforms, list):
+        transforms = ",".join(transforms)
     chunk_mib = ",".join(str(c) for c in cfg.get("chunk_mib",
                                                  [4, 16, 64, 256]))
 
-    out_csv = resolve(cfg.get("out_csv", "rtrack.csv"))
+    out_csv = cfg.get("out_csv", "rtrack.csv")
+    if os.path.exists(out_csv) and os.path.getsize(out_csv) > 0:
+        sys.exit(f"error: {out_csv} already exists and is non-empty; "
+                 "move it aside or point out_csv at a fresh file "
+                 "(measured data is never silently overwritten)")
     with open(out_csv, "w") as csv:
         meta = []
         flatten("config", {k: v for k, v in cfg.items()
@@ -97,13 +103,20 @@ def main():
                     "--machine", cfg.get("machine", os.uname().nodename),
                     "--csv", "-",
                 ]
+                if "variant" in cfg:
+                    cmd += ["--variant", str(cfg["variant"])]
                 if first:
                     cmd.append("--csv-header")
                     first = False
                 print(f"run_rtrack: {' '.join(cmd)}", file=sys.stderr)
-                proc = subprocess.run(cmd, stdout=subprocess.PIPE, text=True)
-                csv.write(proc.stdout)
-                csv.flush()
+                # Stream rows as the driver emits them so an interrupted
+                # sweep keeps every completed measurement.
+                proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                        text=True)
+                for line in proc.stdout:
+                    csv.write(line)
+                    csv.flush()
+                proc.wait()
                 if proc.returncode != 0:
                     sys.exit(f"error: driver exited {proc.returncode}: "
                              f"{' '.join(cmd)}")

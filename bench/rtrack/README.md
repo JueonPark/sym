@@ -33,6 +33,24 @@ against a scalar CPU reference before it is timed.
 | T4 | `nchw_nhwc_quant` (B,C,H,W = N/64,64,64,N/64) | s8 | 0.25 | strided, fused |
 | T5 | `convert_f16` | f16 | 0.5 | contiguous |
 
+Caveats to read T-rows correctly:
+
+- **Chunk semantics differ per method**: Method A's chunk request budgets
+  staged OUTPUT bytes (the staging buffer holds transformed rows), Method
+  B's budgets INPUT bytes. For r < 1 an "A at 4 MiB" chunk touches 4/r MiB
+  of source. Compare best-C *within* a method; cross-method chunk-size
+  comparisons are confounded with r. Chunk requests that clamp to the same
+  1-chunk plan are measured once and skipped thereafter (stderr notes it).
+- **Quant scale granularity**: the channel is the plan's coalesced outer
+  axis (the `gather_quantize_f32_s8` contract), so T4's scales are per
+  batch image, not per C channel.
+- **Method B kernel path**: `relocate_f32` takes its SMEM-tiled path only
+  for the exact rank-2 transpose shape (T1); T1b and T4 run the naive
+  fallback (bit-identical output, different bandwidth).
+- **Stage attribution overhead**: per-chunk H2D event pairs live inside
+  the timed pipeline (~2 event records per chunk); at the 4 MiB end of the
+  sweep this adds a fixed few-µs-per-chunk cost to both methods.
+
 Plans are **hand-authored** in `plans.h` and verified against independent
 index-math oracles + bijectivity in `RtrackTest.cpp`. Do NOT switch them to
 decoding `bench/reference_plan.h`: the frozen golden blob on main still
@@ -90,6 +108,10 @@ nvcc -ccbin g++ -O3 -DNDEBUG -std=c++17 -arch=sm_75 \
 
    The output CSV carries the calibration + config as `#` comment lines;
    kernel/driver/CUDA versions therefore ride in every file's header.
+   Relative paths in the config resolve against the current working
+   directory; the runner refuses to overwrite an existing non-empty
+   `out_csv`, and the driver suppresses `--csv-header` into a non-empty
+   file (no mid-file header rows).
 
 5. Figure 1:
 

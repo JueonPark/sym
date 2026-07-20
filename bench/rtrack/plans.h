@@ -1,4 +1,4 @@
-//===- plans.h - hand-authored BoundPlans for the R-track workloads -------===//
+//===- plans.h - hand-authored R-track workload plans -----------*- C++ -*-===//
 //
 // R0.3 (issue #76). Every plan is authored directly as a BoundPlan (the
 // CudaKernelsTest convention) instead of decoding bench/reference_plan.h:

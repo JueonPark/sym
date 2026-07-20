@@ -3,8 +3,10 @@
 // One row per (workload, method, chunk) config. Session metadata (machine
 // calibration, versions, environment controls) travels as '#'-prefixed
 // header comment lines written by run_rtrack.py, not here. Stage columns
-// are medians over the 30 timed iterations. No quoting: field values must
-// not contain commas (asserted).
+// are medians over the 30 timed iterations. No quoting: commas inside
+// string fields are rewritten to ';' (an assert would vanish under the
+// -DNDEBUG benchmarking build, and one comma would shift every downstream
+// column).
 //
 //===----------------------------------------------------------------------===//
 
@@ -14,7 +16,6 @@
 #include "protocol.h"
 #include "rtrack/rstats.h"
 
-#include <cassert>
 #include <cstdint>
 #include <string>
 
@@ -41,13 +42,20 @@ inline std::string csvHeaderLine() {
          "gpu_kernel_ms,verified";
 }
 
+inline std::string csvField(std::string s) {
+  for (char &c : s)
+    if (c == ',')
+      c = ';';
+  return s;
+}
+
 inline std::string csvRowLine(const CsvRow &r) {
-  assert(r.machine.find(',') == std::string::npos &&
-         r.gpu.find(',') == std::string::npos);
   auto num = [](double v) { return bench::jsonNumber(v); };
   std::string out;
-  out += r.machine + ',' + r.gpu + ',' + r.method + ',' + r.transform + ',';
-  out += std::to_string(r.n) + ',' + r.dtypeOut + ',' + num(r.r) + ',';
+  out += csvField(r.machine) + ',' + csvField(r.gpu) + ',' +
+         csvField(r.method) + ',' + csvField(r.transform) + ',';
+  out +=
+      std::to_string(r.n) + ',' + csvField(r.dtypeOut) + ',' + num(r.r) + ',';
   out += std::to_string(r.threads) + ',';
   out += num(static_cast<double>(r.chunkReqBytes) / (1 << 20)) + ',';
   out += std::to_string(r.stagingBytes) + ',' + std::to_string(r.nChunks);

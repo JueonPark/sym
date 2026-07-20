@@ -41,8 +41,10 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <set>
 #include <string>
 #include <unistd.h>
+#include <utility>
 #include <vector>
 
 #define CUDA_CHECK(x)                                                         \
@@ -147,7 +149,8 @@ struct Fixture {
   }
 };
 
-void buildFixture(Fixture &f, const Workload &w, int64_t n, bool methodB) {
+void buildFixture(Fixture &f, const Workload &w, int64_t n, bool methodB,
+                  bool verify) {
   f.w = &w;
   f.bound = w.makePlan(n);
   f.totalElems = n * n;
@@ -157,6 +160,32 @@ void buildFixture(Fixture &f, const Workload &w, int64_t n, bool methodB) {
   f.rowOutBytes = f.bound.dstStrides[0] * dtypeBytes(w.dtypeOut);
   f.channels = f.bound.extents[0];
   f.channelSize = f.totalElems / f.channels;
+
+  // Fail fast on recipes the chunked staging rebase, the parallel
+  // per-outer-row gather, and the per-channel quantize cannot handle.
+  // These are library-assert territory, but release benchmarking builds
+  // compile with -DNDEBUG, so check unconditionally (issue #63's lesson:
+  // a silently wrong benchmark is worse than none).
+  int64_t innerExtent = 1;
+  for (size_t k = 1; k < f.bound.extents.size(); ++k)
+    innerExtent *= f.bound.extents[k];
+  if (!f.bound.padRegions.empty() || f.bound.dstStrides.back() != 1 ||
+      f.bound.dstStrides[0] != innerExtent) {
+    std::fprintf(stderr,
+                 "error: %s: plan is not packed-dst/pad-free; the rtrack "
+                 "pipeline cannot measure it\n",
+                 w.id);
+    std::exit(1);
+  }
+  if ((w.cpuStage == CpuStage::QuantPack ||
+       w.cpuStage == CpuStage::ConvertF16) &&
+      f.bound.srcStrides != f.bound.dstStrides) {
+    std::fprintf(stderr,
+                 "error: %s: contiguous CPU stage requires an identity "
+                 "plan (the reference computation assumes it too)\n",
+                 w.id);
+    std::exit(1);
+  }
 
   f.hostSrc.resize(static_cast<size_t>(f.totalElems));
   for (int64_t i = 0; i < f.totalElems; ++i)
@@ -170,13 +199,12 @@ void buildFixture(Fixture &f, const Workload &w, int64_t n, bool methodB) {
     const size_t rank = f.bound.extents.size();
     for (int64_t c = 0; c < f.channels; ++c) {
       float maxAbs = 0.0f;
+      // Odometer over the inner axes with an incrementally maintained
+      // source offset (O(1) per element, not O(rank)).
       std::vector<int64_t> idx(rank, 0);
-      idx[0] = c;
+      int64_t so = c * f.bound.srcStrides[0];
       bool done = false;
       while (!done) {
-        int64_t so = 0;
-        for (size_t k = 0; k < rank; ++k)
-          so += idx[k] * f.bound.srcStrides[k];
         maxAbs =
             std::max(maxAbs, std::fabs(f.hostSrc[static_cast<size_t>(so)]));
         size_t k = rank;
@@ -186,9 +214,12 @@ void buildFixture(Fixture &f, const Workload &w, int64_t n, bool methodB) {
             break;
           }
           --k;
-          if (++idx[k] < f.bound.extents[k])
+          if (++idx[k] < f.bound.extents[k]) {
+            so += f.bound.srcStrides[k];
             break;
+          }
           idx[k] = 0;
+          so -= (f.bound.extents[k] - 1) * f.bound.srcStrides[k];
         }
       }
       f.invScales[static_cast<size_t>(c)] = maxAbs > 0 ? 127.0f / maxAbs : 1.0f;
@@ -196,22 +227,28 @@ void buildFixture(Fixture &f, const Workload &w, int64_t n, bool methodB) {
   }
 
   // CPU reference of the final artifact (scalar kernels; the plan itself
-  // is oracle-verified in RtrackTest).
-  f.ref.resize(static_cast<size_t>(f.outBytes));
-  switch (w.dtypeOut) {
-  case DtypeOut::F32:
-    reloc::executeH2D(f.bound, f.hostSrc.data(), f.ref.data());
-    break;
-  case DtypeOut::S8:
-    reloc::quant::gatherQuantizeF32S8(
-        f.bound, f.hostSrc.data(), reinterpret_cast<int8_t *>(f.ref.data()),
-        f.invScales.data(), 0, f.channels, reloc::quant::Variant::Scalar);
-    break;
-  case DtypeOut::F16:
-    reloc::quant::convertF32F16(f.hostSrc.data(),
-                                reinterpret_cast<uint16_t *>(f.ref.data()),
-                                f.totalElems, reloc::quant::Variant::Scalar);
-    break;
+  // is oracle-verified in RtrackTest). Skipped under --no-verify: at large
+  // N the serial scalar reference costs seconds per workload and nothing
+  // reads it when the gate is off.
+  if (verify) {
+    f.ref.resize(static_cast<size_t>(f.outBytes));
+    switch (w.dtypeOut) {
+    case DtypeOut::F32:
+      reloc::executeH2D(f.bound, f.hostSrc.data(), f.ref.data());
+      break;
+    case DtypeOut::S8:
+      reloc::quant::gatherQuantizeF32S8(
+          f.bound, f.hostSrc.data(), reinterpret_cast<int8_t *>(f.ref.data()),
+          f.invScales.data(), 0, f.channels, reloc::quant::Variant::Scalar);
+      break;
+    case DtypeOut::F16:
+      // Valid only because ConvertF16 workloads are identity-plan (checked
+      // above); a relocating f16 workload needs a plan-aware reference.
+      reloc::quant::convertF32F16(f.hostSrc.data(),
+                                  reinterpret_cast<uint16_t *>(f.ref.data()),
+                                  f.totalElems, reloc::quant::Variant::Scalar);
+      break;
+    }
   }
 
   CUDA_CHECK(cudaMalloc(&f.dOut, static_cast<size_t>(f.outBytes)));
@@ -308,9 +345,14 @@ struct Pipeline {
 StageTimes runMethodA(const Fixture &f, const RowChunks &ck, Pipeline &pl,
                       reloc::GatherPool &pool, reloc::quant::Variant variant) {
   const Workload &w = *f.w;
+  // Per-worker floor in SOURCE bytes (the library wrappers' convention,
+  // Quant.cpp): an s8-output row stages 1 byte/element but still reads 4,
+  // so flooring on staged output bytes would cap parallelism 4x too early
+  // for the quant workloads at small chunks.
+  const int64_t rowSrcBytes = f.bound.dstStrides[0] * 4;
   const int64_t minRows = std::max<int64_t>(
       1, static_cast<int64_t>(reloc::kMinGatherBytesPerWorker) /
-             std::max<int64_t>(1, ck.rowBytes));
+             std::max<int64_t>(1, rowSrcBytes));
 
   StageTimes t;
   const double w0 = nowMs();
@@ -544,23 +586,51 @@ int run(const Options &opt) {
       return 1;
     }
   }
-  if (opt.csvHeader)
-    std::fprintf(csv, "%s\n", csvHeaderLine().c_str());
+  if (opt.csvHeader) {
+    // Appending a header into the middle of an existing file would poison
+    // every downstream parser; only emit into an empty target.
+    if (csv == stdout || std::ftell(csv) == 0)
+      std::fprintf(csv, "%s\n", csvHeaderLine().c_str());
+    else
+      std::fprintf(stderr,
+                   "rtrack: --csv-header suppressed (%s is non-empty)\n",
+                   opt.csvPath);
+  }
 
   reloc::GatherPool pool(opt.threads);
   int rc = 0;
   for (const Workload *w : opt.workloads) {
     Fixture f;
-    buildFixture(f, *w, opt.n, opt.runB);
+    buildFixture(f, *w, opt.n, opt.runB, opt.verify);
+    // Chunk requests past the artifact size all clamp to the same 1-chunk
+    // plan; measuring the identical config again would only hand
+    // figure1's best-chunk argmin duplicate samples.
+    std::set<std::pair<int64_t, int64_t>> seenA, seenB;
     for (int64_t chunk : opt.chunkBytes) {
-      if (opt.runA && !runConfig(f, /*methodA=*/true, chunk, opt, pool,
-                                 gpuName, csv))
-        rc = 1;
+      if (opt.runA) {
+        RowChunks rck = planRowChunks(f.rows, f.rowOutBytes, chunk);
+        if (!seenA.insert({rck.stagingBytes, rck.nChunks}).second)
+          std::fprintf(stderr,
+                       "rtrack: %-4s a chunk=%4lldMiB duplicates an earlier "
+                       "sweep point; skipped\n",
+                       w->id, static_cast<long long>(chunk >> 20));
+        else if (!runConfig(f, /*methodA=*/true, chunk, opt, pool, gpuName,
+                            csv))
+          rc = 1;
+      }
       if (rc)
         break;
-      if (opt.runB && !runConfig(f, /*methodA=*/false, chunk, opt, pool,
-                                 gpuName, csv))
-        rc = 1;
+      if (opt.runB) {
+        ByteChunks bck = planByteChunks(f.inBytes, chunk);
+        if (!seenB.insert({bck.bytesPerChunk, bck.nChunks}).second)
+          std::fprintf(stderr,
+                       "rtrack: %-4s b chunk=%4lldMiB duplicates an earlier "
+                       "sweep point; skipped\n",
+                       w->id, static_cast<long long>(chunk >> 20));
+        else if (!runConfig(f, /*methodA=*/false, chunk, opt, pool, gpuName,
+                            csv))
+          rc = 1;
+      }
       if (rc)
         break;
     }

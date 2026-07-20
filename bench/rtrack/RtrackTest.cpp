@@ -232,6 +232,16 @@ TEST(RtrackCsv, RowGolden) {
             "8,4,4194304,16,12.5,12,13.75,2.4,0,21.47,12.4,8,2.75,0,1");
 }
 
+TEST(RtrackCsv, CommaInFieldSanitized) {
+  // The -DNDEBUG benchmarking build has no asserts; a comma in --machine
+  // or a GPU name must not shift the downstream columns.
+  bench::rtrack::CsvRow r;
+  r.machine = "EPYC 7351, 4 nodes";
+  std::string line = bench::rtrack::csvRowLine(r);
+  EXPECT_EQ(commaCount(line), commaCount(bench::rtrack::csvHeaderLine()));
+  EXPECT_NE(line.find("EPYC 7351; 4 nodes"), std::string::npos);
+}
+
 TEST(RtrackWorkloads, TableConsistent) {
   const auto &ws = bench::rtrack::allWorkloads();
   ASSERT_EQ(ws.size(), 6u);

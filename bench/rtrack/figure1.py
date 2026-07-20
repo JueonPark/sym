@@ -65,6 +65,7 @@ def main():
 
     # (machine, transform) -> (speedup, bestA, bestB, unstable)
     results = {}
+    chosen = defaultdict(set)  # machine -> {(N, threads)} actually plotted
     for (machine, transform), grp in sorted(groups.items()):
         n = args.n or max(r["N"] for r in grp)
         grp = [r for r in grp if r["N"] == n]
@@ -79,13 +80,29 @@ def main():
         results[(machine, transform)] = (
             b["median_ms"] / a["median_ms"], a, b,
             a["unstable"] or b["unstable"])
+        chosen[machine].add((n, threads))
 
     if not results:
         sys.exit("error: no (machine, transform) group has both methods")
 
+    # The per-group max-N default can silently mix problem sizes when a
+    # sweep aborted partway (e.g. only some transforms reached N=16384).
+    machine_label = {}
+    for machine, nts in chosen.items():
+        if len(nts) == 1:
+            (n, threads), = nts
+            machine_label[machine] = f"{machine} (N={n}, T={threads})"
+        else:
+            machine_label[machine] = f"{machine} (MIXED N/T)"
+            print(f"figure1: WARNING {machine} mixes configs {sorted(nts)} "
+                  "in one figure — the CSV is likely from an aborted sweep; "
+                  "pass --n/--threads to pin one config", file=sys.stderr)
+
     machines = sorted({m for m, _ in results})
     transforms = [t for t in TRANSFORM_ORDER
                   if any((m, t) in results for m in machines)]
+    # Never silently drop transforms the frozen order predates.
+    transforms += sorted({t for _, t in results} - set(TRANSFORM_ORDER))
 
     import matplotlib
     matplotlib.use("Agg")
@@ -105,7 +122,7 @@ def main():
             hatches.append("//" if unstable else None)
             labels.append(f"A:{a['chunk_req_mib']:.0f}M\n"
                           f"B:{b['chunk_req_mib']:.0f}M")
-        bars = ax.bar(xs, ys, width * 0.9, label=machine)
+        bars = ax.bar(xs, ys, width * 0.9, label=machine_label[machine])
         for bar, h, lab, y in zip(bars, hatches, labels, ys):
             if h:
                 bar.set_hatch(h)
