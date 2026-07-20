@@ -9,6 +9,7 @@
 
 #include "rtrack/chunking.h"
 #include "rtrack/plans.h"
+#include "rtrack/rstats.h"
 
 #include "reloc/Execute.h"
 #include "gtest/gtest.h"
@@ -157,6 +158,38 @@ TEST(RtrackChunks, ByteChunksLastShort) {
   auto bc = bench::rtrack::planByteChunks(10 << 20, 4 << 20);
   EXPECT_EQ(bc.bytesPerChunk, 4 << 20);
   EXPECT_EQ(bc.nChunks, 3); // 4 + 4 + 2 MiB
+}
+
+TEST(RtrackStats, ProtocolConstantsMatchIssue76) {
+  EXPECT_EQ(bench::rtrack::kWarmup, 5);
+  EXPECT_EQ(bench::rtrack::kIters, 30);
+  EXPECT_DOUBLE_EQ(bench::rtrack::kIqrFlagPct, 5.0);
+}
+
+TEST(RtrackStats, MedianMinP95) {
+  std::vector<double> s;
+  for (int i = 20; i >= 1; --i)
+    s.push_back(i); // 20..1, summarize sorts
+  auto r = bench::rtrack::summarizeSamples(s);
+  EXPECT_DOUBLE_EQ(r.median, 10.5);
+  EXPECT_DOUBLE_EQ(r.min, 1.0);
+  EXPECT_DOUBLE_EQ(r.p95, 19.05); // numpy-linear percentile
+  EXPECT_EQ(r.n, 20u);
+}
+
+TEST(RtrackStats, UnstableFlagAtFivePercent) {
+  // numpy-linear quartiles: q1 99.25, q3 103 -> IQR/median = 3.75%: clean.
+  std::vector<double> tight = {99, 99, 100, 100, 104, 104};
+  EXPECT_FALSE(bench::rtrack::summarizeSamples(tight).unstable);
+  // q1 96.25, q3 103.75 -> IQR/median = 7.5%: flagged.
+  std::vector<double> wide = {90, 95, 100, 100, 105, 111};
+  EXPECT_TRUE(bench::rtrack::summarizeSamples(wide).unstable);
+}
+
+TEST(RtrackStats, NowMsMonotonic) {
+  double a = bench::rtrack::nowMs();
+  double b = bench::rtrack::nowMs();
+  EXPECT_GE(b, a);
 }
 
 } // namespace
