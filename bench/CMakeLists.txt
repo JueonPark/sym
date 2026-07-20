@@ -43,6 +43,18 @@ add_test(NAME bench-quant-bw-smoke
          COMMAND bench-quant-bw --kernel all --n 256 --threads 2
                  --variant auto --json - --warmup 1 --iters 3 --reruns 2)
 
+# R0.3 (issue #76): the rtrack pipeline & measurement harness. The CPU-side
+# pieces (plan builders, chunk math, stats, CSV, workload table) run under
+# ctest on every CI run; the pipeline driver below is GPU-only and
+# CUDA-gated like bench-poc-transpose.
+add_executable(bench-rtrack-test rtrack/RtrackTest.cpp)
+target_include_directories(bench-rtrack-test
+  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_features(bench-rtrack-test PRIVATE cxx_std_17)
+target_link_libraries(bench-rtrack-test PRIVATE reloc_runtime llvm_gtest
+  llvm_gtest_main)
+add_test(NAME bench-rtrack-test COMMAND bench-rtrack-test)
+
 if(RELOC_ENABLE_CUDA)
   # The C7 PoC driver. GPU-only, never in CI (mirrors libreloc's CUDA
   # gating); run locally on the desktop per docs/poc-reproduction.md.
@@ -62,4 +74,11 @@ if(RELOC_ENABLE_CUDA)
   target_compile_features(bench-poc-transpose PRIVATE cxx_std_17)
   target_link_libraries(bench-poc-transpose PRIVATE reloc_runtime
     CUDA::cudart)
+
+  # R0.3 pipeline driver (issue #76). GPU-only, never in CI; run locally
+  # per bench/rtrack/README.md.
+  add_executable(bench-rtrack rtrack/rtrack_bench.cu)
+  target_include_directories(bench-rtrack PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_compile_features(bench-rtrack PRIVATE cxx_std_17)
+  target_link_libraries(bench-rtrack PRIVATE reloc_runtime CUDA::cudart)
 endif()
