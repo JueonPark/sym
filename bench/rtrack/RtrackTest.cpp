@@ -7,6 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "rtrack/chunking.h"
 #include "rtrack/plans.h"
 
 #include "reloc/Execute.h"
@@ -125,6 +126,37 @@ TEST(RtrackPlans, BlockedTransposeExecutesBijectively) {
   std::sort(sorted.begin(), sorted.end());
   for (size_t i = 0; i < sorted.size(); ++i)
     ASSERT_EQ(sorted[i], static_cast<float>(i));
+}
+
+TEST(RtrackChunks, RowChunksCoverExactly) {
+  auto c = bench::rtrack::planRowChunks(/*rows=*/100, /*rowBytes=*/1000,
+                                        /*chunkBytes=*/4096);
+  EXPECT_EQ(c.rowsPerChunk, 4);
+  EXPECT_EQ(c.nChunks, 25);
+  EXPECT_EQ(c.stagingBytes, 4000);
+}
+
+TEST(RtrackChunks, OversizedRowGetsOwnChunk) {
+  auto c = bench::rtrack::planRowChunks(8, /*rowBytes=*/1 << 24,
+                                        /*chunkBytes=*/1 << 22);
+  EXPECT_EQ(c.rowsPerChunk, 1);
+  EXPECT_EQ(c.nChunks, 8);
+  EXPECT_EQ(c.stagingBytes, 1 << 24); // staging grows past the request
+}
+
+TEST(RtrackChunks, ChunkLargerThanTensorIsOneChunk) {
+  auto c = bench::rtrack::planRowChunks(16, 64, 1 << 20);
+  EXPECT_EQ(c.rowsPerChunk, 16);
+  EXPECT_EQ(c.nChunks, 1);
+  auto bc = bench::rtrack::planByteChunks(1024, 1 << 20);
+  EXPECT_EQ(bc.bytesPerChunk, 1024);
+  EXPECT_EQ(bc.nChunks, 1);
+}
+
+TEST(RtrackChunks, ByteChunksLastShort) {
+  auto bc = bench::rtrack::planByteChunks(10 << 20, 4 << 20);
+  EXPECT_EQ(bc.bytesPerChunk, 4 << 20);
+  EXPECT_EQ(bc.nChunks, 3); // 4 + 4 + 2 MiB
 }
 
 } // namespace
