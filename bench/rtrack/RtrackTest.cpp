@@ -11,12 +11,16 @@
 #include "rtrack/csv.h"
 #include "rtrack/plans.h"
 #include "rtrack/rstats.h"
+#include "rtrack/workloads.h"
 
 #include "reloc/Execute.h"
+#include "reloc/Quant.h"
 #include "gtest/gtest.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <vector>
 
 namespace {
@@ -226,6 +230,68 @@ TEST(RtrackCsv, RowGolden) {
   EXPECT_EQ(bench::rtrack::csvRowLine(r),
             "epyc-2080ti,NVIDIA GeForce RTX 2080 Ti,a,transpose,8192,s8,0.25,"
             "8,4,4194304,16,12.5,12,13.75,2.4,0,21.47,12.4,8,2.75,0,1");
+}
+
+TEST(RtrackWorkloads, TableConsistent) {
+  const auto &ws = bench::rtrack::allWorkloads();
+  ASSERT_EQ(ws.size(), 6u);
+  for (const auto &w : ws) {
+    SCOPED_TRACE(w.id);
+    auto b = w.makePlan(128);
+    EXPECT_EQ(b.totalBytes, 128 * 128 * 4);
+    EXPECT_EQ(maxSrcOffset(b), 128 * 128 - 1);
+    // r is exactly the dtype width ratio (fp32 in).
+    EXPECT_DOUBLE_EQ(w.r, bench::rtrack::dtypeBytes(w.dtypeOut) / 4.0);
+    // Packed dst rows: outer stride == product of inner extents (the
+    // chunked-staging rebase and the B-side per-channel quantize rely on
+    // this).
+    int64_t inner = 1;
+    for (size_t k = 1; k < b.extents.size(); ++k)
+      inner *= b.extents[k];
+    EXPECT_EQ(b.dstStrides[0], inner);
+    EXPECT_EQ(bench::rtrack::findWorkload(w.id), &w);
+  }
+  EXPECT_EQ(bench::rtrack::findWorkload("nope"), nullptr);
+}
+
+TEST(RtrackWorkloads, GatherQuantizeOnIdentityEqualsQuantizePack) {
+  // T3's Method-A kernel is quantizePackF32S8; the driver's s8 reference
+  // is gatherQuantizeF32S8 over the plan. On the identity plan they must
+  // agree bit-exactly.
+  const int64_t n = 128;
+  auto b = identityPlan(n);
+  std::vector<float> src(static_cast<size_t>(n * n));
+  for (size_t i = 0; i < src.size(); ++i)
+    src[i] = (static_cast<float>((i * 131) & 0xff) - 128.0f) * 0.9f;
+  std::vector<float> inv(static_cast<size_t>(n), 1.0f / 3.0f);
+  std::vector<int8_t> a(src.size()), g(src.size());
+  reloc::quant::quantizePackF32S8(src.data(), a.data(), n, n, inv.data(),
+                                  reloc::quant::Variant::Scalar);
+  reloc::quant::gatherQuantizeF32S8(b, src.data(), g.data(), inv.data(), 0, n,
+                                    reloc::quant::Variant::Scalar);
+  EXPECT_EQ(0, std::memcmp(a.data(), g.data(), a.size()));
+}
+
+TEST(RtrackWorkloads, QuantRoundTripMaxAbsErrBound) {
+  // R0 exit criterion: |x - dequant(quant(x))| <= scale/2 for unsaturated
+  // inputs when invScale = 127 / maxAbs.
+  const int64_t n = 4096;
+  std::vector<float> src(static_cast<size_t>(n));
+  float maxAbs = 0;
+  for (int64_t i = 0; i < n; ++i) {
+    src[static_cast<size_t>(i)] =
+        std::sin(static_cast<float>(i) * 0.37f) * 100.0f;
+    maxAbs = std::max(maxAbs, std::fabs(src[static_cast<size_t>(i)]));
+  }
+  const float invScale = 127.0f / maxAbs, scale = maxAbs / 127.0f;
+  std::vector<int8_t> q(src.size());
+  reloc::quant::quantizePackF32S8(src.data(), q.data(), 1, n, &invScale,
+                                  reloc::quant::Variant::Scalar);
+  double worst = 0;
+  for (size_t i = 0; i < src.size(); ++i)
+    worst = std::max(worst, std::fabs(static_cast<double>(src[i]) -
+                                      static_cast<double>(q[i]) * scale));
+  EXPECT_LE(worst, 0.5 * scale * 1.0001);
 }
 
 } // namespace
