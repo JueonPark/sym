@@ -47,6 +47,18 @@ add_test(NAME bench-quant-bw-smoke
 # pieces (plan builders, chunk math, stats, CSV, workload table) run under
 # ctest on every CI run; the pipeline driver below is GPU-only and
 # CUDA-gated like bench-poc-transpose.
+# R1 (issue #82): CPU stage rooflines on the oracle-verified rtrack plans
+# (NOT the frozen golden blob -- issue #63). CPU-only, so it smoke-runs
+# under ctest like the other bench CPU targets.
+add_executable(bench-cpu-rooflines rtrack/cpu_rooflines.cpp)
+target_include_directories(bench-cpu-rooflines
+  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_features(bench-cpu-rooflines PRIVATE cxx_std_17)
+target_link_libraries(bench-cpu-rooflines PRIVATE reloc_runtime)
+add_test(NAME bench-cpu-rooflines-smoke
+         COMMAND bench-cpu-rooflines --kernel all --plan blocked --n 256
+                 --threads 2 --warmup 1 --iters 3 --json -)
+
 add_executable(bench-rtrack-test rtrack/RtrackTest.cpp)
 target_include_directories(bench-rtrack-test
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
