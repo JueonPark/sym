@@ -74,4 +74,11 @@ if(RELOC_ENABLE_CUDA)
   target_compile_features(bench-poc-transpose PRIVATE cxx_std_17)
   target_link_libraries(bench-poc-transpose PRIVATE reloc_runtime
     CUDA::cudart)
+
+  # R0.3 pipeline driver (issue #76). GPU-only, never in CI; run locally
+  # per bench/rtrack/README.md.
+  add_executable(bench-rtrack rtrack/rtrack_bench.cu)
+  target_include_directories(bench-rtrack PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_compile_features(bench-rtrack PRIVATE cxx_std_17)
+  target_link_libraries(bench-rtrack PRIVATE reloc_runtime CUDA::cudart)
 endif()
