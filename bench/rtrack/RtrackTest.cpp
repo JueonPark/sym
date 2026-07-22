@@ -244,24 +244,84 @@ TEST(RtrackCsv, CommaInFieldSanitized) {
 
 TEST(RtrackWorkloads, TableConsistent) {
   const auto &ws = bench::rtrack::allWorkloads();
-  ASSERT_EQ(ws.size(), 6u);
+  ASSERT_EQ(ws.size(), 22u);
   for (const auto &w : ws) {
     SCOPED_TRACE(w.id);
     auto b = w.makePlan(128);
     EXPECT_EQ(b.totalBytes, 128 * 128 * 4);
     EXPECT_EQ(maxSrcOffset(b), 128 * 128 - 1);
-    // r is exactly the dtype width ratio (fp32 in).
-    EXPECT_DOUBLE_EQ(w.r, bench::rtrack::dtypeBytes(w.dtypeOut) / 4.0);
+    // r is exactly the wire width ratio (fp32 in).
+    EXPECT_DOUBLE_EQ(w.r, bench::rtrack::wireRatio(w.wire));
     // Packed dst rows: outer stride == product of inner extents (the
-    // chunked-staging rebase and the B-side per-channel quantize rely on
-    // this).
+    // chunked-staging rebase and the per-channel quantize rely on this).
     int64_t inner = 1;
     for (size_t k = 1; k < b.extents.size(); ++k)
       inner *= b.extents[k];
     EXPECT_EQ(b.dstStrides[0], inner);
     EXPECT_EQ(bench::rtrack::findWorkload(w.id), &w);
+    if (std::string(w.variant) == "matrix") {
+      // R1 rows: artifact == wire, no receive stage, B always runs.
+      EXPECT_STREQ(bench::rtrack::wireName(w.wire),
+                   bench::rtrack::dtypeName(w.dtypeOut));
+      EXPECT_TRUE(w.recvStage == bench::rtrack::RecvStage::None);
+      EXPECT_TRUE(w.methodB);
+    } else {
+      // R2 rows: fixed-f32 artifact; only the r=1.0 row measures B; the
+      // receive stage exists exactly when the wire is compressed.
+      EXPECT_STREQ(w.variant, "rsweep");
+      EXPECT_TRUE(w.dtypeOut == bench::rtrack::DtypeOut::F32);
+      EXPECT_EQ(w.methodB, w.wire == bench::rtrack::Wire::F32);
+      EXPECT_EQ(w.recvStage == bench::rtrack::RecvStage::None,
+                w.wire == bench::rtrack::Wire::F32);
+    }
   }
   EXPECT_EQ(bench::rtrack::findWorkload("nope"), nullptr);
+}
+
+TEST(RtrackWorkloads, WireBytesMath) {
+  using bench::rtrack::Wire;
+  using bench::rtrack::wireBytes;
+  EXPECT_EQ(wireBytes(Wire::F32, 128), 512);
+  EXPECT_EQ(wireBytes(Wire::F16, 128), 256);
+  EXPECT_EQ(wireBytes(Wire::S8, 128), 128);
+  EXPECT_EQ(wireBytes(Wire::S4, 128), 64);
+  EXPECT_DOUBLE_EQ(bench::rtrack::wireRatio(Wire::F32), 1.0);
+  EXPECT_DOUBLE_EQ(bench::rtrack::wireRatio(Wire::F16), 0.5);
+  EXPECT_DOUBLE_EQ(bench::rtrack::wireRatio(Wire::S8), 0.25);
+  EXPECT_DOUBLE_EQ(bench::rtrack::wireRatio(Wire::S4), 0.125);
+}
+
+TEST(RtrackWorkloads, S4QuantRoundTripMaxAbsErrBound) {
+  // R2 r=0.125 contract: with invScale = 7/maxAbs the s8 values land in
+  // [-7, 7], the s4 nibble pack is lossless on them, and the dequantized
+  // roundtrip obeys |x - q*scale| <= scale/2.
+  const int64_t n = 4096;
+  std::vector<float> src(static_cast<size_t>(n));
+  float maxAbs = 0;
+  for (int64_t i = 0; i < n; ++i) {
+    src[static_cast<size_t>(i)] =
+        std::sin(static_cast<float>(i) * 0.37f) * 100.0f;
+    maxAbs = std::max(maxAbs, std::fabs(src[static_cast<size_t>(i)]));
+  }
+  const float invScale = 7.0f / maxAbs, scale = 1.0f / invScale;
+  std::vector<int8_t> q(src.size());
+  reloc::quant::quantizePackF32S8(src.data(), q.data(), 1, n, &invScale,
+                                  reloc::quant::Variant::Scalar);
+  std::vector<uint8_t> packed(src.size() / 2);
+  reloc::quant::packS8S4(q.data(), packed.data(),
+                         static_cast<int64_t>(packed.size()),
+                         reloc::quant::Variant::Scalar);
+  double worst = 0;
+  for (size_t i = 0; i < src.size(); ++i) {
+    const uint8_t b = packed[i / 2];
+    const int8_t nib =
+        (i % 2 == 0) ? static_cast<int8_t>(static_cast<int8_t>(b << 4) >> 4)
+                     : static_cast<int8_t>(static_cast<int8_t>(b) >> 4);
+    ASSERT_EQ(nib, q[i]); // in-range: pack is lossless
+    worst = std::max(worst, std::fabs(static_cast<double>(src[i]) -
+                                      static_cast<double>(nib) * scale));
+  }
+  EXPECT_LE(worst, 0.5 * scale * 1.0001);
 }
 
 TEST(RtrackWorkloads, GatherQuantizeOnIdentityEqualsQuantizePack) {
