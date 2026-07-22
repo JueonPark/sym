@@ -1,0 +1,13 @@
+{
+  "machine": "7800x3d-4070tis",
+  "bin": "./bench-rtrack",
+  "transforms": "matrix",
+  "methods": "both",
+  "n": [2048, 4096, 8192, 16384],
+  "chunk_mib": [4, 16, 64, 256],
+  "threads": [8],
+  "warmup": 5,
+  "iters": 30,
+  "calibration": "calibration.json",
+  "out_csv": "bench/results/r2_gen4_matrix_nsweep_7800x3d_4070tis.csv"
+}
