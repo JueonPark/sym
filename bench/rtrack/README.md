@@ -71,8 +71,13 @@ Issue #83 fixes the final artifact at **f32** and sweeps only the wire
 dtype — the payload Method A actually stages onto the PCIe link — across
 the four T1b/T2/T3/T4 families at r ∈ {1.0, 0.5, 0.25, 0.125} (wire
 f32/f16/s8/s4). 16 rows total, selected with `--transform rsweep` (the
-R1 matrix rows above are `--transform matrix`; `all` runs both sets).
-CSV rows carry `variant=rsweep` vs `variant=matrix` so the two sweeps
+R1 matrix rows above are `--transform matrix`; `--transform all` is a
+backward-compatible alias for `matrix`, NOT the union of both sets — it
+selects the same variant!="rsweep" rows as `matrix`, so existing configs
+that say `"all"` keep meaning the R1 matrix after this lands. Run the
+rsweep rows explicitly via `--transform rsweep` or a comma-separated list
+of `*R###` IDs). CSV rows carry `variant=rsweep` vs `variant=matrix` so
+the two sweeps
 never mix in `gates.py`/`figure_rstar.py`.
 
 | ID | family (`transform`) | wire | A's CPU stage | A's recv stage | runs B |
