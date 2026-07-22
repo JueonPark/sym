@@ -15,6 +15,7 @@
 #include "reloc/Quant.h"
 #include "gtest/gtest.h"
 
+#include <cuda_fp16.h>
 #include <cuda_runtime.h>
 
 #include <algorithm>
@@ -231,6 +232,29 @@ TEST(CudaDequant, ExactVsHostReference) {
   upload(dScales, scales);
   reloc::cuda::dequantS8F32(dSrc.as<int8_t>(), dDst.as<float>(), channels,
                             chSize, dScales.as<float>());
+  ASSERT_EQ(cudaSuccess, cudaDeviceSynchronize());
+  std::vector<float> got = download<float>(dDst, want.size());
+  ASSERT_EQ(0, std::memcmp(want.data(), got.data(), want.size() * 4));
+}
+
+TEST(CudaConvertF16F32, ExactWideningOfCpuConvertOutput) {
+  const int64_t count = 100003;
+  std::vector<float> src =
+      randomFloats(static_cast<size_t>(count), 43, -60000.f, 60000.f);
+  std::vector<uint16_t> h(static_cast<size_t>(count));
+  reloc::quant::convertF32F16(src.data(), h.data(), count,
+                              reloc::quant::Variant::Scalar);
+  std::vector<float> want(h.size());
+  for (size_t i = 0; i < h.size(); ++i) {
+    __half v;
+    std::memcpy(&v, &h[i], sizeof(v));
+    want[i] = __half2float(v);
+  }
+  DeviceBuffer dSrc(h.size() * 2), dDst(want.size() * 4);
+  ASSERT_TRUE(dSrc.valid());
+  ASSERT_TRUE(dDst.valid());
+  upload(dSrc, h);
+  reloc::cuda::convertF16F32(dSrc.as<uint16_t>(), dDst.as<float>(), count);
   ASSERT_EQ(cudaSuccess, cudaDeviceSynchronize());
   std::vector<float> got = download<float>(dDst, want.size());
   ASSERT_EQ(0, std::memcmp(want.data(), got.data(), want.size() * 4));
