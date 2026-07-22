@@ -257,7 +257,7 @@ measured curve crosses 1.0.
   plateau is not the model's H2D/r ceiling; it is
   BW_A(cpu-bound) / BW_B(staging-bound) ≈ 31–34 / 16 ≈ 1.9–2.1, where
   BW_A is the contiguous quantize/blocked-gather rate at low r (quant
-  33.5–34.5, blocked 30.7–31.3 GB/s). Once r is small enough that the DMA
+  33.5–34.5, blocked 30.7–31.4 GB/s). Once r is small enough that the DMA
   is no longer the constraint, both methods hit their own memcpy walls and
   the ratio saturates.
 - **The two loser families never cross** (T4 0.42–0.51×, T2 0.19–0.20× at
