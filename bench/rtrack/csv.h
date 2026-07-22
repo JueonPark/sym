@@ -30,16 +30,17 @@ struct CsvRow {
   int64_t chunkReqBytes = 0;
   int64_t stagingBytes = 0;
   int64_t nChunks = 0;
-  RStats wall, gpuPipe, cpuStage, h2d, gpuKernel;
+  RStats wall, gpuPipe, cpuStage, h2d, gpuKernel, gpuRecv;
   double effectiveInputGbps = 0;
   bool verified = false;
+  std::string variant = "matrix", wire; // R2 columns (issue #83)
 };
 
 inline std::string csvHeaderLine() {
   return "machine,gpu,method,transform,N,dtype_out,r,threads,chunk_req_mib,"
          "staging_bytes,n_chunks,median_ms,min_ms,p95_ms,iqr_over_median_pct,"
          "unstable,effective_input_GBps,gpu_pipeline_ms,cpu_stage_ms,h2d_ms,"
-         "gpu_kernel_ms,verified";
+         "gpu_kernel_ms,gpu_recv_ms,verified,variant,wire";
 }
 
 inline std::string csvField(std::string s) {
@@ -64,8 +65,10 @@ inline std::string csvRowLine(const CsvRow &r) {
          (r.wall.unstable ? "1" : "0");
   out += ',' + num(r.effectiveInputGbps);
   out += ',' + num(r.gpuPipe.median) + ',' + num(r.cpuStage.median) + ',' +
-         num(r.h2d.median) + ',' + num(r.gpuKernel.median);
+         num(r.h2d.median) + ',' + num(r.gpuKernel.median) + ',' +
+         num(r.gpuRecv.median);
   out += r.verified ? ",1" : ",0";
+  out += ',' + csvField(r.variant) + ',' + csvField(r.wire);
   return out;
 }
 
