@@ -216,8 +216,8 @@ nvcc -ccbin g++ -O3 -DNDEBUG -std=c++17 -arch=sm_75 \
 
    Note: the committed `bench/results/r2_rstar_gen4.json` was built from the
    stabler-preference-merged CSVs (per the R2 report's rerun rule); re-running
-   `figure_rstar.py` on the raw rsweep CSV alone reproduces the same r*
-   values but with ~0.005-level speedup differences at the reran points.
+   `figure_rstar.py` on the two rsweep CSVs (raw + rerun) reproduces the same
+   r* values with only ~0.005-level speedup differences at the reran points.
 
 ## Protocol
 
