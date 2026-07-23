@@ -34,9 +34,16 @@ best-chunk N=16384 points — see the stabler-preference rule below),
 `r2_rooflines/*.json` (stage rooflines), `r2_rstar_gen4.json` (r\* fit),
 `r2_figure1_gen3_gen4.png` (Figure 1), `r2_figure_rstar_gen4.png` (r\*
 figure). Gen3 comparison: `r1_gen3_nsweep_epyc_2080ti.csv`,
-`docs/r1-exp1-gen3-gates.md`. Re-run the gates with
-`python3 bench/rtrack/gates.py --exp r2 --csv <matrix csvs> --rstar
-bench/results/r2_rstar_gen4.json`.
+`docs/r1-exp1-gen3-gates.md`. Re-run the gate table with **exactly** the
+N-sweep matrix CSV and its rerun — the tsweep CSV is a different config
+family (T-sweep at fixed N=8192) and is **excluded** from the gate table:
+`python3 bench/rtrack/gates.py --exp r2 --csv
+bench/results/r2_gen4_matrix_nsweep_7800x3d_4070tis.csv
+bench/results/r2_gen4_matrix_nsweep_rerun_7800x3d_4070tis.csv --rstar
+bench/results/r2_rstar_gen4.json`. This reproduces the table below
+digit-for-digit. Adding the tsweep CSV instead moves G1 to 26.81 GB/s (its
+max Method-B row is transpose_quant N=8192 T=1) and quant N=8192 to 2.19× —
+**no verdict changes**.
 
 **Stabler-preference rerun rule (pre-declared).** Any best-chunk row with
 IQR/median > 5% was flagged and re-measured; the analysis prefers, per
@@ -44,7 +51,9 @@ analysis point, whichever file's best-chunk row is stabler (lower IQR).
 Exactly six N=16384 best-chunk points were flagged: T1 (transpose) r=1
 methods a and b; T1b (blocked_transpose) r=0.5/0.25/0.125 method a; and
 quant r=0.125 method a. Five became stable after rerun; T1b r=0.25 method a
-remains borderline (5.08% IQR) and stays hatched in Figure 1. All numbers
+remains borderline (5.08% IQR) and is flagged in the r\* figure's
+`[UNSTABLE rows]` panel tag (it is an r-sweep point, not part of Figure 1).
+All numbers
 in this report use the merge (original CSVs with those six points replaced
 by the stabler rerun rows).
 
@@ -267,8 +276,9 @@ measured curve crosses 1.0.
 
 Figure 1 (`r2_figure1_gen3_gen4.png`) overlays the Gen3 and Gen4 A/B bars;
 the r\* figure (`r2_figure_rstar_gen4.png`) plots measured vs predicted vs
-serial per family. Bars built from any unstable row are hatched; T1b r=0.25
-method a stays hatched after rerun.
+serial per family. Unstable matrix bars in Figure 1 are hatched; the r\*
+figure separately tags its unstable r-sweep points, including the
+borderline T1b r=0.25 method a that stays flagged after rerun.
 
 ## sym#63 anchor re-baseline (R0 exit criterion)
 
@@ -288,7 +298,8 @@ method a stays hatched after rerun.
 ## G1 note
 
 Effective DMA bandwidth derived from Method B's `h2d_ms` peaks at 26.79
-GB/s (best over all B rows, e.g. convert_f16 N=8192). The pre-registered
+GB/s (max Method-B `h2d_ms` row in the gate-table CSV set: convert_f16
+N=8192, T=8, chunk 256). The pre-registered
 [20, 26] bar assumed the Gen4 link would be the floor and would peak inside
 that window; instead the link exceeds it (miss high) *and*, more
 importantly, is not the binding stage at all — Method B delivers only ~16
@@ -309,13 +320,14 @@ GB/s. G1 FAILs on both counts: the number is outside the bar, and the claim
   ~16 GB/s Method-B ceiling could be partly WSL2 memcpy/pinning overhead;
   W7 bare-metal will separate host-memcpy cost from WSL2 cost. Either way it
   is not the PCIe link, which measures 24.6–26.8 GB/s.
-- **Instability.** Unstable-row (IQR > 5%) share: nsweep 59/147, tsweep
-  98/181, rsweep 129/236 — concentrated at small N (N=2048) and 4 MiB
+- **Instability.** Unstable-row (IQR > 5%) share: nsweep 59/146, tsweep
+  98/180, rsweep 129/235 — concentrated at small N (N=2048) and 4 MiB
   chunks, the known WSL2 dispatch-noise pattern (D3 ledger; sym#63
   addendum). At the analysis points (best-chunk, N=16384) only 2/12 matrix
   and 4/20 rsweep rows remain unstable after rerun, all 5.0–7.1% IQR. Every
-  hatched Figure-1 bar traces to one of these; T1b r=0.25 method a is the
-  lone still-hatched analysis point (5.08%).
+  hatched Figure-1 bar traces to one of the 2/12 matrix points; among the
+  r-sweep points, T1b r=0.25 method a is the lone one still flagged after
+  rerun (5.08%), tagged in the r\* figure rather than hatched in Figure 1.
 - **Scale-transfer excluded.** Only N ∈ {2048…16384} measured; no
   extrapolation to production tensor sizes is claimed here.
 - **Two-pass CPU stages measured as-is.** The quantize/convert kernels are

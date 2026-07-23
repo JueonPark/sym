@@ -214,6 +214,11 @@ nvcc -ccbin g++ -O3 -DNDEBUG -std=c++17 -arch=sm_75 \
    (`1/BW_cpu + r/H2D`) variant; `--json` feeds `gates.py --rstar` for
    R2-G5.
 
+   Note: the committed `bench/results/r2_rstar_gen4.json` was built from the
+   stabler-preference-merged CSVs (per the R2 report's rerun rule); re-running
+   `figure_rstar.py` on the raw rsweep CSV alone reproduces the same r*
+   values but with ~0.005-level speedup differences at the reran points.
+
 ## Protocol
 
 5 warmup + 30 timed iterations per config; the CSV reports wall median /
