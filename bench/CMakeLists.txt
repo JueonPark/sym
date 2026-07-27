@@ -101,4 +101,13 @@ if(RELOC_ENABLE_CUDA)
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
   target_compile_features(bench-multigpu-h2d PRIVATE cxx_std_17)
   target_link_libraries(bench-multigpu-h2d PRIVATE CUDA::cudart)
+
+  # R4 / EXP-4 (issue #85): Turing hiding-ratio kernel bandwidths. GPU-only,
+  # never in CI. Reuses the R0.2 library kernels plus a bench-local unpadded
+  # SMEM transpose for the bank-conflict delta.
+  add_executable(bench-hiding-ratio rtrack/hiding_ratio.cu)
+  target_include_directories(bench-hiding-ratio
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_compile_features(bench-hiding-ratio PRIVATE cxx_std_17)
+  target_link_libraries(bench-hiding-ratio PRIVATE reloc_runtime CUDA::cudart)
 endif()
