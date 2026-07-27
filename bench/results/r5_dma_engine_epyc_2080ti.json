@@ -1,0 +1,29 @@
+{
+  "config": {"benchmark": "dma_engine", "gpu": "NVIDIA GeForce RTX 2080 Ti", "total_mib": 256, "zerocopy_mib": 256, "warmup": 3, "iters": 20},
+  "memcpy2d": [
+    {"mode": "dense", "row_width_bytes": 64, "rows": 4194304, "median_ms": 23.6403, "gb_per_s": 11.355},
+    {"mode": "dense", "row_width_bytes": 256, "rows": 1048576, "median_ms": 20.5294, "gb_per_s": 13.0757},
+    {"mode": "dense", "row_width_bytes": 1024, "rows": 262144, "median_ms": 20.5299, "gb_per_s": 13.0753},
+    {"mode": "dense", "row_width_bytes": 4096, "rows": 65536, "median_ms": 20.5304, "gb_per_s": 13.075},
+    {"mode": "dense", "row_width_bytes": 16384, "rows": 16384, "median_ms": 20.5286, "gb_per_s": 13.0762},
+    {"mode": "dense", "row_width_bytes": 65536, "rows": 4096, "median_ms": 20.5286, "gb_per_s": 13.0761},
+    {"mode": "dense", "row_width_bytes": 262144, "rows": 1024, "median_ms": 20.5292, "gb_per_s": 13.0758},
+    {"mode": "dense", "row_width_bytes": 1048576, "rows": 256, "median_ms": 20.5294, "gb_per_s": 13.0757},
+    {"mode": "strided", "row_width_bytes": 64, "rows": 4194304, "median_ms": 23.6489, "gb_per_s": 11.3509},
+    {"mode": "strided", "row_width_bytes": 256, "rows": 1048576, "median_ms": 20.5311, "gb_per_s": 13.0746},
+    {"mode": "strided", "row_width_bytes": 1024, "rows": 262144, "median_ms": 20.5293, "gb_per_s": 13.0757},
+    {"mode": "strided", "row_width_bytes": 4096, "rows": 65536, "median_ms": 20.5296, "gb_per_s": 13.0755},
+    {"mode": "strided", "row_width_bytes": 16384, "rows": 16384, "median_ms": 20.5294, "gb_per_s": 13.0757},
+    {"mode": "strided", "row_width_bytes": 65536, "rows": 4096, "median_ms": 20.5294, "gb_per_s": 13.0757},
+    {"mode": "strided", "row_width_bytes": 262144, "rows": 1024, "median_ms": 20.5289, "gb_per_s": 13.076},
+    {"mode": "strided", "row_width_bytes": 1048576, "rows": 256, "median_ms": 20.5295, "gb_per_s": 13.0756}
+  ],
+  "zerocopy": [
+    {"stride_elems": 1, "elems_read": 67108864, "median_ms": 28.1089, "delivered_gb_per_s": 9.54985},
+    {"stride_elems": 2, "elems_read": 33554432, "median_ms": 28.1006, "delivered_gb_per_s": 4.77633},
+    {"stride_elems": 4, "elems_read": 16777216, "median_ms": 28.093, "delivered_gb_per_s": 2.38881},
+    {"stride_elems": 8, "elems_read": 8388608, "median_ms": 20.5742, "delivered_gb_per_s": 1.6309},
+    {"stride_elems": 16, "elems_read": 4194304, "median_ms": 16.2208, "delivered_gb_per_s": 1.0343},
+    {"stride_elems": 32, "elems_read": 2097152, "median_ms": 7.97061, "delivered_gb_per_s": 1.05244}
+  ]
+}
