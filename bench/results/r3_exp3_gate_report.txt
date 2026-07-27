@@ -1,0 +1,25 @@
+# R3 / EXP-3 multi-GPU amortization — NVIDIA GeForce RTX 2080 Ti
+
+## broadcast  N=8192
+| K | A wall ms | B_xK wall ms | B_staged wall ms | A/B_xK | A DMA-only ms |
+|---|---|---|---|---|---|
+| 1 | 78.91 | 22.43 | 22.29 | 0.28x | 5.31 |
+| 2 | 81.33 | 32.27 | 44.59 | 0.40x | 7.86 |
+| 4 | 82.62 | 37.06 | 90.99 | 0.45x | 9.10 |
+
+## scatter  N=8192
+| K | A wall ms | B_xK wall ms | B_staged wall ms | A/B_xK | A DMA-only ms |
+|---|---|---|---|---|---|
+| 1 | 17.73 | 21.36 | 21.20 | 1.20x | 5.38 |
+| 2 | 16.38 | 15.62 | 21.22 | 0.95x | 3.97 |
+| 4 | 16.81 | 15.21 | 32.79 | 0.90x | 4.29 |
+
+## scatter  N=16384
+| K | A wall ms | B_xK wall ms | B_staged wall ms | A/B_xK | A DMA-only ms |
+|---|---|---|---|---|---|
+| 1 | 71.57 | 84.71 | 84.63 | 1.18x | 20.71 |
+| 2 | 63.81 | 61.88 | 84.66 | 0.97x | 15.38 |
+| 4 | 63.04 | 58.03 | 118.81 | 0.92x | 14.91 |
+
+## Gate G5 (scatter int8 K=4: A >= 1.3x B_xK)
+measured A/B_xK = 0.92x  ->  **FAIL**

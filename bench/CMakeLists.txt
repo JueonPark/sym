@@ -110,4 +110,14 @@ if(RELOC_ENABLE_CUDA)
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
   target_compile_features(bench-hiding-ratio PRIVATE cxx_std_17)
   target_link_libraries(bench-hiding-ratio PRIVATE reloc_runtime CUDA::cudart)
+
+  # R3 / EXP-3 (issue #84): multi-GPU amortization (broadcast + scatter,
+  # Method A vs B_xK/B_staged). GPU-only, never in CI; needs >= 1 GPU (K
+  # round-robins over the visible devices).
+  add_executable(bench-multigpu-reloc rtrack/multigpu_reloc.cu)
+  target_include_directories(bench-multigpu-reloc
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_compile_features(bench-multigpu-reloc PRIVATE cxx_std_17)
+  target_link_libraries(bench-multigpu-reloc PRIVATE reloc_runtime
+    CUDA::cudart)
 endif()
