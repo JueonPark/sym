@@ -1,0 +1,43 @@
+# R4 hiding-ratio model — NVIDIA GeForce RTX 2080 Ti
+HBM theoretical peak: 616 GB/s  |  PCIe (Gen3 measured): 13.06 GB/s
+
+## N=8192  (S=256 MiB)
+measured HBM ceiling (copy_f32): 544.6 GB/s (88% of peak)
+hiding ratio = HBM/PCIe = 41.7  (a transform hides iff its multiplier m < 41.7)
+PCIe transfer time for S: 20.55 ms
+
+| kernel | GB/s | m = HBM/BW | t_kernel ms | hides? (m<ratio) |
+|---|---|---|---|---|
+| copy_f32 | 544.6 | 1.00 | 0.986 | yes |
+| relocate_naive_f32 | 172.6 | 3.16 | 3.111 | yes |
+| transpose_smem_unpadded | 375.0 | 1.45 | 1.431 | yes |
+| transpose_smem_padded | 386.1 | 1.41 | 1.391 | yes |
+| scatter_random_f32_blk1 | 278.6 | 1.95 | 1.927 | yes |
+| scatter_random_f32_blk1024 | 262.1 | 2.08 | 2.049 | yes |
+| scatter_random_f32_blk1048576 | 82.4 | 6.61 | 6.517 | yes |
+| scatter_random_f32_blk67108864 | 20.5 | 26.62 | 26.245 | yes |
+
+pipeline overlap cross-check (Method B, R0.3 CSV):
+  transpose_smem_padded == pipeline 'transpose': isolated 1.391 ms vs pipeline gpu_kernel 1.373 ms -> prediction error 1.3% (bar ±20%)  [PASS]
+      hidden: gpu_kernel is 6% of the 22.2 ms transfer (model: m<ratio -> hides)
+
+## N=16384  (S=1024 MiB)
+measured HBM ceiling (copy_f32): 543.0 GB/s (88% of peak)
+hiding ratio = HBM/PCIe = 41.6  (a transform hides iff its multiplier m < 41.6)
+PCIe transfer time for S: 82.22 ms
+
+| kernel | GB/s | m = HBM/BW | t_kernel ms | hides? (m<ratio) |
+|---|---|---|---|---|
+| copy_f32 | 543.0 | 1.00 | 3.955 | yes |
+| relocate_naive_f32 | 182.8 | 2.97 | 11.746 | yes |
+| transpose_smem_unpadded | 371.5 | 1.46 | 5.780 | yes |
+| transpose_smem_padded | 380.2 | 1.43 | 5.648 | yes |
+| scatter_random_f32_blk1 | 280.1 | 1.94 | 7.666 | yes |
+| scatter_random_f32_blk1024 | 279.0 | 1.95 | 7.697 | yes |
+| scatter_random_f32_blk1048576 | 84.6 | 6.42 | 25.396 | yes |
+| scatter_random_f32_blk268435456 | 20.2 | 26.84 | 106.133 | yes |
+
+pipeline overlap cross-check (Method B, R0.3 CSV):
+  transpose_smem_padded == pipeline 'transpose': isolated 5.648 ms vs pipeline gpu_kernel 5.793 ms -> prediction error 2.5% (bar ±20%)  [PASS]
+      hidden: gpu_kernel is 7% of the 84.0 ms transfer (model: m<ratio -> hides)
+
