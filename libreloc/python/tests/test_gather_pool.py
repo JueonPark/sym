@@ -3,6 +3,7 @@ pybind surface. Teardown is ASSERTED via the process thread count (/proc,
 Linux-only -- which is what CI runs), not assumed."""
 import pathlib
 import sys
+import time
 
 import numpy as np
 import pytest
@@ -15,6 +16,22 @@ pyreloc = pytest.importorskip("pyreloc")
 def _thread_count():
     status = pathlib.Path("/proc/self/status").read_text()
     return int(status.split("Threads:")[1].split()[0])
+
+
+def _wait_thread_count(expected, timeout=5.0):
+    """Poll /proc for the expected thread count instead of asserting one
+    instantaneous read. pthread_join returns when the child clears its TID
+    (mm_release), but the kernel decrements nr_threads later (release_task),
+    so a single read right after close() can transiently still count the
+    zombie -- measured ~0.07% of iterations even on an idle box, and CI
+    runners hit it. Joining is close()'s contract; convergence of the /proc
+    counter is the kernel's, hence the deadline."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if _thread_count() == expected:
+            return
+        time.sleep(0.001)
+    assert _thread_count() == expected
 
 
 def _bind_reference(n=256, strategy="chunked_pipeline"):
@@ -40,13 +57,14 @@ def test_gather_pool_thread_count_resolves():
 def test_gather_pool_close_joins_all_threads():
     base = _thread_count()
     pool = pyreloc.GatherPool(threads=4)
-    # The pool owns T-1 OS workers; the caller is the T-th worker.
+    # The pool owns T-1 OS workers; the caller is the T-th worker. Spawn
+    # increments nr_threads synchronously (clone), so this read is exact.
     assert _thread_count() == base + 3
     pool.close()
     assert pool.closed
-    assert _thread_count() == base
+    _wait_thread_count(base)
     pool.close()  # idempotent
-    assert _thread_count() == base
+    _wait_thread_count(base)
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="/proc thread count")
@@ -56,7 +74,7 @@ def test_gather_pool_context_manager_tears_down():
         assert not pool.closed
         assert _thread_count() == base + 1
     assert pool.closed
-    assert _thread_count() == base
+    _wait_thread_count(base)
 
 
 def test_relocate_gather_threads_parity():
