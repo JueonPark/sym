@@ -1,0 +1,14 @@
+{
+  "machine": "gen3-2080ti-SETME",
+  "bin": "./bench-rtrack",
+  "transforms": "T1,T1b,T3,T5",
+  "methods": "a",
+  "variant": "avx512",
+  "n": [2048, 4096, 8192, 16384],
+  "chunk_mib": [4, 16, 64, 256],
+  "threads": [8],
+  "warmup": 5,
+  "iters": 30,
+  "calibration": "calibration.json",
+  "out_csv": "bench/results/v2_isa_gen3_matrix_avx512_MACHINE.csv"
+}

@@ -277,6 +277,41 @@ const char *const kAll[] = {"gather_f32",    "gather_quantize",
                             "quantize_pack", "convert_f32_f16",
                             "contig_read",   "pack_s8_s4"};
 
+// SIMD-variant validation (issue #96): the quant kernels dispatch by
+// Variant, but gather_f32/contig_read have no SIMD paths and always run.
+// Returns false when the requested variant does not exist for the kernel,
+// so --kernel all --variant avx2 measures the eligible subset.
+bool kernelRunsVariant(const std::string &k, reloc::quant::Variant v) {
+  reloc::quant::Kernel qk;
+  if (k == "gather_quantize")
+    qk = reloc::quant::Kernel::GatherQuantize;
+  else if (k == "quantize_pack")
+    qk = reloc::quant::Kernel::QuantizePack;
+  else if (k == "convert_f32_f16")
+    qk = reloc::quant::Kernel::ConvertF32F16;
+  else if (k == "pack_s8_s4")
+    qk = reloc::quant::Kernel::PackS8S4;
+  else
+    return true; // gather_f32 / contig_read: no SIMD variants
+  return reloc::quant::kernelHasVariant(qk, v) && reloc::quant::cpuSupports(v);
+}
+
+const char *variantName(reloc::quant::Variant v) {
+  switch (v) {
+  case reloc::quant::Variant::Auto:
+    return "auto";
+  case reloc::quant::Variant::Scalar:
+    return "scalar";
+  case reloc::quant::Variant::AVX2:
+    return "avx2";
+  case reloc::quant::Variant::AVX512:
+    return "avx512";
+  case reloc::quant::Variant::AVX512Pf:
+    return "avx512pf";
+  }
+  return "?";
+}
+
 int run(const std::string &kernelArg, const std::string &planName,
         const Config &c, const char *jsonPath) {
   std::vector<std::string> kernels;
@@ -297,6 +332,12 @@ int run(const std::string &kernelArg, const std::string &planName,
 
   std::string body;
   for (const std::string &k : kernels) {
+    if (!kernelRunsVariant(k, c.variant)) {
+      std::fprintf(stderr,
+                   "cpu_rooflines: %-16s skipped (no %s path on this host)\n",
+                   k.c_str(), variantName(c.variant));
+      continue;
+    }
     int64_t inB = 0, outB = 0;
     std::optional<Result> r;
     if (k == "gather_f32")
@@ -342,7 +383,8 @@ int run(const std::string &kernelArg, const std::string &planName,
       "{\n  \"config\": {\"benchmark\": \"cpu_rooflines\", \"N\": " +
       std::to_string(c.n) + ", \"plan\": \"" + planName +
       "\", \"threads\": " + std::to_string(pool.threadCount()) +
-      ", \"warmup\": " + std::to_string(c.warmup) +
+      ", \"variant\": \"" + variantName(c.variant) +
+      "\", \"warmup\": " + std::to_string(c.warmup) +
       ", \"iters\": " + std::to_string(c.iters) + "},\n  \"kernels\": {\n" +
       body + "\n  }\n}\n";
   pool.close();
@@ -381,13 +423,29 @@ int main(int argc, char **argv) {
       c.warmup = std::atoi(next());
     else if (a == "--iters")
       c.iters = std::atoi(next());
-    else if (a == "--json")
+    else if (a == "--variant") {
+      std::string v = next();
+      bool found = false;
+      for (auto cand :
+           {reloc::quant::Variant::Auto, reloc::quant::Variant::Scalar,
+            reloc::quant::Variant::AVX2, reloc::quant::Variant::AVX512,
+            reloc::quant::Variant::AVX512Pf})
+        if (v == variantName(cand)) {
+          c.variant = cand;
+          found = true;
+        }
+      if (!found) {
+        std::fprintf(stderr, "error: unknown variant %s\n", v.c_str());
+        return 2;
+      }
+    } else if (a == "--json")
       jsonPath = next();
     else {
       std::fprintf(stderr,
                    "usage: bench-cpu-rooflines [--kernel NAME|all] "
                    "[--plan transpose|blocked|nchw|identity] [--n N] "
-                   "[--threads T] [--warmup W] [--iters I] [--json PATH|-]\n");
+                   "[--threads T] [--variant auto|scalar|avx2|avx512|avx512pf] "
+                   "[--warmup W] [--iters I] [--json PATH|-]\n");
       return 2;
     }
   }
