@@ -13,10 +13,16 @@ destination = final layout in GPU global memory.
   (2 × chunk, event-gated reuse) → `cudaMemcpyAsync` of r·S bytes into the
   final layout. R2's dequant/unpack receive kernels slot in as new
   `GpuStage` values when the r-sweep lands.
-- **Method B**: per-chunk pageable→pinned staging copy (same thread budget
-  as A's transform) → DMA of S fp32 bytes → R0.2 GPU transform kernels
-  (`relocate_f32`, `quantize_f32_s8`, plus a bench-local f32→f16 kernel for
-  T5, which issue #75's set does not include).
+- **Method B** (`b`, staged): per-chunk pageable→pinned staging copy (same
+  thread budget as A's transform) → DMA of S fp32 bytes → R0.2 GPU transform
+  kernels (`relocate_f32`, `quantize_f32_s8`, plus a bench-local f32→f16
+  kernel for T5, which issue #75's set does not include).
+- **Method B_fair** (`b_fair`, issue #95): identical to Method B but the
+  source is resident in pinned memory, so the per-chunk staging memcpy is
+  gone and the DMA reads the source directly (`host_stage_ms` = 0). This is
+  the admissible baseline — a competent pure-relocation implementation would
+  not carry a pageable→pinned copy. `b` is kept as the comparison, not
+  replaced. Select all three with `--method all`.
 
 Both methods produce the identical final artifact (dtype_out in the plan's
 dst layout); every (workload, method, chunk) config is verified bit-exact
@@ -127,6 +133,18 @@ nvcc -ccbin g++ -O3 -DNDEBUG -std=c++17 -arch=sm_75 \
 
    Best chunk is chosen **per method** (they legitimately differ); bars
    from any `unstable` row (IQR/median > 5%) are hatched.
+
+7. Gates:
+
+   ```sh
+   python3 bench/rtrack/gates.py --csv run.csv           # R1/EXP-1 (default)
+   python3 bench/rtrack/gates.py --exp v1 --csv run.csv  # V1 admissibility bar
+   ```
+
+   `--exp v1` (issue #95) checks whether each Method-B baseline reaches
+   ≥ 0.90 × the box's measured pinned H2D on the r=1.0 workloads; `b`
+   (staged) is expected to fail the bar and `b_fair` to pass it. Bars are
+   fixed in `gates.py` before the data is read.
 
 ## Protocol
 
