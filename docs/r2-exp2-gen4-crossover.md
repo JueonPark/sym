@@ -77,6 +77,15 @@ family: blocked_transpose **FAIL** (measured r\* 0.499 vs predicted 0.143);
 quant **FAIL** (0.992 vs 0.132); nchw_nhwc_quant **PASS** (both: no in-range
 crossover); transpose_quant **PASS** (both: no in-range crossover).
 
+> **Restated against the fair baseline (issue #95).** The G4 and G5
+> verdicts above were measured against the staged Method B that the V1
+> audit later found INADMISSIBLE on this box. The V1 Gen4 re-run (see
+> [V1 restatement](#v1-restatement-issue-95--the-fair-baseline-resolves-g4s-direction)
+> at the end of this report) restates them against `B_fair`: G4's
+> direction reverses (A loses 0.65–0.87×, in-band at N ≥ 8192), and both
+> measured r\* move toward the model. This table is kept as measured for
+> provenance.
+
 ## Decision / summary
 
 The **headline claim of the paper reproduces**: dtype-reduction relocation
@@ -335,3 +344,121 @@ GB/s. G1 FAILs on both counts: the number is outside the bar, and the claim
   the roofline `in_gb_per_s` reflects that.
 - The Gen3 comparison bars in Figure 1 are the R1 bare-metal EPYC/2080 Ti
   numbers (`r1_gen3_nsweep_epyc_2080ti.csv`); they are not re-measured here.
+
+## V1 restatement (issue #95) — the fair baseline resolves G4's direction
+
+*Added 2026-07-28, after #90 merged. Session: same box, fresh calibration
+(`v1_gen4_calibration_7800x3d_4070tis.json` — driver 595.79, PCIe gen4 x16
+under load, triad 36.59 GB/s vs the R2 session's 35.86), R1/R2 protocol
+(5+30, T=8, chunks 4/16/64/256), `--method all` so `a`, `b` (staged) and
+`b_fair` run side by side. Data: `v1_gen4_matrix_nsweep_7800x3d_4070tis.csv`
+(224 rows) and `v1_gen4_rsweep_7800x3d_4070tis.csv` (290 rows), every config
+bit-exact verified; unstable analysis points re-measured under this report's
+pre-declared stabler-preference rule (`*_rerun_*.csv`: 5 matrix
+transform×N points, 11 rsweep points at N=16384). Expectations were posted
+to issue #83 before the data was taken.*
+
+### Admissibility (`gates.py --exp v1`)
+
+Pinned H2D (DMA leg) reproduces at **26.86 GB/s** (R2: 26.79) → bar =
+0.90× = **24.17 GB/s**, on effective input bandwidth over r=1.0 rows.
+
+| method | transform | N=2048 | N=4096 | N=8192 | N=16384 | verdict |
+|---|---|---|---|---|---|---|
+| b (staged) | blocked_transpose | 14.14 | 17.22 | 16.75 | 17.21 | **INADMISSIBLE** |
+| b (staged) | transpose | 14.83 | 17.38 | 16.14 | 16.68 | **INADMISSIBLE** |
+| b_fair | blocked_transpose | 21.15 | 23.60 | **24.37** | **24.59** | INADMISSIBLE (strict); passes at N ≥ 8192 |
+| b_fair | transpose | 21.68 | 23.46 | 23.98 | **24.36** | INADMISSIBLE (strict); passes at N = 16384 |
+
+The staged baseline sits at the ~16 GB/s ceiling at every N — the #90
+finding reproduces. `B_fair` does **not** clear the strict every-N bar on
+this box (unlike Gen3, where it passed at every N). The stage split says
+why, with no host overhead left to remove:
+
+| b_fair (best chunk) | wall = h2d + kern + residual | DMA leg |
+|---|---|---|
+| blocked N=2048 | 0.83 = 0.67 + 0.08 + 0.08 ms | 25.1 GB/s |
+| blocked N=8192 | 11.02 = 10.02 + 0.97 + 0.03 ms | 26.8 GB/s |
+| blocked N=16384 | 43.67 = 40.03 + 3.71 − 0.07 ms | 26.8 GB/s |
+
+The DMA leg runs at the link at every N and `host_stage_ms = 0`; the
+shortfall is (i) ~0.05–0.16 ms of fixed dispatch/sync overhead, visible
+only at small N (the known WSL2 pattern), and (ii) the baseline's own
+**receive kernel, run serially after the full transfer** per the sym#63
+Method-B semantics — ~9% of wall at N=16384. On Gen3 the same kernel was a
+smaller fraction of a 2× slower link, so the bar passed there. Consequence
+for the cost model (#97): on a fast link, `BW_B = H2D` overstates B even
+with a perfect host path; B's measured cost is serial `S/BW_pcie +
+kernel`, and the admissibility bar exposes kernel placement, not just
+staging copies.
+
+### R2-G4 restated: the r=1.0 tie/win was a baseline artifact
+
+A/B at r=1.0, best chunk per method, stabler-preference applied:
+
+| transform | ratio | N=2048 | N=4096 | N=8192 | N=16384 |
+|---|---|---|---|---|---|
+| blocked_transpose | A/B_staged (this session) | 1.31× | 1.12× | 1.22× | 0.92× |
+| blocked_transpose | **A/B_fair** | **0.87×** | **0.81×** | **0.80×** | **0.65×** |
+| transpose | A/B_fair | 0.22× | 0.18× | 0.17× | 0.14× |
+
+Against the fair baseline the G4 direction reverses: **pure relocation
+loses on Gen4 too**, 0.647–0.874×, entering the pre-registered
+[0.40, 0.80] band at N ≥ 8192 (0.798, 0.647) and converging into it with
+N. The #90 "A ties/wins even at r = 1.0" reading is withdrawn as a
+staging artifact; what survives is a near-tie at small N that fades as
+the transfer amortizes. (Strictly: N=2048/4096 sit 0.005–0.07 above the
+band — small-N cells, where the same fixed-dispatch overhead that keeps
+`b_fair` under the admissibility bar also inflates A/B.)
+
+### R2-G2 margin vs the fair baseline
+
+| transform | ratio | N=2048 | N=4096 | N=8192 | N=16384 |
+|---|---|---|---|---|---|
+| quant | A/B_staged (this session) | 3.23× | 3.58× | 2.21× | 2.24× |
+| quant | **A/B_fair** | 2.20× | 2.60× | **1.46×** | 1.54× |
+| convert_f16 | A/B_fair | 1.48× | 1.39× | 1.22× | 1.26× |
+
+Same shape as Gen3 (#95): the dtype-reduction win **survives in every
+cell** (A beats a link-rate baseline), but the strict ≥1.5× bar grazes
+below once, at N=8192 (1.4643). As on Gen3, the recommended headline
+quotes `A/B_fair` — dtype reduction wins 1.46–2.60× on Gen4 — noting the
+margin is narrower than the against-staged figure because the fair
+baseline is ~1.45× faster. T5 (convert_f16) remains an ungated win on
+this AVX-512 host (1.22–1.48×), unlike Gen3 where it tied at small N.
+
+### r\* re-fit (`figure_rstar.py --b-method b_fair`)
+
+`v1_gen4_rstar_bfair.json`, `v1_gen4_figure_rstar_bfair.png`; model uses
+the R2 session rooflines (same box, triad within 2%).
+
+| family | r\* vs staged (R2, Jul 22) | r\* vs staged (this session) | **r\* vs b_fair** | predicted |
+|---|---|---|---|---|
+| blocked_transpose | 0.499 | 0.604 | **0.374** | 0.181 |
+| quant | 0.992 | none in range | **0.541** | 0.164 |
+| nchw_nhwc_quant | none / none | none | none | none |
+| transpose_quant | none / none | none | none | none |
+
+Both measured crossovers move substantially toward the model once the
+baseline is fair — and the **post-hoc `BW_B ≈ 16` correction of this
+report is now unnecessary**, as predicted in #95: `b_fair` lands at
+0.91× link directly. The R2-G5 2× criterion restated against `b_fair`:
+nchw and transpose_quant PASS (both-none agree), blocked_transpose
+2.07× (marginal FAIL), quant 3.30× (FAIL). The residual right-shift is
+consistent with the serial receive kernel documented above (the model
+assumes `BW_B = H2D`); folding that term into the B cost is #97's job.
+Two session-variance notes, disclosed not tuned: this session's *staged*
+quant curve never crosses 1.0 (R2's 0.992 was grazing), and staged
+blocked moved 0.499 → 0.604 — the staged baseline is noisy on WSL2,
+which is itself an argument for gating on `b_fair`.
+
+### Verdict on the #90 provisional scope
+
+- **Withdrawn**: "Method A ties/wins pure relocation at r = 1.0 on Gen4"
+  (R2-G4's unexpected direction) — baseline artifact, reversed by
+  `B_fair`.
+- **Narrowed**: G2's ≥1.5× strict bar → quote 1.46–2.60× vs `b_fair`
+  (win in every cell, one cell under the bar).
+- **Unchanged**: T2/T4 losses (they lose harder vs a faster baseline);
+  the Gen3↔Gen4 crossover framing; all WSL2 caveats, which now also
+  cover the small-N `b_fair` admissibility misses.

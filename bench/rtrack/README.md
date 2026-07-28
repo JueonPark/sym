@@ -218,7 +218,9 @@ nvcc -ccbin g++ -O3 -DNDEBUG -std=c++17 -arch=sm_75 \
    1.0]. The model composes stage rooflines (`--rooflines`, effective
    *input* GB/s) with a pipelined (`min(BW_cpu(r), H2D/r)`) and a serial
    (`1/BW_cpu + r/H2D`) variant; `--json` feeds `gates.py --rstar` for
-   R2-G5.
+   R2-G5. `--b-method b|b_fair` (issue #95) selects which Method-B
+   baseline anchors the speedup curve (default `b`, the staged R2
+   figure); the choice is recorded in the JSON as `b_method`.
 
    Note: the committed `bench/results/r2_rstar_gen4.json` was built from the
    stabler-preference-merged CSVs (per the R2 report's rerun rule); re-running
