@@ -81,16 +81,25 @@ V4-G3 (counter-cases lose AND rule predicts every row): PASS
 
 Aprefold clears 3.9-4.3x everywhere **except** the one gated cell
 (scatter K=4 N=8192), where it lands at 2.17x — see the explanation below.
-N=16384's K=4 point (4.31x) and both broadcast K=4 points (4.13x) are the
+N=16384's K=4 point (4.31x) and broadcast's K=4 point (4.13x) are the
 same "scatter/broadcast K=4, fold pays only r·S" shape the gate expected;
 G1 alone missed its bar.
 
 ## Why V4-G1 misses — B_xK K=4 N=8192 is bimodal, not slower here
 
-Aprefold's own numbers at this cell are stable and match the model: DMA
-leg 4.21 ms (R3's DMA-only column measured 4.29 ms at the identical cell —
-consistent), IQR/median 0.23% (tight). The miss is entirely on the B_xK
-side of the ratio:
+Aprefold's own numbers at this cell are broadly stable and match the
+model: DMA leg 4.21 ms (R3's DMA-only column measured 4.29 ms at the
+identical cell — consistent), IQR/median 0.23% (tight — the bulk of the
+20 samples cluster near the median). The same skepticism applied to
+B_xK below is worth applying to the numerator too: aprefold's own
+`wall_min_ms` at this cell is 2.23 ms against its 4.21 ms median (p95
+4.22 ms), so a fast mode exists here as well — it's just rarer, with
+median and p95 sitting close together and one or a few fast outliers
+pulling the min down. This does not change the conclusion (B_xK's swing
+is an order of magnitude larger and lands on the ratio's denominator),
+but "stable" above should be read as "stable at the median/p95," not "no
+fast mode observed anywhere in this row." The miss is still
+overwhelmingly on the B_xK side of the ratio:
 
 | source | wall_min | wall_median | wall_p95 | IQR/median |
 |---|---|---|---|---|
@@ -101,19 +110,31 @@ Both runs sample from the **same bimodal distribution** (min ≈ 9 ms,
 p95 ≈ 16.6 ms — essentially identical endpoints) — this is the K=4
 multi-GPU PCIe-contention regime M0/R3 already characterized. R3's
 median-of-20 happened to land near the slow mode (15.21 ms); this run's
-median-of-20 landed near the fast mode (9.13 ms). `bxk["speedup_vs_a"]`
-swinging between the two runs (0.90x in R3, 0.57x here) is that same
-draw. Predicted-from-R3's-DMA-only-column ratio was ~3.5x
-(4.29/(15.21×0.25) scaled — see R3's "delivery-only column"); the model
-was never wrong about aprefold's DMA leg, B_xK's median was just drawn
-from the fast side of its own noise this time. **Reported as a FAIL, not
-re-run or filtered**: rerunning with more iterations or a different seed
-could plausibly move the ratio either side of 3.0x, which is itself the
+median-of-20 landed near the fast mode (9.13 ms). `a["speedup_vs_bxk"]`
+(Method A's own speedup vs B_xK — a different ratio than aprefold/B_xK
+above, but built from the same B_xK samples) swinging between the two
+runs (0.904448 in R3, 0.574705 here, i.e. `bxk.median/a.median`) is that
+same draw. R3's own delivery-only column already predicted this cell:
+B_xK's median (15.21 ms) over A's DMA-only leg (4.29 ms) = 15.21/4.29 =
+3.55x — comfortably over the 3.0x bar. The model was never wrong about
+aprefold's DMA leg (4.21 ms here vs R3's 4.29 ms, consistent); B_xK's
+median was just drawn from the fast side of its own noise this time,
+which is what turns 3.55x into 2.17x. **Reported as a FAIL, not re-run
+or filtered**: rerunning with more iterations or a different seed could
+plausibly move the ratio either side of 3.0x, which is itself the
 finding — G1's bar is measuring a quantity with ~36% IQR/median noise at
 this exact cell, so a single median-of-20 verdict here is not reproducible
 without more reps or a variance-aware bar.
 
 ## Reuse sweep — amortization, per K, n_reuse ∈ {1,2,4,16}
+
+**Rep count differs from the aggregate tables above**: these rows are
+`sweepIters = 7` (median-of-7), not median-of-20 like the wall-clock
+tables (`multigpu_reloc.cu`'s reuse-sweep and streaming loops both use
+`sweepIters = 7`). No `wall_min`/`wall_p95`/IQR is recorded for reuse or
+streaming rows — the JSON carries only the per-row median
+(`a_per_load_ms`, `prefold_per_load_ms`); V4-G3 rests on 15 point
+comparisons with no dispersion stats attached to any of them.
 
 | mode | scenario | K | n_reuse | A ms/load | prefold ms/load | predicted | measured | rule match |
 |---|---|---|---|---|---|---|---|---|
@@ -138,19 +159,47 @@ under A's flat per-load transform and prefold wins. All 12 rows match the
 
 ## Streaming counter-case
 
+Same rep count as the reuse sweep: `sweepIters = 7` (median-of-7), no
+min/p95/IQR recorded.
+
 | mode | scenario | K | n_reuse | A ms/load | prefold ms/load | predicted | measured | rule match |
 |---|---|---|---|---|---|---|---|---|
 | streaming | scatter | 1 | 1 | 17.76 | 101.61 | A | A | ok |
 | streaming | scatter | 2 | 1 | 16.47 | 103.49 | A | A | ok |
 | streaming | scatter | 4 | 1 | 15.78 | 109.22 | A | A | ok |
 
-Streaming (never-reused tensors, one fold each) is the worst case for the
-pre-fold path by construction: it pays the full cold-fold cost
-(≥ 100 ms/load, worse than the plain reuse n=1 case because streaming's
-staging buffer cannot be warmed by a prior fold in the same run) and never
-gets to amortize it. A wins by 6-7x here, exactly as the rule predicts —
-this is the counter-case V4-G3 requires to lose, and it does, at all
-three K.
+Streaming (source mutated before every fold, one fresh fold per load) is
+the worst case for the pre-fold path, and it loses to A by 5.7-6.9x
+(`prefold_per_load_ms / a_per_load_ms`: 101.61/17.76 = 5.72,
+103.49/16.47 = 6.28, 109.22/15.78 = 6.92 at K=1/2/4) — exactly as the
+rule predicts, and the counter-case V4-G3 requires to lose.
+
+**What the ~24-27 ms/load gap vs. plain reuse actually is.** Comparing
+streaming's `prefold_per_load_ms` to the reuse sweep's n_reuse=1 row at
+the same cell (same method, no mutation): 101.61 vs 77.93 ms/load at
+K=1, 103.49 vs 78.80 at K=2, 109.22 vs 82.26 at K=4 — a gap of
+23.7-27.0 ms/load. This is **not** the cold-fold cost itself:
+`t_prefold_cold_ms` is nearly identical between the two modes at every K
+(72.94 vs 72.11 ms at K=1, 75.67 vs 74.04 ms at K=2, 80.74 vs 77.84 ms at
+K=4 — streaming/reuse respectively), a difference of only 0.8-2.9 ms;
+the "≥100 ms/load" figure above is `prefold_per_load_ms`, a different
+quantity than the cold-fold cost. What the code does support attributing:
+(1) streaming calls `mutateSource` before every one of a trial's 4 fresh
+folds (`loads = 4` in `multigpu_reloc.cu`), where the reuse n=1 loop
+folds an unmutated, already-warm source once per trial with no analogous
+per-load perturbation; and (2) streaming's reported per-load number is a
+*mean* over those 4 per-trial mutate+fold+load repetitions before the
+median-of-7 is taken across trials, whereas reuse n=1's per-trial number
+is a single fold+load timed directly and then medianed across the same 7
+trials — so one slow fold inside a streaming trial's 4-wide inner loop
+drags that trial's average up in a way the reuse loop's
+single-shot-per-trial median is not exposed to. Together these plausibly
+explain part of the gap, but neither is quantified separately here, and
+**most of the 23.7-27.0 ms/load residual is unattributed** by this run's
+instrumentation — it shows up in neither `t_prefold_cold_ms` nor
+`t_transform_ms` (both flat/near-identical between modes). It is tied to
+the same open `allocStaging`-churn caveat below, not a newly-identified
+mechanism.
 
 ## Memory-budget: what pre-folding costs beyond the reuse table
 
@@ -179,7 +228,7 @@ already happened); under the R4 hiding-ratio model
 (`docs/r4-hiding-ratio.md`) a term with zero CPU-side work is trivially
 transfer-bound regardless of the hiding ratio — its only cost is the r·S
 DMA, so R4's model doesn't need to say anything new about it: aprefold's
-5.2-20.6 ms wall times above are just its DMA legs (`dma_ms` ≈
+3.99-20.61 ms wall times above are just its DMA legs (`dma_ms` ≈
 `wall_median_ms` in every row), because there's no host phase left to
 overlap with the reuse GPU work.
 
@@ -212,3 +261,11 @@ overlap with the reuse GPU work.
   `t_prefold_cold_ms` is what grows with K — but this run did not
   instrument `allocStaging` separately, so it is reported here as an open
   variance source, not confirmed root cause.
+- **The reuse grid {1,2,4,16} never brackets the rule's predicted
+  crossover.** `t_prefold_cold_ms / t_transform_ms` ≈ 5.84-6.38 across
+  K=1/2/4 (72.11/12.35, 74.04/12.21, 77.84/12.19) — `prefoldWins`
+  predicts the crossover lands around n_reuse ≈ 6, but the tested grid
+  jumps straight from n=4 (below it) to n=16 (well above it). The 15/15
+  measured/predicted match reported under V4-G3 is real, but every point
+  sits comfortably on one side of the boundary or the other; this run
+  does not test the rule near its actual crossover.
