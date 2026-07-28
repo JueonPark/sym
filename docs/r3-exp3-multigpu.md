@@ -148,3 +148,52 @@ Expectations, stated before running:
    broadcast is fan-out-bound and R3's attribution is revised accordingly.
 
 Both outcomes are reportable; the point is attribution, not confirmation.
+
+### V5 measured results (data: `bench/results/v5_*_epyc_2080ti.json`)
+
+**Expectation 2 CONFIRMED — broadcast is CPU-gather-bound, not
+fan-out-bound.** `broadcast_contig` (same fan-out, quantize-only CPU
+stage) flips Method A to a win at every K:
+
+| scenario | K=1 | K=2 | K=4 |
+|---|---|---|---|
+| broadcast (gather+quant, R3) | 0.45x | 0.28-0.36x | 0.31x |
+| broadcast (gather+quant, V5 re-run {0,1}) | — | 0.36x | — |
+| **broadcast_contig (quant-only, V5)** | **1.26x** | **1.59x** | **2.02x** |
+
+(A/B_xK, N=8192; V5 gather re-run reproduces R3's band, anchoring the
+comparison on today's binary.) The attribution is upgraded from
+consistent-with-rooflines to isolated: remove the strided gather and the
+0.3-0.45x loss becomes a 1.3-2x win.
+
+**Expectation 1 FALSIFIED AS DESIGNED — the clean K=2 point is not
+obtainable by device selection on this harness.** Pair {2,3} measured
+*worse*, not ~1.13x better: scatter A's DMA leg 3.97 ms on {0,1} vs
+8.39 ms on {2,3} (2.1x), with instability (B_staged IQR 58.5% on {2,3}
+vs 0.0% on {0,1}). Two controls locate the mechanism:
+
+1. *Pinning-invariance*: re-running both pairs with host threads pinned
+   to die 3 (12-15,28-31) leaves the ordering unchanged ({0,1} 4.01 ms,
+   {2,3} 8.25 ms) — so it is not compute-thread NUMA locality.
+2. *Ordinal remap*: `CUDA_VISIBLE_DEVICES=2,3,0,1` (physical {2,3} become
+   ordinals {0,1}) improves physical {2,3} to 5.36 ms but physical {0,1}
+   stays at 4.00 ms either way — pinned-page placement follows the
+   allocation-time device context only partially, and pair {0,1} keeps an
+   intrinsic advantage.
+
+The intrinsic part is M0's topology: GPU0+GPU1's shared root lives on
+die 1 *which has DRAM*; GPU2 sits on the memory-less die 2, so with a
+single shared source tensor at least one {2,3} path always crosses the
+IF. M0's 1.98x pair-{2,3} scaling came from `bench-multigpu-h2d`, which
+gives every GPU its *own* source buffer — a semantics the delivery
+workload (one tensor, K receivers) cannot adopt. **Consequence: the
+original caveat is revised, not confirmed. R3's K=2 on {0,1} was not
+penalized by root sharing in this harness — {0,1} is the favorable pair
+here, because the source pages live on its die.** A genuinely
+uncontended single-source K=2 needs NUMA-interleaved or per-die
+replicated source allocation (`numactl` is not installed on this box);
+recorded as a follow-up, out of V5's scope.
+
+*Bonus row*: `aprefold` (P4, PR #101) held 2.9-4.4x over B_xK across
+every V5 cell, including the remote-NUMA pair — pre-folding is robust to
+the placement effect because it ships r*S bytes over the same paths.
