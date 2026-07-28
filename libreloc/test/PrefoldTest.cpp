@@ -71,12 +71,11 @@ TEST(PrefoldArtifactTest, GatherQuantMatchesScalarKernel) {
   const std::vector<float> inv(4, 1.0f);
 
   std::vector<int8_t> want(16);
-  reloc::quant::gatherQuantizeF32S8(b, src.data(), want.data(), inv.data(),
-                                    0, 4, reloc::quant::Variant::Scalar);
+  reloc::quant::gatherQuantizeF32S8(b, src.data(), want.data(), inv.data(), 0,
+                                    4, reloc::quant::Variant::Scalar);
 
-  PrefoldArtifact a =
-      prefoldArtifact(b, src.data(), OutputSpec::S8GatherQuant, inv.data(),
-                      backend, pool);
+  PrefoldArtifact a = prefoldArtifact(b, src.data(), OutputSpec::S8GatherQuant,
+                                      inv.data(), backend, pool);
   ASSERT_TRUE(a.valid());
   ASSERT_EQ(a.bytes(), 16);
   EXPECT_EQ(0, std::memcmp(a.data(), want.data(), 16));
@@ -115,9 +114,8 @@ TEST(PrefoldArtifactTest, PreconditionViolationsReturnInvalid) {
   // Non-packed dst.
   reloc::BoundPlan sparse = transpose4();
   sparse.dstStrides = {8, 1};
-  EXPECT_FALSE(prefoldArtifact(sparse, src.data(),
-                               OutputSpec::S8GatherQuant, inv.data(),
-                               backend, pool)
+  EXPECT_FALSE(prefoldArtifact(sparse, src.data(), OutputSpec::S8GatherQuant,
+                               inv.data(), backend, pool)
                    .valid());
 
   // QuantPack demands an identity plan.
@@ -164,9 +162,8 @@ TEST(PrefoldArtifactTest, PreconditionViolationsReturnInvalid) {
   gappedDst.elementSize = 4;
   gappedDst.totalBytes = 2 * 3 * 4 * 4;
   gappedDst.L = 1;
-  EXPECT_FALSE(prefoldArtifact(gappedDst, src.data(),
-                               OutputSpec::S8GatherQuant, inv.data(), backend,
-                               pool)
+  EXPECT_FALSE(prefoldArtifact(gappedDst, src.data(), OutputSpec::S8GatherQuant,
+                               inv.data(), backend, pool)
                    .valid());
 
   // totalBytes disagrees with prod(extents) * elementSize: a packed dst

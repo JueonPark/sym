@@ -21,8 +21,8 @@ PrefoldArtifact prefoldArtifact(const BoundPlan &bound, const float *srcBase,
   // in Quant.cpp (gone under -DNDEBUG) -- so rank-1 plans must be rejected
   // here too (issue #98 final review, finding B).
   if (bound.elementSize != 4 || !bound.padRegions.empty() ||
-      bound.extents.size() < 2 || bound.dstStrides.back() != 1 ||
-      !invScales || !srcBase)
+      bound.extents.size() < 2 || bound.dstStrides.back() != 1 || !invScales ||
+      !srcBase)
     return a;
   int64_t innerExtent = 1;
   for (size_t k = 1; k < bound.extents.size(); ++k)
@@ -58,13 +58,11 @@ PrefoldArtifact prefoldArtifact(const BoundPlan &bound, const float *srcBase,
 
   switch (spec) {
   case OutputSpec::S8GatherQuant:
-    quant::gatherQuantizeF32S8Parallel(pool, bound, srcBase,
-                                       static_cast<int8_t *>(dst), invScales,
-                                       v);
+    quant::gatherQuantizeF32S8Parallel(
+        pool, bound, srcBase, static_cast<int8_t *>(dst), invScales, v);
     break;
   case OutputSpec::S8QuantPack:
-    quant::quantizePackF32S8Parallel(pool, srcBase,
-                                     static_cast<int8_t *>(dst),
+    quant::quantizePackF32S8Parallel(pool, srcBase, static_cast<int8_t *>(dst),
                                      bound.extents[0], innerExtent, invScales,
                                      v);
     break;
@@ -80,8 +78,7 @@ bool prefoldWins(int64_t nReuse, double tTransformMs, double tPrefoldMs,
                  double penaltyMs) {
   if (nReuse < 1)
     return false;
-  return static_cast<double>(nReuse) * tTransformMs >
-         tPrefoldMs + penaltyMs;
+  return static_cast<double>(nReuse) * tTransformMs > tPrefoldMs + penaltyMs;
 }
 
 } // namespace prefold
