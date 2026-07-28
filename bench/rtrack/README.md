@@ -144,7 +144,13 @@ nvcc -ccbin g++ -O3 -DNDEBUG -std=c++17 -arch=sm_75 \
    `--exp v1` (issue #95) checks whether each Method-B baseline reaches
    ≥ 0.90 × the box's measured pinned H2D on the r=1.0 workloads; `b`
    (staged) is expected to fail the bar and `b_fair` to pass it. Bars are
-   fixed in `gates.py` before the data is read.
+   fixed in `gates.py` before the data is read. For the multi-GPU
+   pre-fold path (`bench-multigpu-reloc`, issue #98), `--reuse
+   1,2,4,16` and `--streaming` sweep the folded artifact's per-load
+   amortization against repeated vs. cold single-use loads, and
+   `python3 bench/rtrack/exp4v_gate.py --json <run.json ...>` evaluates
+   its V4-G1..G3 gates (speedup bar, DMA-leg admissibility, counter-case
+   + rule-match) over the resulting JSON.
 
 ## Protocol
 

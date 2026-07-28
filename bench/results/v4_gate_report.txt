@@ -1,0 +1,22 @@
+V4-G1 aprefold/B_xK @ scatter K=4 N=8192: 2.17x (bar >= 3.0)  FAIL
+V4-G2 aprefold DMA leg @ scatter K=1 N=8192: 12.86 GB/s (bar >= 11.76 = 0.9 x 13.07)  PASS
+
+| mode | scenario | K | n_reuse | A ms/load | prefold ms/load | predicted | measured | rule match |
+|---|---|---|---|---|---|---|---|---|
+| reuse | scatter | 1 | 1 | 17.42 | 77.93 | A | A | ok |
+| reuse | scatter | 1 | 2 | 17.48 | 41.63 | A | A | ok |
+| reuse | scatter | 1 | 4 | 17.35 | 23.32 | A | A | ok |
+| reuse | scatter | 1 | 16 | 17.35 | 9.79 | PREFOLD | PREFOLD | ok |
+| streaming | scatter | 1 | 1 | 17.76 | 101.61 | A | A | ok |
+| reuse | scatter | 2 | 1 | 16.20 | 78.80 | A | A | ok |
+| reuse | scatter | 2 | 2 | 16.11 | 41.04 | A | A | ok |
+| reuse | scatter | 2 | 4 | 16.12 | 22.70 | A | A | ok |
+| reuse | scatter | 2 | 16 | 16.07 | 8.67 | PREFOLD | PREFOLD | ok |
+| streaming | scatter | 2 | 1 | 16.47 | 103.49 | A | A | ok |
+| reuse | scatter | 4 | 1 | 15.24 | 82.26 | A | A | ok |
+| reuse | scatter | 4 | 2 | 16.39 | 44.24 | A | A | ok |
+| reuse | scatter | 4 | 4 | 15.15 | 23.54 | A | A | ok |
+| reuse | scatter | 4 | 16 | 15.71 | 8.48 | PREFOLD | PREFOLD | ok |
+| streaming | scatter | 4 | 1 | 15.78 | 109.22 | A | A | ok |
+
+V4-G3 (counter-cases lose AND rule predicts every row): PASS
