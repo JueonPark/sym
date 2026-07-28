@@ -15,20 +15,43 @@ PrefoldArtifact prefoldArtifact(const BoundPlan &bound, const float *srcBase,
   // Preconditions checked unconditionally: benchmarking builds compile
   // with -DNDEBUG, and a silently wrong artifact is worse than none
   // (issue #63). Mirrors the rtrack fixture checks.
+  //
+  // extents.size() < 2: quant::gatherQuantizeF32S8's contract requires a
+  // distinct outer (per-channel-scale) axis -- enforced only by an assert
+  // in Quant.cpp (gone under -DNDEBUG) -- so rank-1 plans must be rejected
+  // here too (issue #98 final review, finding B).
   if (bound.elementSize != 4 || !bound.padRegions.empty() ||
-      bound.extents.empty() || bound.dstStrides.back() != 1 || !invScales ||
-      !srcBase)
+      bound.extents.size() < 2 || bound.dstStrides.back() != 1 ||
+      !invScales || !srcBase)
     return a;
   int64_t innerExtent = 1;
   for (size_t k = 1; k < bound.extents.size(); ++k)
     innerExtent *= bound.extents[k];
-  if (bound.dstStrides[0] != innerExtent)
+  // Packed-dst check, as a running product from the innermost axis
+  // outward: dst must be fully row-major contiguous, i.e.
+  // dstStrides[k] == prod(extents[k+1..]) for every k. This replaces the
+  // old dstStrides[0] == innerExtent check, which only compared the
+  // outermost stride against the total inner extent and passes for plans
+  // that are contiguous at the front and back but gapped in the middle
+  // (issue #98 final review, finding C) -- e.g. extents={2,3,4},
+  // dstStrides={12,8,1} (max written index 31, but the alloc below is
+  // sized for prod(extents) == 24 elements: a heap overflow). The final
+  // value of the running product is prod(extents); cross-check it against
+  // totalBytes so a plan whose totalBytes disagrees with
+  // prod(extents)*elementSize can't under-allocate what the executors
+  // below actually write.
+  int64_t packedElems = 1;
+  for (size_t k = bound.extents.size(); k-- > 0;) {
+    if (bound.dstStrides[k] != packedElems)
+      return a;
+    packedElems *= bound.extents[k];
+  }
+  if (packedElems != bound.totalBytes / bound.elementSize)
     return a;
   if (spec == OutputSpec::S8QuantPack && bound.srcStrides != bound.dstStrides)
     return a;
 
-  const int64_t totalElems = bound.totalBytes / bound.elementSize;
-  const int64_t outBytes = totalElems; // s8 image: 1 byte per element
+  const int64_t outBytes = packedElems; // s8 image: 1 byte per element
   void *dst = backend.allocStaging(static_cast<size_t>(outBytes));
   if (!dst)
     return a;

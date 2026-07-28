@@ -16,7 +16,14 @@ PCIe gen3), performance governor, persistence mode Enabled (all 4 GPUs),
 host threads pinned to `4-7,20-23` — R3's exact protocol
 (`docs/r3-exp3-multigpu.md`), replicated here (`grep -n
 'taskset\|governor\|persistence'` confirms R3 pinned to 4-7,20-23; no
-new pinning invented). Tool: `bench-multigpu-reloc`
+new pinning invented). The harness itself did change from R3's, though:
+each K iteration here holds a live pinned artifact resident (67 MB at
+N=8192, 268 MB at N=16384) through the A/B_xK/B_staged timings and
+inserts a fourth timed method (aprefold) alongside them; the G1
+bimodality explanation below rests on the endpoint match (min/p95
+against R3's own), so this harness change is a possible-but-unevidenced
+contributor to that cell's draw, not something silently ruled out. Tool:
+`bench-multigpu-reloc`
 (`bench/rtrack/multigpu_reloc.cu`) with the Task 3 `--reuse`/`--streaming`
 flags (issue #98); gate script `bench/rtrack/exp4v_gate.py` (Task 4,
 committed before this data was collected). Data in `bench/results/v4_*`.
@@ -83,7 +90,12 @@ Aprefold clears 3.9-4.3x everywhere **except** the one gated cell
 (scatter K=4 N=8192), where it lands at 2.17x — see the explanation below.
 N=16384's K=4 point (4.31x) and broadcast's K=4 point (4.13x) are the
 same "scatter/broadcast K=4, fold pays only r·S" shape the gate expected;
-G1 alone missed its bar.
+G1 alone missed its bar. These aggregate numbers are the n_reuse→infinity
+limit (the transform pass *and* the 67 MB pinned allocation are both
+hoisted out of the timed loop), and the reuse sweep below puts this box's
+break-even at n_reuse ≈ 6: below ~6 reuses aprefold loses outright to
+plain Method A, and the 3.9-4.3x figures above only describe the
+fully-amortized regime above that crossover.
 
 ## Why V4-G1 misses — B_xK K=4 N=8192 is bimodal, not slower here
 
@@ -125,6 +137,21 @@ plausibly move the ratio either side of 3.0x, which is itself the
 finding — G1's bar is measuring a quantity with ~36% IQR/median noise at
 this exact cell, so a single median-of-20 verdict here is not reproducible
 without more reps or a variance-aware bar.
+
+## Gate G1 and decision
+
+**G1: scatter K=4 N=8192, aprefold/B_xK = 2.17x < 3.00x → FAIL** on this
+box, for the noisy-B_xK-denominator reason explained above.
+
+This FAIL does not block #94's validity-hardening track: that track
+depends on prefoldArtifact's correctness properties, not on G1's ratio.
+`prefoldWins` likewise remains consumable by #V3 as-is — its inputs are
+`tTransformMs`/`tPrefoldMs`/`penaltyMs` (transform and fold times), none
+of which is the G1 ratio, so a FAIL here does not invalidate the rule
+V4-G3 already validated 15/15. The path to re-testing G1 is a
+variance-aware bar (one that accounts for B_xK's ~36% IQR/median at this
+cell) or simply more reps at the K=4 cell to pull the median away from
+the bimodal split's boundary; neither is done in this run.
 
 ## Reuse sweep — amortization, per K, n_reuse ∈ {1,2,4,16}
 
@@ -225,12 +252,16 @@ pinned budget) is future work, not something this run's data speaks to.
 
 The pre-fold path has no host-transform term on the timed path (the fold
 already happened); under the R4 hiding-ratio model
-(`docs/r4-hiding-ratio.md`) a term with zero CPU-side work is trivially
+(`docs/r4-exp4-hiding-ratio.md`) a term with zero CPU-side work is trivially
 transfer-bound regardless of the hiding ratio — its only cost is the r·S
 DMA, so R4's model doesn't need to say anything new about it: aprefold's
-3.99-20.61 ms wall times above are just its DMA legs (`dma_ms` ≈
-`wall_median_ms` in every row), because there's no host phase left to
-overlap with the reuse GPU work.
+3.99-20.61 ms wall times above are its DMA legs by construction, not by
+measurement (`multigpu_reloc.cu` sets `d = w` for `Method::APrefold` —
+"the whole iteration IS the DMA leg" — so `dma_ms` == `wall_median_ms`
+in every aprefold row trivially, not as an empirical finding). The
+transfer-bound argument instead comes from the code path itself: there is
+no host-transform phase inside the timed loop for aprefold to overlap
+with the reuse GPU work.
 
 ## Caveats
 
@@ -261,11 +292,12 @@ overlap with the reuse GPU work.
   `t_prefold_cold_ms` is what grows with K — but this run did not
   instrument `allocStaging` separately, so it is reported here as an open
   variance source, not confirmed root cause.
-- **The reuse grid {1,2,4,16} never brackets the rule's predicted
-  crossover.** `t_prefold_cold_ms / t_transform_ms` ≈ 5.84-6.38 across
-  K=1/2/4 (72.11/12.35, 74.04/12.21, 77.84/12.19) — `prefoldWins`
-  predicts the crossover lands around n_reuse ≈ 6, but the tested grid
-  jumps straight from n=4 (below it) to n=16 (well above it). The 15/15
-  measured/predicted match reported under V4-G3 is real, but every point
-  sits comfortably on one side of the boundary or the other; this run
-  does not test the rule near its actual crossover.
+- **The reuse grid {1,2,4,16} never tests the rule near its crossover.**
+  `t_prefold_cold_ms / t_transform_ms` ≈ 5.84-6.38 across K=1/2/4
+  (72.11/12.35, 74.04/12.21, 77.84/12.19) — `prefoldWins` predicts the
+  crossover lands around n_reuse ≈ 6. The grid's endpoints (4 and 16) do
+  coarsely bracket that range, but the tested grid jumps straight from
+  n=4 (below it) to n=16 (well above it) with nothing in between. The
+  15/15 measured/predicted match reported under V4-G3 is real, but every
+  point sits comfortably on one side of the boundary or the other; this
+  run does not test the rule near its actual crossover.

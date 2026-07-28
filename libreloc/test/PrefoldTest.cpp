@@ -131,6 +131,58 @@ TEST(PrefoldArtifactTest, PreconditionViolationsReturnInvalid) {
                                OutputSpec::S8GatherQuant, nullptr, backend,
                                pool)
                    .valid());
+
+  // Rank-1 plan: quant::gatherQuantizeF32S8's contract needs a distinct
+  // outer (per-channel-scale) axis (rank >= 2, Quant.cpp:214's assert,
+  // which vanishes under -DNDEBUG) -- rejected for both OutputSpec values
+  // (issue #98 final review, finding B).
+  reloc::BoundPlan rank1;
+  rank1.extents = {4};
+  rank1.srcStrides = {1};
+  rank1.dstStrides = {1};
+  rank1.elementSize = 4;
+  rank1.totalBytes = 16;
+  rank1.L = 1;
+  EXPECT_FALSE(prefoldArtifact(rank1, src.data(), OutputSpec::S8GatherQuant,
+                               inv.data(), backend, pool)
+                   .valid());
+  EXPECT_FALSE(prefoldArtifact(rank1, src.data(), OutputSpec::S8QuantPack,
+                               inv.data(), backend, pool)
+                   .valid());
+
+  // Gapped dst strides: front (dstStrides[0] == prod(extents[1:]) == 12)
+  // and back (dstStrides[2] == 1) both look packed in isolation, but the
+  // middle axis has a gap (stride 8 where a packed plan needs 4), so the
+  // max written index (31) exceeds the alloc this function sizes for
+  // prod(extents) == 24 elements -- a heap overflow the old
+  // dstStrides[0]==innerExtent check missed (issue #98 final review,
+  // finding C).
+  reloc::BoundPlan gappedDst;
+  gappedDst.extents = {2, 3, 4};
+  gappedDst.srcStrides = {12, 4, 1};
+  gappedDst.dstStrides = {12, 8, 1};
+  gappedDst.elementSize = 4;
+  gappedDst.totalBytes = 2 * 3 * 4 * 4;
+  gappedDst.L = 1;
+  EXPECT_FALSE(prefoldArtifact(gappedDst, src.data(),
+                               OutputSpec::S8GatherQuant, inv.data(), backend,
+                               pool)
+                   .valid());
+
+  // totalBytes disagrees with prod(extents) * elementSize: a packed dst
+  // plan whose declared footprint under-states what the executors below
+  // actually write (issue #98 final review, finding C).
+  reloc::BoundPlan totalBytesMismatch;
+  totalBytesMismatch.extents = {4, 4};
+  totalBytesMismatch.srcStrides = {4, 1};
+  totalBytesMismatch.dstStrides = {4, 1};
+  totalBytesMismatch.elementSize = 4;
+  totalBytesMismatch.totalBytes = 32; // should be 4*4*4 == 64
+  totalBytesMismatch.L = 1;
+  EXPECT_FALSE(prefoldArtifact(totalBytesMismatch, src.data(),
+                               OutputSpec::S8GatherQuant, inv.data(), backend,
+                               pool)
+                   .valid());
 }
 
 TEST(PrefoldArtifactTest, MoveTransfersOwnership) {
