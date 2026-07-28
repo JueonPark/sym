@@ -29,8 +29,10 @@
 #include "rtrack/plans.h"
 #include "rtrack/rstats.h"
 
+#include "reloc/CudaBackend.h"
 #include "reloc/CudaKernels.h"
 #include "reloc/GatherPool.h"
+#include "reloc/Prefold.h"
 #include "reloc/Quant.h"
 
 #include <cuda_runtime.h>
@@ -58,13 +60,23 @@ namespace {
 using namespace bench::rtrack;
 
 enum class Scenario { Broadcast, Scatter };
-enum class Method { A, BxK, BStaged };
+enum class Method { A, APrefold, BxK, BStaged };
 
 const char *scenarioName(Scenario s) {
   return s == Scenario::Broadcast ? "broadcast" : "scatter";
 }
 const char *methodName(Method m) {
-  return m == Method::A ? "a" : (m == Method::BxK ? "bxk" : "bstaged");
+  switch (m) {
+  case Method::A:
+    return "a";
+  case Method::APrefold:
+    return "aprefold";
+  case Method::BxK:
+    return "bxk";
+  case Method::BStaged:
+    return "bstaged";
+  }
+  return "?";
 }
 
 struct Options {
@@ -75,6 +87,8 @@ struct Options {
   int warmup = 3;
   int iters = 20;
   const char *jsonPath = "-";
+  std::vector<int> reuse;  // --reuse: amortization sweep points (empty = skip)
+  bool streaming = false;  // --streaming: re-fold-per-load counter-case
 };
 
 // Per-GPU device/stream state. Buffers are sized to the GPU's share of the
@@ -144,6 +158,29 @@ void cpuTransform(HostState &h, reloc::GatherPool &pool,
                                               h.invScales.data(), variant);
 }
 
+// P4 (issue #98): fold once through the library component. The artifact
+// lands in CudaBackend staging = pinned memory, so aprefold's DMAs read
+// it directly. Cold cost (allocStaging + fold) is timed by the caller.
+reloc::prefold::PrefoldArtifact foldOnce(HostState &h,
+                                         reloc::CudaBackend &backend,
+                                         reloc::GatherPool &pool,
+                                         reloc::quant::Variant variant) {
+  const auto spec = h.contiguousQuant
+                        ? reloc::prefold::OutputSpec::S8QuantPack
+                        : reloc::prefold::OutputSpec::S8GatherQuant;
+  return reloc::prefold::prefoldArtifact(h.plan, h.hF32, spec,
+                                         h.invScales.data(), backend, pool,
+                                         variant);
+}
+
+// Touch one value per channel so a re-fold is genuinely required (the
+// invScales here are constant 1/127, so mutation never invalidates them).
+void mutateSource(HostState &h, int iter) {
+  for (int64_t c = 0; c < h.rows; ++c)
+    h.hF32[c * h.channelSize] =
+        (static_cast<float>(((c + iter) * 131) & 0xff) - 128.0f) * 0.9f;
+}
+
 // GPU transform for Method B: fp32 (src layout) in dF32 -> int8 (dst
 // layout) in dInt8, matching the CPU reference. Broadcast relocates first.
 void gpuTransform(Scenario sc, GpuCtx &g, const HostState &h) {
@@ -204,6 +241,36 @@ double iterA(HostState &h, std::vector<GpuCtx> &ctxs, reloc::GatherPool &pool,
   const double end = nowMs();
   dmaMs = end - tDma;
   return end - t0;
+}
+
+// One aprefold iteration: the transform happened at fold time, so the
+// timed work is ONLY the K concurrent int8 DMAs from the pinned artifact
+// (same spin-barrier protocol as iterA).
+double iterAPrefold(const reloc::prefold::PrefoldArtifact &art,
+                    std::vector<GpuCtx> &ctxs) {
+  const int8_t *src = static_cast<const int8_t *>(art.data());
+  const double t0 = nowMs();
+  std::atomic<int> ready{0};
+  std::atomic<bool> go{false};
+  std::vector<std::thread> ts;
+  for (size_t i = 0; i < ctxs.size(); ++i)
+    ts.emplace_back([&, i] {
+      GpuCtx &g = ctxs[i];
+      CUDA_CHECK(cudaSetDevice(g.dev));
+      ready.fetch_add(1);
+      while (!go.load(std::memory_order_acquire)) {
+      }
+      CUDA_CHECK(cudaMemcpyAsync(g.dInt8, src + g.hostElemOffset,
+                                 static_cast<size_t>(g.elems),
+                                 cudaMemcpyHostToDevice, g.stream));
+      CUDA_CHECK(cudaStreamSynchronize(g.stream));
+    });
+  while (ready.load() != static_cast<int>(ctxs.size())) {
+  }
+  go.store(true, std::memory_order_release);
+  for (std::thread &t : ts)
+    t.join();
+  return nowMs() - t0;
 }
 
 // One Method-B iteration. staged=false runs the K GPUs concurrently
@@ -297,7 +364,8 @@ void freeCtxs(std::vector<GpuCtx> &ctxs) {
 }
 
 std::string entryJson(Scenario sc, Method m, int K, int64_t n,
-                     const HostState &h, const RunTimes &t, double speedup) {
+                     const HostState &h, const RunTimes &t, double speedup,
+                     double speedupVsA = -1) {
   const int64_t S = h.totalElems * 4;
   // Logical input delivered: one tensor (both scenarios move one tensor's
   // worth of logical data; broadcast replicates it K times physically).
@@ -318,6 +386,8 @@ std::string entryJson(Scenario sc, Method m, int K, int64_t n,
       ", \"eff_input_gb_per_s\": " + bench::jsonNumber(effGbps);
   if (speedup >= 0)
     j += ", \"speedup_vs_bxk\": " + bench::jsonNumber(speedup);
+  if (speedupVsA >= 0)
+    j += ", \"speedup_vs_a\": " + bench::jsonNumber(speedupVsA);
   j += "}";
   return j;
 }
@@ -332,12 +402,36 @@ int run(const Options &opt) {
   buildHost(h, opt.scenario, opt.n);
   reloc::GatherPool pool(opt.threads);
   const reloc::quant::Variant variant = reloc::quant::Variant::Auto;
+  reloc::CudaBackend backend(/*numStreams=*/1); // used for pinned staging only
 
   std::string rows;
   auto emit = [&](const std::string &j) {
     if (!rows.empty())
       rows += ",\n";
     rows += j;
+  };
+
+  std::string reuseRows;
+  auto emitReuse = [&](const char *mode, Scenario sc, int64_t n, int K,
+                       int nReuse, int loadsPerTrial, double aPerLoad,
+                       double pfPerLoad, double tTransform,
+                       double tPrefoldCold, bool predicted, bool measured) {
+    if (!reuseRows.empty())
+      reuseRows += ",\n";
+    reuseRows +=
+        "    {\"mode\": \"" + std::string(mode) + "\", \"scenario\": \"" +
+        scenarioName(sc) + "\", \"N\": " + std::to_string(n) +
+        ", \"K\": " + std::to_string(K) +
+        ", \"n_reuse\": " + std::to_string(nReuse) +
+        ", \"loads_per_trial\": " + std::to_string(loadsPerTrial) +
+        ", \"a_per_load_ms\": " + bench::jsonNumber(aPerLoad) +
+        ", \"prefold_per_load_ms\": " + bench::jsonNumber(pfPerLoad) +
+        ", \"t_transform_ms\": " + bench::jsonNumber(tTransform) +
+        ", \"t_prefold_cold_ms\": " + bench::jsonNumber(tPrefoldCold) +
+        ", \"predicted_prefold_wins\": " +
+        (predicted ? "true" : "false") +
+        ", \"measured_prefold_wins\": " + (measured ? "true" : "false") +
+        "}";
   };
 
   for (int K : opt.ks) {
@@ -358,6 +452,27 @@ int run(const Options &opt) {
                      scenarioName(opt.scenario), K);
         return 1;
       }
+
+    // aprefold: fold once via the library component, verify the delivery.
+    reloc::prefold::PrefoldArtifact art =
+        foldOnce(h, backend, pool, variant);
+    if (!art.valid()) {
+      std::fprintf(stderr, "error: prefoldArtifact failed (%s K=%d)\n",
+                   scenarioName(opt.scenario), K);
+      return 1;
+    }
+    for (GpuCtx &g : ctxs) {
+      CUDA_CHECK(cudaSetDevice(g.dev));
+      CUDA_CHECK(cudaMemset(g.dInt8, 0xAB, static_cast<size_t>(g.elems)));
+    }
+    (void)iterAPrefold(art, ctxs);
+    for (const GpuCtx &g : ctxs)
+      if (!verifyGpu(g, h)) {
+        std::fprintf(stderr, "VERIFY FAILED: aprefold %s K=%d\n",
+                     scenarioName(opt.scenario), K);
+        return 1;
+      }
+
     for (bool staged : {false, true}) {
       for (GpuCtx &g : ctxs) {
         CUDA_CHECK(cudaSetDevice(g.dev));
@@ -373,7 +488,7 @@ int run(const Options &opt) {
         }
     }
 
-    // --- time A, B_xK, B_staged -------------------------------------------
+    // --- time A, APrefold, B_xK, B_staged -----------------------------------
     auto timeIt = [&](Method m) {
       std::vector<double> wall, dmas;
       auto once = [&]() -> double {
@@ -381,7 +496,10 @@ int run(const Options &opt) {
         double w;
         if (m == Method::A)
           w = iterA(h, ctxs, pool, variant, d);
-        else
+        else if (m == Method::APrefold) {
+          w = iterAPrefold(art, ctxs);
+          d = w; // the whole iteration IS the DMA leg
+        } else
           w = iterB(opt.scenario, h, ctxs, m == Method::BStaged);
         dmas.push_back(d);
         return w;
@@ -397,21 +515,147 @@ int run(const Options &opt) {
     };
 
     RunTimes ta = timeIt(Method::A);
+    RunTimes tap = timeIt(Method::APrefold);
     RunTimes tbk = timeIt(Method::BxK);
     RunTimes tbs = timeIt(Method::BStaged);
     const double sa = tbk.wall.median > 0 ? tbk.wall.median / ta.wall.median
                                           : 0.0;
+    const double sap = tbk.wall.median > 0
+                           ? tbk.wall.median / tap.wall.median
+                           : 0.0;
+    const double sapVsA = ta.wall.median > 0
+                              ? ta.wall.median / tap.wall.median
+                              : 0.0;
     emit(entryJson(opt.scenario, Method::A, K, opt.n, h, ta, sa));
+    emit(entryJson(opt.scenario, Method::APrefold, K, opt.n, h, tap, sap,
+                   sapVsA));
     emit(entryJson(opt.scenario, Method::BxK, K, opt.n, h, tbk, -1));
     emit(entryJson(opt.scenario, Method::BStaged, K, opt.n, h, tbs, -1));
     std::fprintf(stderr,
-                 "%s K=%d: A %7.2f ms | BxK %7.2f ms | Bstaged %7.2f ms | "
-                 "A/BxK %.2fx%s\n",
+                 "%s K=%d: A %7.2f | Apre %7.2f | BxK %7.2f | Bstg %7.2f ms "
+                 "| Apre/BxK %.2fx%s\n",
                  scenarioName(opt.scenario), K, ta.wall.median,
-                 tbk.wall.median, tbs.wall.median, sa,
-                 (opt.scenario == Scenario::Scatter && K == 4)
-                     ? (sa >= 1.3 ? "  [G5 PASS]" : "  [G5 fail]")
+                 tap.wall.median, tbk.wall.median, tbs.wall.median, sap,
+                 (opt.scenario == Scenario::Scatter && K == 4 &&
+                  opt.n == 8192)
+                     ? (sap >= 3.0 ? "  [V4-G1 PASS]" : "  [V4-G1 fail]")
                      : "");
+
+    // --- V4 reuse sweep: amortization rule vs measured reuse counts -------
+    // Trial(n): prefold = cold fold (allocStaging + transform) + n DMAs;
+    //           A       = n x (transform + DMA).
+    // The cold fold makes n_reuse=1 the cold single-use counter-case: the
+    // rule input is tPrefoldCold (fold incl. pinned alloc) with penalty
+    // folded in, i.e. prefoldWins(n, tTransform, tPrefoldCold, 0).
+    if (!opt.reuse.empty()) {
+      const int sweepIters = 7;
+      // Median transform-only and cold-fold times feed the rule.
+      std::vector<double> tT, tP;
+      for (int i = 0; i < sweepIters; ++i) {
+        const double t0 = nowMs();
+        cpuTransform(h, pool, variant);
+        tT.push_back(nowMs() - t0);
+        const double t1 = nowMs();
+        reloc::prefold::PrefoldArtifact cold =
+            foldOnce(h, backend, pool, variant);
+        tP.push_back(nowMs() - t1);
+        if (!cold.valid())
+          return 1;
+      }
+      const double tTransform = summarizeSamples(tT).median;
+      const double tPrefoldCold = summarizeSamples(tP).median;
+      for (int n : opt.reuse) {
+        if (n < 1)
+          continue;
+        std::vector<double> pf, aa;
+        for (int i = 0; i < sweepIters; ++i) {
+          const double t0 = nowMs();
+          reloc::prefold::PrefoldArtifact trialArt =
+              foldOnce(h, backend, pool, variant);
+          for (int j = 0; j < n; ++j)
+            (void)iterAPrefold(trialArt, ctxs);
+          pf.push_back((nowMs() - t0) / n);
+          const double t1 = nowMs();
+          for (int j = 0; j < n; ++j) {
+            double d = 0;
+            (void)iterA(h, ctxs, pool, variant, d);
+          }
+          aa.push_back((nowMs() - t1) / n);
+        }
+        const double pfMed = summarizeSamples(pf).median;
+        const double aMed = summarizeSamples(aa).median;
+        const bool predicted =
+            reloc::prefold::prefoldWins(n, tTransform, tPrefoldCold, 0.0);
+        const bool measured = pfMed < aMed;
+        emitReuse("reuse", opt.scenario, opt.n, K, n, /*loadsPerTrial=*/n,
+                  aMed, pfMed, tTransform, tPrefoldCold, predicted,
+                  measured);
+        std::fprintf(stderr,
+                     "reuse n=%2d K=%d: A %7.2f ms/load | prefold %7.2f "
+                     "ms/load | predicted %s measured %s\n",
+                     n, K, aMed, pfMed, predicted ? "PREFOLD" : "A",
+                     measured ? "PREFOLD" : "A");
+      }
+    }
+
+    // --- V4 streaming counter-case: source mutates every load -------------
+    // Model swapping: the artifact is never reusable, so every load pays a
+    // fresh fold (incl. its pinned allocation). n_reuse = 1 per artifact;
+    // the rule predicts A.
+    if (opt.streaming) {
+      const int loads = 4, sweepIters = 7;
+      std::vector<double> pf, aa, tT, tP;
+      for (int i = 0; i < sweepIters; ++i) {
+        const double t0 = nowMs();
+        for (int j = 0; j < loads; ++j) {
+          mutateSource(h, i * loads + j);
+          reloc::prefold::PrefoldArtifact sArt =
+              foldOnce(h, backend, pool, variant);
+          (void)iterAPrefold(sArt, ctxs);
+        }
+        pf.push_back((nowMs() - t0) / loads);
+        const double t1 = nowMs();
+        for (int j = 0; j < loads; ++j) {
+          mutateSource(h, 1000 + i * loads + j);
+          double d = 0;
+          (void)iterA(h, ctxs, pool, variant, d);
+        }
+        aa.push_back((nowMs() - t1) / loads);
+        // Rule inputs, re-measured under mutation (they match the sweep's).
+        const double t2 = nowMs();
+        cpuTransform(h, pool, variant);
+        tT.push_back(nowMs() - t2);
+        const double t3 = nowMs();
+        reloc::prefold::PrefoldArtifact cold =
+            foldOnce(h, backend, pool, variant);
+        tP.push_back(nowMs() - t3);
+        if (!cold.valid())
+          return 1;
+      }
+      const double tTransform = summarizeSamples(tT).median;
+      const double tPrefoldCold = summarizeSamples(tP).median;
+      const bool predicted =
+          reloc::prefold::prefoldWins(1, tTransform, tPrefoldCold, 0.0);
+      const double pfMed = summarizeSamples(pf).median;
+      const double aMed = summarizeSamples(aa).median;
+      emitReuse("streaming", opt.scenario, opt.n, K, 1, loads, aMed, pfMed,
+                tTransform, tPrefoldCold, predicted, pfMed < aMed);
+      // Post-mutation correctness: recompute the reference once and check
+      // the last delivery (the timed loop itself is unverified by design).
+      reloc::quant::gatherQuantizeF32S8(h.plan, h.hF32, h.ref.data(),
+                                        h.invScales.data(), 0, h.rows,
+                                        reloc::quant::Variant::Scalar);
+      reloc::prefold::PrefoldArtifact finalArt =
+          foldOnce(h, backend, pool, variant);
+      (void)iterAPrefold(finalArt, ctxs);
+      for (const GpuCtx &g : ctxs)
+        if (!verifyGpu(g, h)) {
+          std::fprintf(stderr, "VERIFY FAILED: streaming %s K=%d\n",
+                       scenarioName(opt.scenario), K);
+          return 1;
+        }
+    }
+
     freeCtxs(ctxs);
   }
   pool.close();
@@ -423,7 +667,8 @@ int run(const Options &opt) {
       ", \"cpu_threads\": " + std::to_string(opt.threads) +
       ", \"warmup\": " + std::to_string(opt.warmup) +
       ", \"iters\": " + std::to_string(opt.iters) +
-      "},\n  \"rows\": [\n" + rows + "\n  ]\n}\n";
+      "},\n  \"rows\": [\n" + rows +
+      "\n  ],\n  \"reuse_rows\": [\n" + reuseRows + "\n  ]\n}\n";
   freeHost(h);
   if (std::strcmp(opt.jsonPath, "-") == 0) {
     std::fputs(doc.c_str(), stdout);
@@ -474,6 +719,10 @@ int main(int argc, char **argv) {
       opt.n = std::atoll(next());
     else if (a == "--k")
       opt.ks = parseInts(next());
+    else if (a == "--reuse")
+      opt.reuse = parseInts(next());
+    else if (a == "--streaming")
+      opt.streaming = true;
     else if (a == "--threads")
       opt.threads = static_cast<unsigned>(std::atoi(next()));
     else if (a == "--warmup")
@@ -485,8 +734,8 @@ int main(int argc, char **argv) {
     else {
       std::fprintf(stderr,
                    "usage: bench-multigpu-reloc [--scenario broadcast|scatter] "
-                   "[--n N] [--k 1,2,4] [--threads T] [--warmup W] "
-                   "[--iters I] [--json PATH|-]\n");
+                   "[--n N] [--k 1,2,4] [--reuse 1,2,4,16] [--streaming] "
+                   "[--threads T] [--warmup W] [--iters I] [--json PATH|-]\n");
       return 2;
     }
   }
