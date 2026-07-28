@@ -57,6 +57,13 @@ void dequantS8F32(const int8_t *dSrc, float *dDst, int64_t channels,
                   int64_t channelSize, const float *dScales,
                   void *stream = nullptr);
 
+/// `convert_f16_f32` (Method A r=0.5 receive path, issue #83): contiguous
+/// IEEE binary16 -> fp32 widening. Exact -- every f16 value is
+/// representable in f32, so the output is unique and bit-comparable to any
+/// correct host conversion.
+void convertF16F32(const uint16_t *dSrc, float *dDst, int64_t count,
+                   void *stream = nullptr);
+
 /// `unpack_s4_s8` (Method A r=0.125 receive path): int4 nibble unpack,
 /// exact inverse of the CPU packS8S4 on saturated values. Byte i ->
 /// dDst[2i] = sign-extended low nibble, dDst[2i+1] = high nibble.

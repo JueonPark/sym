@@ -6,7 +6,10 @@
 // global memory.
 //   A: per-chunk CPU transform (R0.1 kernels / gatherChunk, parallelized
 //      over a GatherPool) into pinned staging -> cudaMemcpyAsync of r*S
-//      bytes total. (R2's dequant/unpack receive kernels slot in later.)
+//      bytes total, optionally followed by an in-stream GPU receive kernel
+//      (R2's dequant/unpack: convert_f16_f32, dequant_s8_f32, unpack_s4_s8
+//      + dequant_s8_f32) that decompresses the wire payload back to f32 in
+//      the final layout.
 //   B: per-chunk pageable->pinned memcpy (parallelized over the same pool,
 //      so both methods get the same thread budget) -> cudaMemcpyAsync of S
 //      bytes -> R0.2 GPU transform kernels into the final layout.
@@ -52,14 +55,14 @@
 #include <utility>
 #include <vector>
 
-#define CUDA_CHECK(x)                                                         \
-  do {                                                                        \
-    cudaError_t err_ = (x);                                                   \
-    if (err_ != cudaSuccess) {                                                \
-      std::fprintf(stderr, "CUDA error at %s:%d: %s (%s)\n", __FILE__,        \
-                   __LINE__, cudaGetErrorString(err_), #x);                   \
-      std::exit(1);                                                           \
-    }                                                                         \
+#define CUDA_CHECK(x)                                                          \
+  do {                                                                         \
+    cudaError_t err_ = (x);                                                    \
+    if (err_ != cudaSuccess) {                                                 \
+      std::fprintf(stderr, "CUDA error at %s:%d: %s (%s)\n", __FILE__,         \
+                   __LINE__, cudaGetErrorString(err_), #x);                    \
+      std::exit(1);                                                            \
+    }                                                                          \
   } while (0)
 
 namespace {
@@ -152,8 +155,7 @@ std::string defaultMachine() {
 }
 
 bool needsQuant(const Workload &w) {
-  return w.cpuStage == CpuStage::GatherQuant ||
-         w.cpuStage == CpuStage::QuantPack;
+  return w.wire == Wire::S8 || w.wire == Wire::S4;
 }
 
 // Per-(workload, N) fixture: pageable source, per-channel scales, CPU
@@ -163,17 +165,23 @@ struct Fixture {
   reloc::BoundPlan bound;
   std::vector<float> hostSrc;   // pageable; N^2 elements
   std::vector<float> invScales; // extents[0] entries (quant workloads)
-  std::vector<uint8_t> ref;     // expected final artifact, outBytes
+  std::vector<float> scales;    // dequant scales = 1/invScales (recv rows)
+  std::vector<uint8_t> ref;     // Method B's expected artifact, outBytes
+  std::vector<uint8_t> refA;    // Method A's expected artifact (lossy
+                                // roundtrip for compressed wires)
   int64_t totalElems = 0, inBytes = 0, outBytes = 0;
   int64_t rows = 0, rowOutBytes = 0, channels = 0, channelSize = 0;
   // Host buffers:
   float *pinnedSrc = nullptr; // B_fair: source resident in pinned memory, so
                               // the DMA reads it directly (no staging memcpy)
   // Device buffers:
-  void *dOut = nullptr;  // final artifact (A's DMA target, B's kernel dst)
-  float *dLin = nullptr; // B: linear fp32 source copy
-  float *dTmp = nullptr; // B RelocateQuant: relocated fp32 before quantize
-  float *dInv = nullptr; // per-channel invScales
+  void *dOut = nullptr;     // final artifact (A's DMA target, B's kernel dst)
+  float *dLin = nullptr;    // B: linear fp32 source copy
+  float *dTmp = nullptr;    // B RelocateQuant: relocated fp32 before quantize
+  float *dInv = nullptr;    // per-channel invScales (B quantize kernels)
+  void *dRecv = nullptr;    // A: compressed DMA target (wire != F32)
+  int8_t *dS8 = nullptr;    // A: S4 receive intermediate
+  float *dScales = nullptr; // per-channel dequant scales (A receive)
 
   ~Fixture() {
     if (pinnedSrc)
@@ -182,6 +190,9 @@ struct Fixture {
     cudaFree(dLin);
     cudaFree(dTmp);
     cudaFree(dInv);
+    cudaFree(dRecv);
+    cudaFree(dS8);
+    cudaFree(dScales);
   }
 };
 
@@ -193,7 +204,7 @@ void buildFixture(Fixture &f, const Workload &w, int64_t n, bool needB,
   f.inBytes = f.totalElems * 4;
   f.outBytes = f.totalElems * dtypeBytes(w.dtypeOut);
   f.rows = f.bound.extents[0];
-  f.rowOutBytes = f.bound.dstStrides[0] * dtypeBytes(w.dtypeOut);
+  f.rowOutBytes = wireBytes(w.wire, f.bound.dstStrides[0]);
   f.channels = f.bound.extents[0];
   f.channelSize = f.totalElems / f.channels;
 
@@ -214,7 +225,8 @@ void buildFixture(Fixture &f, const Workload &w, int64_t n, bool needB,
     std::exit(1);
   }
   if ((w.cpuStage == CpuStage::QuantPack ||
-       w.cpuStage == CpuStage::ConvertF16) &&
+       w.cpuStage == CpuStage::ConvertF16 || w.cpuStage == CpuStage::CopyF32 ||
+       w.cpuStage == CpuStage::QuantPackS4) &&
       f.bound.srcStrides != f.bound.dstStrides) {
     std::fprintf(stderr,
                  "error: %s: contiguous CPU stage requires an identity "
@@ -231,6 +243,7 @@ void buildFixture(Fixture &f, const Workload &w, int64_t n, bool needB,
   if (needsQuant(w)) {
     // Honest per-channel scales: channel = the plan's coalesced outer
     // axis; maxAbs over each channel's strided source footprint.
+    const float qmax = w.wire == Wire::S4 ? 7.0f : 127.0f;
     f.invScales.assign(static_cast<size_t>(f.channels), 0.0f);
     const size_t rank = f.bound.extents.size();
     for (int64_t c = 0; c < f.channels; ++c) {
@@ -258,7 +271,13 @@ void buildFixture(Fixture &f, const Workload &w, int64_t n, bool needB,
           so -= (f.bound.extents[k] - 1) * f.bound.srcStrides[k];
         }
       }
-      f.invScales[static_cast<size_t>(c)] = maxAbs > 0 ? 127.0f / maxAbs : 1.0f;
+      f.invScales[static_cast<size_t>(c)] = maxAbs > 0 ? qmax / maxAbs : 1.0f;
+    }
+    if (w.recvStage == RecvStage::DequantS8 ||
+        w.recvStage == RecvStage::UnpackDequantS4) {
+      f.scales.resize(f.invScales.size());
+      for (size_t c = 0; c < f.scales.size(); ++c)
+        f.scales[c] = 1.0f / f.invScales[c];
     }
   }
 
@@ -285,10 +304,52 @@ void buildFixture(Fixture &f, const Workload &w, int64_t n, bool needB,
                                   f.totalElems, reloc::quant::Variant::Scalar);
       break;
     }
+
+    // Method A's expected artifact. Identical to f.ref except when the
+    // wire is compressed (the receive path dequantizes what the CPU
+    // quantized -- lossy by construction, exact by contract: the same
+    // float scales and the same RNE quantize on both sides).
+    switch (w.recvStage) {
+    case RecvStage::None:
+      f.refA = f.ref;
+      break;
+    case RecvStage::ConvertF16F32: {
+      std::vector<float> g(static_cast<size_t>(f.totalElems));
+      reloc::executeH2D(f.bound, f.hostSrc.data(), g.data());
+      std::vector<uint16_t> h(g.size());
+      reloc::quant::convertF32F16(g.data(), h.data(), f.totalElems,
+                                  reloc::quant::Variant::Scalar);
+      f.refA.resize(static_cast<size_t>(f.outBytes));
+      float *out = reinterpret_cast<float *>(f.refA.data());
+      for (int64_t i = 0; i < f.totalElems; ++i) {
+        __half v;
+        std::memcpy(&v, &h[static_cast<size_t>(i)], sizeof(v));
+        out[i] = __half2float(v);
+      }
+      break;
+    }
+    case RecvStage::DequantS8:
+    case RecvStage::UnpackDequantS4: {
+      std::vector<int8_t> q(static_cast<size_t>(f.totalElems));
+      reloc::quant::gatherQuantizeF32S8(f.bound, f.hostSrc.data(), q.data(),
+                                        f.invScales.data(), 0, f.channels,
+                                        reloc::quant::Variant::Scalar);
+      f.refA.resize(static_cast<size_t>(f.outBytes));
+      float *out = reinterpret_cast<float *>(f.refA.data());
+      for (int64_t i = 0; i < f.totalElems; ++i) {
+        int v = q[static_cast<size_t>(i)];
+        if (w.recvStage == RecvStage::UnpackDequantS4)
+          v = v < -8 ? -8 : (v > 7 ? 7 : v); // packS8S4 nibble saturation
+        out[i] = static_cast<float>(v) *
+                 f.scales[static_cast<size_t>(i / f.channelSize)];
+      }
+      break;
+    }
+    }
   }
 
   CUDA_CHECK(cudaMalloc(&f.dOut, static_cast<size_t>(f.outBytes)));
-  if (needB || needBFair) {
+  if ((needB || needBFair) && w.gpuStage != GpuStage::None) {
     void *p = nullptr;
     CUDA_CHECK(cudaMalloc(&p, static_cast<size_t>(f.inBytes)));
     f.dLin = static_cast<float *>(p);
@@ -297,14 +358,21 @@ void buildFixture(Fixture &f, const Workload &w, int64_t n, bool needB,
       f.dTmp = static_cast<float *>(p);
     }
   }
+  if (w.recvStage != RecvStage::None)
+    CUDA_CHECK(cudaMalloc(
+        &f.dRecv, static_cast<size_t>(wireBytes(w.wire, f.totalElems))));
+  if (w.recvStage == RecvStage::UnpackDequantS4) {
+    void *p = nullptr;
+    CUDA_CHECK(cudaMalloc(&p, static_cast<size_t>(f.totalElems)));
+    f.dS8 = static_cast<int8_t *>(p);
+  }
   if (needBFair) {
     // Pinned copy of the source, materialized once outside the timed loop.
     void *p = nullptr;
     CUDA_CHECK(cudaHostAlloc(&p, static_cast<size_t>(f.inBytes),
                              cudaHostAllocDefault));
     f.pinnedSrc = static_cast<float *>(p);
-    std::memcpy(f.pinnedSrc, f.hostSrc.data(),
-                static_cast<size_t>(f.inBytes));
+    std::memcpy(f.pinnedSrc, f.hostSrc.data(), static_cast<size_t>(f.inBytes));
   }
   if (needsQuant(w)) {
     void *p = nullptr;
@@ -313,11 +381,19 @@ void buildFixture(Fixture &f, const Workload &w, int64_t n, bool needB,
     CUDA_CHECK(cudaMemcpy(f.dInv, f.invScales.data(),
                           static_cast<size_t>(f.channels) * 4,
                           cudaMemcpyHostToDevice));
+    if (!f.scales.empty()) {
+      void *ps = nullptr;
+      CUDA_CHECK(cudaMalloc(&ps, static_cast<size_t>(f.channels) * 4));
+      f.dScales = static_cast<float *>(ps);
+      CUDA_CHECK(cudaMemcpy(f.dScales, f.scales.data(),
+                            static_cast<size_t>(f.channels) * 4,
+                            cudaMemcpyHostToDevice));
+    }
   }
 }
 
 struct StageTimes {
-  double wall = 0, gpu = 0, cpu = 0, h2d = 0, kern = 0;
+  double wall = 0, gpu = 0, cpu = 0, h2d = 0, kern = 0, recv = 0;
 };
 
 // Shared pipeline scaffolding: one non-blocking stream, 2 pinned staging
@@ -328,12 +404,14 @@ struct Pipeline {
   void *staging[2] = {nullptr, nullptr};
   int64_t nChunks = 0;
   std::vector<cudaEvent_t> h2dBeg, h2dEnd;
+  std::vector<cudaEvent_t> recvBeg, recvEnd; // Method A receive stages only
   cudaEvent_t evStart = nullptr, evStop = nullptr, kBeg = nullptr,
               kEnd = nullptr;
 
   // allocStaging=false for B_fair: its source is already pinned, so there
   // is no staging buffer to double-buffer through.
-  Pipeline(int64_t stagingBytes, int64_t chunks, bool allocStaging = true)
+  Pipeline(int64_t stagingBytes, int64_t chunks, bool withRecv,
+           bool allocStaging = true)
       : nChunks(chunks) {
     CUDA_CHECK(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
     if (allocStaging)
@@ -352,6 +430,14 @@ struct Pipeline {
       CUDA_CHECK(cudaEventCreate(&h2dBeg[static_cast<size_t>(c)]));
       CUDA_CHECK(cudaEventCreate(&h2dEnd[static_cast<size_t>(c)]));
     }
+    if (withRecv) {
+      recvBeg.resize(static_cast<size_t>(chunks));
+      recvEnd.resize(static_cast<size_t>(chunks));
+      for (int64_t c = 0; c < chunks; ++c) {
+        CUDA_CHECK(cudaEventCreate(&recvBeg[static_cast<size_t>(c)]));
+        CUDA_CHECK(cudaEventCreate(&recvEnd[static_cast<size_t>(c)]));
+      }
+    }
     CUDA_CHECK(cudaEventCreate(&evStart));
     CUDA_CHECK(cudaEventCreate(&evStop));
     CUDA_CHECK(cudaEventCreate(&kBeg));
@@ -362,6 +448,10 @@ struct Pipeline {
     for (cudaEvent_t e : h2dBeg)
       cudaEventDestroy(e);
     for (cudaEvent_t e : h2dEnd)
+      cudaEventDestroy(e);
+    for (cudaEvent_t e : recvBeg)
+      cudaEventDestroy(e);
+    for (cudaEvent_t e : recvEnd)
       cudaEventDestroy(e);
     cudaEventDestroy(evStart);
     cudaEventDestroy(evStop);
@@ -385,6 +475,24 @@ struct Pipeline {
     }
     return total;
   }
+
+  double sumRecvMs() const {
+    double total = 0;
+    for (size_t c = 0; c < recvBeg.size(); ++c) {
+      float ms = 0;
+      CUDA_CHECK(cudaEventElapsedTime(&ms, recvBeg[c], recvEnd[c]));
+      total += ms;
+    }
+    return total;
+  }
+};
+
+// Heap scratch for the two-pass CPU stages (gather/quant pass 1, then
+// convert/pack pass 2 into pinned staging). Sized once per config in
+// runConfig; never DMA'd, so pageable is fine.
+struct AScratch {
+  std::vector<float> f32; // GatherF16: rowsPerChunk * rowElems
+  std::vector<int8_t> s8; // *S4: rowsPerChunk * rowElems
 };
 
 // Method A: per-chunk CPU transform into staging, then DMA straight into
@@ -392,7 +500,8 @@ struct Pipeline {
 // gatherChunk contract ("dstBase is the address at which dst element
 // offset 0 would land -- rebase it for a staging buffer").
 StageTimes runMethodA(const Fixture &f, const RowChunks &ck, Pipeline &pl,
-                      reloc::GatherPool &pool, reloc::quant::Variant variant) {
+                      reloc::GatherPool &pool, reloc::quant::Variant variant,
+                      AScratch &scratch) {
   const Workload &w = *f.w;
   // Per-worker floor in SOURCE bytes (the library wrappers' convention,
   // Quant.cpp): an s8-output row stages 1 byte/element but still reads 4,
@@ -402,6 +511,9 @@ StageTimes runMethodA(const Fixture &f, const RowChunks &ck, Pipeline &pl,
   const int64_t minRows = std::max<int64_t>(
       1, static_cast<int64_t>(reloc::kMinGatherBytesPerWorker) /
              std::max<int64_t>(1, rowSrcBytes));
+  const bool recv = w.recvStage != RecvStage::None;
+  char *dmaBase =
+      recv ? static_cast<char *>(f.dRecv) : static_cast<char *>(f.dOut);
 
   StageTimes t;
   const double w0 = nowMs();
@@ -442,21 +554,107 @@ StageTimes runMethodA(const Fixture &f, const RowChunks &ck, Pipeline &pl,
       break;
     case CpuStage::ConvertF16:
       pool.parallelFor(rb, re, minRows, [&](int64_t sb, int64_t se) {
-        reloc::quant::convertF32F16(
-            f.hostSrc.data() + sb * f.channelSize,
-            reinterpret_cast<uint16_t *>(stage) + (sb - rb) * f.channelSize,
-            (se - sb) * f.channelSize, variant);
+        reloc::quant::convertF32F16(f.hostSrc.data() + sb * f.channelSize,
+                                    reinterpret_cast<uint16_t *>(stage) +
+                                        (sb - rb) * f.channelSize,
+                                    (se - sb) * f.channelSize, variant);
       });
       break;
+    case CpuStage::CopyF32: {
+      // rsweep T3 r=1.0: plain staging copy of contiguous source rows
+      // (identity plan: dst row == src row, rowBytes = 4 * rowElems).
+      const char *srcBytes = reinterpret_cast<const char *>(f.hostSrc.data());
+      pool.parallelFor(rb, re, minRows, [&](int64_t sb, int64_t se) {
+        std::memcpy(stage + (sb - rb) * ck.rowBytes,
+                    srcBytes + sb * ck.rowBytes,
+                    static_cast<size_t>((se - sb) * ck.rowBytes));
+      });
+      break;
+    }
+    case CpuStage::GatherF16: {
+      // Pass 1: strided gather to f32 scratch; pass 2: contiguous f16
+      // convert into staging. Both passes inside the worker keep its rows
+      // cache-hot between passes.
+      const int64_t rowElems = f.channelSize;
+      char *rebased =
+          reinterpret_cast<char *>(scratch.f32.data()) - rb * rowElems * 4;
+      pool.parallelFor(rb, re, minRows, [&](int64_t sb, int64_t se) {
+        reloc::gatherChunk(f.bound, f.hostSrc.data(), rebased, sb, se);
+        reloc::quant::convertF32F16(scratch.f32.data() + (sb - rb) * rowElems,
+                                    reinterpret_cast<uint16_t *>(stage) +
+                                        (sb - rb) * rowElems,
+                                    (se - sb) * rowElems, variant);
+      });
+      break;
+    }
+    case CpuStage::GatherQuantS4: {
+      const int64_t rowElems = f.channelSize;
+      int8_t *rebased = scratch.s8.data() - rb * rowElems;
+      pool.parallelFor(rb, re, minRows, [&](int64_t sb, int64_t se) {
+        reloc::quant::gatherQuantizeF32S8(f.bound, f.hostSrc.data(), rebased,
+                                          f.invScales.data(), sb, se, variant);
+        reloc::quant::packS8S4(scratch.s8.data() + (sb - rb) * rowElems,
+                               reinterpret_cast<uint8_t *>(stage) +
+                                   (sb - rb) * rowElems / 2,
+                               (se - sb) * rowElems / 2, variant);
+      });
+      break;
+    }
+    case CpuStage::QuantPackS4: {
+      const int64_t cs = f.channelSize;
+      pool.parallelFor(rb, re, minRows, [&](int64_t sb, int64_t se) {
+        int8_t *tmp = scratch.s8.data() + (sb - rb) * cs;
+        reloc::quant::quantizePackF32S8(f.hostSrc.data() + sb * cs, tmp,
+                                        se - sb, cs, f.invScales.data() + sb,
+                                        variant);
+        reloc::quant::packS8S4(
+            tmp, reinterpret_cast<uint8_t *>(stage) + (sb - rb) * cs / 2,
+            (se - sb) * cs / 2, variant);
+      });
+      break;
+    }
     }
     t.cpu += nowMs() - t0;
     const int64_t dstOff = rb * ck.rowBytes;
     const int64_t bytes = (re - rb) * ck.rowBytes;
     CUDA_CHECK(cudaEventRecord(pl.h2dBeg[static_cast<size_t>(c)], pl.stream));
-    CUDA_CHECK(cudaMemcpyAsync(static_cast<char *>(f.dOut) + dstOff, stage,
+    CUDA_CHECK(cudaMemcpyAsync(dmaBase + dstOff, stage,
                                static_cast<size_t>(bytes),
                                cudaMemcpyHostToDevice, pl.stream));
     CUDA_CHECK(cudaEventRecord(pl.h2dEnd[static_cast<size_t>(c)], pl.stream));
+    // Safety: staging reuse stays gated on h2dEnd[c-2] above; the receive
+    // kernels below read dRecv/dS8, never staging. Chunk regions in dRecv
+    // are disjoint across c, and everything here is stream-ordered.
+    if (recv) {
+      const int64_t eOff = rb * f.channelSize;
+      const int64_t elems = (re - rb) * f.channelSize;
+      CUDA_CHECK(
+          cudaEventRecord(pl.recvBeg[static_cast<size_t>(c)], pl.stream));
+      switch (w.recvStage) {
+      case RecvStage::ConvertF16F32:
+        reloc::cuda::convertF16F32(
+            reinterpret_cast<const uint16_t *>(f.dRecv) + eOff,
+            static_cast<float *>(f.dOut) + eOff, elems, pl.stream);
+        break;
+      case RecvStage::DequantS8:
+        reloc::cuda::dequantS8F32(static_cast<const int8_t *>(f.dRecv) + eOff,
+                                  static_cast<float *>(f.dOut) + eOff, re - rb,
+                                  f.channelSize, f.dScales + rb, pl.stream);
+        break;
+      case RecvStage::UnpackDequantS4:
+        reloc::cuda::unpackS4S8(static_cast<const uint8_t *>(f.dRecv) +
+                                    eOff / 2,
+                                f.dS8 + eOff, elems / 2, pl.stream);
+        reloc::cuda::dequantS8F32(f.dS8 + eOff,
+                                  static_cast<float *>(f.dOut) + eOff, re - rb,
+                                  f.channelSize, f.dScales + rb, pl.stream);
+        break;
+      case RecvStage::None:
+        break;
+      }
+      CUDA_CHECK(
+          cudaEventRecord(pl.recvEnd[static_cast<size_t>(c)], pl.stream));
+    }
   }
   CUDA_CHECK(cudaEventRecord(pl.evStop, pl.stream));
   CUDA_CHECK(cudaStreamSynchronize(pl.stream));
@@ -464,6 +662,8 @@ StageTimes runMethodA(const Fixture &f, const RowChunks &ck, Pipeline &pl,
   float ms = 0;
   CUDA_CHECK(cudaEventElapsedTime(&ms, pl.evStart, pl.evStop));
   t.gpu = ms;
+  if (recv)
+    t.recv = pl.sumRecvMs();
   t.h2d = pl.sumH2dMs();
   return t;
 }
@@ -489,7 +689,17 @@ void enqueueReceiveKernels(const Fixture &f, cudaStream_t stream) {
   case GpuStage::ConvertF16:
     launchConvertF32F16(f.dLin, f.dOut, f.totalElems, stream);
     break;
+  case GpuStage::None:
+    break; // full-f32 DMA IS the artifact (rsweep T3 family)
   }
+}
+
+// Both Method-B paths DMA into dLin for the receive kernels above -- except
+// GpuStage::None rows, where the raw f32 transfer is already the artifact
+// and the DMA lands directly in dOut (dLin is not allocated).
+char *methodBDmaDst(const Fixture &f) {
+  return f.w->gpuStage == GpuStage::None ? static_cast<char *>(f.dOut)
+                                         : reinterpret_cast<char *>(f.dLin);
 }
 
 // Method B (staged): per-chunk pageable->pinned memcpy + DMA of the raw fp32
@@ -519,7 +729,7 @@ StageTimes runMethodB(const Fixture &f, const ByteChunks &ck, Pipeline &pl,
     });
     t.cpu += nowMs() - t0;
     CUDA_CHECK(cudaEventRecord(pl.h2dBeg[static_cast<size_t>(c)], pl.stream));
-    CUDA_CHECK(cudaMemcpyAsync(reinterpret_cast<char *>(f.dLin) + off, stage,
+    CUDA_CHECK(cudaMemcpyAsync(methodBDmaDst(f) + off, stage,
                                static_cast<size_t>(bytes),
                                cudaMemcpyHostToDevice, pl.stream));
     CUDA_CHECK(cudaEventRecord(pl.h2dEnd[static_cast<size_t>(c)], pl.stream));
@@ -557,8 +767,8 @@ StageTimes runMethodBFair(const Fixture &f, const ByteChunks &ck,
     const int64_t off = c * ck.bytesPerChunk;
     const int64_t bytes = std::min(ck.bytesPerChunk, f.inBytes - off);
     CUDA_CHECK(cudaEventRecord(pl.h2dBeg[static_cast<size_t>(c)], pl.stream));
-    CUDA_CHECK(cudaMemcpyAsync(reinterpret_cast<char *>(f.dLin) + off,
-                               src + off, static_cast<size_t>(bytes),
+    CUDA_CHECK(cudaMemcpyAsync(methodBDmaDst(f) + off, src + off,
+                               static_cast<size_t>(bytes),
                                cudaMemcpyHostToDevice, pl.stream));
     CUDA_CHECK(cudaEventRecord(pl.h2dEnd[static_cast<size_t>(c)], pl.stream));
   }
@@ -588,22 +798,30 @@ bool runConfig(const Fixture &f, Method method, int64_t chunkReqBytes,
   RowChunks rck{};
   ByteChunks bck{};
   int64_t stagingBytes = 0, nChunks = 0;
+  AScratch scratch;
   if (methodA) {
     rck = planRowChunks(f.rows, f.rowOutBytes, chunkReqBytes);
     stagingBytes = rck.stagingBytes;
     nChunks = rck.nChunks;
+    if (w.cpuStage == CpuStage::GatherF16)
+      scratch.f32.resize(static_cast<size_t>(rck.rowsPerChunk * f.channelSize));
+    if (w.cpuStage == CpuStage::GatherQuantS4 ||
+        w.cpuStage == CpuStage::QuantPackS4)
+      scratch.s8.resize(static_cast<size_t>(rck.rowsPerChunk * f.channelSize));
   } else {
     bck = planByteChunks(f.inBytes, chunkReqBytes);
     stagingBytes = bck.bytesPerChunk;
     nChunks = bck.nChunks;
   }
   // B_fair's source is already pinned; it needs no staging buffers.
-  Pipeline pl(stagingBytes, nChunks, /*allocStaging=*/method != Method::BFair);
+  Pipeline pl(stagingBytes, nChunks,
+              /*withRecv=*/methodA && w.recvStage != RecvStage::None,
+              /*allocStaging=*/method != Method::BFair);
 
   auto iterate = [&]() -> StageTimes {
     switch (method) {
     case Method::A:
-      return runMethodA(f, rck, pl, pool, opt.variant);
+      return runMethodA(f, rck, pl, pool, opt.variant, scratch);
     case Method::BStaged:
       return runMethodB(f, bck, pl, pool);
     case Method::BFair:
@@ -617,9 +835,10 @@ bool runConfig(const Fixture &f, Method method, int64_t chunkReqBytes,
     CUDA_CHECK(cudaDeviceSynchronize());
     (void)iterate();
     std::vector<uint8_t> got(static_cast<size_t>(f.outBytes));
-    CUDA_CHECK(cudaMemcpy(got.data(), f.dOut, got.size(),
-                          cudaMemcpyDeviceToHost));
-    if (std::memcmp(got.data(), f.ref.data(), got.size()) != 0) {
+    CUDA_CHECK(
+        cudaMemcpy(got.data(), f.dOut, got.size(), cudaMemcpyDeviceToHost));
+    const std::vector<uint8_t> &want = methodA ? f.refA : f.ref;
+    if (std::memcmp(got.data(), want.data(), got.size()) != 0) {
       std::fprintf(stderr,
                    "VERIFY FAILED: %s method %s chunk %lld MiB != CPU "
                    "reference\n",
@@ -629,7 +848,7 @@ bool runConfig(const Fixture &f, Method method, int64_t chunkReqBytes,
     }
   }
 
-  std::vector<double> wall, gpu, cpu, h2d, kern;
+  std::vector<double> wall, gpu, cpu, h2d, kern, recv;
   for (int i = 0; i < opt.warmup; ++i)
     (void)iterate();
   for (int i = 0; i < opt.iters; ++i) {
@@ -639,6 +858,7 @@ bool runConfig(const Fixture &f, Method method, int64_t chunkReqBytes,
     cpu.push_back(t.cpu);
     h2d.push_back(t.h2d);
     kern.push_back(t.kern);
+    recv.push_back(t.recv);
   }
 
   CsvRow row;
@@ -658,6 +878,9 @@ bool runConfig(const Fixture &f, Method method, int64_t chunkReqBytes,
   row.cpuStage = summarizeSamples(cpu);
   row.h2d = summarizeSamples(h2d);
   row.gpuKernel = summarizeSamples(kern);
+  row.gpuRecv = summarizeSamples(recv);
+  row.variant = w.variant;
+  row.wire = wireName(w.wire);
   row.effectiveInputGbps =
       row.wall.median > 0
           ? static_cast<double>(f.inBytes) / (row.wall.median * 1e-3) / 1e9
@@ -668,13 +891,13 @@ bool runConfig(const Fixture &f, Method method, int64_t chunkReqBytes,
   std::fprintf(stderr,
                "rtrack: %-4s %-6s chunk=%4lldMiB T=%d wall %8.2f ms "
                "(%5.2f GB/s in, iqr %4.1f%%%s) cpu %7.2f h2d %7.2f kern "
-               "%6.2f%s\n",
+               "%6.2f recv %6.2f%s\n",
                w.id, methodTag(method),
                static_cast<long long>(chunkReqBytes >> 20), pool.threadCount(),
                row.wall.median, row.effectiveInputGbps,
                row.wall.iqrOverMedianPct, row.wall.unstable ? " UNSTABLE" : "",
                row.cpuStage.median, row.h2d.median, row.gpuKernel.median,
-               opt.verify ? " [verified]" : "");
+               row.gpuRecv.median, opt.verify ? " [verified]" : "");
   return true;
 }
 
@@ -708,7 +931,8 @@ int run(const Options &opt) {
   int rc = 0;
   for (const Workload *w : opt.workloads) {
     Fixture f;
-    buildFixture(f, *w, opt.n, needB, needBFair, opt.verify);
+    buildFixture(f, *w, opt.n, needB && w->methodB, needBFair && w->methodB,
+                 opt.verify);
     // Chunk requests past the artifact size all clamp to the same 1-chunk
     // plan; measuring the identical config again would only hand
     // figure1's best-chunk argmin duplicate samples. Dedup is per method:
@@ -716,6 +940,10 @@ int run(const Options &opt) {
     std::map<Method, std::set<std::pair<int64_t, int64_t>>> seen;
     for (int64_t chunk : opt.chunkBytes) {
       for (Method m : opt.methods) {
+        // A-only rows (methodB=false): B is r-independent, so each rsweep
+        // family measures both B paths once, on its R100 row.
+        if (m != Method::A && !w->methodB)
+          continue;
         std::pair<int64_t, int64_t> key;
         if (m == Method::A) {
           RowChunks rck = planRowChunks(f.rows, f.rowOutBytes, chunk);
@@ -728,7 +956,8 @@ int run(const Options &opt) {
           std::fprintf(stderr,
                        "rtrack: %-4s %-6s chunk=%4lldMiB duplicates an earlier "
                        "sweep point; skipped\n",
-                       w->id, methodTag(m), static_cast<long long>(chunk >> 20));
+                       w->id, methodTag(m),
+                       static_cast<long long>(chunk >> 20));
           continue;
         }
         if (!runConfig(f, m, chunk, opt, pool, gpuName, csv)) {
@@ -749,10 +978,9 @@ int run(const Options &opt) {
 }
 
 bool parseVariant(const std::string &s, reloc::quant::Variant &out) {
-  for (auto v :
-       {reloc::quant::Variant::Auto, reloc::quant::Variant::Scalar,
-        reloc::quant::Variant::AVX2, reloc::quant::Variant::AVX512,
-        reloc::quant::Variant::AVX512Pf})
+  for (auto v : {reloc::quant::Variant::Auto, reloc::quant::Variant::Scalar,
+                 reloc::quant::Variant::AVX2, reloc::quant::Variant::AVX512,
+                 reloc::quant::Variant::AVX512Pf})
     if (s == variantName(v)) {
       out = v;
       return true;
@@ -777,7 +1005,7 @@ std::vector<std::string> splitCommas(const std::string &s) {
 int usage() {
   std::fprintf(
       stderr,
-      "usage: bench-rtrack [--transform all|T1,T1b,T2,T3,T4,T5]\n"
+      "usage: bench-rtrack [--transform all|matrix|rsweep|T1,T1b,...,T3R0125]\n"
       "  [--method both|all|a|b|bfair] [--n N] [--chunk-mib 4,16,64,256]\n"
       "  [--threads T] [--variant auto|scalar|avx2|avx512|avx512pf]\n"
       "  [--warmup W] [--iters I] [--machine NAME] [--csv PATH|-]\n"
@@ -851,9 +1079,12 @@ int main(int argc, char **argv) {
   if (opt.machine.empty())
     opt.machine = defaultMachine();
 
-  if (transformArg == "all") {
+  if (transformArg == "all" || transformArg == "matrix" ||
+      transformArg == "rsweep") {
+    const bool wantRsweep = transformArg == "rsweep";
     for (const Workload &w : allWorkloads())
-      opt.workloads.push_back(&w);
+      if ((std::strcmp(w.variant, "rsweep") == 0) == wantRsweep)
+        opt.workloads.push_back(&w);
   } else {
     for (const std::string &id : splitCommas(transformArg)) {
       const Workload *w = findWorkload(id);
@@ -871,27 +1102,38 @@ int main(int argc, char **argv) {
   // (the quant_bw convention: fail fast, before any setup).
   if (hasMethod(opt.methods, Method::A)) {
     for (const Workload *w : opt.workloads) {
-      reloc::quant::Kernel k;
+      std::vector<reloc::quant::Kernel> ks;
       switch (w->cpuStage) {
       case CpuStage::GatherQuant:
-        k = reloc::quant::Kernel::GatherQuantize;
+        ks = {reloc::quant::Kernel::GatherQuantize};
         break;
       case CpuStage::QuantPack:
-        k = reloc::quant::Kernel::QuantizePack;
+        ks = {reloc::quant::Kernel::QuantizePack};
         break;
       case CpuStage::ConvertF16:
-        k = reloc::quant::Kernel::ConvertF32F16;
+      case CpuStage::GatherF16:
+        ks = {reloc::quant::Kernel::ConvertF32F16};
+        break;
+      case CpuStage::GatherQuantS4:
+        ks = {reloc::quant::Kernel::GatherQuantize,
+              reloc::quant::Kernel::PackS8S4};
+        break;
+      case CpuStage::QuantPackS4:
+        ks = {reloc::quant::Kernel::QuantizePack,
+              reloc::quant::Kernel::PackS8S4};
         break;
       case CpuStage::GatherF32:
-        continue; // gatherChunk has no SIMD variants
+      case CpuStage::CopyF32:
+        continue; // no SIMD variants
       }
-      if (!reloc::quant::kernelHasVariant(k, opt.variant) ||
-          !reloc::quant::cpuSupports(opt.variant)) {
-        std::fprintf(stderr,
-                     "error: variant %s not available for %s on this host\n",
-                     variantName(opt.variant), w->id);
-        return 3;
-      }
+      for (reloc::quant::Kernel k : ks)
+        if (!reloc::quant::kernelHasVariant(k, opt.variant) ||
+            !reloc::quant::cpuSupports(opt.variant)) {
+          std::fprintf(stderr,
+                       "error: variant %s not available for %s on this host\n",
+                       variantName(opt.variant), w->id);
+          return 3;
+        }
     }
   }
   return run(opt);

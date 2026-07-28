@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cuda_fp16.h>
 #include <cuda_runtime.h>
 
 namespace reloc {
@@ -140,6 +141,13 @@ __global__ void dequantS8F32Kernel(const int8_t *src, float *dst,
   dst[i] = static_cast<float>(src[i]) * scales[i / channelSize];
 }
 
+__global__ void convertF16F32Kernel(const __half *src, float *dst,
+                                    int64_t count) {
+  int64_t i = blockIdx.x * static_cast<int64_t>(blockDim.x) + threadIdx.x;
+  if (i < count)
+    dst[i] = __half2float(src[i]);
+}
+
 __global__ void unpackS4S8Kernel(const uint8_t *src, int8_t *dst,
                                  int64_t pairs) {
   int64_t i = blockIdx.x * static_cast<int64_t>(blockDim.x) + threadIdx.x;
@@ -230,6 +238,13 @@ void dequantS8F32(const int8_t *dSrc, float *dDst, int64_t channels,
   dequantS8F32Kernel<<<static_cast<unsigned>(gridFor(total)), kThreads, 0,
                        asStream(stream)>>>(dSrc, dDst, channelSize, dScales,
                                            total);
+}
+
+void convertF16F32(const uint16_t *dSrc, float *dDst, int64_t count,
+                   void *stream) {
+  convertF16F32Kernel<<<static_cast<unsigned>(gridFor(count)), kThreads, 0,
+                        asStream(stream)>>>(
+      reinterpret_cast<const __half *>(dSrc), dDst, count);
 }
 
 void unpackS4S8(const uint8_t *dSrc, int8_t *dDst, int64_t pairs,

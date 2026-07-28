@@ -247,8 +247,35 @@ std::optional<Result> runContigRead(reloc::GatherPool &pool, const Config &c,
   return timeIt(par, inB, outB, c);
 }
 
-const char *const kAll[] = {"gather_f32", "gather_quantize", "quantize_pack",
-                            "convert_f32_f16", "contig_read"};
+// pack_s8_s4: the r=0.125 sweep's second pass, contiguous s8 -> nibbles.
+std::optional<Result> runPackS8S4(reloc::GatherPool &pool, const Config &c,
+                                  int64_t &inB, int64_t &outB) {
+  const int64_t total = c.n * c.n;
+  std::vector<int8_t> src(static_cast<size_t>(total));
+  for (int64_t i = 0; i < total; ++i)
+    src[static_cast<size_t>(i)] =
+        static_cast<int8_t>(static_cast<int>((i * 7) & 0xF) - 8);
+  std::vector<uint8_t> dst(static_cast<size_t>(total / 2), 0);
+  auto par = [&] {
+    reloc::quant::packS8S4Parallel(pool, src.data(), dst.data(), total / 2,
+                                   c.variant);
+  };
+  {
+    std::vector<uint8_t> ref(dst.size(), 1);
+    reloc::quant::packS8S4(src.data(), ref.data(), total / 2,
+                           reloc::quant::Variant::Scalar);
+    par();
+    if (std::memcmp(ref.data(), dst.data(), dst.size()) != 0)
+      return std::nullopt;
+  }
+  inB = total;
+  outB = total / 2;
+  return timeIt(par, inB, outB, c);
+}
+
+const char *const kAll[] = {"gather_f32",    "gather_quantize",
+                            "quantize_pack", "convert_f32_f16",
+                            "contig_read",   "pack_s8_s4"};
 
 int run(const std::string &kernelArg, const std::string &planName,
         const Config &c, const char *jsonPath) {
@@ -282,6 +309,8 @@ int run(const std::string &kernelArg, const std::string &planName,
       r = runConvert(pool, c, src, inB, outB);
     else if (k == "contig_read")
       r = runContigRead(pool, c, src, inB, outB);
+    else if (k == "pack_s8_s4")
+      r = runPackS8S4(pool, c, inB, outB);
     else {
       std::fprintf(stderr, "error: unknown kernel %s\n", k.c_str());
       return 2;

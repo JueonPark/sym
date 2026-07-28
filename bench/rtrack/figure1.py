@@ -33,6 +33,7 @@ def load_rows(paths):
                 for k in ("median_ms", "chunk_req_mib"):
                     row[k] = float(row[k])
                 row["unstable"] = row["unstable"] == "1"
+                row["variant"] = row.get("variant") or "matrix"
                 rows.append(row)
     return rows
 
@@ -56,6 +57,7 @@ def main():
     args = ap.parse_args()
 
     rows = load_rows(args.csv)
+    rows = [r for r in rows if r["variant"] == "matrix"]
     if not rows:
         sys.exit("error: no data rows")
 
