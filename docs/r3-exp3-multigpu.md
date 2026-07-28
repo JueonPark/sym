@@ -157,14 +157,18 @@ stage) flips Method A to a win at every K:
 
 | scenario | K=1 | K=2 | K=4 |
 |---|---|---|---|
-| broadcast (gather+quant, R3) | 0.45x | 0.28-0.36x | 0.31x |
-| broadcast (gather+quant, V5 re-run {0,1}) | — | 0.36x | — |
+| broadcast (gather+quant, R3) | 0.28x | 0.40x | 0.45x |
+| broadcast (gather+quant, V5 re-run) | 0.26x | 0.36x | 0.45x |
 | **broadcast_contig (quant-only, V5)** | **1.26x** | **1.59x** | **2.02x** |
 
-(A/B_xK, N=8192; V5 gather re-run reproduces R3's band, anchoring the
-comparison on today's binary.) The attribution is upgraded from
-consistent-with-rooflines to isolated: remove the strided gather and the
-0.3-0.45x loss becomes a 1.3-2x win.
+(A/B_xK, N=8192; the V5 gather re-run — K=2 on pair {0,1}, K=1/K=4 on
+the default placement, matching R3's — reproduces R3 per-K within
+0.02-0.04, anchoring the comparison on today's binary. An earlier
+revision of this table misassigned R3's per-K values from the band
+summary; the row above now quotes `r3_broadcast_n8192_epyc_2080ti.json`
+directly.) The attribution is upgraded from consistent-with-rooflines to
+isolated: remove the strided gather and the 0.26-0.45x loss becomes a
+1.3-2x win.
 
 **Expectation 1 FALSIFIED AS DESIGNED — the clean K=2 point is not
 obtainable by device selection on this harness.** Pair {2,3} measured
