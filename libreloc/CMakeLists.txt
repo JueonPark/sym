@@ -19,6 +19,7 @@ add_library(reloc_runtime SHARED
   src/ChunkSchedule.cpp
   src/GatherPool.cpp
   src/Pipeline.cpp
+  src/Prefold.cpp
   quant/Quant.cpp
 )
 

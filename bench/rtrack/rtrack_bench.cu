@@ -13,6 +13,10 @@
 //   B: per-chunk pageable->pinned memcpy (parallelized over the same pool,
 //      so both methods get the same thread budget) -> cudaMemcpyAsync of S
 //      bytes -> R0.2 GPU transform kernels into the final layout.
+//   B_fair (issue #95): same as B but the source is resident in pinned
+//      memory, so the per-chunk staging memcpy is gone -- the DMA reads the
+//      source directly. This is the admissible baseline (host_stage_ms=0);
+//      B is kept as the "b_staged" comparison, not silently replaced.
 // Timing: full pipeline via CUDA events (start recorded before the first
 // stage, stop after the last enqueued op, then cudaStreamSynchronize),
 // fenced steady_clock wall time, and per-stage sums (CPU transform ms,
@@ -44,6 +48,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <map>
 #include <set>
 #include <string>
 #include <unistd.h>
@@ -100,9 +105,35 @@ const char *variantName(reloc::quant::Variant v) {
   return "?";
 }
 
+// Method A (CPU transform + DMA of r*S bytes) vs the two Method-B baselines.
+// BStaged is the sym#63/#76 baseline: pageable source re-staged through a
+// pinned buffer per chunk before the DMA. BFair (issue #95) removes that
+// staging memcpy -- the source is resident in pinned memory and the DMA
+// reads it directly -- so B is measured as a competent pure-relocation
+// baseline would run it. Both emit the R0.2 receive kernels after transfer.
+enum class Method { A, BStaged, BFair };
+
+// CSV method tag. BStaged stays "b" so the R1/figure1/gates consumers that
+// key off "a"/"b" are unchanged; BFair is a new tag they ignore.
+const char *methodTag(Method m) {
+  switch (m) {
+  case Method::A:
+    return "a";
+  case Method::BStaged:
+    return "b";
+  case Method::BFair:
+    return "b_fair";
+  }
+  return "?";
+}
+
+bool hasMethod(const std::vector<Method> &ms, Method m) {
+  return std::find(ms.begin(), ms.end(), m) != ms.end();
+}
+
 struct Options {
   std::vector<const Workload *> workloads;
-  bool runA = true, runB = true;
+  std::vector<Method> methods = {Method::A, Method::BStaged};
   int64_t n = 8192;
   std::vector<int64_t> chunkBytes = {4ll << 20, 16ll << 20, 64ll << 20,
                                      256ll << 20};
@@ -140,6 +171,9 @@ struct Fixture {
                                 // roundtrip for compressed wires)
   int64_t totalElems = 0, inBytes = 0, outBytes = 0;
   int64_t rows = 0, rowOutBytes = 0, channels = 0, channelSize = 0;
+  // Host buffers:
+  float *pinnedSrc = nullptr; // B_fair: source resident in pinned memory, so
+                              // the DMA reads it directly (no staging memcpy)
   // Device buffers:
   void *dOut = nullptr;     // final artifact (A's DMA target, B's kernel dst)
   float *dLin = nullptr;    // B: linear fp32 source copy
@@ -150,6 +184,8 @@ struct Fixture {
   float *dScales = nullptr; // per-channel dequant scales (A receive)
 
   ~Fixture() {
+    if (pinnedSrc)
+      cudaFreeHost(pinnedSrc);
     cudaFree(dOut);
     cudaFree(dLin);
     cudaFree(dTmp);
@@ -160,8 +196,8 @@ struct Fixture {
   }
 };
 
-void buildFixture(Fixture &f, const Workload &w, int64_t n, bool methodB,
-                  bool verify) {
+void buildFixture(Fixture &f, const Workload &w, int64_t n, bool needB,
+                  bool needBFair, bool verify) {
   f.w = &w;
   f.bound = w.makePlan(n);
   f.totalElems = n * n;
@@ -313,7 +349,7 @@ void buildFixture(Fixture &f, const Workload &w, int64_t n, bool methodB,
   }
 
   CUDA_CHECK(cudaMalloc(&f.dOut, static_cast<size_t>(f.outBytes)));
-  if (methodB && w.gpuStage != GpuStage::None) {
+  if ((needB || needBFair) && w.gpuStage != GpuStage::None) {
     void *p = nullptr;
     CUDA_CHECK(cudaMalloc(&p, static_cast<size_t>(f.inBytes)));
     f.dLin = static_cast<float *>(p);
@@ -329,6 +365,14 @@ void buildFixture(Fixture &f, const Workload &w, int64_t n, bool methodB,
     void *p = nullptr;
     CUDA_CHECK(cudaMalloc(&p, static_cast<size_t>(f.totalElems)));
     f.dS8 = static_cast<int8_t *>(p);
+  }
+  if (needBFair) {
+    // Pinned copy of the source, materialized once outside the timed loop.
+    void *p = nullptr;
+    CUDA_CHECK(cudaHostAlloc(&p, static_cast<size_t>(f.inBytes),
+                             cudaHostAllocDefault));
+    f.pinnedSrc = static_cast<float *>(p);
+    std::memcpy(f.pinnedSrc, f.hostSrc.data(), static_cast<size_t>(f.inBytes));
   }
   if (needsQuant(w)) {
     void *p = nullptr;
@@ -364,18 +408,22 @@ struct Pipeline {
   cudaEvent_t evStart = nullptr, evStop = nullptr, kBeg = nullptr,
               kEnd = nullptr;
 
-  Pipeline(int64_t stagingBytes, int64_t chunks, bool withRecv)
+  // allocStaging=false for B_fair: its source is already pinned, so there
+  // is no staging buffer to double-buffer through.
+  Pipeline(int64_t stagingBytes, int64_t chunks, bool withRecv,
+           bool allocStaging = true)
       : nChunks(chunks) {
     CUDA_CHECK(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
-    for (void *&p : staging) {
-      if (cudaHostAlloc(&p, static_cast<size_t>(stagingBytes),
-                        cudaHostAllocDefault) != cudaSuccess) {
-        std::fprintf(stderr,
-                     "error: pinned staging alloc of %lld bytes failed\n",
-                     static_cast<long long>(stagingBytes));
-        std::exit(1);
+    if (allocStaging)
+      for (void *&p : staging) {
+        if (cudaHostAlloc(&p, static_cast<size_t>(stagingBytes),
+                          cudaHostAllocDefault) != cudaSuccess) {
+          std::fprintf(stderr,
+                       "error: pinned staging alloc of %lld bytes failed\n",
+                       static_cast<long long>(stagingBytes));
+          std::exit(1);
+        }
       }
-    }
     h2dBeg.resize(static_cast<size_t>(chunks));
     h2dEnd.resize(static_cast<size_t>(chunks));
     for (int64_t c = 0; c < chunks; ++c) {
@@ -620,13 +668,48 @@ StageTimes runMethodA(const Fixture &f, const RowChunks &ck, Pipeline &pl,
   return t;
 }
 
-// Method B: per-chunk pageable->pinned memcpy + DMA of the raw fp32
+// The R0.2 receive kernels both Method-B paths run over the raw fp32 tensor
+// in dLin after it lands, transforming it into the final layout in dOut.
+void enqueueReceiveKernels(const Fixture &f, cudaStream_t stream) {
+  const Workload &w = *f.w;
+  switch (w.gpuStage) {
+  case GpuStage::Relocate:
+    reloc::cuda::relocateF32(f.bound, f.dLin, static_cast<float *>(f.dOut),
+                             stream);
+    break;
+  case GpuStage::RelocateQuant:
+    reloc::cuda::relocateF32(f.bound, f.dLin, f.dTmp, stream);
+    reloc::cuda::quantizeF32S8(f.dTmp, static_cast<int8_t *>(f.dOut),
+                               f.channels, f.channelSize, f.dInv, stream);
+    break;
+  case GpuStage::Quantize:
+    reloc::cuda::quantizeF32S8(f.dLin, static_cast<int8_t *>(f.dOut),
+                               f.channels, f.channelSize, f.dInv, stream);
+    break;
+  case GpuStage::ConvertF16:
+    launchConvertF32F16(f.dLin, f.dOut, f.totalElems, stream);
+    break;
+  case GpuStage::None:
+    break; // full-f32 DMA IS the artifact (rsweep T3 family)
+  }
+}
+
+// Both Method-B paths DMA into dLin for the receive kernels above -- except
+// GpuStage::None rows, where the raw f32 transfer is already the artifact
+// and the DMA lands directly in dOut (dLin is not allocated).
+char *methodBDmaDst(const Fixture &f) {
+  return f.w->gpuStage == GpuStage::None ? static_cast<char *>(f.dOut)
+                                         : reinterpret_cast<char *>(f.dLin);
+}
+
+// Method B (staged): per-chunk pageable->pinned memcpy + DMA of the raw fp32
 // tensor, then the R0.2 transform kernels into the final layout (after the
 // full transfer, matching the sym#63 baseline; the kernel cost shows up in
-// gpu_kernel_ms).
+// gpu_kernel_ms). The staging memcpy is the host-side overhead issue #95's
+// admissibility bar exists to expose; see runMethodBFair for the version
+// without it.
 StageTimes runMethodB(const Fixture &f, const ByteChunks &ck, Pipeline &pl,
                       reloc::GatherPool &pool) {
-  const Workload &w = *f.w;
   const char *src = reinterpret_cast<const char *>(f.hostSrc.data());
 
   StageTimes t;
@@ -645,35 +728,14 @@ StageTimes runMethodB(const Fixture &f, const ByteChunks &ck, Pipeline &pl,
       std::memcpy(stage + bb, src + off + bb, static_cast<size_t>(be - bb));
     });
     t.cpu += nowMs() - t0;
-    char *dmaDst = w.gpuStage == GpuStage::None
-                       ? static_cast<char *>(f.dOut)
-                       : reinterpret_cast<char *>(f.dLin);
     CUDA_CHECK(cudaEventRecord(pl.h2dBeg[static_cast<size_t>(c)], pl.stream));
-    CUDA_CHECK(cudaMemcpyAsync(dmaDst + off, stage, static_cast<size_t>(bytes),
+    CUDA_CHECK(cudaMemcpyAsync(methodBDmaDst(f) + off, stage,
+                               static_cast<size_t>(bytes),
                                cudaMemcpyHostToDevice, pl.stream));
     CUDA_CHECK(cudaEventRecord(pl.h2dEnd[static_cast<size_t>(c)], pl.stream));
   }
   CUDA_CHECK(cudaEventRecord(pl.kBeg, pl.stream));
-  switch (w.gpuStage) {
-  case GpuStage::Relocate:
-    reloc::cuda::relocateF32(f.bound, f.dLin, static_cast<float *>(f.dOut),
-                             pl.stream);
-    break;
-  case GpuStage::RelocateQuant:
-    reloc::cuda::relocateF32(f.bound, f.dLin, f.dTmp, pl.stream);
-    reloc::cuda::quantizeF32S8(f.dTmp, static_cast<int8_t *>(f.dOut),
-                               f.channels, f.channelSize, f.dInv, pl.stream);
-    break;
-  case GpuStage::Quantize:
-    reloc::cuda::quantizeF32S8(f.dLin, static_cast<int8_t *>(f.dOut),
-                               f.channels, f.channelSize, f.dInv, pl.stream);
-    break;
-  case GpuStage::ConvertF16:
-    launchConvertF32F16(f.dLin, f.dOut, f.totalElems, pl.stream);
-    break;
-  case GpuStage::None:
-    break; // full-f32 DMA IS the artifact (rsweep T3 family)
-  }
+  enqueueReceiveKernels(f, pl.stream);
   CUDA_CHECK(cudaEventRecord(pl.kEnd, pl.stream));
   CUDA_CHECK(cudaEventRecord(pl.evStop, pl.stream));
   CUDA_CHECK(cudaStreamSynchronize(pl.stream));
@@ -687,12 +749,52 @@ StageTimes runMethodB(const Fixture &f, const ByteChunks &ck, Pipeline &pl,
   return t;
 }
 
+// Method B (fair) -- issue #95's admissible baseline. The source is resident
+// in pinned memory (f.pinnedSrc), so each chunk's DMA reads it directly:
+// there is NO pageable->pinned staging copy on the host critical path, and
+// host_stage_ms (t.cpu) is therefore 0. Everything else matches runMethodB
+// (chunked cudaMemcpyAsync of the full fp32 tensor, then the same receive
+// kernels). This is what a competent pure-relocation baseline looks like;
+// on an r=1.0 / m<ratio workload it should land at the pinned link rate.
+StageTimes runMethodBFair(const Fixture &f, const ByteChunks &ck,
+                          Pipeline &pl) {
+  const char *src = reinterpret_cast<const char *>(f.pinnedSrc);
+
+  StageTimes t;
+  const double w0 = nowMs();
+  CUDA_CHECK(cudaEventRecord(pl.evStart, pl.stream));
+  for (int64_t c = 0; c < ck.nChunks; ++c) {
+    const int64_t off = c * ck.bytesPerChunk;
+    const int64_t bytes = std::min(ck.bytesPerChunk, f.inBytes - off);
+    CUDA_CHECK(cudaEventRecord(pl.h2dBeg[static_cast<size_t>(c)], pl.stream));
+    CUDA_CHECK(cudaMemcpyAsync(methodBDmaDst(f) + off, src + off,
+                               static_cast<size_t>(bytes),
+                               cudaMemcpyHostToDevice, pl.stream));
+    CUDA_CHECK(cudaEventRecord(pl.h2dEnd[static_cast<size_t>(c)], pl.stream));
+  }
+  CUDA_CHECK(cudaEventRecord(pl.kBeg, pl.stream));
+  enqueueReceiveKernels(f, pl.stream);
+  CUDA_CHECK(cudaEventRecord(pl.kEnd, pl.stream));
+  CUDA_CHECK(cudaEventRecord(pl.evStop, pl.stream));
+  CUDA_CHECK(cudaStreamSynchronize(pl.stream));
+  t.wall = nowMs() - w0;
+  float ms = 0;
+  CUDA_CHECK(cudaEventElapsedTime(&ms, pl.evStart, pl.evStop));
+  t.gpu = ms;
+  t.h2d = pl.sumH2dMs();
+  CUDA_CHECK(cudaEventElapsedTime(&ms, pl.kBeg, pl.kEnd));
+  t.kern = ms;
+  t.cpu = 0.0; // no host staging copy -- that is the whole point
+  return t;
+}
+
 // Run one (workload, method, chunk) config: verify gate, 5+30 protocol,
 // emit a CSV row. Returns false on a verify failure.
-bool runConfig(const Fixture &f, bool methodA, int64_t chunkReqBytes,
+bool runConfig(const Fixture &f, Method method, int64_t chunkReqBytes,
                const Options &opt, reloc::GatherPool &pool,
                const std::string &gpuName, std::FILE *csv) {
   const Workload &w = *f.w;
+  const bool methodA = method == Method::A;
   RowChunks rck{};
   ByteChunks bck{};
   int64_t stagingBytes = 0, nChunks = 0;
@@ -711,11 +813,21 @@ bool runConfig(const Fixture &f, bool methodA, int64_t chunkReqBytes,
     stagingBytes = bck.bytesPerChunk;
     nChunks = bck.nChunks;
   }
-  Pipeline pl(stagingBytes, nChunks, methodA && w.recvStage != RecvStage::None);
+  // B_fair's source is already pinned; it needs no staging buffers.
+  Pipeline pl(stagingBytes, nChunks,
+              /*withRecv=*/methodA && w.recvStage != RecvStage::None,
+              /*allocStaging=*/method != Method::BFair);
 
   auto iterate = [&]() -> StageTimes {
-    return methodA ? runMethodA(f, rck, pl, pool, opt.variant, scratch)
-                   : runMethodB(f, bck, pl, pool);
+    switch (method) {
+    case Method::A:
+      return runMethodA(f, rck, pl, pool, opt.variant, scratch);
+    case Method::BStaged:
+      return runMethodB(f, bck, pl, pool);
+    case Method::BFair:
+      return runMethodBFair(f, bck, pl);
+    }
+    return {};
   };
 
   if (opt.verify) {
@@ -728,9 +840,9 @@ bool runConfig(const Fixture &f, bool methodA, int64_t chunkReqBytes,
     const std::vector<uint8_t> &want = methodA ? f.refA : f.ref;
     if (std::memcmp(got.data(), want.data(), got.size()) != 0) {
       std::fprintf(stderr,
-                   "VERIFY FAILED: %s method %c chunk %lld MiB != CPU "
+                   "VERIFY FAILED: %s method %s chunk %lld MiB != CPU "
                    "reference\n",
-                   w.id, methodA ? 'a' : 'b',
+                   w.id, methodTag(method),
                    static_cast<long long>(chunkReqBytes >> 20));
       return false;
     }
@@ -752,7 +864,7 @@ bool runConfig(const Fixture &f, bool methodA, int64_t chunkReqBytes,
   CsvRow row;
   row.machine = opt.machine;
   row.gpu = gpuName;
-  row.method = methodA ? "a" : "b";
+  row.method = methodTag(method);
   row.transform = w.transform;
   row.dtypeOut = dtypeName(w.dtypeOut);
   row.n = opt.n;
@@ -777,10 +889,10 @@ bool runConfig(const Fixture &f, bool methodA, int64_t chunkReqBytes,
   std::fprintf(csv, "%s\n", csvRowLine(row).c_str());
   std::fflush(csv);
   std::fprintf(stderr,
-               "rtrack: %-4s %c chunk=%4lldMiB T=%d wall %8.2f ms "
+               "rtrack: %-4s %-6s chunk=%4lldMiB T=%d wall %8.2f ms "
                "(%5.2f GB/s in, iqr %4.1f%%%s) cpu %7.2f h2d %7.2f kern "
                "%6.2f recv %6.2f%s\n",
-               w.id, methodA ? 'a' : 'b',
+               w.id, methodTag(method),
                static_cast<long long>(chunkReqBytes >> 20), pool.threadCount(),
                row.wall.median, row.effectiveInputGbps,
                row.wall.iqrOverMedianPct, row.wall.unstable ? " UNSTABLE" : "",
@@ -814,38 +926,44 @@ int run(const Options &opt) {
   }
 
   reloc::GatherPool pool(opt.threads);
+  const bool needB = hasMethod(opt.methods, Method::BStaged);
+  const bool needBFair = hasMethod(opt.methods, Method::BFair);
   int rc = 0;
   for (const Workload *w : opt.workloads) {
     Fixture f;
-    buildFixture(f, *w, opt.n, opt.runB && w->methodB, opt.verify);
+    buildFixture(f, *w, opt.n, needB && w->methodB, needBFair && w->methodB,
+                 opt.verify);
     // Chunk requests past the artifact size all clamp to the same 1-chunk
     // plan; measuring the identical config again would only hand
-    // figure1's best-chunk argmin duplicate samples.
-    std::set<std::pair<int64_t, int64_t>> seenA, seenB;
+    // figure1's best-chunk argmin duplicate samples. Dedup is per method:
+    // the two Method-B paths share a chunk plan but are distinct configs.
+    std::map<Method, std::set<std::pair<int64_t, int64_t>>> seen;
     for (int64_t chunk : opt.chunkBytes) {
-      if (opt.runA) {
-        RowChunks rck = planRowChunks(f.rows, f.rowOutBytes, chunk);
-        if (!seenA.insert({rck.stagingBytes, rck.nChunks}).second)
+      for (Method m : opt.methods) {
+        // A-only rows (methodB=false): B is r-independent, so each rsweep
+        // family measures both B paths once, on its R100 row.
+        if (m != Method::A && !w->methodB)
+          continue;
+        std::pair<int64_t, int64_t> key;
+        if (m == Method::A) {
+          RowChunks rck = planRowChunks(f.rows, f.rowOutBytes, chunk);
+          key = {rck.stagingBytes, rck.nChunks};
+        } else {
+          ByteChunks bck = planByteChunks(f.inBytes, chunk);
+          key = {bck.bytesPerChunk, bck.nChunks};
+        }
+        if (!seen[m].insert(key).second) {
           std::fprintf(stderr,
-                       "rtrack: %-4s a chunk=%4lldMiB duplicates an earlier "
+                       "rtrack: %-4s %-6s chunk=%4lldMiB duplicates an earlier "
                        "sweep point; skipped\n",
-                       w->id, static_cast<long long>(chunk >> 20));
-        else if (!runConfig(f, /*methodA=*/true, chunk, opt, pool, gpuName,
-                            csv))
+                       w->id, methodTag(m),
+                       static_cast<long long>(chunk >> 20));
+          continue;
+        }
+        if (!runConfig(f, m, chunk, opt, pool, gpuName, csv)) {
           rc = 1;
-      }
-      if (rc)
-        break;
-      if (opt.runB && w->methodB) {
-        ByteChunks bck = planByteChunks(f.inBytes, chunk);
-        if (!seenB.insert({bck.bytesPerChunk, bck.nChunks}).second)
-          std::fprintf(stderr,
-                       "rtrack: %-4s b chunk=%4lldMiB duplicates an earlier "
-                       "sweep point; skipped\n",
-                       w->id, static_cast<long long>(chunk >> 20));
-        else if (!runConfig(f, /*methodA=*/false, chunk, opt, pool, gpuName,
-                            csv))
-          rc = 1;
+          break;
+        }
       }
       if (rc)
         break;
@@ -888,7 +1006,7 @@ int usage() {
   std::fprintf(
       stderr,
       "usage: bench-rtrack [--transform all|matrix|rsweep|T1,T1b,...,T3R0125]\n"
-      "  [--method both|a|b] [--n N] [--chunk-mib 4,16,64,256]\n"
+      "  [--method both|all|a|b|bfair] [--n N] [--chunk-mib 4,16,64,256]\n"
       "  [--threads T] [--variant auto|scalar|avx2|avx512|avx512pf]\n"
       "  [--warmup W] [--iters I] [--machine NAME] [--csv PATH|-]\n"
       "  [--csv-header] [--no-verify]\n"
@@ -909,10 +1027,16 @@ int main(int argc, char **argv) {
     else if (a == "--method") {
       std::string m = next();
       if (m == "a")
-        opt.runB = false;
+        opt.methods = {Method::A};
       else if (m == "b")
-        opt.runA = false;
-      else if (m != "both")
+        opt.methods = {Method::BStaged};
+      else if (m == "bfair")
+        opt.methods = {Method::BFair};
+      else if (m == "both")
+        opt.methods = {Method::A, Method::BStaged};
+      else if (m == "all")
+        opt.methods = {Method::A, Method::BStaged, Method::BFair};
+      else
         return usage();
     } else if (a == "--n")
       opt.n = std::atoll(next());
@@ -976,7 +1100,7 @@ int main(int argc, char **argv) {
 
   // Validate the requested SIMD variant against each workload's CPU kernel
   // (the quant_bw convention: fail fast, before any setup).
-  if (opt.runA) {
+  if (hasMethod(opt.methods, Method::A)) {
     for (const Workload *w : opt.workloads) {
       std::vector<reloc::quant::Kernel> ks;
       switch (w->cpuStage) {

@@ -1,0 +1,16 @@
+{
+  "config": {"benchmark": "multigpu_reloc", "gpu": "NVIDIA GeForce RTX 2080 Ti", "scenario": "broadcast", "N": 8192, "cpu_threads": 8, "warmup": 3, "iters": 20, "devices": [0, 1, 2, 3]},
+  "rows": [
+    {"scenario": "broadcast", "method": "a", "K": 1, "N": 8192, "wall_median_ms": 86.5676, "wall_min_ms": 86.0327, "wall_p95_ms": 87.5656, "iqr_over_median_pct": 0.787766, "dma_ms": 5.31155, "eff_input_gb_per_s": 3.10088, "speedup_vs_bxk": 0.25835},
+    {"scenario": "broadcast", "method": "aprefold", "K": 1, "N": 8192, "wall_median_ms": 5.2141, "wall_min_ms": 5.19884, "wall_p95_ms": 5.2228, "iqr_over_median_pct": 0.0607169, "dma_ms": 5.21403, "eff_input_gb_per_s": 51.4826, "speedup_vs_bxk": 4.28928, "speedup_vs_a": 16.6026},
+    {"scenario": "broadcast", "method": "bxk", "K": 1, "N": 8192, "wall_median_ms": 22.3647, "wall_min_ms": 22.3597, "wall_p95_ms": 22.4537, "iqr_over_median_pct": 0.0282542, "dma_ms": 0, "eff_input_gb_per_s": 12.0026},
+    {"scenario": "broadcast", "method": "bstaged", "K": 1, "N": 8192, "wall_median_ms": 22.284, "wall_min_ms": 22.2773, "wall_p95_ms": 22.2869, "iqr_over_median_pct": 0.0155367, "dma_ms": 0, "eff_input_gb_per_s": 12.0461},
+    {"scenario": "broadcast", "method": "a", "K": 4, "N": 8192, "wall_median_ms": 91.9672, "wall_min_ms": 89.7417, "wall_p95_ms": 95.2474, "iqr_over_median_pct": 2.43614, "dma_ms": 10.2429, "eff_input_gb_per_s": 2.91882, "speedup_vs_bxk": 0.445871},
+    {"scenario": "broadcast", "method": "aprefold", "K": 4, "N": 8192, "wall_median_ms": 9.02312, "wall_min_ms": 8.27346, "wall_p95_ms": 10.1798, "iqr_over_median_pct": 8.17587, "dma_ms": 8.93298, "eff_input_gb_per_s": 29.7498, "speedup_vs_bxk": 4.54449, "speedup_vs_a": 10.1924},
+    {"scenario": "broadcast", "method": "bxk", "K": 4, "N": 8192, "wall_median_ms": 41.0055, "wall_min_ms": 35.2427, "wall_p95_ms": 52.2209, "iqr_over_median_pct": 8.15435, "dma_ms": 0, "eff_input_gb_per_s": 6.54633},
+    {"scenario": "broadcast", "method": "bstaged", "K": 4, "N": 8192, "wall_median_ms": 123.171, "wall_min_ms": 90.5022, "wall_p95_ms": 137.176, "iqr_over_median_pct": 20.6645, "dma_ms": 0, "eff_input_gb_per_s": 2.17938}
+  ],
+  "reuse_rows": [
+
+  ]
+}

@@ -101,4 +101,32 @@ if(RELOC_ENABLE_CUDA)
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
   target_compile_features(bench-multigpu-h2d PRIVATE cxx_std_17)
   target_link_libraries(bench-multigpu-h2d PRIVATE CUDA::cudart)
+
+  # R4 / EXP-4 (issue #85): Turing hiding-ratio kernel bandwidths. GPU-only,
+  # never in CI. Reuses the R0.2 library kernels plus a bench-local unpadded
+  # SMEM transpose for the bank-conflict delta.
+  add_executable(bench-hiding-ratio rtrack/hiding_ratio.cu)
+  target_include_directories(bench-hiding-ratio
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_compile_features(bench-hiding-ratio PRIVATE cxx_std_17)
+  target_link_libraries(bench-hiding-ratio PRIVATE reloc_runtime CUDA::cudart)
+
+  # R3 / EXP-3 (issue #84): multi-GPU amortization (broadcast + scatter,
+  # Method A vs B_xK/B_staged). GPU-only, never in CI; needs >= 1 GPU (K
+  # round-robins over the visible devices).
+  add_executable(bench-multigpu-reloc rtrack/multigpu_reloc.cu)
+  target_include_directories(bench-multigpu-reloc
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_compile_features(bench-multigpu-reloc PRIVATE cxx_std_17)
+  target_link_libraries(bench-multigpu-reloc PRIVATE reloc_runtime
+    CUDA::cudart)
+
+  # R5 / EXP-5 (issue #86): DMA-engine negative result -- strided
+  # cudaMemcpy2DAsync + UVA zero-copy bandwidth collapse. GPU-only, never in
+  # CI. Self-contained (no libreloc kernels), so it links only CUDA::cudart.
+  add_executable(bench-dma-engine rtrack/dma_engine.cu)
+  target_include_directories(bench-dma-engine
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_compile_features(bench-dma-engine PRIVATE cxx_std_17)
+  target_link_libraries(bench-dma-engine PRIVATE CUDA::cudart)
 endif()

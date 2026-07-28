@@ -15,6 +15,7 @@ add_executable(libreloc-test
   CudaPipelineTest.cpp
   CudaKernelsTest.cpp
   QuantTest.cpp
+  PrefoldTest.cpp
 )
 
 target_link_libraries(libreloc-test PRIVATE

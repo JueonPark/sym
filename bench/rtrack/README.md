@@ -18,10 +18,16 @@ destination = final layout in GPU global memory.
   `unpackS4S8`+`dequantS8F32` depending on the wire dtype — timed
   separately as `gpu_recv_ms` (a new `RecvStage`, orthogonal to Method B's
   `GpuStage`).
-- **Method B**: per-chunk pageable→pinned staging copy (same thread budget
-  as A's transform) → DMA of S fp32 bytes → R0.2 GPU transform kernels
-  (`relocate_f32`, `quantize_f32_s8`, plus a bench-local f32→f16 kernel for
-  T5, which issue #75's set does not include).
+- **Method B** (`b`, staged): per-chunk pageable→pinned staging copy (same
+  thread budget as A's transform) → DMA of S fp32 bytes → R0.2 GPU transform
+  kernels (`relocate_f32`, `quantize_f32_s8`, plus a bench-local f32→f16
+  kernel for T5, which issue #75's set does not include).
+- **Method B_fair** (`b_fair`, issue #95): identical to Method B but the
+  source is resident in pinned memory, so the per-chunk staging memcpy is
+  gone and the DMA reads the source directly (`host_stage_ms` = 0). This is
+  the admissible baseline — a competent pure-relocation implementation would
+  not carry a pageable→pinned copy. `b` is kept as the comparison, not
+  replaced. Select all three with `--method all`.
 
 Both methods produce the identical final artifact (dtype_out in the plan's
 dst layout); every (workload, method, chunk) config is verified bit-exact
@@ -218,6 +224,26 @@ nvcc -ccbin g++ -O3 -DNDEBUG -std=c++17 -arch=sm_75 \
    stabler-preference-merged CSVs (per the R2 report's rerun rule); re-running
    `figure_rstar.py` on the two rsweep CSVs (raw + rerun) reproduces the same
    r* values with only ~0.005-level speedup differences at the reran points.
+
+8. Gates:
+
+   ```sh
+   python3 bench/rtrack/gates.py --csv run.csv           # R1/EXP-1 (default)
+   python3 bench/rtrack/gates.py --exp r2 --csv run.csv \
+       [--rstar rstar.json]                              # R2/EXP-2 gates
+   python3 bench/rtrack/gates.py --exp v1 --csv run.csv  # V1 admissibility bar
+   ```
+
+   `--exp v1` (issue #95) checks whether each Method-B baseline reaches
+   ≥ 0.90 × the box's measured pinned H2D on the r=1.0 workloads; `b`
+   (staged) is expected to fail the bar and `b_fair` to pass it. Bars are
+   fixed in `gates.py` before the data is read. For the multi-GPU
+   pre-fold path (`bench-multigpu-reloc`, issue #98), `--reuse
+   1,2,4,16` and `--streaming` sweep the folded artifact's per-load
+   amortization against repeated vs. cold single-use loads, and
+   `python3 bench/rtrack/exp4v_gate.py --json <run.json ...>` evaluates
+   its V4-G1..G3 gates (speedup bar, DMA-leg admissibility, counter-case
+   + rule-match) over the resulting JSON.
 
 ## Protocol
 

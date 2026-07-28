@@ -1,0 +1,12 @@
+{
+  "config": {"benchmark": "multigpu_reloc", "gpu": "NVIDIA GeForce RTX 2080 Ti", "scenario": "scatter", "N": 8192, "cpu_threads": 8, "warmup": 3, "iters": 20, "devices": [2, 3]},
+  "rows": [
+    {"scenario": "scatter", "method": "a", "K": 2, "N": 8192, "wall_median_ms": 20.0867, "wall_min_ms": 14.7458, "wall_p95_ms": 20.2614, "iqr_over_median_pct": 3.19756, "dma_ms": 8.43505, "eff_input_gb_per_s": 13.3638, "speedup_vs_bxk": 1.19405},
+    {"scenario": "scatter", "method": "aprefold", "K": 2, "N": 8192, "wall_median_ms": 8.24758, "wall_min_ms": 3.99082, "wall_p95_ms": 8.38458, "iqr_over_median_pct": 25.7629, "dma_ms": 8.25091, "eff_input_gb_per_s": 32.5472, "speedup_vs_bxk": 2.90808, "speedup_vs_a": 2.43547},
+    {"scenario": "scatter", "method": "bxk", "K": 2, "N": 8192, "wall_median_ms": 23.9846, "wall_min_ms": 10.7981, "wall_p95_ms": 33.118, "iqr_over_median_pct": 34.8344, "dma_ms": 0, "eff_input_gb_per_s": 11.192},
+    {"scenario": "scatter", "method": "bstaged", "K": 2, "N": 8192, "wall_median_ms": 33.968, "wall_min_ms": 21.2466, "wall_p95_ms": 43.5566, "iqr_over_median_pct": 37.1295, "dma_ms": 0, "eff_input_gb_per_s": 7.90259}
+  ],
+  "reuse_rows": [
+
+  ]
+}
