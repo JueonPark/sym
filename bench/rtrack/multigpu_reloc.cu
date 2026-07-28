@@ -59,12 +59,27 @@ namespace {
 
 using namespace bench::rtrack;
 
-enum class Scenario { Broadcast, Scatter };
+// broadcast_contig (issue #99): same fan-out placement as broadcast (every
+// GPU receives the whole tensor) but with the identity plan, so Method A's
+// CPU stage is quantize-only (no strided gather). Separates "broadcast is
+// CPU-gather-bound" from "broadcast is fan-out-bound".
+enum class Scenario { Broadcast, Scatter, BroadcastContig };
 enum class Method { A, APrefold, BxK, BStaged };
 
 const char *scenarioName(Scenario s) {
-  return s == Scenario::Broadcast ? "broadcast" : "scatter";
+  switch (s) {
+  case Scenario::Broadcast:
+    return "broadcast";
+  case Scenario::Scatter:
+    return "scatter";
+  case Scenario::BroadcastContig:
+    return "broadcast_contig";
+  }
+  return "?";
 }
+
+// Placement: both broadcast variants ship the whole tensor to every GPU.
+bool broadcastPlacement(Scenario s) { return s != Scenario::Scatter; }
 const char *methodName(Method m) {
   switch (m) {
   case Method::A:
@@ -89,6 +104,10 @@ struct Options {
   const char *jsonPath = "-";
   std::vector<int> reuse;  // --reuse: amortization sweep points (empty = skip)
   bool streaming = false;  // --streaming: re-fold-per-load counter-case
+  std::vector<int> devices; // --devices: GPU ordinals used round-robin
+                            // (empty = 0..nDev-1, the pre-#99 behavior).
+                            // Lets K=2 target the uncontended cross-die
+                            // pair {2,3} instead of the shared-root {0,1}.
 };
 
 // Per-GPU device/stream state. Buffers are sized to the GPU's share of the
@@ -118,7 +137,7 @@ struct HostState {
 
 void buildHost(HostState &h, Scenario sc, int64_t n) {
   h.plan = sc == Scenario::Broadcast ? blockedTransposePlan(n) : identityPlan(n);
-  h.contiguousQuant = sc == Scenario::Scatter;
+  h.contiguousQuant = sc != Scenario::Broadcast;
   h.totalElems = n * n;
   h.rows = h.plan.extents[0];
   h.channelSize = h.totalElems / h.rows;
@@ -189,7 +208,8 @@ void gpuTransform(Scenario sc, GpuCtx &g, const HostState &h) {
     reloc::cuda::quantizeF32S8(g.dTmp, g.dInt8, h.rows, h.channelSize, g.dInv,
                                g.stream);
   } else {
-    // identity plan: quantize contiguously. channels = this shard's rows.
+    // identity plan (scatter shard or broadcast_contig whole tensor):
+    // quantize contiguously. channels = this GPU's rows.
     reloc::cuda::quantizeF32S8(g.dF32, g.dInt8, g.elems / h.channelSize,
                                h.channelSize, g.dInv, g.stream);
   }
@@ -316,15 +336,15 @@ double iterB(Scenario sc, HostState &h, std::vector<GpuCtx> &ctxs,
 // holds the whole tensor; scatter: each GPU holds one shard (rows split K
 // ways -> elems split K ways, since dst is packed).
 void allocCtxs(std::vector<GpuCtx> &ctxs, Scenario sc, const HostState &h,
-               int K, int nDev) {
+               int K, const std::vector<int> &devices) {
   ctxs.resize(static_cast<size_t>(K));
   const int64_t shardElems = h.totalElems / K; // K divides rows -> divides elems
   for (int k = 0; k < K; ++k) {
     GpuCtx &g = ctxs[static_cast<size_t>(k)];
-    g.dev = k % nDev;
+    g.dev = devices[static_cast<size_t>(k) % devices.size()];
     CUDA_CHECK(cudaSetDevice(g.dev));
     CUDA_CHECK(cudaStreamCreateWithFlags(&g.stream, cudaStreamNonBlocking));
-    if (sc == Scenario::Broadcast) {
+    if (broadcastPlacement(sc)) {
       g.elems = h.totalElems;
       g.hostElemOffset = 0;
     } else {
@@ -337,11 +357,12 @@ void allocCtxs(std::vector<GpuCtx> &ctxs, Scenario sc, const HostState &h,
     CUDA_CHECK(cudaMalloc(&p, static_cast<size_t>(g.elems) * 4));
     g.dF32 = static_cast<float *>(p);
     if (sc == Scenario::Broadcast) {
+      // Only the relocating broadcast needs the fp32 intermediate.
       CUDA_CHECK(cudaMalloc(&p, static_cast<size_t>(g.elems) * 4));
       g.dTmp = static_cast<float *>(p);
     }
-    const int64_t channels =
-        sc == Scenario::Broadcast ? h.rows : g.elems / h.channelSize;
+    // Equal for both broadcast placements (g.elems == totalElems -> rows).
+    const int64_t channels = g.elems / h.channelSize;
     std::vector<float> inv(static_cast<size_t>(channels), 1.0f / 127.0f);
     CUDA_CHECK(cudaMalloc(&p, static_cast<size_t>(channels) * 4));
     g.dInv = static_cast<float *>(p);
@@ -398,6 +419,20 @@ int run(const Options &opt) {
   cudaDeviceProp prop{};
   CUDA_CHECK(cudaGetDeviceProperties(&prop, 0));
 
+  // Effective device list (issue #99): --devices verbatim, else 0..nDev-1
+  // (the pre-#99 round-robin). Validated here, not in allocCtxs, so a bad
+  // ordinal fails before any allocation.
+  std::vector<int> devices = opt.devices;
+  if (devices.empty())
+    for (int d = 0; d < nDev; ++d)
+      devices.push_back(d);
+  for (int d : devices)
+    if (d < 0 || d >= nDev) {
+      std::fprintf(stderr, "error: --devices ordinal %d out of range [0, %d)\n",
+                   d, nDev);
+      return 2;
+    }
+
   HostState h;
   buildHost(h, opt.scenario, opt.n);
   reloc::GatherPool pool(opt.threads);
@@ -441,7 +476,7 @@ int run(const Options &opt) {
       continue;
     }
     std::vector<GpuCtx> ctxs;
-    allocCtxs(ctxs, opt.scenario, h, K, nDev);
+    allocCtxs(ctxs, opt.scenario, h, K, devices);
 
     // --- verify every method before timing --------------------------------
     double dma = 0;
@@ -666,8 +701,14 @@ int run(const Options &opt) {
       scenarioName(opt.scenario) + "\", \"N\": " + std::to_string(opt.n) +
       ", \"cpu_threads\": " + std::to_string(opt.threads) +
       ", \"warmup\": " + std::to_string(opt.warmup) +
-      ", \"iters\": " + std::to_string(opt.iters) +
-      "},\n  \"rows\": [\n" + rows +
+      ", \"iters\": " + std::to_string(opt.iters) + ", \"devices\": [" +
+      [&] {
+        std::string ds;
+        for (int d : devices)
+          ds += (ds.empty() ? "" : ", ") + std::to_string(d);
+        return ds;
+      }() +
+      "]},\n  \"rows\": [\n" + rows +
       "\n  ],\n  \"reuse_rows\": [\n" + reuseRows + "\n  ]\n}\n";
   freeHost(h);
   if (std::strcmp(opt.jsonPath, "-") == 0) {
@@ -711,14 +752,19 @@ int main(int argc, char **argv) {
         opt.scenario = Scenario::Broadcast;
       else if (s == "scatter")
         opt.scenario = Scenario::Scatter;
+      else if (s == "broadcast_contig")
+        opt.scenario = Scenario::BroadcastContig;
       else {
-        std::fprintf(stderr, "error: --scenario broadcast|scatter\n");
+        std::fprintf(stderr,
+                     "error: --scenario broadcast|scatter|broadcast_contig\n");
         return 2;
       }
     } else if (a == "--n")
       opt.n = std::atoll(next());
     else if (a == "--k")
       opt.ks = parseInts(next());
+    else if (a == "--devices")
+      opt.devices = parseInts(next());
     else if (a == "--reuse")
       opt.reuse = parseInts(next());
     else if (a == "--streaming")
@@ -733,8 +779,10 @@ int main(int argc, char **argv) {
       opt.jsonPath = next();
     else {
       std::fprintf(stderr,
-                   "usage: bench-multigpu-reloc [--scenario broadcast|scatter] "
-                   "[--n N] [--k 1,2,4] [--reuse 1,2,4,16] [--streaming] "
+                   "usage: bench-multigpu-reloc "
+                   "[--scenario broadcast|scatter|broadcast_contig] "
+                   "[--n N] [--k 1,2,4] [--devices 0,1,2,3] "
+                   "[--reuse 1,2,4,16] [--streaming] "
                    "[--threads T] [--warmup W] [--iters I] [--json PATH|-]\n");
       return 2;
     }
