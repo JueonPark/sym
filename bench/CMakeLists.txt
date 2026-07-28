@@ -120,4 +120,13 @@ if(RELOC_ENABLE_CUDA)
   target_compile_features(bench-multigpu-reloc PRIVATE cxx_std_17)
   target_link_libraries(bench-multigpu-reloc PRIVATE reloc_runtime
     CUDA::cudart)
+
+  # R5 / EXP-5 (issue #86): DMA-engine negative result -- strided
+  # cudaMemcpy2DAsync + UVA zero-copy bandwidth collapse. GPU-only, never in
+  # CI. Self-contained (no libreloc kernels), so it links only CUDA::cudart.
+  add_executable(bench-dma-engine rtrack/dma_engine.cu)
+  target_include_directories(bench-dma-engine
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_compile_features(bench-dma-engine PRIVATE cxx_std_17)
+  target_link_libraries(bench-dma-engine PRIVATE CUDA::cudart)
 endif()
