@@ -4,12 +4,15 @@ model-predicted critical r*.
 
   python3 bench/rtrack/figure_rstar.py --csv rsweep.csv \
       [--rooflines r2_rooflines/*.json] [--h2d GBPS] [--n N] [--threads T] \
-      [--out figure_rstar.png] [--json rstar.json]
+      [--b-method b|b_fair] [--out figure_rstar.png] [--json rstar.json]
 
 Measured: variant=rsweep rows at --n/--threads (defaults: largest present
 per family), best chunk per (method, r); speedup(r) = median_ms(B at
 r=1.0) / median_ms(A at r). r*_measured = the 1.0 crossing, interpolated
 linearly in log2(r); None when the curve never crosses in [0.125, 1.0].
+--b-method picks the Method-B baseline rows (issue #95): "b" is the
+staged baseline (default, the R2 figure), "b_fair" the admissible
+pinned-source one; the choice is recorded in the JSON as "b_method".
 
 Model (stage rooflines, effective INPUT GB/s, H2D from --h2d or derived
 from the CSV's method-b h2d_ms):
@@ -101,6 +104,7 @@ def main():
     ap.add_argument("--h2d", type=float, default=None)
     ap.add_argument("--n", type=int, default=None)
     ap.add_argument("--threads", type=int, default=None)
+    ap.add_argument("--b-method", default="b", choices=("b", "b_fair"))
     ap.add_argument("--out", default="figure_rstar.png")
     ap.add_argument("--json", dest="json_out", default=None)
     args = ap.parse_args()
@@ -118,9 +122,11 @@ def main():
     h2d = args.h2d
     if h2d is None:
         cands = [r["N"] * r["N"] * 4 / (r["h2d_ms"] * 1e-3) / 1e9
-                 for r in rows if r["method"] == "b" and r["h2d_ms"] > 0]
+                 for r in rows
+                 if r["method"] == args.b_method and r["h2d_ms"] > 0]
         if not cands:
-            sys.exit("error: no --h2d and no method-b rows to derive it")
+            sys.exit(f"error: no --h2d and no method-{args.b_method} rows "
+                     "to derive it")
         h2d = max(cands)
     print(f"figure_rstar: H2D = {h2d:.2f} GB/s, N={n}, T={threads}",
           file=sys.stderr)
@@ -130,12 +136,13 @@ def main():
         fams[r["transform"]][(r["method"], r["r"])].append(r)
 
     rooflines = load_rooflines(args.rooflines)
-    result = {"h2d_gbps": h2d, "n": n, "threads": threads, "families": {}}
+    result = {"h2d_gbps": h2d, "n": n, "threads": threads,
+              "b_method": args.b_method, "families": {}}
     for fam, grp in sorted(fams.items()):
-        if ("b", 1.0) not in grp:
+        if (args.b_method, 1.0) not in grp:
             print(f"figure_rstar: skipping {fam} (no B row)", file=sys.stderr)
             continue
-        best_b = min(grp[("b", 1.0)], key=lambda r: r["median_ms"])
+        best_b = min(grp[(args.b_method, 1.0)], key=lambda r: r["median_ms"])
         meas, unstable = {}, best_b["unstable"]
         for rr in R_POINTS:
             if ("a", rr) not in grp:
@@ -198,7 +205,7 @@ def main():
     axes[0].set_ylabel("speedup  median_ms(B) / median_ms(A)")
     axes[0].legend(fontsize=8)
     fig.suptitle(f"Method A vs B across r (N={n}, T={threads}, "
-                 f"H2D={h2d:.1f} GB/s)")
+                 f"H2D={h2d:.1f} GB/s, baseline={args.b_method})")
     fig.tight_layout()
     fig.savefig(args.out, dpi=150)
     print(f"figure_rstar: wrote {args.out}", file=sys.stderr)
