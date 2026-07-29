@@ -1,0 +1,52 @@
+# config.machine: epyc7351-2080ti
+# config.bin: ./bench-rtrack
+# config.transforms: T1b,T3
+# config.methods: bfair
+# config.variant: auto
+# config.n: 2048; 4096; 8192; 16384
+# config.chunk_mib: 4; 16; 64; 256
+# config.threads: 8
+# config.warmup: 5
+# config.iters: 30
+# config.out_csv: bench/results/v2_isa_gen3_bfair_matrix_epyc7351-2080ti.csv
+# calibration.timestamp: 2026-07-29T10:25:02+0900
+# calibration.hostname: rebel-gpu1
+# calibration.kernel: Linux rebel-gpu1 6.8.0-124-generic #124~22.04.1-Ubuntu SMP PREEMPT_DYNAMIC Tue May 26 21:05:19 UTC  x86_64
+# calibration.cpu_model: AMD EPYC 7351 16-Core Processor
+# calibration.governors: performance
+# calibration.transparent_hugepage: always [madvise] never
+# calibration.numactl_available: False
+# calibration.cuda_toolkit: None
+# calibration.gpus: {'name': 'NVIDIA GeForce RTX 2080 Ti', 'driver': '595.71.05', 'pcie_gen_current_idle': '1', 'pcie_gen_max': '3', 'pcie_width_current_idle': '16', 'pcie_width_max': '16', 'clocks_sm': '300 MHz', 'clocks_mem': '405 MHz'}; {'name': 'NVIDIA GeForce RTX 2080 Ti', 'driver': '595.71.05', 'pcie_gen_current_idle': '1', 'pcie_gen_max': '3', 'pcie_width_current_idle': '16', 'pcie_width_max': '16', 'clocks_sm': '300 MHz', 'clocks_mem': '405 MHz'}; {'name': 'NVIDIA GeForce RTX 2080 Ti', 'driver': '595.71.05', 'pcie_gen_current_idle': '1', 'pcie_gen_max': '3', 'pcie_width_current_idle': '16', 'pcie_width_max': '16', 'clocks_sm': '300 MHz', 'clocks_mem': '405 MHz'}; {'name': 'NVIDIA GeForce RTX 2080 Ti', 'driver': '595.71.05', 'pcie_gen_current_idle': '1', 'pcie_gen_max': '3', 'pcie_width_current_idle': '16', 'pcie_width_max': '16', 'clocks_sm': '300 MHz', 'clocks_mem': '405 MHz'}
+# calibration.pcie_under_load.gen: 3
+# calibration.pcie_under_load.width: 16
+# calibration.triad_gbps: 26.14
+# calibration.nvbandwidth: None
+# calibration.notes: nvbandwidth not installed
+machine,gpu,method,transform,N,dtype_out,r,threads,chunk_req_mib,staging_bytes,n_chunks,median_ms,min_ms,p95_ms,iqr_over_median_pct,unstable,effective_input_GBps,gpu_pipeline_ms,cpu_stage_ms,h2d_ms,gpu_kernel_ms,gpu_recv_ms,verified,variant,wire
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,blocked_transpose,2048,f32,1,8,4,4194304,4,1.42108,1.41885,1.42196,0.102928,0,11.8059,1.41517,0,1.29846,0.105456,0,1,matrix,f32
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,blocked_transpose,2048,f32,1,8,16,16777216,1,1.40193,1.40049,1.4026,0.0868904,0,11.9673,1.39626,0,1.28835,0.102304,0,1,matrix,f32
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,quant,2048,s8,0.25,8,4,4194304,4,1.36537,1.36317,1.36757,0.113021,0,12.2876,1.35976,0,1.29757,0.052384,0,1,matrix,s8
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,quant,2048,s8,0.25,8,16,16777216,1,1.34993,1.34536,1.35111,0.312804,0,12.4282,1.34405,0,1.28821,0.051584,0,1,matrix,s8
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,blocked_transpose,4096,f32,1,8,4,4194304,16,5.51164,5.50381,5.5223,0.0898529,0,12.1758,5.50555,0,5.18189,0.295824,0,1,matrix,f32
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,blocked_transpose,4096,f32,1,8,16,16777216,4,5.45152,5.4483,5.45482,0.0505044,0,12.3101,5.44579,0,5.14602,0.290192,0,1,matrix,f32
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,blocked_transpose,4096,f32,1,8,64,67108864,1,5.43823,5.43495,5.4418,0.0654056,0,12.3402,5.43234,0,5.13706,0.2904,0,1,matrix,f32
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,quant,4096,s8,0.25,8,4,4194304,16,5.39187,5.38924,5.39335,0.0224728,0,12.4463,5.38605,0,5.18189,0.176112,0,1,matrix,s8
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,quant,4096,s8,0.25,8,16,16777216,4,5.33858,5.33405,5.34484,0.0541977,0,12.5706,5.33291,0,5.14602,0.17712,0,1,matrix,s8
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,quant,4096,s8,0.25,8,64,67108864,1,5.3222,5.31994,5.32561,0.0392007,0,12.6092,5.31661,0,5.1371,0.1744,0,1,matrix,s8
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,blocked_transpose,8192,f32,1,8,4,4194304,64,21.981,21.9729,21.9976,0.0452039,0,12.2121,21.9752,0,20.7218,1.14939,0,1,matrix,f32
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,blocked_transpose,8192,f32,1,8,16,16777216,16,21.7605,21.7558,21.7668,0.0105144,0,12.3359,21.755,0,20.5779,1.14845,0,1,matrix,f32
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,blocked_transpose,8192,f32,1,8,64,67108864,4,21.7064,21.705,21.7094,0.00771089,0,12.3666,21.7006,0,20.542,1.14946,0,1,matrix,f32
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,blocked_transpose,8192,f32,1,8,256,268435456,1,21.693,21.6893,21.6973,0.00588682,0,12.3743,21.6869,0,20.5327,1.14965,0,1,matrix,f32
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,quant,8192,s8,0.25,8,4,4194304,64,21.514,21.5107,21.5217,0.0149607,0,12.4772,21.5081,0,20.7217,0.680944,0,1,matrix,s8
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,quant,8192,s8,0.25,8,16,16777216,16,21.2916,21.2875,21.2983,0.0110102,0,12.6076,21.2859,0,20.5777,0.679664,0,1,matrix,s8
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,quant,8192,s8,0.25,8,64,67108864,4,21.2398,21.2352,21.2554,0.015613,0,12.6383,21.2337,0,20.5417,0.682496,0,1,matrix,s8
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,quant,8192,s8,0.25,8,256,268435456,1,21.2257,21.2221,21.2312,0.0100579,0,12.6467,21.2194,0,20.5329,0.681856,0,1,matrix,s8
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,blocked_transpose,16384,f32,1,8,4,4194304,256,87.8507,87.8445,87.8644,0.00878207,0,12.2223,87.8437,0,82.8799,4.556,0,1,matrix,f32
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,blocked_transpose,16384,f32,1,8,16,16777216,64,86.9754,86.9711,86.9992,0.0118406,0,12.3453,86.9695,0,82.3052,4.56,0,1,matrix,f32
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,blocked_transpose,16384,f32,1,8,64,67108864,16,86.7533,86.7471,86.7658,0.0051348,0,12.377,86.7473,0,82.1604,4.558,0,1,matrix,f32
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,blocked_transpose,16384,f32,1,8,256,268435456,4,86.6987,86.6939,86.7106,0.00462716,0,12.3847,86.6932,0,82.1246,4.55859,0,1,matrix,f32
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,quant,16384,s8,0.25,8,4,4194304,256,85.8288,85.8216,85.8439,0.00465927,0,12.5103,85.8222,0,82.8809,2.53365,0,1,matrix,s8
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,quant,16384,s8,0.25,8,16,16777216,64,84.9525,84.9436,84.9677,0.00603193,0,12.6393,84.9464,0,82.3042,2.5371,0,1,matrix,s8
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,quant,16384,s8,0.25,8,64,67108864,16,84.7309,84.7234,84.7437,0.00932125,0,12.6724,84.7249,0,82.1606,2.53538,0,1,matrix,s8
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,quant,16384,s8,0.25,8,256,268435456,4,84.6775,84.6709,84.6864,0.00451912,0,12.6804,84.671,0,82.1248,2.53606,0,1,matrix,s8

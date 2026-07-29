@@ -1,10 +1,11 @@
 # V2 — Single-host isolation: link generation vs host ISA (issue #96)
 
-**Status: IN PROGRESS (draft).** The host-ISA half is measured and
-analyzed (this document, sections 1–4). The link half is **pending on the
-gen3 / 2080 Ti box** — the runbook in section 5 is what to execute there;
-its result cells are marked TODO. Pre-registered expectations and reading
-rules were posted to issue #96 before any data was taken.
+**Status: COMPLETE.** The host-ISA half (sections 1–4) was measured on
+the Gen4 box 2026-07-29; the gen3 half (section 5a) was executed the same
+day on `rebel-gpu1` (bare-metal EPYC 7351 / RTX 2080 Ti — an AVX2-only
+host, so the gen3×avx512 cell is recorded impossible, the case the
+runbook anticipated). Pre-registered expectations and reading rules were
+posted to issue #96 before any data was taken. Final attribution: §6.
 
 **Plan change (recorded).** Issue #96's link task asked for a BIOS
 gen3/x8 downgrade of the Gen4 box (one host, one variable). The owner
@@ -102,7 +103,7 @@ everywhere), no stabler-preference rerun was spent in this draft pass;
 if any final verdict cell becomes borderline after the gen3 arm lands,
 rerun per the R2 rule before merging.
 
-## 5. Runbook — gen3 / 2080 Ti box (TODO: execute there)
+## 5. Runbook — gen3 / 2080 Ti box (EXECUTED 2026-07-29, see §5a)
 
 On the 2080 Ti server, branch `v2-isa-isolation`:
 
@@ -158,14 +159,65 @@ python3 bench/rtrack/figure_rstar.py \
 #    commit CSVs/JSONs/figures onto this branch, push.
 ```
 
-## 6. Open cells (the 2×2, per issue #96 acceptance)
+## 5a. Gen3 row — executed 2026-07-29 on `rebel-gpu1`
 
-| | AVX-512 (or best dispatch) | AVX2 dispatch |
+Runbook §5 followed as written (session: performance governor,
+persistence mode ×4, pinned to GPU0's NUMA cores 4-7,20-23; fresh
+calibration `v2_isa_gen3_calibration_epyc7351-2080ti.json`, gen3 x16
+under load, b_fair anchor H2D 13.08 GB/s — matching V1's 13.07). Host is
+the EPYC 7351: **no `avx512f`**, so per the runbook's step-5 fallback
+only the `*_avx2` and `*_bfair` configs ran (4 arms, every config
+bit-exact verified, 0 failures) and the gen3×avx512 cell is recorded as
+**impossible on this host** rather than silently absent. `Auto` ≡ AVX2
+for `quantize_pack`/`convert_f32_f16` on this host, so R1/V1's committed
+auto-arm numbers double as the avx2-arm cross-check (rooflines agree:
+quantize_pack 22.76 here vs R1's 23.21 GB/s at T=8).
+
+**Gen3 avx2 r\*** (vs this box's own b_fair anchor,
+`v2_isa_gen3_rstar_avx2_epyc7351-2080ti.json`): **quant 0.636**;
+**blocked_transpose: no crossing** — A/B_fair is 0.50 at r=0.5 and 0.68
+at r=1.0, i.e. Method A loses at every measured r on this host (the R1
+gather wall; shipping fewer bytes cannot rescue a CPU-bound transform,
+so the curve moves *away* from 1.0 as r shrinks).
+
+**The cross-box contrast at FIXED ISA** (both arms avx2, per-kernel
+stage rooflines, in-GB/s):
+
+| kernel | gen3 EPYC, T=8 | gen4 7800X3D, T=8 | ×gap | ×gap at T=1 |
+|---|---|---|---|---|
+| gather_f32 (no SIMD path) | 11.47 | 17.15 | 1.49 | 1.99 |
+| quantize_pack | 22.76 | 38.44 | 1.69 | 2.03 |
+| convert_f32_f16 | 17.26 | 26.75 | 1.55 | 2.05 |
+| contig_read (no SIMD path) | 37.28 | 62.17 | 1.67 | 1.86 |
+
+The 1.5–2.1× gap survives at identical AVX2 dispatch — and is largest at
+T=1, where memory latency and per-core width dominate. Combined with the
+within-box ISA null (§2), the attribution closes from both directions:
+same box + different ISA → no gap; same ISA + different box → full gap.
+
+## 6. The 2×2 and final attribution (issue #96 acceptance)
+
+| r\* (quant / blocked) | AVX-512 dispatch | AVX2 dispatch |
 |---|---|---|
-| gen4 x16 (7800X3D) | r\*: quant 0.597, blocked 0.396 | quant 0.579, blocked <0.5 |
-| gen3 x16 (2080 Ti box) | **TODO** (impossible if AVX2-only host — record which) | **TODO** |
+| gen4 x16 (7800X3D) | 0.597 / 0.396 | 0.579 / <0.5 (unbracketable) |
+| gen3 x16 (EPYC/2080Ti) | **impossible — host has no AVX-512** | 0.636 / none (A loses at all measured r) |
 
-After the gen3 row lands: re-draw Figure 1 with series labelled by the
-isolated variable (ISA at fixed link from the within-box arms; the
-cross-box row labelled honestly as link+host-generation), and state the
-final attribution table in this document.
+Figure 1, re-drawn with series labelled by the isolated variable:
+`bench/results/v2_figure1_isolated_variables.png`
+(`bench/rtrack/v2_figure.py`). Same-color pair = ISA contrast at fixed
+box/link (curves superimposed — the null); color change = box contrast
+at fixed ISA (the cross-box row, honestly labelled link+host-generation
+per the recorded plan change).
+
+**Final attribution table:**
+
+| R1/R3 claim | verdict after V2 |
+|---|---|
+| "A stronger transform host flips the CPU-bound outcomes" | **Supported** — 1.5–2.1× per-kernel at fixed ISA; quant r\* moves 0.60→0.64 across boxes |
+| "…because it has AVX-512 (vs AVX2)" | **Refuted as stated** — ISA arms are 0.97–1.03 at T=8 on the box that has both; gather kernels have no vector paths at all |
+| the correct wording for reports | **host generation (memory system / core)**, optionally noting Zen4 double-pumps AVX-512 so the wider ISA is not the mechanism |
+| link generation as the r\*-mover | **Weakly moving on quant** (0.60 gen4 → 0.64 gen3 measured, direction consistent with the halved link raising B's cost more than A's), but cross-box confounded — a single-host link downgrade remains the open follow-up if BIOS access materializes |
+
+**Untestable by dispatch** (unchanged from §3): `gather_quantize` /
+`pack_s8_s4` exist only as AVX512/Scalar — no AVX2 comparison is
+possible anywhere; on this gen3 host they run Scalar via `Auto`.
