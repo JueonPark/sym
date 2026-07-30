@@ -1,6 +1,7 @@
 //===- BindTest.cpp - bind() constraint + coalescing + acceptance ---------===//
 
 #include "reloc/Bind.h"
+#include "reloc/CostModel.h"
 #include "reloc/Decode.h"
 #include "gtest/gtest.h"
 
@@ -11,6 +12,7 @@
 #include <limits>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace {
@@ -354,6 +356,30 @@ TEST(Bind, PadDstAxisOutOfRangeRejected) {
   plan.padFill[0].dstAxis = 999999;
   EXPECT_NE(bindErr(plan, {{"N", 1000}}).find("out of range"),
             std::string::npos);
+}
+
+TEST(Bind, CostModelDecisionPopulatedWhenModelPassed) {
+  const char *cal = "# costmodel calibration v0\n"
+                    "pcie.h2d_gbps 10\n"
+                    "cpu.t8.contiguous.contig_read_gbps 20\n"
+                    "hbm.bw_gbps 100\n"
+                    "hbm.m.contiguous 1\n";
+  auto cmv = reloc::costmodel::CostModel::parse(cal);
+  ASSERT_TRUE(std::holds_alternative<reloc::costmodel::CostModel>(cmv));
+  const auto &cm = std::get<reloc::costmodel::CostModel>(cmv);
+  auto result = reloc::bind(decoded(kDegradedHex), {{"N", 64}},
+                            reloc::Strategy::Auto, &cm, /*wireRatio=*/1.0);
+  auto *bound = std::get_if<BoundPlan>(&result);
+  ASSERT_NE(bound, nullptr);
+  ASSERT_TRUE(bound->decision.has_value());
+  EXPECT_GT(bound->decision->tBMs, 0.0);
+}
+
+TEST(Bind, NoModelLeavesDecisionEmptyAndStrategyUnchanged) {
+  auto result = reloc::bind(decoded(kDegradedHex), {{"N", 64}});
+  auto *bound = std::get_if<BoundPlan>(&result);
+  ASSERT_NE(bound, nullptr);
+  EXPECT_FALSE(bound->decision.has_value());
 }
 
 } // namespace

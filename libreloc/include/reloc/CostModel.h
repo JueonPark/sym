@@ -17,6 +17,7 @@
 #define RELOC_COSTMODEL_H
 
 #include "reloc/Bind.h"
+#include "reloc/MethodDecision.h"
 
 #include <cstdint>
 #include <map>
@@ -27,16 +28,6 @@
 namespace reloc {
 namespace costmodel {
 
-/// Host-side access pattern of Method A's transform, classified from the
-/// coalesced BoundPlan alone. Misclassifying the pattern dominates every
-/// other modelling error (R1 measured a >20x spread across these).
-enum class Pattern { Contiguous, Blocked, SingleElement, Tiled };
-
-const char *patternName(Pattern p);
-
-/// L == totalElems -> Contiguous; L == 1 -> SingleElement;
-/// L >= kBlockedRunFloor -> Blocked; else Tiled.
-constexpr int64_t kBlockedRunFloor = 64; // elements
 Pattern classify(const BoundPlan &b);
 
 class CostModel {
@@ -80,19 +71,6 @@ struct PathCosts {
 std::optional<PathCosts> pathCosts(const CostModel &m, Pattern p,
                                    int64_t srcBytes, double r, int threads,
                                    int K = 1, bool broadcast = false);
-
-struct MethodDecision {
-  enum class Method { A, B, APrefold };
-  Method method = Method::B;
-  double tAMs = 0, tBMs = 0;  // chosen-arm A is APrefold's when nReuse>0
-  double thresholdBytes = -1; // argmin boundary nearest the bound S;
-                              // -1 = decision is size-independent
-  Pattern pattern = Pattern::Contiguous;
-  int k = 1;
-  int64_t nReuse = -1;
-};
-
-const char *methodName(MethodDecision::Method m);
 
 /// The decision. nReuse < 0 disables the prefold arm; nReuse >= 1
 /// enables it via reloc::prefold::prefoldWins (V4's validated rule).
