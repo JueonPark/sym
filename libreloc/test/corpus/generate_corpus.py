@@ -130,8 +130,8 @@ def curated_cases():
              ops=[t([1, 0]), p(0, 1, 1, 0.0)], symbols={}),
         dict(name="blocked_transpose_sym", dtype="f32",
              src_shape=["N", "N"],
-             ops=[r(["N floordiv 64", 64, "N floordiv 64", 64]),
-                  t([2, 0, 1, 3])],
+             ops=[r(["N floordiv 64", 64, 64, "N floordiv 64"]),
+                  t([1, 0, 2, 3])],
              symbols=div64),
     ]
 

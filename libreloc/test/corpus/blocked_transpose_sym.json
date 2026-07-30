@@ -2,7 +2,7 @@
   "dtype": "f32",
   "element_size": 4,
   "generator_seed": 0,
-  "mlir": "func.func @blocked_transpose_sym(%arg0: !sym.tensor<[\"N\", \"N\"], f32>) -> !sym.tensor<[\"N\" floordiv 64, \"N\" floordiv 64, 64, 64], f32> {\n  %0 = reloc.reshape %arg0 to [N floordiv 64, 64, N floordiv 64, 64] : !sym.tensor<[\"N\", \"N\"], f32> -> !sym.tensor<[\"N\" floordiv 64, 64, \"N\" floordiv 64, 64], f32>\n  %1 = reloc.transpose %0 perm [2, 0, 1, 3] : !sym.tensor<[\"N\" floordiv 64, 64, \"N\" floordiv 64, 64], f32> -> !sym.tensor<[\"N\" floordiv 64, \"N\" floordiv 64, 64, 64], f32>\n  return %1 : !sym.tensor<[\"N\" floordiv 64, \"N\" floordiv 64, 64, 64], f32>\n}\n",
+  "mlir": "func.func @blocked_transpose_sym(%arg0: !sym.tensor<[\"N\", \"N\"], f32>) -> !sym.tensor<[64, \"N\" floordiv 64, 64, \"N\" floordiv 64], f32> {\n  %0 = reloc.reshape %arg0 to [N floordiv 64, 64, 64, N floordiv 64] : !sym.tensor<[\"N\", \"N\"], f32> -> !sym.tensor<[\"N\" floordiv 64, 64, 64, \"N\" floordiv 64], f32>\n  %1 = reloc.transpose %0 perm [1, 0, 2, 3] : !sym.tensor<[\"N\" floordiv 64, 64, 64, \"N\" floordiv 64], f32> -> !sym.tensor<[64, \"N\" floordiv 64, 64, \"N\" floordiv 64], f32>\n  return %1 : !sym.tensor<[64, \"N\" floordiv 64, 64, \"N\" floordiv 64], f32>\n}\n",
   "name": "blocked_transpose_sym",
   "ops": [
     {
@@ -10,16 +10,16 @@
       "to": [
         "N floordiv 64",
         64,
-        "N floordiv 64",
-        64
+        64,
+        "N floordiv 64"
       ]
     },
     {
       "kind": "transpose",
       "perm": [
-        2,
-        0,
         1,
+        0,
+        2,
         3
       ]
     }
