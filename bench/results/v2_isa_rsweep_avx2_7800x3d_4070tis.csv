@@ -1,0 +1,45 @@
+# config.machine: 7800x3d-4070tis
+# config.bin: ./bench-rtrack
+# config.transforms: T1bR100,T1bR050,T3R100,T3R050,T3R025
+# config.methods: a
+# config.variant: avx2
+# config.n: 16384
+# config.chunk_mib: 4; 16; 64; 256
+# config.threads: 8
+# config.warmup: 5
+# config.iters: 30
+# config.out_csv: bench/results/v2_isa_rsweep_avx2_7800x3d_4070tis.csv
+# calibration.timestamp: 2026-07-28T23:53:05+0900
+# calibration.hostname: JueonAtHome
+# calibration.kernel: Linux JueonAtHome 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64
+# calibration.cpu_model: AMD Ryzen 7 7800X3D 8-Core Processor
+# calibration.governors: 
+# calibration.transparent_hugepage: always [madvise] never
+# calibration.numactl_available: False
+# calibration.cuda_toolkit: nvcc: NVIDIA (R) Cuda compiler driver Copyright (c) 2005-2026 NVIDIA Corporation Built on Thu_Mar_19_11:12:51_PM_PDT_2026 Cuda compilation tools, release 13.2, V13.2.78 Build cuda_13.2.r13.2/compiler.37668154_0
+# calibration.gpus: {'name': 'NVIDIA GeForce RTX 4070 Ti SUPER', 'driver': '595.79', 'pcie_gen_current_idle': '4', 'pcie_gen_max': '4', 'pcie_width_current_idle': '16', 'pcie_width_max': '16', 'clocks_sm': '210 MHz', 'clocks_mem': '405 MHz'}
+# calibration.pcie_under_load.gen: 4
+# calibration.pcie_under_load.width: 16
+# calibration.triad_gbps: 37.11
+# calibration.nvbandwidth: None
+# calibration.notes: cpufreq governors unreadable; nvbandwidth not installed
+machine,gpu,method,transform,N,dtype_out,r,threads,chunk_req_mib,staging_bytes,n_chunks,median_ms,min_ms,p95_ms,iqr_over_median_pct,unstable,effective_input_GBps,gpu_pipeline_ms,cpu_stage_ms,h2d_ms,gpu_kernel_ms,gpu_recv_ms,verified,variant,wire
+7800x3d-4070tis,NVIDIA GeForce RTX 4070 Ti SUPER,a,blocked_transpose,16384,f32,1,8,4,16777216,64,74.9078,71.9495,84.389,6.53224,1,14.3342,74.8693,71.2758,40.2376,0,0,1,rsweep,f32
+7800x3d-4070tis,NVIDIA GeForce RTX 4070 Ti SUPER,a,blocked_transpose,16384,f32,1,8,64,67108864,16,68.0234,63.7365,71.6163,5.02199,1,15.7849,67.9731,64.7183,43.7606,0,0,1,rsweep,f32
+7800x3d-4070tis,NVIDIA GeForce RTX 4070 Ti SUPER,a,blocked_transpose,16384,f32,1,8,256,268435456,4,88.1231,85.4848,91.6599,1.89718,0,12.1846,88.0487,77.6976,45.7178,0,0,1,rsweep,f32
+7800x3d-4070tis,NVIDIA GeForce RTX 4070 Ti SUPER,a,blocked_transpose,16384,f32,0.5,8,4,8388608,64,79.5375,73.8061,86.5053,8.23092,1,13.4998,79.4971,73.1402,22.7501,0,5.81458,1,rsweep,f16
+7800x3d-4070tis,NVIDIA GeForce RTX 4070 Ti SUPER,a,blocked_transpose,16384,f32,0.5,8,16,16777216,32,60.9969,57.2125,67.9144,7.64409,1,17.6032,60.9544,56.1046,21.443,0,5.90379,1,rsweep,f16
+7800x3d-4070tis,NVIDIA GeForce RTX 4070 Ti SUPER,a,blocked_transpose,16384,f32,0.5,8,64,67108864,8,91.6559,88.7645,97.4993,3.18264,0,11.7149,91.6083,87.5351,22.3886,0,6.78378,1,rsweep,f16
+7800x3d-4070tis,NVIDIA GeForce RTX 4070 Ti SUPER,a,blocked_transpose,16384,f32,0.5,8,256,268435456,2,129.162,123.955,136.441,2.8377,0,8.31317,129.102,115.948,21.8392,0,5.72942,1,rsweep,f16
+7800x3d-4070tis,NVIDIA GeForce RTX 4070 Ti SUPER,a,quant,16384,f32,1,8,4,4194304,256,79.8513,73.7877,87.1355,7.18666,1,13.4468,79.8082,71.5271,43.588,0,0,1,rsweep,f32
+7800x3d-4070tis,NVIDIA GeForce RTX 4070 Ti SUPER,a,quant,16384,f32,1,8,16,16777216,64,64.7748,62.468,74.1834,2.49624,0,16.5765,64.7281,61.907,46.9696,0,0,1,rsweep,f32
+7800x3d-4070tis,NVIDIA GeForce RTX 4070 Ti SUPER,a,quant,16384,f32,1,8,64,67108864,16,59.9637,58.0751,61.2738,1.34897,0,17.9065,59.9184,56.803,46.7064,0,0,1,rsweep,f32
+7800x3d-4070tis,NVIDIA GeForce RTX 4070 Ti SUPER,a,quant,16384,f32,1,8,256,268435456,4,63.3505,62.359,64.5206,1.35467,0,16.9492,63.2988,53.1359,45.2762,0,0,1,rsweep,f32
+7800x3d-4070tis,NVIDIA GeForce RTX 4070 Ti SUPER,a,quant,16384,f32,0.5,8,4,4194304,128,56.3802,50.3899,61.7633,6.73989,1,19.0447,56.3315,42.7594,25.4343,0,12.2147,1,rsweep,f16
+7800x3d-4070tis,NVIDIA GeForce RTX 4070 Ti SUPER,a,quant,16384,f32,0.5,8,16,16777216,32,36.8085,35.3368,40.0206,5.28988,1,29.171,36.7655,33.4643,21.5811,0,6.74926,1,rsweep,f16
+7800x3d-4070tis,NVIDIA GeForce RTX 4070 Ti SUPER,a,quant,16384,f32,0.5,8,64,67108864,8,51.1697,46.2948,54.5953,7.48721,1,20.9839,51.1256,47.2672,21.8708,0,4.1464,1,rsweep,f16
+7800x3d-4070tis,NVIDIA GeForce RTX 4070 Ti SUPER,a,quant,16384,f32,0.5,8,256,268435456,2,59.1738,58.3826,64.3502,3.68195,0,18.1456,59.1149,47.201,21.349,0,3.16619,1,rsweep,f16
+7800x3d-4070tis,NVIDIA GeForce RTX 4070 Ti SUPER,a,quant,16384,f32,0.25,8,4,4194304,64,36.7814,35.0239,44.0294,10.5127,1,29.1925,36.7462,31.7416,12.8834,0,9.47173,1,rsweep,s8
+7800x3d-4070tis,NVIDIA GeForce RTX 4070 Ti SUPER,a,quant,16384,f32,0.25,8,16,16777216,16,31.3688,29.6836,32.7065,3.78445,0,34.2296,31.328,29.0142,11.0528,0,4.85602,1,rsweep,s8
+7800x3d-4070tis,NVIDIA GeForce RTX 4070 Ti SUPER,a,quant,16384,f32,0.25,8,64,67108864,4,41.6547,39.4079,44.7558,4.87693,0,25.7772,41.6031,37.4423,10.6844,0,3.38789,1,rsweep,s8
+7800x3d-4070tis,NVIDIA GeForce RTX 4070 Ti SUPER,a,quant,16384,f32,0.25,8,256,268435456,1,48.9499,47.4722,50.0141,1.94574,0,21.9355,48.8919,33.6268,10.0296,0,4.80509,1,rsweep,s8

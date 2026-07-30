@@ -31,6 +31,42 @@ add_test(NAME bench-gather-bw-smoke
          COMMAND bench-gather-bw --n 256 --threads 2 --json - --warmup 1
                  --iters 3 --reruns 2)
 
+add_executable(bench-quant-bw quant_bw.cpp)
+target_include_directories(bench-quant-bw PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_features(bench-quant-bw PRIVATE cxx_std_17)
+target_link_libraries(bench-quant-bw PRIVATE reloc_runtime)
+# Smoke-run under ctest (same rationale as the other bench smokes): proves
+# every R0.1 kernel runs end-to-end -- including the byte-exactness gate
+# against the serial scalar path -- on every CI run, at whatever SIMD tier
+# the CI host supports (variant=auto). Tiny counts; not a measurement.
+add_test(NAME bench-quant-bw-smoke
+         COMMAND bench-quant-bw --kernel all --n 256 --threads 2
+                 --variant auto --json - --warmup 1 --iters 3 --reruns 2)
+
+# R0.3 (issue #76): the rtrack pipeline & measurement harness. The CPU-side
+# pieces (plan builders, chunk math, stats, CSV, workload table) run under
+# ctest on every CI run; the pipeline driver below is GPU-only and
+# CUDA-gated like bench-poc-transpose.
+# R1 (issue #82): CPU stage rooflines on the oracle-verified rtrack plans
+# (NOT the frozen golden blob -- issue #63). CPU-only, so it smoke-runs
+# under ctest like the other bench CPU targets.
+add_executable(bench-cpu-rooflines rtrack/cpu_rooflines.cpp)
+target_include_directories(bench-cpu-rooflines
+  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_features(bench-cpu-rooflines PRIVATE cxx_std_17)
+target_link_libraries(bench-cpu-rooflines PRIVATE reloc_runtime)
+add_test(NAME bench-cpu-rooflines-smoke
+         COMMAND bench-cpu-rooflines --kernel all --plan blocked --n 256
+                 --threads 2 --warmup 1 --iters 3 --json -)
+
+add_executable(bench-rtrack-test rtrack/RtrackTest.cpp)
+target_include_directories(bench-rtrack-test
+  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_features(bench-rtrack-test PRIVATE cxx_std_17)
+target_link_libraries(bench-rtrack-test PRIVATE reloc_runtime llvm_gtest
+  llvm_gtest_main)
+add_test(NAME bench-rtrack-test COMMAND bench-rtrack-test)
+
 if(RELOC_ENABLE_CUDA)
   # The C7 PoC driver. GPU-only, never in CI (mirrors libreloc's CUDA
   # gating); run locally on the desktop per docs/poc-reproduction.md.
@@ -50,4 +86,47 @@ if(RELOC_ENABLE_CUDA)
   target_compile_features(bench-poc-transpose PRIVATE cxx_std_17)
   target_link_libraries(bench-poc-transpose PRIVATE reloc_runtime
     CUDA::cudart)
+
+  # R0.3 pipeline driver (issue #76). GPU-only, never in CI; run locally
+  # per bench/rtrack/README.md.
+  add_executable(bench-rtrack rtrack/rtrack_bench.cu)
+  target_include_directories(bench-rtrack PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_compile_features(bench-rtrack PRIVATE cxx_std_17)
+  target_link_libraries(bench-rtrack PRIVATE reloc_runtime CUDA::cudart)
+
+  # M0 bring-up / EXP-3 seed (issue #73): per-GPU and concurrent pinned
+  # copy bandwidth. GPU-only, never in CI.
+  add_executable(bench-multigpu-h2d rtrack/multigpu_h2d.cu)
+  target_include_directories(bench-multigpu-h2d
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_compile_features(bench-multigpu-h2d PRIVATE cxx_std_17)
+  target_link_libraries(bench-multigpu-h2d PRIVATE CUDA::cudart)
+
+  # R4 / EXP-4 (issue #85): Turing hiding-ratio kernel bandwidths. GPU-only,
+  # never in CI. Reuses the R0.2 library kernels plus a bench-local unpadded
+  # SMEM transpose for the bank-conflict delta.
+  add_executable(bench-hiding-ratio rtrack/hiding_ratio.cu)
+  target_include_directories(bench-hiding-ratio
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_compile_features(bench-hiding-ratio PRIVATE cxx_std_17)
+  target_link_libraries(bench-hiding-ratio PRIVATE reloc_runtime CUDA::cudart)
+
+  # R3 / EXP-3 (issue #84): multi-GPU amortization (broadcast + scatter,
+  # Method A vs B_xK/B_staged). GPU-only, never in CI; needs >= 1 GPU (K
+  # round-robins over the visible devices).
+  add_executable(bench-multigpu-reloc rtrack/multigpu_reloc.cu)
+  target_include_directories(bench-multigpu-reloc
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_compile_features(bench-multigpu-reloc PRIVATE cxx_std_17)
+  target_link_libraries(bench-multigpu-reloc PRIVATE reloc_runtime
+    CUDA::cudart)
+
+  # R5 / EXP-5 (issue #86): DMA-engine negative result -- strided
+  # cudaMemcpy2DAsync + UVA zero-copy bandwidth collapse. GPU-only, never in
+  # CI. Self-contained (no libreloc kernels), so it links only CUDA::cudart.
+  add_executable(bench-dma-engine rtrack/dma_engine.cu)
+  target_include_directories(bench-dma-engine
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_compile_features(bench-dma-engine PRIVATE cxx_std_17)
+  target_link_libraries(bench-dma-engine PRIVATE CUDA::cudart)
 endif()

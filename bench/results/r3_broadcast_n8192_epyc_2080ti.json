@@ -1,0 +1,14 @@
+{
+  "config": {"benchmark": "multigpu_reloc", "gpu": "NVIDIA GeForce RTX 2080 Ti", "scenario": "broadcast", "N": 8192, "cpu_threads": 8, "warmup": 3, "iters": 20},
+  "rows": [
+    {"scenario": "broadcast", "method": "a", "K": 1, "N": 8192, "wall_median_ms": 78.912, "wall_min_ms": 78.7042, "wall_p95_ms": 79.0222, "iqr_over_median_pct": 0.165563, "dma_ms": 5.30952, "eff_input_gb_per_s": 3.40171, "speedup_vs_bxk": 0.284289},
+    {"scenario": "broadcast", "method": "bxk", "K": 1, "N": 8192, "wall_median_ms": 22.4339, "wall_min_ms": 22.3685, "wall_p95_ms": 22.7814, "iqr_over_median_pct": 1.68117, "dma_ms": 0, "eff_input_gb_per_s": 11.9656},
+    {"scenario": "broadcast", "method": "bstaged", "K": 1, "N": 8192, "wall_median_ms": 22.2893, "wall_min_ms": 22.2874, "wall_p95_ms": 22.2987, "iqr_over_median_pct": 0.00650512, "dma_ms": 0, "eff_input_gb_per_s": 12.0433},
+    {"scenario": "broadcast", "method": "a", "K": 2, "N": 8192, "wall_median_ms": 81.325, "wall_min_ms": 81.159, "wall_p95_ms": 81.7262, "iqr_over_median_pct": 0.144256, "dma_ms": 7.86292, "eff_input_gb_per_s": 3.30078, "speedup_vs_bxk": 0.396839},
+    {"scenario": "broadcast", "method": "bxk", "K": 2, "N": 8192, "wall_median_ms": 32.2729, "wall_min_ms": 32.0917, "wall_p95_ms": 32.5646, "iqr_over_median_pct": 0.22465, "dma_ms": 0, "eff_input_gb_per_s": 8.31766},
+    {"scenario": "broadcast", "method": "bstaged", "K": 2, "N": 8192, "wall_median_ms": 44.5942, "wall_min_ms": 44.5862, "wall_p95_ms": 44.6005, "iqr_over_median_pct": 0.0108905, "dma_ms": 0, "eff_input_gb_per_s": 6.01951},
+    {"scenario": "broadcast", "method": "a", "K": 4, "N": 8192, "wall_median_ms": 82.622, "wall_min_ms": 81.8619, "wall_p95_ms": 90.3158, "iqr_over_median_pct": 6.60837, "dma_ms": 9.1046, "eff_input_gb_per_s": 3.24896, "speedup_vs_bxk": 0.4486},
+    {"scenario": "broadcast", "method": "bxk", "K": 4, "N": 8192, "wall_median_ms": 37.0642, "wall_min_ms": 34.4325, "wall_p95_ms": 55.4211, "iqr_over_median_pct": 0.522246, "dma_ms": 0, "eff_input_gb_per_s": 7.24244},
+    {"scenario": "broadcast", "method": "bstaged", "K": 4, "N": 8192, "wall_median_ms": 90.9867, "wall_min_ms": 89.1444, "wall_p95_ms": 133.372, "iqr_over_median_pct": 26.152, "dma_ms": 0, "eff_input_gb_per_s": 2.95027}
+  ]
+}

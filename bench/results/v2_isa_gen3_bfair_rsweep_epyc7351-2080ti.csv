@@ -1,0 +1,34 @@
+# config.machine: epyc7351-2080ti
+# config.bin: ./bench-rtrack
+# config.transforms: T1bR100,T3R100
+# config.methods: bfair
+# config.variant: auto
+# config.n: 16384
+# config.chunk_mib: 4; 16; 64; 256
+# config.threads: 8
+# config.warmup: 5
+# config.iters: 30
+# config.out_csv: bench/results/v2_isa_gen3_bfair_rsweep_epyc7351-2080ti.csv
+# calibration.timestamp: 2026-07-29T10:25:02+0900
+# calibration.hostname: rebel-gpu1
+# calibration.kernel: Linux rebel-gpu1 6.8.0-124-generic #124~22.04.1-Ubuntu SMP PREEMPT_DYNAMIC Tue May 26 21:05:19 UTC  x86_64
+# calibration.cpu_model: AMD EPYC 7351 16-Core Processor
+# calibration.governors: performance
+# calibration.transparent_hugepage: always [madvise] never
+# calibration.numactl_available: False
+# calibration.cuda_toolkit: None
+# calibration.gpus: {'name': 'NVIDIA GeForce RTX 2080 Ti', 'driver': '595.71.05', 'pcie_gen_current_idle': '1', 'pcie_gen_max': '3', 'pcie_width_current_idle': '16', 'pcie_width_max': '16', 'clocks_sm': '300 MHz', 'clocks_mem': '405 MHz'}; {'name': 'NVIDIA GeForce RTX 2080 Ti', 'driver': '595.71.05', 'pcie_gen_current_idle': '1', 'pcie_gen_max': '3', 'pcie_width_current_idle': '16', 'pcie_width_max': '16', 'clocks_sm': '300 MHz', 'clocks_mem': '405 MHz'}; {'name': 'NVIDIA GeForce RTX 2080 Ti', 'driver': '595.71.05', 'pcie_gen_current_idle': '1', 'pcie_gen_max': '3', 'pcie_width_current_idle': '16', 'pcie_width_max': '16', 'clocks_sm': '300 MHz', 'clocks_mem': '405 MHz'}; {'name': 'NVIDIA GeForce RTX 2080 Ti', 'driver': '595.71.05', 'pcie_gen_current_idle': '1', 'pcie_gen_max': '3', 'pcie_width_current_idle': '16', 'pcie_width_max': '16', 'clocks_sm': '300 MHz', 'clocks_mem': '405 MHz'}
+# calibration.pcie_under_load.gen: 3
+# calibration.pcie_under_load.width: 16
+# calibration.triad_gbps: 26.14
+# calibration.nvbandwidth: None
+# calibration.notes: nvbandwidth not installed
+machine,gpu,method,transform,N,dtype_out,r,threads,chunk_req_mib,staging_bytes,n_chunks,median_ms,min_ms,p95_ms,iqr_over_median_pct,unstable,effective_input_GBps,gpu_pipeline_ms,cpu_stage_ms,h2d_ms,gpu_kernel_ms,gpu_recv_ms,verified,variant,wire
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,blocked_transpose,16384,f32,1,8,4,4194304,256,87.8858,87.8767,87.8978,0.0106746,0,12.2175,87.8795,0,82.883,4.55613,0,1,rsweep,f32
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,blocked_transpose,16384,f32,1,8,16,16777216,64,86.9772,86.9664,86.9894,0.0034858,0,12.3451,86.9708,0,82.3013,4.55701,0,1,rsweep,f32
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,blocked_transpose,16384,f32,1,8,64,67108864,16,86.7516,86.7481,86.7636,0.00384637,0,12.3772,86.7455,0,82.1574,4.55789,0,1,rsweep,f32
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,blocked_transpose,16384,f32,1,8,256,268435456,4,86.6946,86.6907,86.7065,0.00505667,0,12.3853,86.6886,0,82.1212,4.5579,0,1,rsweep,f32
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,quant,16384,f32,1,8,4,4194304,256,83.3128,83.2807,83.3263,0.0301739,0,12.8881,83.3069,0,82.8685,0.001824,0,1,rsweep,f32
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,quant,16384,f32,1,8,16,16777216,64,82.4115,82.4011,82.4257,0.00438286,0,13.029,82.4057,0,82.2918,0.001568,0,1,rsweep,f32
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,quant,16384,f32,1,8,64,67108864,16,82.1841,82.182,82.1991,0.00287847,0,13.0651,82.1784,0,82.1462,0.001568,0,1,rsweep,f32
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,quant,16384,f32,1,8,256,268435456,4,82.127,82.1247,82.1379,0.00243101,0,13.0742,82.1211,0,82.1092,0.001568,0,1,rsweep,f32

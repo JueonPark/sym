@@ -66,6 +66,31 @@ them; it is the runtime half of the compiler → runtime handoff.
   `gatherThreads == 1` never constructs a pool. Explicit `close()` lifecycle
   for pybind, dispatches and `close()` are serialized internally, so
   concurrent use from multiple threads is safe (`libreloc/test/GatherPoolTest.cpp`).
+- `reloc::quant` (`reloc/Quant.h`) — R0.1's CPU transform kernels
+  (issue #74): contiguous per-channel int8 quantize
+  (`quantizePackF32S8`), the fused strided-gather + quantize Case-1a
+  kernel over a `BoundPlan` (`gatherQuantizeF32S8`, chunk form mirroring
+  `gatherChunk`), int4 nibble pack (`packS8S4`), and fp32→fp16 convert
+  (`convertF32F16`). Every kernel has a scalar reference variant plus
+  SIMD tiers (AVX2 and/or AVX-512, per issue #74's variant table) behind
+  runtime dispatch (`Variant`, `cpuSupports`, `resolveFor`), bit-identical
+  across variants by contract, and a
+  `*Parallel` wrapper that partitions over a caller-owned `GatherPool`
+  with the pipeline's per-worker byte floor
+  (`libreloc/test/QuantTest.cpp`; bandwidth: `bench/quant_bw.cpp`,
+  pinning via `taskset` documented in that driver's header).
+- `reloc::cuda` (`reloc/CudaKernels.h`) — R0.2's GPU kernels (issue #75),
+  compiled for sm_75 + sm_89 under `RELOC_ENABLE_CUDA`: the JustCopy
+  ceiling (`copyF32`), plan-driven strided relocate in naive
+  (`relocateNaiveF32`) and SMEM-tiled 32×32 forms (`relocateF32`, tiled
+  when the coalesced plan is a 2-D transpose, naive fallback otherwise,
+  bit-identical either way), GPU-side per-channel quantize
+  (`quantizeF32S8`, bit-identical to the CPU scalar contract), the
+  Method-A receive paths (`dequantS8F32`, `unpackS4S8`,
+  `dequantRelocateS8F32`), and the EXP-4 pathological scatter
+  (`scatterRandomF32`). Streams are type-erased to `void *`; launches are
+  async, caller synchronizes (`libreloc/test/CudaKernelsTest.cpp`, local
+  GPU only, never CI).
 
 ## Python bindings (pyreloc)
 

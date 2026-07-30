@@ -1,0 +1,6 @@
+{
+  "config": {"benchmark": "cpu_rooflines", "N": 8192, "plan": "identity", "threads": 4, "warmup": 5, "iters": 30},
+  "kernels": {
+    "convert_f32_f16": {"in_bytes": 268435456, "out_bytes": 134217728, "median_ms": 15.2597, "min_ms": 15.2299, "p95_ms": 15.2978, "iqr_over_median_pct": 0.144819, "in_gb_per_s": 17.5911, "out_gb_per_s": 8.79555}
+  }
+}

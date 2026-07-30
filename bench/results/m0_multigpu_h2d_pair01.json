@@ -1,0 +1,6 @@
+{
+  "benchmark": "multigpu_h2d", "bytes": 268435456, "iters": 20, "gpus": [0,1],
+  "h2d": {"single_gbps": [13.0768, 13.0762], "concurrent_gbps": [12.1581, 8.86268], "aggregate_gbps": 21.0208, "sum_single_gbps": 26.153},
+  "d2h": {"single_gbps": [13.1768, 13.177], "concurrent_gbps": [9.83, 9.82508], "aggregate_gbps": 19.6551, "sum_single_gbps": 26.3538},
+  "end": true
+}

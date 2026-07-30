@@ -17,3 +17,11 @@ llvm-build
 bench/results/*.nsys-rep
 bench/results/*.sqlite
 bench/results/*_cuda_gpu_trace.csv
+
+# Root-level session binaries/snapshot (#97 final-review wave, M13).
+# Leading slash anchors each pattern to the repo root only, so it can
+# never match the tracked calibration/ DIRECTORY (which has no .json
+# suffix) or any nested bench/rtrack/ path.
+/bench-rtrack
+/bench-cpu-rooflines
+/calibration.json

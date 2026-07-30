@@ -1,0 +1,20 @@
+{
+  "config": {"benchmark": "multigpu_reloc", "gpu": "NVIDIA GeForce RTX 2080 Ti", "scenario": "broadcast_contig", "N": 8192, "cpu_threads": 8, "warmup": 3, "iters": 20, "devices": [0, 1, 2, 3]},
+  "rows": [
+    {"scenario": "broadcast_contig", "method": "a", "K": 1, "N": 8192, "wall_median_ms": 16.9038, "wall_min_ms": 16.8649, "wall_p95_ms": 16.952, "iqr_over_median_pct": 0.177664, "dma_ms": 5.31319, "eff_input_gb_per_s": 15.8802, "speedup_vs_bxk": 1.2594},
+    {"scenario": "broadcast_contig", "method": "aprefold", "K": 1, "N": 8192, "wall_median_ms": 5.21602, "wall_min_ms": 5.20958, "wall_p95_ms": 5.22374, "iqr_over_median_pct": 0.0302501, "dma_ms": 5.21621, "eff_input_gb_per_s": 51.4636, "speedup_vs_bxk": 4.08138, "speedup_vs_a": 3.24075},
+    {"scenario": "broadcast_contig", "method": "bxk", "K": 1, "N": 8192, "wall_median_ms": 21.2886, "wall_min_ms": 21.2771, "wall_p95_ms": 21.298, "iqr_over_median_pct": 0.0144584, "dma_ms": 0, "eff_input_gb_per_s": 12.6094},
+    {"scenario": "broadcast_contig", "method": "bstaged", "K": 1, "N": 8192, "wall_median_ms": 21.2088, "wall_min_ms": 21.2067, "wall_p95_ms": 21.2146, "iqr_over_median_pct": 0.0107311, "dma_ms": 0, "eff_input_gb_per_s": 12.6568},
+    {"scenario": "broadcast_contig", "method": "a", "K": 2, "N": 8192, "wall_median_ms": 19.6097, "wall_min_ms": 19.3972, "wall_p95_ms": 19.9016, "iqr_over_median_pct": 1.14933, "dma_ms": 7.83593, "eff_input_gb_per_s": 13.6889, "speedup_vs_bxk": 1.59045},
+    {"scenario": "broadcast_contig", "method": "aprefold", "K": 2, "N": 8192, "wall_median_ms": 7.76606, "wall_min_ms": 7.74703, "wall_p95_ms": 7.79039, "iqr_over_median_pct": 0.200349, "dma_ms": 7.76737, "eff_input_gb_per_s": 34.5652, "speedup_vs_bxk": 4.01596, "speedup_vs_a": 2.52505},
+    {"scenario": "broadcast_contig", "method": "bxk", "K": 2, "N": 8192, "wall_median_ms": 31.1882, "wall_min_ms": 31.0979, "wall_p95_ms": 31.3127, "iqr_over_median_pct": 0.175778, "dma_ms": 0, "eff_input_gb_per_s": 8.60697},
+    {"scenario": "broadcast_contig", "method": "bstaged", "K": 2, "N": 8192, "wall_median_ms": 42.4189, "wall_min_ms": 42.4158, "wall_p95_ms": 42.4228, "iqr_over_median_pct": 0.00831143, "dma_ms": 0, "eff_input_gb_per_s": 6.3282},
+    {"scenario": "broadcast_contig", "method": "a", "K": 4, "N": 8192, "wall_median_ms": 22.3165, "wall_min_ms": 19.8316, "wall_p95_ms": 28.0571, "iqr_over_median_pct": 19.1651, "dma_ms": 10.6059, "eff_input_gb_per_s": 12.0286, "speedup_vs_bxk": 2.01975},
+    {"scenario": "broadcast_contig", "method": "aprefold", "K": 4, "N": 8192, "wall_median_ms": 10.3577, "wall_min_ms": 8.52644, "wall_p95_ms": 11.5497, "iqr_over_median_pct": 10.1064, "dma_ms": 10.3398, "eff_input_gb_per_s": 25.9164, "speedup_vs_bxk": 4.3517, "speedup_vs_a": 2.15458},
+    {"scenario": "broadcast_contig", "method": "bxk", "K": 4, "N": 8192, "wall_median_ms": 45.0738, "wall_min_ms": 34.7216, "wall_p95_ms": 64.1229, "iqr_over_median_pct": 15.3311, "dma_ms": 0, "eff_input_gb_per_s": 5.95547},
+    {"scenario": "broadcast_contig", "method": "bstaged", "K": 4, "N": 8192, "wall_median_ms": 131.35, "wall_min_ms": 112.993, "wall_p95_ms": 138.573, "iqr_over_median_pct": 9.28556, "dma_ms": 0, "eff_input_gb_per_s": 2.04367}
+  ],
+  "reuse_rows": [
+
+  ]
+}

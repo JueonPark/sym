@@ -1,0 +1,13 @@
+machine,gpu,method,transform,N,dtype_out,r,threads,chunk_req_mib,staging_bytes,n_chunks,median_ms,min_ms,p95_ms,iqr_over_median_pct,unstable,effective_input_GBps,gpu_pipeline_ms,cpu_stage_ms,h2d_ms,gpu_kernel_ms,gpu_recv_ms,verified,variant,wire
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,a,blocked_transpose_wire,8192,f32,1,8,4,4194304,64,57.908,54.0335,80.255,24.9669,1,4.63555,57.9003,56.6625,21.042,0,0,1,matrix,f32
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b,blocked_transpose_wire,8192,f32,1,8,4,4194304,64,26.0499,22.7088,27.121,6.24466,1,10.3047,26.0425,23.5905,21.7365,1.1821,0,1,matrix,f32
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,blocked_transpose_wire,8192,f32,1,8,4,4194304,64,22.0101,22.0067,22.0154,0.0111531,0,12.196,22.0026,0,20.7195,1.18046,0,1,matrix,f32
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,a,blocked_transpose_wire,8192,f32,1,8,16,16777216,16,45.4727,45.0807,46.6537,1.54972,0,5.90322,45.4647,43.727,21.4704,0,0,1,matrix,f32
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b,blocked_transpose_wire,8192,f32,1,8,16,16777216,16,33.3894,33.245,33.9312,0.44198,0,8.03954,33.3822,30.2623,25.8573,1.1831,0,1,matrix,f32
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,blocked_transpose_wire,8192,f32,1,8,16,16777216,16,21.7949,21.7882,21.808,0.0166276,0,12.3165,21.7873,0,20.5763,1.18397,0,1,matrix,f32
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,a,blocked_transpose_wire,8192,f32,1,8,64,67108864,4,49.5534,49.2465,56.0481,0.706648,0,5.41709,49.5457,44.2538,20.8289,0,0,1,matrix,f32
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b,blocked_transpose_wire,8192,f32,1,8,64,67108864,4,27.388,27.3466,27.5123,0.1518,0,9.80121,27.3802,20.9161,21.1728,1.18427,0,1,matrix,f32
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,blocked_transpose_wire,8192,f32,1,8,64,67108864,4,21.7405,21.7333,21.7456,0.00778761,0,12.3472,21.7339,0,20.5407,1.18392,0,1,matrix,f32
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,a,blocked_transpose_wire,8192,f32,1,8,256,268435456,1,59.0003,58.8689,59.4269,0.295039,0,4.54973,58.9907,38.4267,20.5436,0,0,1,matrix,f32
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b,blocked_transpose_wire,8192,f32,1,8,256,268435456,1,37.7274,37.6858,37.7961,0.159354,0,7.11513,37.7108,15.9679,20.5474,1.17864,0,1,matrix,f32
+epyc7351-2080ti,NVIDIA GeForce RTX 2080 Ti,b_fair,blocked_transpose_wire,8192,f32,1,8,256,268435456,1,21.7319,21.7244,21.7401,0.0354756,0,12.3522,21.7256,0,20.532,1.18869,0,1,matrix,f32

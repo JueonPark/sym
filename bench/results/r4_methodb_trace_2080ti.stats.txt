@@ -1,0 +1,19 @@
+
+NOTICE: Existing SQLite export found: /tmp/claude-2017/-home-jueonpark-sym/d1faac84-61f7-41c3-8a22-9d451c8f8556/scratchpad/rtrack/r4_methodb_trace.sqlite
+        It is assumed file was previously exported from: /tmp/claude-2017/-home-jueonpark-sym/d1faac84-61f7-41c3-8a22-9d451c8f8556/scratchpad/rtrack/r4_methodb_trace.nsys-rep
+        Consider using --force-export=true if needed.
+
+
+ ** CUDA GPU Kernel Summary (cuda_gpu_kern_sum):
+
+ Time (%)  Total Time (ns)  Instances   Avg (ns)     Med (ns)    Min (ns)   Max (ns)   StdDev (ns)                                        Name                                      
+ --------  ---------------  ---------  -----------  -----------  ---------  ---------  -----------  --------------------------------------------------------------------------------
+    100.0       14,170,649         10  1,417,064.9  1,448,207.5  1,364,991  1,454,719     43,333.1  reloc::cuda::<unnamed>::transposeTiledKernel(const float *, float *, long, long)
+
+
+ ** CUDA GPU MemOps Summary (by Time) (cuda_gpu_mem_time_sum):
+
+ Time (%)  Total Time (ns)  Count   Avg (ns)     Med (ns)    Min (ns)   Max (ns)   StdDev (ns)           Operation          
+ --------  ---------------  -----  -----------  -----------  ---------  ---------  -----------  ----------------------------
+    100.0      226,635,866     40  5,665,896.7  5,513,118.0  5,132,351  6,573,407    577,687.7  [CUDA memcpy Host-to-Device]
+

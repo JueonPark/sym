@@ -1,0 +1,14 @@
+{
+  "config": {"benchmark": "multigpu_reloc", "gpu": "NVIDIA GeForce RTX 2080 Ti", "scenario": "scatter", "N": 8192, "cpu_threads": 8, "warmup": 3, "iters": 20},
+  "rows": [
+    {"scenario": "scatter", "method": "a", "K": 1, "N": 8192, "wall_median_ms": 17.7255, "wall_min_ms": 17.4921, "wall_p95_ms": 18.3747, "iqr_over_median_pct": 0.976184, "dma_ms": 5.37905, "eff_input_gb_per_s": 15.1441, "speedup_vs_bxk": 1.20496},
+    {"scenario": "scatter", "method": "bxk", "K": 1, "N": 8192, "wall_median_ms": 21.3585, "wall_min_ms": 21.2671, "wall_p95_ms": 21.4718, "iqr_over_median_pct": 0.187145, "dma_ms": 0, "eff_input_gb_per_s": 12.5681},
+    {"scenario": "scatter", "method": "bstaged", "K": 1, "N": 8192, "wall_median_ms": 21.203, "wall_min_ms": 21.1992, "wall_p95_ms": 21.2087, "iqr_over_median_pct": 0.0124621, "dma_ms": 0, "eff_input_gb_per_s": 12.6603},
+    {"scenario": "scatter", "method": "a", "K": 2, "N": 8192, "wall_median_ms": 16.3846, "wall_min_ms": 16.1412, "wall_p95_ms": 16.8569, "iqr_over_median_pct": 1.12639, "dma_ms": 3.96959, "eff_input_gb_per_s": 16.3834, "speedup_vs_bxk": 0.953527},
+    {"scenario": "scatter", "method": "bxk", "K": 2, "N": 8192, "wall_median_ms": 15.6231, "wall_min_ms": 15.5734, "wall_p95_ms": 15.702, "iqr_over_median_pct": 0.49377, "dma_ms": 0, "eff_input_gb_per_s": 17.1819},
+    {"scenario": "scatter", "method": "bstaged", "K": 2, "N": 8192, "wall_median_ms": 21.2225, "wall_min_ms": 21.2167, "wall_p95_ms": 21.2467, "iqr_over_median_pct": 0.0224359, "dma_ms": 0, "eff_input_gb_per_s": 12.6486},
+    {"scenario": "scatter", "method": "a", "K": 4, "N": 8192, "wall_median_ms": 16.8123, "wall_min_ms": 15.6128, "wall_p95_ms": 17.3899, "iqr_over_median_pct": 4.02869, "dma_ms": 4.28658, "eff_input_gb_per_s": 15.9666, "speedup_vs_bxk": 0.904448},
+    {"scenario": "scatter", "method": "bxk", "K": 4, "N": 8192, "wall_median_ms": 15.2059, "wall_min_ms": 8.66338, "wall_p95_ms": 16.6569, "iqr_over_median_pct": 19.7267, "dma_ms": 0, "eff_input_gb_per_s": 17.6534},
+    {"scenario": "scatter", "method": "bstaged", "K": 4, "N": 8192, "wall_median_ms": 32.7869, "wall_min_ms": 25.7825, "wall_p95_ms": 34.5425, "iqr_over_median_pct": 8.97608, "dma_ms": 0, "eff_input_gb_per_s": 8.18728}
+  ]
+}

@@ -10,6 +10,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "reloc/Bind.h"
+#include "reloc/CostModel.h"
 #include "reloc/Decode.h"
 #include "reloc/Execute.h"
 #include "reloc/GatherPool.h"
@@ -292,6 +293,60 @@ PYBIND11_MODULE(_pyreloc, m) {
         py::arg("strategy") = "auto",
         "Bind a plan against {symbol: value}. Raises BindError on symbol "
         "mismatch or violated correctness constraints.");
+
+  namespace cmns = reloc::costmodel;
+  py::class_<cmns::CostModel>(m, "Calibration",
+                              "Parsed costmodel calibration (issue #97).")
+      .def_property_readonly("machine", &cmns::CostModel::machine);
+
+  m.def(
+      "load_calibration",
+      [](const std::string &path) {
+        auto r = cmns::CostModel::load(path);
+        if (auto *err = std::get_if<std::string>(&r))
+          throw py::value_error(*err);
+        return std::get<cmns::CostModel>(r);
+      },
+      py::arg("path"),
+      "Load a costmodel calibration (.cal). Raises ValueError with the "
+      "parser diagnostic on invalid input.");
+
+  m.def(
+      "predict",
+      [](const cmns::CostModel &cal, const std::string &pattern,
+         int64_t srcBytes, double r, int threads, int k, int64_t nReuse,
+         bool broadcast) {
+        cmns::Pattern p;
+        if (pattern == "contiguous")
+          p = cmns::Pattern::Contiguous;
+        else if (pattern == "blocked")
+          p = cmns::Pattern::Blocked;
+        else if (pattern == "single_element")
+          p = cmns::Pattern::SingleElement;
+        else if (pattern == "tiled")
+          p = cmns::Pattern::Tiled;
+        else
+          throw py::value_error("unknown pattern '" + pattern + "'");
+        auto d =
+            cmns::decide(cal, p, srcBytes, r, threads, k, nReuse, broadcast);
+        if (!d)
+          throw py::value_error("calibration lacks keys for pattern '" +
+                                pattern + "' at r=" + std::to_string(r) + " t" +
+                                std::to_string(threads) + " k" +
+                                std::to_string(k));
+        py::dict out;
+        out["method"] = std::string(cmns::methodName(d->method));
+        out["t_a_ms"] = d->tAMs;
+        out["t_b_ms"] = d->tBMs;
+        out["threshold_bytes"] = d->thresholdBytes;
+        out["pattern"] = std::string(cmns::patternName(d->pattern));
+        return out;
+      },
+      py::arg("calibration"), py::kw_only(), py::arg("pattern"),
+      py::arg("src_bytes"), py::arg("r"), py::arg("threads") = 8,
+      py::arg("k") = 1, py::arg("n_reuse") = -1, py::arg("broadcast") = false,
+      "Run the C++ cost model. Returns {method, t_a_ms, t_b_ms, "
+      "threshold_bytes, pattern}.");
 
   py::class_<reloc::GatherPool, std::shared_ptr<reloc::GatherPool>>(
       m, "GatherPool",

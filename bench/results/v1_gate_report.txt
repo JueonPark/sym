@@ -1,0 +1,11 @@
+
+=== epyc7351-2080ti ===
+pinned H2D (DMA leg): 13.07 GB/s  -> admissibility bar 0.9 x = 11.77 GB/s
+| method | transform | N=2048 | N=4096 | N=8192 | N=16384 | verdict |
+|---|---|---|---|---|---|---|
+| b | blocked_transpose | 9.32 ! | 11.33 ! | 11.17 ! | 11.66 ! | INADMISSIBLE |
+| b | transpose | 8.94 ! | 11.06 ! | 11.45 ! | 11.19 ! | INADMISSIBLE |
+| b_fair | blocked_transpose | 12.15 | 12.34 | 12.38 | 12.38 | ADMISSIBLE |
+| b_fair | transpose | 12.19 | 12.34 | 12.25 | 12.21 | ADMISSIBLE |
+
+Admissibility bar is a per-baseline verdict; b_fair is the intended admissible baseline, b (staged) is expected to fail.

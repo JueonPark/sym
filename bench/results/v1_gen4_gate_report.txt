@@ -1,0 +1,11 @@
+
+=== 7800x3d-4070tis ===
+pinned H2D (DMA leg): 26.86 GB/s  -> admissibility bar 0.9 x = 24.17 GB/s
+| method | transform | N=2048 | N=4096 | N=8192 | N=16384 | verdict |
+|---|---|---|---|---|---|---|
+| b | blocked_transpose | 14.14 ! | 17.22 ! | 16.75 ! | 17.21 ! | INADMISSIBLE |
+| b | transpose | 14.83 ! | 17.38 ! | 16.14 ! | 16.68 ! | INADMISSIBLE |
+| b_fair | blocked_transpose | 21.15 ! | 23.60 ! | 24.37 | 24.59 | INADMISSIBLE |
+| b_fair | transpose | 21.68 ! | 23.46 ! | 23.98 ! | 24.36 | INADMISSIBLE |
+
+Admissibility bar is a per-baseline verdict; b_fair is the intended admissible baseline, b (staged) is expected to fail.

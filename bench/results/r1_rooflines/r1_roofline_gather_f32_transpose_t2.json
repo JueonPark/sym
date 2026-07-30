@@ -1,0 +1,6 @@
+{
+  "config": {"benchmark": "cpu_rooflines", "N": 8192, "plan": "transpose", "threads": 2, "warmup": 5, "iters": 30},
+  "kernels": {
+    "gather_f32": {"in_bytes": 268435456, "out_bytes": 268435456, "median_ms": 834.751, "min_ms": 831.02, "p95_ms": 887.42, "iqr_over_median_pct": 2.15017, "in_gb_per_s": 0.321575, "out_gb_per_s": 0.321575}
+  }
+}

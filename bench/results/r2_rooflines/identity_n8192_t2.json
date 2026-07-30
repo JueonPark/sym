@@ -1,0 +1,11 @@
+{
+  "config": {"benchmark": "cpu_rooflines", "N": 8192, "plan": "identity", "threads": 2, "warmup": 5, "iters": 30},
+  "kernels": {
+    "gather_f32": {"in_bytes": 268435456, "out_bytes": 268435456, "median_ms": 15.7528, "min_ms": 14.6545, "p95_ms": 19.4925, "iqr_over_median_pct": 14.5575, "in_gb_per_s": 17.0405, "out_gb_per_s": 17.0405},
+    "gather_quantize": {"in_bytes": 268435456, "out_bytes": 67108864, "median_ms": 7.63692, "min_ms": 7.11305, "p95_ms": 8.662, "iqr_over_median_pct": 7.59285, "in_gb_per_s": 35.1497, "out_gb_per_s": 8.78742},
+    "quantize_pack": {"in_bytes": 268435456, "out_bytes": 67108864, "median_ms": 8.22806, "min_ms": 7.07947, "p95_ms": 10.0526, "iqr_over_median_pct": 16.136, "in_gb_per_s": 32.6244, "out_gb_per_s": 8.1561},
+    "convert_f32_f16": {"in_bytes": 268435456, "out_bytes": 134217728, "median_ms": 10.4413, "min_ms": 9.68014, "p95_ms": 12.0638, "iqr_over_median_pct": 10.9243, "in_gb_per_s": 25.7091, "out_gb_per_s": 12.8546},
+    "contig_read": {"in_bytes": 268435456, "out_bytes": 0, "median_ms": 6.62167, "min_ms": 6.1445, "p95_ms": 7.36573, "iqr_over_median_pct": 5.18283, "in_gb_per_s": 40.539, "out_gb_per_s": 0},
+    "pack_s8_s4": {"in_bytes": 67108864, "out_bytes": 33554432, "median_ms": 1.29222, "min_ms": 1.10926, "p95_ms": 1.86287, "iqr_over_median_pct": 17.6515, "in_gb_per_s": 51.9331, "out_gb_per_s": 25.9665}
+  }
+}

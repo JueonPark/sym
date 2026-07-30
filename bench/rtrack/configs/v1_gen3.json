@@ -1,0 +1,14 @@
+{
+  "machine": "epyc7351-2080ti",
+  "bin": "./bench-rtrack",
+  "numactl": "",
+  "transforms": "all",
+  "methods": "all",
+  "n": [2048, 4096, 8192, 16384],
+  "chunk_mib": [4, 16, 64, 256],
+  "threads": [8],
+  "warmup": 5,
+  "iters": 30,
+  "calibration": "calibration.json",
+  "out_csv": "v1_gen3_nsweep.csv"
+}
