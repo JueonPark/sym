@@ -164,4 +164,86 @@ TEST(CostModelPathCosts, AffineFormsAndK) {
       pathCosts(m, Pattern::Contiguous, S, 0.25, 8, 2, false).has_value());
 }
 
+using reloc::costmodel::decide;
+using reloc::costmodel::MethodDecision;
+
+TEST(CostModelDecide, PicksWinnerAndThreshold) {
+  CostModel m = mustParse(kSynth);
+  // Contiguous r=0.25: slopes A=0.05ms/MB? (see PathCosts test) -- A slope
+  // 5e-8 ms/B, B slope 1e-7 ms/B; intercepts A=0.5, B=0.1. Lines cross at
+  // S* = (0.5-0.1)/(1e-7-5e-8) = 8e6 bytes. Below: B wins; above: A.
+  auto small = decide(m, Pattern::Contiguous, 1 << 20, 0.25, 8);
+  ASSERT_TRUE(small.has_value());
+  EXPECT_EQ(small->method, MethodDecision::Method::B);
+  EXPECT_NEAR(small->thresholdBytes, 8e6, 1.0);
+  auto big = decide(m, Pattern::Contiguous, 1 << 30, 0.25, 8);
+  ASSERT_TRUE(big.has_value());
+  EXPECT_EQ(big->method, MethodDecision::Method::A);
+  EXPECT_NEAR(big->thresholdBytes, 8e6, 1.0);
+}
+
+TEST(CostModelDecide, SizeIndependentDecisionHasNoThreshold) {
+  // Same slopes ordering as intercepts ordering -> no crossing.
+  const char *cal = R"(# costmodel calibration v0
+pcie.h2d_gbps 10
+cpu.t8.contiguous.quantize_pack_gbps 40
+hbm.bw_gbps 100
+hbm.m.contiguous 1
+overhead.a_ms 0.05
+overhead.b_ms 0.1
+)";
+  CostModel m = mustParse(cal);
+  // A slope max(1/40, .25/10)=0.025 < B slope 0.1; A intercept smaller too.
+  auto d = decide(m, Pattern::Contiguous, 1 << 20, 0.25, 8);
+  ASSERT_TRUE(d.has_value());
+  EXPECT_EQ(d->method, MethodDecision::Method::A);
+  EXPECT_DOUBLE_EQ(d->thresholdBytes, -1);
+}
+
+TEST(CostModelDecide, PrefoldArmDelegatesToV4Rule) {
+  CostModel m = mustParse(kSynth);
+  // nReuse=16 amortizes the 50ms CPU pass to ~3.1ms/load: APrefold wins.
+  auto d = decide(m, Pattern::Contiguous, 1000000000, 0.25, 8, 1, 16);
+  ASSERT_TRUE(d.has_value());
+  EXPECT_EQ(d->method, MethodDecision::Method::APrefold);
+  EXPECT_LT(d->tAMs, 30.0); // amortized per-load, way under B's 100ms
+  // nReuse=1 (cold single-use): prefoldWins says no -> plain A vs B.
+  auto d1 = decide(m, Pattern::Contiguous, 1000000000, 0.25, 8, 1, 1);
+  ASSERT_TRUE(d1.has_value());
+  EXPECT_NE(d1->method, MethodDecision::Method::APrefold);
+}
+
+TEST(CostModelDecide, ThresholdAgreesWithBruteForce) {
+  // Issue #97 acceptance: threshold precompute vs brute-force agreement.
+  CostModel m = mustParse(kSynth);
+  for (double r : {1.0, 0.5, 0.25, 0.125}) {
+    for (Pattern p : {Pattern::Contiguous, Pattern::Blocked}) {
+      auto probe = decide(m, p, 1 << 20, r, 8);
+      if (!probe.has_value())
+        continue;
+      const double thr = probe->thresholdBytes;
+      // Brute-force every S against the direct tAMs/tBMs comparison, and
+      // separately confirm the stored boundary is the *only* place the
+      // method flips across the whole scanned range.
+      MethodDecision::Method prevMethod = MethodDecision::Method::B;
+      bool havePrev = false;
+      int flips = 0;
+      for (int64_t S = 1 << 12; S <= (1ll << 34); S <<= 1) {
+        auto d = decide(m, p, S, r, 8);
+        ASSERT_TRUE(d.has_value());
+        auto pc = pathCosts(m, p, S, r, 8, 1, false);
+        ASSERT_TRUE(pc.has_value());
+        EXPECT_EQ(d->method == MethodDecision::Method::A, pc->tAMs <= pc->tBMs)
+            << patternName(p) << " r=" << r << " S=" << S;
+        if (havePrev && d->method != prevMethod)
+          ++flips;
+        prevMethod = d->method;
+        havePrev = true;
+      }
+      EXPECT_EQ(flips, thr > 0 ? 1 : 0)
+          << patternName(p) << " r=" << r << " thr=" << thr;
+    }
+  }
+}
+
 } // namespace

@@ -196,5 +196,79 @@ std::optional<PathCosts> pathCosts(const CostModel &m, Pattern p,
   return pc;
 }
 
+const char *methodName(MethodDecision::Method m) {
+  switch (m) {
+  case MethodDecision::Method::A:
+    return "a";
+  case MethodDecision::Method::B:
+    return "b";
+  case MethodDecision::Method::APrefold:
+    return "a_prefold";
+  }
+  return "?";
+}
+
+std::optional<MethodDecision> decide(const CostModel &m, Pattern p,
+                                     int64_t srcBytes, double r, int threads,
+                                     int K, int64_t nReuse, bool broadcast) {
+  auto pc = pathCosts(m, p, srcBytes, r, threads, K, broadcast);
+  if (!pc)
+    return std::nullopt;
+
+  MethodDecision d;
+  d.pattern = p;
+  d.k = K;
+  d.nReuse = nReuse;
+
+  // Active A-arm: plain A unless nReuse enables the prefold arm and the
+  // V4 rule (prefoldWins) says the fold pays for itself. This never
+  // reimplements that rule -- it only supplies the per-load numbers.
+  double aInt = pc->aInterceptMs;
+  double aSlope = pc->aSlopeMsPerByte;
+  bool prefold = false;
+  if (nReuse >= 1) {
+    // Every m.at()/cpuBw() below asks only for keys pathCosts already
+    // required to succeed above, so they cannot be missing here.
+    const double cpuSlope = 1e-6 / *cpuBw(m, p, r, threads); // ms/src byte
+    const double kMult = broadcast ? static_cast<double>(K) : 1.0;
+    const double bwDel =
+        K <= 1 ? m.at("pcie.h2d_gbps")
+               : m.at("multigpu.delivery_gbps.k" + std::to_string(K));
+    const double dmaOnlySlope = kMult * r * 1e-6 / bwDel; // ms/src byte
+    const double tTransform = cpuSlope * static_cast<double>(srcBytes);
+    const double allocMs = m.get("prefold.alloc_ms_per_gib", 0.0) *
+                           (r * static_cast<double>(srcBytes) / (1ll << 30));
+    if (reloc::prefold::prefoldWins(nReuse, tTransform, tTransform + allocMs,
+                                    0.0)) {
+      prefold = true;
+      aInt = m.get("overhead.a_ms", 0.0);
+      // Per-load slope: DMA is paid every load; the CPU pass and the
+      // fold's staging allocation are amortized over nReuse loads.
+      aSlope =
+          dmaOnlySlope + (cpuSlope + allocMs / static_cast<double>(srcBytes)) /
+                             static_cast<double>(nReuse);
+    }
+  }
+
+  const double tA = aInt + aSlope * srcBytes;
+  const double tB = pc->tBMs;
+  d.tAMs = tA;
+  d.tBMs = tB;
+  d.method = tA <= tB ? (prefold ? MethodDecision::Method::APrefold
+                                 : MethodDecision::Method::A)
+                      : MethodDecision::Method::B;
+
+  // Single-symbol threshold precompute: both active arms are affine in
+  // S, so their crossing point is the boundary bind() can compare S
+  // against directly later. No real crossing (parallel slopes, or the
+  // crossing falls at S <= 0) means the decision never flips with S.
+  const double dSlope = aSlope - pc->bSlopeMsPerByte;
+  if (dSlope != 0.0) {
+    const double sStar = (pc->bInterceptMs - aInt) / dSlope;
+    d.thresholdBytes = sStar > 0 ? sStar : -1;
+  }
+  return d;
+}
+
 } // namespace costmodel
 } // namespace reloc
