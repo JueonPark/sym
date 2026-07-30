@@ -1,6 +1,7 @@
 //===- BindTest.cpp - bind() constraint + coalescing + acceptance ---------===//
 
 #include "reloc/Bind.h"
+#include "reloc/CostModel.h"
 #include "reloc/Decode.h"
 #include "gtest/gtest.h"
 
@@ -11,6 +12,7 @@
 #include <limits>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace {
@@ -354,6 +356,78 @@ TEST(Bind, PadDstAxisOutOfRangeRejected) {
   plan.padFill[0].dstAxis = 999999;
   EXPECT_NE(bindErr(plan, {{"N", 1000}}).find("out of range"),
             std::string::npos);
+}
+
+TEST(Bind, CostModelDecisionPopulatedWhenModelPassed) {
+  const char *cal = "# costmodel calibration v0\n"
+                    "pcie.h2d_gbps 10\n"
+                    "cpu.t8.contiguous.contig_read_gbps 20\n"
+                    "hbm.bw_gbps 100\n"
+                    "hbm.m.contiguous 1\n";
+  auto cmv = reloc::costmodel::CostModel::parse(cal);
+  ASSERT_TRUE(std::holds_alternative<reloc::costmodel::CostModel>(cmv));
+  const auto &cm = std::get<reloc::costmodel::CostModel>(cmv);
+  auto result = reloc::bind(decoded(kDegradedHex), {{"N", 64}},
+                            reloc::Strategy::Auto, &cm, /*wireRatio=*/1.0);
+  auto *bound = std::get_if<BoundPlan>(&result);
+  ASSERT_NE(bound, nullptr);
+  ASSERT_TRUE(bound->decision.has_value());
+  EXPECT_GT(bound->decision->tBMs, 0.0);
+  // N=64 divides evenly (no pad), so the single axis is
+  // srcStride==dstStride==1 with extent==totalElems: classify() must call
+  // this Contiguous, the pattern this fixture is actually observable at.
+  EXPECT_EQ(bound->decision->pattern, reloc::costmodel::Pattern::Contiguous);
+}
+
+TEST(Bind, CalibrationOverrideChangesSelectedStrategy) {
+  // N=70000: the degraded plan's dst is 64*ceil(N/64) elements * 4 bytes.
+  // ceil(70000/64)=1094, so totalBytes = 1094*64*4 = 280064 -- between the
+  // default single_thread_max_bytes (256 KiB = 262144 bytes) and
+  // multi_thread_max_bytes (256 MiB), so the no-model bind picks
+  // MultiThreadTiled. A calibration overriding
+  // strategy.single_thread_max_bytes to 300000 (still > 280064) pulls the
+  // identical plan/N under the single-thread ceiling instead -- proving
+  // the calibration override actually changes the selected Strategy, not
+  // just that a decision gets populated alongside it.
+  BoundPlan noModel = bindOk(decoded(kDegradedHex), {{"N", 70000}});
+  ASSERT_EQ(noModel.totalBytes, 280064);
+  EXPECT_EQ(noModel.strategy, Strategy::MultiThreadTiled);
+
+  const char *cal = "# costmodel calibration v0\n"
+                    "strategy.single_thread_max_bytes 300000\n";
+  auto cmv = reloc::costmodel::CostModel::parse(cal);
+  ASSERT_TRUE(std::holds_alternative<reloc::costmodel::CostModel>(cmv));
+  const auto &cm = std::get<reloc::costmodel::CostModel>(cmv);
+
+  auto result =
+      reloc::bind(decoded(kDegradedHex), {{"N", 70000}}, Strategy::Auto, &cm);
+  auto *withModel = std::get_if<BoundPlan>(&result);
+  ASSERT_NE(withModel, nullptr);
+  EXPECT_EQ(withModel->totalBytes, 280064);
+  EXPECT_EQ(withModel->strategy, Strategy::SingleThreadSimd);
+}
+
+TEST(Bind, NoModelLeavesDecisionEmptyAndStrategyUnchanged) {
+  auto result = reloc::bind(decoded(kDegradedHex), {{"N", 64}});
+  auto *bound = std::get_if<BoundPlan>(&result);
+  ASSERT_NE(bound, nullptr);
+  EXPECT_FALSE(bound->decision.has_value());
+
+  // "Strategy unchanged" was previously asserted only via the absence of
+  // a decision; compare the actual .strategy against a model-supplied
+  // bind whose calibration carries no strategy.* keys -- both must fall
+  // back to the identical P2 constant thresholds, so passing a model
+  // alone (with no strategy overrides) must not perturb strategy
+  // selection.
+  const char *cal = "# costmodel calibration v0\npcie.h2d_gbps 10\n";
+  auto cmv = reloc::costmodel::CostModel::parse(cal);
+  ASSERT_TRUE(std::holds_alternative<reloc::costmodel::CostModel>(cmv));
+  const auto &cm = std::get<reloc::costmodel::CostModel>(cmv);
+  auto withModelResult =
+      reloc::bind(decoded(kDegradedHex), {{"N", 64}}, Strategy::Auto, &cm);
+  auto *withModel = std::get_if<BoundPlan>(&withModelResult);
+  ASSERT_NE(withModel, nullptr);
+  EXPECT_EQ(withModel->strategy, bound->strategy);
 }
 
 } // namespace

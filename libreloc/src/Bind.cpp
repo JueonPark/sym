@@ -2,6 +2,8 @@
 
 #include "reloc/Bind.h"
 
+#include "reloc/CostModel.h"
+
 #include <algorithm>
 #include <cstdint>
 #include <limits>
@@ -143,7 +145,8 @@ bool evalExpr(const ExprStream &stream, const SymbolValues &symbols,
 }
 
 BindResult bind(const RelocationPlan &plan, const SymbolMap &symbolMap,
-                Strategy override) {
+                Strategy override, const costmodel::CostModel *model,
+                double wireRatio, int K, int64_t nReuse) {
   std::string error;
   SymbolValues symbols;
   if (!resolveSymbols(plan, symbolMap, symbols, error))
@@ -312,19 +315,37 @@ BindResult bind(const RelocationPlan &plan, const SymbolMap &symbolMap,
       bound.L = inner.extent;
   }
 
-  // 7. Strategy.
+  // 7. Strategy. Boundaries come from the calibration when present
+  // (strategy.single_thread_max_bytes / strategy.multi_thread_max_bytes),
+  // falling back to the P2 constants otherwise.
   constexpr int64_t kL2Bytes = 256 * 1024;
   constexpr int64_t kMultiThreadMaxBytes = 256 * 1024 * 1024;
+  const double singleMax = model
+                               ? model->get("strategy.single_thread_max_bytes",
+                                            static_cast<double>(kL2Bytes))
+                               : static_cast<double>(kL2Bytes);
+  const double multiMax =
+      model ? model->get("strategy.multi_thread_max_bytes",
+                         static_cast<double>(kMultiThreadMaxBytes))
+            : static_cast<double>(kMultiThreadMaxBytes);
   if (override != Strategy::Auto)
     bound.strategy = override;
   else if (bound.noCopy)
     bound.strategy = Strategy::ViewNoCopy;
-  else if (bound.totalBytes <= kL2Bytes)
+  else if (static_cast<double>(bound.totalBytes) <= singleMax)
     bound.strategy = Strategy::SingleThreadSimd;
-  else if (bound.totalBytes <= kMultiThreadMaxBytes)
+  else if (static_cast<double>(bound.totalBytes) <= multiMax)
     bound.strategy = Strategy::MultiThreadTiled;
   else
     bound.strategy = Strategy::ChunkedPipeline;
+
+  // 8. Cost-model decision (opt-in via `model`).
+  if (model) {
+    const costmodel::Pattern pat = costmodel::classify(bound);
+    if (auto d = costmodel::decide(*model, pat, bound.totalBytes, wireRatio,
+                                   /*threads=*/8, K, nReuse))
+      bound.decision = *d;
+  }
 
   return bound;
 }

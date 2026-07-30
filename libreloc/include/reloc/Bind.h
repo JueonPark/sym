@@ -11,15 +11,21 @@
 #ifndef RELOC_BIND_H
 #define RELOC_BIND_H
 
+#include "reloc/MethodDecision.h"
 #include "reloc/Plan.h"
 
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
 
 namespace reloc {
+
+namespace costmodel {
+class CostModel;
+} // namespace costmodel
 
 /// Symbol values indexed by symbol-table position (bind resolves the
 /// caller's name map into this before evaluating).
@@ -70,6 +76,8 @@ struct BoundPlan {
   // BoundPlan::extents index space (remapped through coalescing, matching
   // PadRegion::axis) -- NOT the plan's original axis numbering.
   std::vector<Alignment> requiredAlignments;
+  // Populated only when bind() is given a cost model (nullopt otherwise).
+  std::optional<costmodel::MethodDecision> decision;
 };
 
 struct BindError {
@@ -82,8 +90,16 @@ using BindResult = std::variant<BoundPlan, BindError>;
 /// Strategy::Auto. Fails (BindError) on: a symbol-map mismatch, an
 /// evaluation error, a violated correctness constraint (divisibility /
 /// runtime pad-range), or a v0 domain violation (extent < 1, stride < 0).
+///
+/// `model`, when non-null, populates `BoundPlan::decision` via
+/// costmodel::classify + costmodel::decide (wireRatio/K/nReuse forwarded
+/// verbatim) and sources the Strategy::Auto size thresholds from the
+/// calibration when present, falling back to the built-in constants
+/// otherwise.
 BindResult bind(const RelocationPlan &plan, const SymbolMap &symbolMap,
-                Strategy override = Strategy::Auto);
+                Strategy override = Strategy::Auto,
+                const costmodel::CostModel *model = nullptr,
+                double wireRatio = 1.0, int K = 1, int64_t nReuse = -1);
 
 } // namespace reloc
 

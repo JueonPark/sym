@@ -307,3 +307,32 @@ N sweep as the nsweep config) instead feeds `figure_rstar.py --json
 rstar.json`, which is then passed back into `gates.py --rstar` for
 R2-G5. All three configs target the 7800X3D + 4070 Ti SUPER (Gen4) box,
 no `numactl` (single-NUMA).
+
+## V3 cost-model tools (issue #97)
+
+- **`make_calibration.py`** — assembles a `calibration/<machine>.cal` flat
+  file (the `reloc::costmodel::CostModel` parser's input format) from
+  committed `bench/results` artifacts only; every emitted `key value` line
+  carries a trailing provenance comment naming its source file, and
+  regeneration is deterministic (`git diff --exit-code calibration/`
+  after regenerating is expected to be clean). `--machine
+  {epyc7351-2080ti,7800x3d-4070tis} --out PATH`.
+- **`v3_gate.py`** — the pre-registered V3 prediction gate: bars
+  (`MISCLASS_BAR=0.15`, `RSTAR_ABS_BAR=0.15`, `REGRET_P90_BAR=0.20`) are
+  fixed in the script's source before any prediction data exists, per this
+  track's standing discipline. `--report bench/results/v3_prediction_report.json`
+  evaluates winner-misclassification rate, `|r*_pred − r*_meas|` on
+  families where both sides have a crossing, and p90 regret vs. the
+  measured oracle over the committed R-track cells; see
+  `docs/v3-costmodel.md` for the verdicts and a documented gap in how
+  `mismatch_one_sided` r* rows are excluded from the bar.
+- **`--plan-wire PATH`** (on `bench-rtrack`) — decodes a corpus wire-format
+  plan blob (`reloc::decodePlan`) and `bind()`s it against `--n`'s `N`
+  instead of using a hand-authored `plans.h` plan; only valid together
+  with `--transform TW` (bijective requirement, checked both directions).
+  Closes the compiler→measurement gap: a plan produced by the real fold
+  pipeline (`generate_corpus.py`'s MLIR chain → `sym-opt --reloc-fold` →
+  `encodePlan`) is measured with the same A/B/b_fair harness as every
+  hand-authored workload. See `docs/v3-costmodel.md` §6 for the acceptance
+  comparison against the hand-authored `T1b` row and the L=64-decomposition
+  sensitivity finding.

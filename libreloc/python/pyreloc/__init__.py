@@ -8,6 +8,7 @@ pyreloc.torch_interop.as_ptr to map torch tensors / numpy arrays.
 from ._pyreloc import (  # noqa: F401
     BindError,
     BoundPlan,
+    Calibration,
     DecodeError,
     GatherPool,
     PlanHandle,
@@ -15,7 +16,9 @@ from ._pyreloc import (  # noqa: F401
     cuda_enabled,
     d2h,
     h2d,
+    load_calibration,
     load_plan,
+    predict,
     relocate,
     relocate_inverse,
 )

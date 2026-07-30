@@ -1,0 +1,39 @@
+V3-MISCLASS: 8/60 = 0.133  (bar <= 0.15)  PASS
+
+| cell_id | machine | family | winner_meas | winner_pred | t_a_meas | t_b_meas | t_a_pred | t_b_pred |
+|---|---|---|---|---|---|---|---|---|
+| gen3:convert_f16:N=2048 | epyc7351-2080ti | convert_f16 | b | a | 1.3670 | 1.3508 | 1.0312 | 1.3078 |
+| gen4:convert_f16:N=8192 | 7800x3d-4070tis | convert_f16 | a | b | 8.8267 | 10.7866 | 10.2438 | 10.0866 |
+| gen4:convert_f16:N=16384 | 7800x3d-4070tis | convert_f16 | a | b | 33.9244 | 42.6932 | 40.9750 | 40.0682 |
+| multigpu:scatter:N=8192:K=1 | epyc7351-2080ti | scatter | a | b | 17.7255 | 21.3585 | 20.6063 | 20.5625 |
+| multigpu:scatter:N=16384:K=1 | epyc7351-2080ti | scatter | a | b | 71.5663 | 84.7105 | 82.2212 | 82.1774 |
+| multigpu:broadcast_contig:N=8192:K=1 | epyc7351-2080ti | broadcast_contig | a | b | 16.9038 | 21.2886 | 20.6063 | 20.5625 |
+| multigpu:broadcast_contig:N=8192:K=2 | epyc7351-2080ti | broadcast_contig | a | b | 19.6097 | 31.1882 | 25.6090 | 25.5652 |
+| multigpu:broadcast_contig:N=8192:K=4 | epyc7351-2080ti | broadcast_contig | a | b | 22.3165 | 45.0738 | 25.6577 | 25.6139 |
+
+V3-RSTAR: max |r*_pred - r*_meas| over 3 both-exist families = 0.3632 (bar <= 0.15)  FAIL
+  (+ 3 family/box pairs agree on 'no crossing' -- correct winner-shaped outcome, not counted in the bar above; 0 one-sided mismatches)
+
+| family | machine | source | r*_meas | r*_pred | agreement |
+|---|---|---|---|---|---|
+| blocked_transpose | 7800x3d-4070tis | v1_gen4_rstar_bfair.json | 0.3738 | 0.2914 | both_exist |
+| nchw_nhwc_quant | 7800x3d-4070tis | v1_gen4_rstar_bfair.json | -- | -- | both_no_crossing |
+| quant | 7800x3d-4070tis | v1_gen4_rstar_bfair.json | 0.5409 | 0.4806 | both_exist |
+| transpose_quant | 7800x3d-4070tis | v1_gen4_rstar_bfair.json | -- | -- | both_no_crossing |
+| blocked_transpose | epyc7351-2080ti | v2_isa_gen3_rstar_avx2_epyc7351-2080ti.json | -- | -- | both_no_crossing |
+| quant | epyc7351-2080ti | v2_isa_gen3_rstar_avx2_epyc7351-2080ti.json | 0.6356 | 0.9989 | both_exist |
+
+V3-REGRET-P90: 0.1837  (bar <= 0.2)  PASS
+
+| policy | mean regret |
+|---|---|
+| model | 0.0458 |
+| always-A | 3.6876 |
+| always-B | 0.1608 |
+(n=60 modelable winner-vs-winner cells)
+
+Unmodelable cells (missing calibration keys): 0
+
+=== CALIBRATION-REGEN ===
+CALIBRATION-REGEN 7800x3d-4070tis: PASS (matches committed calibration/7800x3d-4070tis.cal)
+CALIBRATION-REGEN epyc7351-2080ti: PASS (matches committed calibration/epyc7351-2080ti.cal)
