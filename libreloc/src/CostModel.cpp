@@ -4,7 +4,9 @@
 
 #include "reloc/Prefold.h"
 
+#include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <fstream>
 #include <sstream>
 
@@ -79,6 +81,119 @@ std::variant<CostModel, std::string> CostModel::load(const std::string &path) {
   std::ostringstream ss;
   ss << f.rdbuf();
   return parse(ss.str());
+}
+
+const char *patternName(Pattern p) {
+  switch (p) {
+  case Pattern::Contiguous:
+    return "contiguous";
+  case Pattern::Blocked:
+    return "blocked";
+  case Pattern::SingleElement:
+    return "single_element";
+  case Pattern::Tiled:
+    return "tiled";
+  }
+  return "?";
+}
+
+Pattern classify(const BoundPlan &b) {
+  const int64_t totalElems = b.elementSize ? b.totalBytes / b.elementSize : 0;
+  if (b.L >= totalElems && totalElems > 0)
+    return Pattern::Contiguous;
+  if (b.L <= 1)
+    return Pattern::SingleElement;
+  return b.L >= kBlockedRunFloor ? Pattern::Blocked : Pattern::Tiled;
+}
+
+// Key helper: cpu.t{threads}.{pattern}.{kernel}_gbps
+static std::optional<double> kern(const CostModel &m, Pattern p, int threads,
+                                  const char *kernel) {
+  const std::string key = "cpu.t" + std::to_string(threads) + "." +
+                          patternName(p) + "." + kernel + "_gbps";
+  if (!m.has(key))
+    return std::nullopt;
+  return m.at(key);
+}
+
+static double harmonic(double a, double b) { return 1.0 / (1.0 / a + 1.0 / b); }
+
+std::optional<double> cpuBw(const CostModel &m, Pattern p, double r,
+                            int threads) {
+  const bool contig = p == Pattern::Contiguous;
+  auto need = [&](const char *k) { return kern(m, p, threads, k); };
+  if (r == 1.0)
+    return contig ? need("contig_read") : need("gather_f32");
+  if (r == 0.5) {
+    auto conv = need("convert_f32_f16");
+    if (contig)
+      return conv;
+    auto g = need("gather_f32");
+    if (!g || !conv)
+      return std::nullopt;
+    return harmonic(*g, *conv);
+  }
+  if (r == 0.25)
+    return contig ? need("quantize_pack") : need("gather_quantize");
+  if (r == 0.125) {
+    auto base = contig ? need("quantize_pack") : need("gather_quantize");
+    auto pack = need("pack_s8_s4");
+    if (!base || !pack)
+      return std::nullopt;
+    // pack reads S/4 bytes: source-normalized BW is 4x its input BW.
+    return harmonic(*base, 4.0 * *pack);
+  }
+  return std::nullopt; // only the measured r grid is modelled in v0
+}
+
+static std::optional<double> deliveryGbps(const CostModel &m, int K) {
+  if (K <= 1)
+    return m.has("pcie.h2d_gbps") ? std::optional<double>(m.at("pcie.h2d_gbps"))
+                                  : std::nullopt;
+  const std::string key = "multigpu.delivery_gbps.k" + std::to_string(K);
+  if (!m.has(key))
+    return std::nullopt;
+  return m.at(key);
+}
+
+std::optional<PathCosts> pathCosts(const CostModel &m, Pattern p,
+                                   int64_t srcBytes, double r, int threads,
+                                   int K, bool broadcast) {
+  if (srcBytes <= 0 || r <= 0 || K < 1)
+    return std::nullopt;
+  auto bwCpu = cpuBw(m, p, r, threads);
+  auto bwDel = deliveryGbps(m, K);
+  if (!bwCpu || !bwDel || *bwCpu <= 0 || *bwDel <= 0)
+    return std::nullopt;
+  if (!m.has("hbm.bw_gbps"))
+    return std::nullopt;
+  const std::string mKey = std::string("hbm.m.") + patternName(p);
+  if (!m.has(mKey))
+    return std::nullopt;
+  const double bwHbm = m.at("hbm.bw_gbps");
+  const double mm = m.at(mKey);
+  if (bwHbm <= 0 || mm <= 0)
+    return std::nullopt;
+
+  // Bytes on the wire per method (whole delivery, all K receivers).
+  const double kMult = broadcast ? static_cast<double>(K) : 1.0;
+  // ms per byte at BW gbps: 1e3 / (BW * 1e9) = 1e-6 / BW.
+  auto msPerByteAt = [](double gbps) { return 1e-6 / gbps; };
+
+  PathCosts pc;
+  // A: pipelined max(CPU pass over S source bytes, DMA of kMult*r*S).
+  const double aCpuSlope = msPerByteAt(*bwCpu);             // per source byte
+  const double aDmaSlope = kMult * r * msPerByteAt(*bwDel); // per source byte
+  pc.aSlopeMsPerByte = std::max(aCpuSlope, aDmaSlope);
+  pc.aInterceptMs = m.get("overhead.a_ms", 0.0);
+  // B: max(DMA of kMult*S, GPU transform m*kMult*S over HBM).
+  const double bDmaSlope = kMult * msPerByteAt(*bwDel);
+  const double bHbmSlope = kMult * mm * msPerByteAt(bwHbm);
+  pc.bSlopeMsPerByte = std::max(bDmaSlope, bHbmSlope);
+  pc.bInterceptMs = m.get("overhead.b_ms", 0.0);
+  pc.tAMs = pc.aInterceptMs + pc.aSlopeMsPerByte * srcBytes;
+  pc.tBMs = pc.bInterceptMs + pc.bSlopeMsPerByte * srcBytes;
+  return pc;
 }
 
 } // namespace costmodel
