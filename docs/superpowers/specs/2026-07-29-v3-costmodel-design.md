@@ -42,12 +42,22 @@ cpu.t8.single_element.gather_f32_gbps 0.53   # r1 rooflines
 cpu.t8.tiled.gather_quantize_gbps 2.14
 cpu.t1.contiguous.quantize_pack_gbps 13.13   # T=1 tier, same key shape
 hbm.bw_gbps 544
-hbm.m.transpose_smem_padded 1.43
-hbm.m.relocate_naive 2.97
+hbm.m.contiguous 1
+hbm.m.blocked 2.97
+hbm.m.single_element 1.43
+hbm.m.tiled 2.97              # reuses blocked's kernel; no separate tiled GPU-receive kernel measured
 hiding.ratio 41.7
 multigpu.delivery_gbps.k2 21.02
 multigpu.delivery_gbps.k4 41.96
+overhead.a_ms 0.068            # two-point affine-fit intercept, Method A
+overhead.b_ms 0.0242           # two-point affine-fit intercept, Method B
+prefold.alloc_ms_per_gib 956.1
+strategy.single_thread_max_bytes 262144    # P2 default seed; no small-size sweep exists yet
+strategy.multi_thread_max_bytes 268435456  # P2 default seed; no small-size sweep exists yet
 ```
+
+(shipped key names are `hbm.m.{contiguous,blocked,single_element,tiled}`,
+keyed by the classified `Pattern`, not by GPU kernel name.)
 
 - Format: `key value` per line, dotted keys, `#` comments (full-line and
   trailing), version header line required. Parser rejects unknown
@@ -77,16 +87,18 @@ classify(BoundPlan):
 ```
 
 Exact enum + mapping to roofline keys frozen in the header; classifier
-is a pure function, unit-tested against the six T-workload plans (T1 ->
-SingleElement, T1b -> Blocked, T3/T5 -> Contiguous, T4 -> Tiled).
+is a pure function, unit-tested via a synthetic `planWithL` truth table
+over all four pattern boundaries (`CostModelTest.cpp`), plus a
+bound-fixture pattern assertion in `BindTest.cpp` and the wire row's
+bind-time classification (`docs/v3-costmodel.md` §6) — not against the
+six T-workload plans directly.
 
 **Model** (all effective input-normalized GB/s, matching
 `figure_rstar.py`'s conventions):
 
-- `T_B(S) = max(S/BW_pcie, m·S/BW_hbm)` — with `m` looked up per GPU
-  receive kernel; reduces to link-bound when `m < hiding.ratio`
-  (R4-validated). Default `m` = the plan-appropriate kernel; callers may
-  override.
+- `T_B(S) = max(S/BW_pcie, m·S/BW_hbm)` — with `m` looked up per
+  classified pattern (`hbm.m.{contiguous,blocked,single_element,tiled}`);
+  reduces to link-bound when `m < hiding.ratio` (R4-validated).
 - `T_A(S, r, pattern) `: pipelined form
   `S / min(BW_cpu(pattern), BW_pcie/r)` and serial form
   `S·(1/BW_cpu + r/BW_pcie)`; two-pass CPU stages compose harmonically in
@@ -117,7 +129,9 @@ struct MethodDecision {
   Method method;
   double tAMs, tBMs;          // predicted, at the bound size
   double thresholdBytes = -1; // single-symbol precompute (see below)
-  // + provenance: pattern classified, m used, K, nReuse
+  Pattern pattern;             // classified pattern
+  int k;
+  int64_t nReuse;
 };
 MethodDecision decide(const PlanParams &, const CostModel &, int K = 1,
                       int64_t nReuse = -1);

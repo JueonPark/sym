@@ -1,7 +1,5 @@
 """V3 (issue #97): cost-model bindings — the prediction test's foundation.
 The Python surface is a thin veneer; all arithmetic is the C++ component."""
-import pathlib
-
 import pytest
 
 pyreloc = pytest.importorskip("pyreloc")

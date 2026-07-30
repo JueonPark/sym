@@ -32,7 +32,13 @@ scripts into one MLIR-free libreloc component:
 - **Gather-pattern classifier** — `classify(BoundPlan)`: maps a bound
   plan's coalesced run length to `Contiguous` / `SingleElement` / `Blocked`
   / `Tiled` (`L == totalElems` / `L == 1` / `L >= 64 elems` / else),
-  unit-tested against all six T-workload plans.
+  unit-tested via a synthetic `planWithL` truth table over all four
+  pattern boundaries (`CostModelTest.cpp`'s `CostModelClassify.MapsLToPattern`),
+  a bound-fixture pattern assertion in `BindTest.cpp`'s
+  `CostModelDecisionPopulatedWhenModelPassed` (asserts `Contiguous` on the
+  N=64 degraded fixture), and the wire row's bind-time classification
+  (§6) — not against the six T-workload plans directly, which the
+  classifier is never exercised against.
 - **Two-path affine cost model** — `pathCosts`: `T_A = overhead.a_ms + S ·
   max(1/BW_cpu(pattern), wireBytes/S/BW_link)`, `T_B = overhead.b_ms + S ·
   max(1/BW_link, m/BW_hbm)`, both affine in source bytes `S`; multi-GPU
@@ -51,8 +57,14 @@ scripts into one MLIR-free libreloc component:
   source-compatible; when a model is supplied, `BoundPlan::decision` is
   populated (`libreloc/include/reloc/Bind.h:80`, wired at
   `libreloc/src/Bind.cpp:342-347`). The P2 fixed-heuristic constants
-  (`kL2Bytes`, `kMultiThreadMaxBytes`) are replaced by calibration-derived
-  values when a model is present, retained as the no-model fallback.
+  (`kL2Bytes`, `kMultiThreadMaxBytes`) become calibration-overridable via
+  `strategy.single_thread_max_bytes`/`strategy.multi_thread_max_bytes` when
+  a model carrying those keys is present — the override path itself is
+  unit-tested (a calibration override does change the selected `Strategy`
+  for an otherwise-identical plan/N) — retained as the no-model fallback
+  otherwise. Both committed calibrations currently just seed the P2
+  defaults verbatim rather than overriding them: no measured small-size
+  sweep exists yet to derive different threshold values (§7).
 - **pyreloc surface** — `pyreloc.load_calibration(path)` →
   `Calibration` handle; `pyreloc.predict(calibration, pattern=..., ...)` →
   dict. Both call the identical C++ arithmetic (`libreloc/python/PyReloc.cpp`);
@@ -62,9 +74,14 @@ scripts into one MLIR-free libreloc component:
 ## 2. Calibration provenance
 
 `bench/rtrack/make_calibration.py` assembles `calibration/epyc7351-2080ti.cal`
-(38 `key value` lines) and `calibration/7800x3d-4070tis.cal` (42 lines,
-Gen4 also carries the strategy-threshold seed pair) from committed
-`bench/results` artifacts only — every emitted line carries a trailing
+(38 `key value` lines) and `calibration/7800x3d-4070tis.cal` (42 lines)
+from committed `bench/results` artifacts only. **Both** files carry the
+same `strategy.single_thread_max_bytes`/`strategy.multi_thread_max_bytes`
+seed pair — it is not gen4-exclusive; gen4's 42 vs epyc's 38 nets +8
+`pack_s8_s4` keys (gen4's `r=0.125` tier is modelable, unlike epyc's —
+see below) against -4 keys epyc has that gen4 lacks (`hiding.ratio`,
+`multigpu.delivery_gbps.k2`/`k4`, `prefold.alloc_ms_per_gib` — R3/R4/V4
+never ran on the gen4 box). Every emitted line carries a trailing
 provenance comment naming its source file, and regeneration is byte-for-byte
 deterministic (`git diff --exit-code calibration/` after two independent
 regenerations).
@@ -183,6 +200,14 @@ same degenerate cluster:
 - `MISCLASS`'s cushion against its `≤0.15` bar is **2 cells**
   (9/60 = 0.150 still PASSes on the inclusive boundary; 10/60 = 0.167
   fails), not the visually larger 1.7-point gap between 13.3% and 15%.
+  Note the pre-registered gate implements this as an *inclusive* `<=`
+  comparison (`rate <= MISCLASS_BAR` in `v3_gate.py`), while issue #97's
+  own prose states the bar as strict ("winner misclassification **< 15
+  %**"). The two readings agree on the actual result (0.133 clears both),
+  but the 9/60 = 0.150 boundary case above is exactly where they would
+  diverge: the gate as coded would PASS it, the issue's literal prose
+  would not. Stated for the record, not changed — the bars are frozen
+  (see the top of this document).
 
 **Named follow-up (not an excuse, not attempted here — never refit):** the
 model lacks a per-receiver/staging overhead term for method B at K>1.
@@ -227,8 +252,13 @@ not a property of the `quant` transform's roofline physics on either box.
 model predicts speedup **1.332** against a measured **1.060** — a real
 ~26% over-credit for the model's dtype-reduction (f16) stage on this box,
 independent of any intercept artifact. That is the actual "roofline is
-wrong here" finding this dataset supports; the r*=0.9994673-vs-0.6356
-headline number is not.
+wrong here" finding this dataset supports; the headline r*=0.9989-vs-0.6356
+number is not. (**Correction**: `0.9994673` is the r=1.0 *speedup* value
+from the table above, not r* itself — those are different quantities. The
+crossing-interpolated `rstar_predicted` the gate actually compares against
+the measured `r*=0.6356` is `0.9988891`, distinct from but close to the
+r=1 speedup because the interpolated crossing between r=0.5 and r=1.0
+lands very near the r=1 endpoint; `|Δ|=0.363` either way.)
 
 **Two-sided implementation note.** The committed
 `v2_isa_gen3_rstar_avx2_epyc7351-2080ti.json` already stores
@@ -300,13 +330,25 @@ magnitude smaller than the 0.2%-over-p95 miss from the round-0 recipe
 (§below) and on the *opposite* side of the window (the wire run measured
 marginally faster than the committed row, not slower). `b_fair`'s own
 per-config `[min, p95]` at its best chunk (`[21.6754, 21.6855]`) overlaps
-almost entirely with the T1b window (`[21.6812, 21.6889]`); the 0.0044 ms
-gap between the two runs' minima is consistent with ordinary
+almost entirely with the T1b window (`[21.6812, 21.6889]`). **Correction**:
+the `0.0044 ms` gap is the wire row's best-chunk **median** (21.6768)
+against the T1b window's **minimum** (21.6812), not a minima-to-minima
+comparison — the two runs' actual minima (21.6754 vs 21.6812) differ by
+`0.0058 ms`, marginally larger but still consistent with ordinary
 session-to-session DMA-floor jitter on this box — `b_fair` is a pure
 DMA-floor measurement with no CPU-stage or plan-shape sensitivity left
 once `a` and `b` already agree with the coalesced-identical plan. This is
 presented as the measured, as-reported result — no rerun was performed to
 try to close the gap.
+
+**Model decision for this row (spec §6 acceptance)**:
+`predict(calibration/epyc7351-2080ti.cal, pattern="blocked",
+src_bytes=8192*8192*4, r=1.0)` returns `method="b"`; the measured winner
+is `b` (`b_fair` 21.6768 ms vs `a` 32.9088 ms, both best-chunk) — decision
+matches. Unit-tested standalone in
+`libreloc/python/tests/test_wire_row_decision.py`, which loads only the
+epyc calibration and this row's CSV and never touches
+`test_prediction.py`'s report writer.
 
 **The L=64 variant, kept as a decomposition-sensitivity finding.** The
 first corpus recipe attempt used `blocked_reference`'s own decomposition
@@ -316,10 +358,13 @@ first corpus recipe attempt used `blocked_reference`'s own decomposition
 correct, oracle-verified blocked-transpose access patterns, just with
 different axis orderings. That version binds to `L=64` (256 B innermost
 coalesced run) instead of `L=8192` (32 KiB run), and Method A's CPU
-gather stage is L-sensitive: its best-chunk median came in ~39% higher
-than the T1b window, a **35% method-a discrepancy between two valid
-blocked transposes** driven purely by decomposition, not by any fold/bind
-bug. That measurement is preserved as its own row
+gather stage is L-sensitive: its best-chunk median (45.4727 ms, chunk=16)
+came in **+41.5% over the T1b window's min** (32.1341 ms), **+34.9% over
+its p95** (33.7097 ms), and **+38.2% over the corrected primary wire
+row's own best-chunk median** (32.9088 ms) — three baselines for the same
+method-a discrepancy between two valid blocked transposes, driven purely
+by decomposition, not by any fold/bind bug. That measurement is preserved
+as its own row
 (`bench/results/v3_wire_row_l64variant_epyc_2080ti.csv`) — **the fold
 path faithfully preserves whichever decomposition the MLIR source
 expresses**; L=64 vs L=8192 is a property of the source program, not of

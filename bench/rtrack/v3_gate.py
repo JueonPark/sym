@@ -22,6 +22,12 @@ bench/rtrack/make_calibration.py for both machines to temp paths and diffs
 the output against the committed calibration/*.cal files, so the
 committed numbers stay honest.
 
+Also runs a REPORT-REGEN check (final-review addendum, #97): `git diff
+--exit-code` against the committed bench/results/v3_prediction_report.json
+-- a dirty report means the committed verdicts above no longer match the
+code that produced them. Does NOT re-run test_prediction.py (the report
+must stay byte-identical); this only inspects the working tree.
+
 Exit code is always 0 -- this prints verdicts, it does not gate CI.
 Whatever the bars say IS the result; misses are reported and explained
 (Task 9's doc), never refit.
@@ -175,6 +181,26 @@ def calibration_regen_check():
                       f"{first_diff + 1})")
 
 
+# added post-run for integrity (commit history: bars untouched;
+# 5b9572e..this-commit diff shows no bar change): a dirty
+# bench/results/v3_prediction_report.json means the committed prediction
+# verdicts no longer match the code that produced them. Deliberately does
+# NOT re-run test_prediction.py -- that report is frozen and must stay
+# byte-identical; this only diffs the working tree against HEAD.
+def report_regen_check(report_path):
+    print("\n=== REPORT-REGEN ===")
+    rel = Path(report_path).resolve().relative_to(REPO_ROOT)
+    proc = subprocess.run(
+        ["git", "diff", "--exit-code", "--", str(rel)],
+        cwd=REPO_ROOT, capture_output=True, text=True)
+    if proc.returncode == 0:
+        print(f"REPORT-REGEN: PASS (no uncommitted diff in {rel})")
+    else:
+        print(f"REPORT-REGEN: FAIL (uncommitted diff in {rel} -- the "
+              "committed verdicts no longer match the code)\n"
+              f"{proc.stdout.strip()}")
+
+
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__,
@@ -189,6 +215,7 @@ def main():
     print_ablation(report)
     print_unmodelable(report)
     calibration_regen_check()
+    report_regen_check(args.report)
     return 0
 
 
