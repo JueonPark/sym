@@ -35,6 +35,7 @@
 #include "rtrack/workloads.h"
 
 #include "reloc/CudaKernels.h"
+#include "reloc/Decode.h"
 #include "reloc/Execute.h"
 #include "reloc/GatherPool.h"
 #include "reloc/Pipeline.h"
@@ -53,6 +54,7 @@
 #include <string>
 #include <unistd.h>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #define CUDA_CHECK(x)                                                          \
@@ -87,6 +89,71 @@ void launchConvertF32F16(const float *dSrc, void *dDst, int64_t count,
   convertF32F16Kernel<<<static_cast<unsigned>(grid), block, 0, stream>>>(
       dSrc, static_cast<__half *>(dDst), count);
   CUDA_CHECK(cudaGetLastError());
+}
+
+// --plan-wire: read a corpus-format plan (wire-format v0, e.g. a committed
+// blocked_transpose_sym.bin from the compiler fold path) and produce the
+// BoundPlan the rest of the pipeline consumes -- the same decodePlan/bind
+// contract exercised by libreloc/test/{Decode,Bind}Test.cpp and the r-track
+// bench/gather_bw.cpp precedent, just wired into the rtrack harness so a
+// COMPILER-EMITTED plan can be measured end to end instead of only the
+// hand-authored plans.h table.
+std::vector<uint8_t> readFileBytes(const char *path) {
+  std::FILE *f = std::fopen(path, "rb");
+  if (!f) {
+    std::fprintf(stderr, "error: --plan-wire: cannot open %s\n", path);
+    std::exit(1);
+  }
+  std::fseek(f, 0, SEEK_END);
+  long size = std::ftell(f);
+  std::fseek(f, 0, SEEK_SET);
+  std::vector<uint8_t> bytes(size > 0 ? static_cast<size_t>(size) : 0);
+  if (size > 0 &&
+      std::fread(bytes.data(), 1, bytes.size(), f) != bytes.size()) {
+    std::fprintf(stderr, "error: --plan-wire: short read on %s\n", path);
+    std::fclose(f);
+    std::exit(1);
+  }
+  std::fclose(f);
+  return bytes;
+}
+
+reloc::BoundPlan decodeAndBindWire(const char *path, int64_t n) {
+  std::vector<uint8_t> bytes = readFileBytes(path);
+  reloc::DecodeResult decoded = reloc::decodePlan(bytes.data(), bytes.size());
+  auto *plan = std::get_if<reloc::RelocationPlan>(&decoded);
+  if (!plan) {
+    const reloc::DecodeError &e = std::get<reloc::DecodeError>(decoded);
+    std::fprintf(stderr,
+                 "error: --plan-wire: decode failed at byte offset %zu: %s\n",
+                 e.offset, e.message.c_str());
+    std::exit(1);
+  }
+  reloc::BindResult bound = reloc::bind(*plan, {{"N", n}});
+  auto *b = std::get_if<reloc::BoundPlan>(&bound);
+  if (!b) {
+    const reloc::BindError &e = std::get<reloc::BindError>(bound);
+    std::fprintf(stderr, "error: --plan-wire: bind failed for N=%lld: %s\n",
+                 static_cast<long long>(n), e.message.c_str());
+    std::exit(1);
+  }
+  return *b;
+}
+
+// Synthetic T1b-shaped workload entry for the decoded+bound --plan-wire
+// plan. makePlan is never called: buildFixture takes the wire plan via its
+// boundOverride parameter instead (see run()). Not part of allWorkloads()
+// (it has no static plan builder), so it is special-cased in the
+// --transform parser rather than looked up by findWorkload.
+const Workload &wireWorkload() {
+  static const Workload w = {
+      "TW",       "blocked_transpose_wire",
+      "matrix",   DtypeOut::F32,
+      Wire::F32,  1.0,
+      nullptr,    CpuStage::GatherF32,
+      GpuStage::Relocate, RecvStage::None,
+      true};
+  return w;
 }
 
 const char *variantName(reloc::quant::Variant v) {
@@ -145,6 +212,10 @@ struct Options {
   const char *csvPath = "-";
   bool csvHeader = false;
   bool verify = true;
+  // Compiler-emitted plan row (title-gap closure): a corpus wire-format
+  // file, decoded + bound at --n and substituted for the TW workload's
+  // (nonexistent) makePlan. Only valid together with --transform TW.
+  const char *planWire = nullptr;
 };
 
 std::string defaultMachine() {
@@ -197,9 +268,10 @@ struct Fixture {
 };
 
 void buildFixture(Fixture &f, const Workload &w, int64_t n, bool needB,
-                  bool needBFair, bool verify) {
+                  bool needBFair, bool verify,
+                  const reloc::BoundPlan *boundOverride = nullptr) {
   f.w = &w;
-  f.bound = w.makePlan(n);
+  f.bound = boundOverride ? *boundOverride : w.makePlan(n);
   f.totalElems = n * n;
   f.inBytes = f.totalElems * 4;
   f.outBytes = f.totalElems * dtypeBytes(w.dtypeOut);
@@ -931,8 +1003,14 @@ int run(const Options &opt) {
   int rc = 0;
   for (const Workload *w : opt.workloads) {
     Fixture f;
+    reloc::BoundPlan wireBound;
+    const reloc::BoundPlan *boundOverride = nullptr;
+    if (opt.planWire) {
+      wireBound = decodeAndBindWire(opt.planWire, opt.n);
+      boundOverride = &wireBound;
+    }
     buildFixture(f, *w, opt.n, needB && w->methodB, needBFair && w->methodB,
-                 opt.verify);
+                 opt.verify, boundOverride);
     // Chunk requests past the artifact size all clamp to the same 1-chunk
     // plan; measuring the identical config again would only hand
     // figure1's best-chunk argmin duplicate samples. Dedup is per method:
@@ -1009,8 +1087,11 @@ int usage() {
       "  [--method both|all|a|b|bfair] [--n N] [--chunk-mib 4,16,64,256]\n"
       "  [--threads T] [--variant auto|scalar|avx2|avx512|avx512pf]\n"
       "  [--warmup W] [--iters I] [--machine NAME] [--csv PATH|-]\n"
-      "  [--csv-header] [--no-verify]\n"
-      "  N must be divisible by 64. Rows append to the CSV target.\n");
+      "  [--csv-header] [--no-verify] [--plan-wire PATH]\n"
+      "  N must be divisible by 64. Rows append to the CSV target.\n"
+      "  --plan-wire PATH decodes+binds a corpus wire-format plan (--n's N)\n"
+      "  in place of a hand-authored plans.h builder; valid only together\n"
+      "  with --transform TW (and no other transform in the same run).\n");
   return 2;
 }
 
@@ -1067,6 +1148,8 @@ int main(int argc, char **argv) {
       opt.csvHeader = true;
     else if (a == "--no-verify")
       opt.verify = false;
+    else if (a == "--plan-wire")
+      opt.planWire = next();
     else
       return usage();
   }
@@ -1087,6 +1170,13 @@ int main(int argc, char **argv) {
         opt.workloads.push_back(&w);
   } else {
     for (const std::string &id : splitCommas(transformArg)) {
+      // TW is the synthetic --plan-wire workload: not in allWorkloads()
+      // (no static plans.h builder), so it is special-cased here rather
+      // than looked up by findWorkload.
+      if (id == "TW") {
+        opt.workloads.push_back(&wireWorkload());
+        continue;
+      }
       const Workload *w = findWorkload(id);
       if (!w) {
         std::fprintf(stderr, "error: unknown transform %s\n", id.c_str());
@@ -1097,6 +1187,24 @@ int main(int argc, char **argv) {
   }
   if (opt.workloads.empty())
     return usage();
+
+  // --plan-wire <-> --transform TW is a bijective requirement: TW has no
+  // makePlan (buildFixture would dereference a null function pointer), and
+  // --plan-wire silently interacting with any other transform in the same
+  // sweep is exactly what issue #97's brief calls out to avoid.
+  const bool hasTW =
+      std::any_of(opt.workloads.begin(), opt.workloads.end(),
+                  [](const Workload *w) { return std::strcmp(w->id, "TW") == 0; });
+  if (opt.planWire && !(hasTW && opt.workloads.size() == 1)) {
+    std::fprintf(stderr,
+                 "error: --plan-wire is only valid with --transform TW "
+                 "(and no other transform)\n");
+    return usage();
+  }
+  if (hasTW && !opt.planWire) {
+    std::fprintf(stderr, "error: --transform TW requires --plan-wire PATH\n");
+    return usage();
+  }
 
   // Validate the requested SIMD variant against each workload's CPU kernel
   // (the quant_bw convention: fail fast, before any setup).
