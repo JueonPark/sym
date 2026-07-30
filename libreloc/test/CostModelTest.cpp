@@ -166,11 +166,18 @@ TEST(CostModelPathCosts, AffineFormsAndK) {
 
 using reloc::costmodel::decide;
 using reloc::costmodel::MethodDecision;
+using reloc::costmodel::methodName;
+
+TEST(CostModelDecide, MethodNameStrings) {
+  EXPECT_STREQ(methodName(MethodDecision::Method::A), "a");
+  EXPECT_STREQ(methodName(MethodDecision::Method::B), "b");
+  EXPECT_STREQ(methodName(MethodDecision::Method::APrefold), "a_prefold");
+}
 
 TEST(CostModelDecide, PicksWinnerAndThreshold) {
   CostModel m = mustParse(kSynth);
-  // Contiguous r=0.25: slopes A=0.05ms/MB? (see PathCosts test) -- A slope
-  // 5e-8 ms/B, B slope 1e-7 ms/B; intercepts A=0.5, B=0.1. Lines cross at
+  // Contiguous r=0.25 (see PathCosts test): A slope 5e-8 ms/B, B slope
+  // 1e-7 ms/B; intercepts A=0.5, B=0.1. Lines cross at
   // S* = (0.5-0.1)/(1e-7-5e-8) = 8e6 bytes. Below: B wins; above: A.
   auto small = decide(m, Pattern::Contiguous, 1 << 20, 0.25, 8);
   ASSERT_TRUE(small.has_value());
@@ -183,7 +190,11 @@ TEST(CostModelDecide, PicksWinnerAndThreshold) {
 }
 
 TEST(CostModelDecide, SizeIndependentDecisionHasNoThreshold) {
-  // Same slopes ordering as intercepts ordering -> no crossing.
+  // A's slope (2.5e-8 ms/B) and intercept (0.05) are both smaller than
+  // B's (1e-7 ms/B, 0.1): A wins at every S, including S=0, so the two
+  // lines' crossing point falls at a negative S -- there is no positive
+  // threshold, and decide() must clamp that to -1 rather than report a
+  // (physically meaningless) negative boundary.
   const char *cal = R"(# costmodel calibration v0
 pcie.h2d_gbps 10
 cpu.t8.contiguous.quantize_pack_gbps 40
@@ -213,6 +224,103 @@ TEST(CostModelDecide, PrefoldArmDelegatesToV4Rule) {
   EXPECT_NE(d1->method, MethodDecision::Method::APrefold);
 }
 
+TEST(CostModelDecide, PrefoldNeverReplacesFasterPlainA) {
+  // Issue #97 review (Critical): prefold must be an ADDITIONAL arm, not
+  // a silent replacement for plain A. In the DMA-bound r=1.0 regime,
+  // plain A's slope is max(cpu, dma) = dma, but prefold's slope is the
+  // additive dma + cpu/nReuse -- worse than plain A's max whenever
+  // cpu/nReuse doesn't fully collapse. prefoldWins alone (the fold-
+  // pays-for-itself gate) says yes here, yet adopting the fold anyway
+  // would make decide() return a strictly slower method than plain A.
+  const char *cal = R"(# costmodel calibration v0
+pcie.h2d_gbps 10
+cpu.t8.contiguous.contig_read_gbps 20
+hbm.bw_gbps 100
+hbm.m.contiguous 12
+overhead.a_ms 0.5
+overhead.b_ms 0.1
+)";
+  CostModel m = mustParse(cal);
+  const int64_t S = 1000000000;
+  auto plain = decide(m, Pattern::Contiguous, S, 1.0, 8);
+  ASSERT_TRUE(plain.has_value());
+  EXPECT_EQ(plain->method, MethodDecision::Method::A);
+  EXPECT_NEAR(plain->tAMs, 100.5, 1e-9);
+
+  // nReuse=2: prefoldWins(2, 50, 50, 0) is true (2*50 > 50), but the
+  // resulting arm (tAFold=125.5) is worse than plain A (100.5), so the
+  // fixed decide() must reject it and behave exactly as nReuse=-1 did.
+  auto d = decide(m, Pattern::Contiguous, S, 1.0, 8, /*K=*/1, /*nReuse=*/2);
+  ASSERT_TRUE(d.has_value());
+  EXPECT_EQ(d->method, MethodDecision::Method::A);
+  EXPECT_NEAR(d->tAMs, 100.5, 1e-9);
+  EXPECT_NEAR(d->thresholdBytes, plain->thresholdBytes, 1.0);
+  EXPECT_NEAR(d->thresholdBytes, 2e7, 1.0);
+}
+
+TEST(CostModelDecide, AllocMsGatesPrefoldAndScalesSlope) {
+  // Issue #97 review (Important, I2): prefold.alloc_ms_per_gib was
+  // untested and dead code could move it outside the /nReuse division
+  // without any test noticing. This pins both (a) that a large enough
+  // alloc cost flips prefoldWins off at a given nReuse, and (b) the
+  // exact numeric composition of the amortized slope when it's still
+  // adopted at a larger nReuse.
+  const char *cal = R"(# costmodel calibration v0
+pcie.h2d_gbps 10
+cpu.t8.contiguous.quantize_pack_gbps 10
+hbm.bw_gbps 1000
+hbm.m.contiguous 1
+overhead.a_ms 0
+overhead.b_ms 0
+prefold.alloc_ms_per_gib 8000
+)";
+  CostModel m = mustParse(cal);
+  const int64_t S = 1ll << 30; // exactly 1 GiB, so r*S/2^30 == r exactly
+  const double r = 0.25;
+  const double cpuSlope = 1e-6 / 10.0; // quantize_pack_gbps
+  const double tTransform = cpuSlope * static_cast<double>(S);
+  const double allocMsAt = 8000.0 * r; // key * (r*S/2^30)
+
+  // nReuse=16: 16*tTransform <= tTransform+allocMsAt -> gate is OFF.
+  ASSERT_LE(16.0 * tTransform, tTransform + allocMsAt) << "test setup";
+  auto off = decide(m, Pattern::Contiguous, S, r, 8, 1, 16);
+  ASSERT_TRUE(off.has_value());
+  EXPECT_NE(off->method, MethodDecision::Method::APrefold);
+
+  // nReuse=100: comfortably amortizes past the larger alloc cost too,
+  // so the gate is ON and it also beats plain A (dma-only slope plus a
+  // heavily-amortized cpu+alloc term is far below plain A's cpu-bound
+  // slope here).
+  ASSERT_GT(100.0 * tTransform, tTransform + allocMsAt) << "test setup";
+  auto on = decide(m, Pattern::Contiguous, S, r, 8, 1, 100);
+  ASSERT_TRUE(on.has_value());
+  EXPECT_EQ(on->method, MethodDecision::Method::APrefold);
+  const double dmaOnlySlope = r * 1e-6 / 10.0; // pcie.h2d_gbps
+  const double expectSlope =
+      dmaOnlySlope + (cpuSlope + allocMsAt / static_cast<double>(S)) / 100.0;
+  const double expectTA = expectSlope * static_cast<double>(S); // a_ms=0
+  EXPECT_NEAR(on->tAMs, expectTA, 1e-6);
+}
+
+TEST(CostModelDecide, BroadcastKAndPrefoldCombine) {
+  // Issue #97 review (Important, I3): the prefold branch must reuse the
+  // same delivery-BW lookup as pathCosts (deliveryGbps), not a hand-
+  // rebuilt key, and no prior test combined K>1 with nReuse. K=4
+  // broadcast: dmaOnlySlope = kMult*r*1e-6/bwDel(k4) = 4*0.25e-6/30 =
+  // 3.333e-8 ms/B; cpuSlope/nReuse = (1e-6/20)/16 = 3.125e-9 ms/B.
+  CostModel m = mustParse(kSynth);
+  const int64_t S = 1000000000;
+  auto d = decide(m, Pattern::Contiguous, S, 0.25, 8, /*K=*/4,
+                  /*nReuse=*/16, /*broadcast=*/true);
+  ASSERT_TRUE(d.has_value());
+  EXPECT_EQ(d->method, MethodDecision::Method::APrefold);
+  const double dmaOnlySlope = 4.0 * 0.25 * 1e-6 / 30.0; // multigpu.k4
+  const double cpuSlope = 1e-6 / 20.0;                  // contig r=0.25
+  const double expectSlope = dmaOnlySlope + cpuSlope / 16.0;
+  const double expectTA = 0.5 + expectSlope * static_cast<double>(S);
+  EXPECT_NEAR(d->tAMs, expectTA, 1e-9);
+}
+
 TEST(CostModelDecide, ThresholdAgreesWithBruteForce) {
   // Issue #97 acceptance: threshold precompute vs brute-force agreement.
   CostModel m = mustParse(kSynth);
@@ -222,10 +330,16 @@ TEST(CostModelDecide, ThresholdAgreesWithBruteForce) {
       if (!probe.has_value())
         continue;
       const double thr = probe->thresholdBytes;
-      // Brute-force every S against the direct tAMs/tBMs comparison, and
-      // separately confirm the stored boundary is the *only* place the
-      // method flips across the whole scanned range.
+      // Brute-force every S against the direct tAMs/tBMs comparison,
+      // and separately confirm (a) the stored boundary is the *only*
+      // place the method flips across the whole scanned range, and (b)
+      // it actually *localizes* that flip -- it must fall inside the
+      // bracket [Sprev, S] straddling the transition, not just exist
+      // somewhere. (b) is what catches a threshold scaled by an
+      // arbitrary factor: that still flips exactly once, but lands
+      // outside the narrow power-of-2 bracket.
       MethodDecision::Method prevMethod = MethodDecision::Method::B;
+      int64_t prevS = 0;
       bool havePrev = false;
       int flips = 0;
       for (int64_t S = 1 << 12; S <= (1ll << 34); S <<= 1) {
@@ -235,9 +349,16 @@ TEST(CostModelDecide, ThresholdAgreesWithBruteForce) {
         ASSERT_TRUE(pc.has_value());
         EXPECT_EQ(d->method == MethodDecision::Method::A, pc->tAMs <= pc->tBMs)
             << patternName(p) << " r=" << r << " S=" << S;
-        if (havePrev && d->method != prevMethod)
+        if (havePrev && d->method != prevMethod) {
           ++flips;
+          EXPECT_LE(static_cast<double>(prevS), thr)
+              << patternName(p) << " r=" << r << " prevS=" << prevS
+              << " thr=" << thr;
+          EXPECT_LE(thr, static_cast<double>(S))
+              << patternName(p) << " r=" << r << " S=" << S << " thr=" << thr;
+        }
         prevMethod = d->method;
+        prevS = S;
         havePrev = true;
       }
       EXPECT_EQ(flips, thr > 0 ? 1 : 0)

@@ -220,37 +220,64 @@ std::optional<MethodDecision> decide(const CostModel &m, Pattern p,
   d.k = K;
   d.nReuse = nReuse;
 
-  // Active A-arm: plain A unless nReuse enables the prefold arm and the
-  // V4 rule (prefoldWins) says the fold pays for itself. This never
-  // reimplements that rule -- it only supplies the per-load numbers.
-  double aInt = pc->aInterceptMs;
-  double aSlope = pc->aSlopeMsPerByte;
+  // Plain A is always a candidate arm.
+  const double aIntPlain = pc->aInterceptMs;
+  const double aSlopePlain = pc->aSlopeMsPerByte;
+  const double tAPlain =
+      aIntPlain + aSlopePlain * static_cast<double>(srcBytes);
+
+  // Prefold is an ADDITIONAL arm, never a silent replacement for plain
+  // A: when A is DMA-bound (aSlopePlain picked the dma side of its
+  // max(cpu, dma)), prefold's additive per-load slope (dma + cpu /
+  // nReuse) can be *worse* than plain A's pipelined max, even though
+  // prefoldWins (the fold-pays-for-itself gate) says the fold is worth
+  // taking on its own terms. So prefoldWins alone cannot select the
+  // arm: it must also beat plain A at the bound S being decided here.
+  double aSlope = aSlopePlain;
+  double tA = tAPlain;
   bool prefold = false;
   if (nReuse >= 1) {
-    // Every m.at()/cpuBw() below asks only for keys pathCosts already
-    // required to succeed above, so they cannot be missing here.
-    const double cpuSlope = 1e-6 / *cpuBw(m, p, r, threads); // ms/src byte
-    const double kMult = broadcast ? static_cast<double>(K) : 1.0;
-    const double bwDel =
-        K <= 1 ? m.at("pcie.h2d_gbps")
-               : m.at("multigpu.delivery_gbps.k" + std::to_string(K));
-    const double dmaOnlySlope = kMult * r * 1e-6 / bwDel; // ms/src byte
-    const double tTransform = cpuSlope * static_cast<double>(srcBytes);
-    const double allocMs = m.get("prefold.alloc_ms_per_gib", 0.0) *
-                           (r * static_cast<double>(srcBytes) / (1ll << 30));
-    if (reloc::prefold::prefoldWins(nReuse, tTransform, tTransform + allocMs,
-                                    0.0)) {
-      prefold = true;
-      aInt = m.get("overhead.a_ms", 0.0);
-      // Per-load slope: DMA is paid every load; the CPU pass and the
-      // fold's staging allocation are amortized over nReuse loads.
-      aSlope =
-          dmaOnlySlope + (cpuSlope + allocMs / static_cast<double>(srcBytes)) /
-                             static_cast<double>(nReuse);
+    // pathCosts already required cpuBw(m, p, r, threads) and the K
+    // delivery-BW key (via the same deliveryGbps helper it uses) to
+    // succeed above, so both are guaranteed present; still checked
+    // defensively rather than dereferencing blindly.
+    auto bwCpuOpt = cpuBw(m, p, r, threads);
+    auto bwDelOpt = deliveryGbps(m, K);
+    if (bwCpuOpt && bwDelOpt) {
+      const double cpuSlope = 1e-6 / *bwCpuOpt; // ms per source byte
+      const double kMult = broadcast ? static_cast<double>(K) : 1.0;
+      const double dmaOnlySlope = kMult * r * 1e-6 / *bwDelOpt;
+      const double tTransform = cpuSlope * static_cast<double>(srcBytes);
+      // allocMs is strictly linear in S with no constant term -- that
+      // is what keeps the single-boundary threshold model below valid:
+      // prefoldWins' activation (gated on nReuse/tTransform/allocMs)
+      // can then never flip as S sweeps, only the arm-vs-B crossing
+      // point can move. A constant term in the alloc cost would need a
+      // second boundary to represent correctly.
+      const double allocMs = m.get("prefold.alloc_ms_per_gib", 0.0) *
+                             (r * static_cast<double>(srcBytes) / (1ll << 30));
+      if (reloc::prefold::prefoldWins(nReuse, tTransform, tTransform + allocMs,
+                                      0.0)) {
+        // Per-load slope: DMA is paid every load; the CPU pass and the
+        // fold's staging allocation are amortized over nReuse loads.
+        // The intercept is unchanged from plain A -- prefolding only
+        // changes the per-byte slope, not the fixed per-call setup
+        // overhead -- so there is nothing to re-read from `m` here.
+        const double aSlopeFold =
+            dmaOnlySlope +
+            (cpuSlope + allocMs / static_cast<double>(srcBytes)) /
+                static_cast<double>(nReuse);
+        const double tAFold =
+            aIntPlain + aSlopeFold * static_cast<double>(srcBytes);
+        if (tAFold < tAPlain) {
+          prefold = true;
+          aSlope = aSlopeFold;
+          tA = tAFold;
+        }
+      }
     }
   }
 
-  const double tA = aInt + aSlope * srcBytes;
   const double tB = pc->tBMs;
   d.tAMs = tA;
   d.tBMs = tB;
@@ -258,13 +285,15 @@ std::optional<MethodDecision> decide(const CostModel &m, Pattern p,
                                  : MethodDecision::Method::A)
                       : MethodDecision::Method::B;
 
-  // Single-symbol threshold precompute: both active arms are affine in
-  // S, so their crossing point is the boundary bind() can compare S
-  // against directly later. No real crossing (parallel slopes, or the
-  // crossing falls at S <= 0) means the decision never flips with S.
+  // Single-symbol threshold precompute: the active A-side arm (plain or
+  // prefold, whichever was adopted at this bound S above) and B are
+  // both affine in S, so their crossing point is the boundary bind()
+  // can compare S against directly later. No real crossing (parallel
+  // slopes, or the crossing falls at S <= 0) means the decision never
+  // flips with S.
   const double dSlope = aSlope - pc->bSlopeMsPerByte;
   if (dSlope != 0.0) {
-    const double sStar = (pc->bInterceptMs - aInt) / dSlope;
+    const double sStar = (pc->bInterceptMs - aIntPlain) / dSlope;
     d.thresholdBytes = sStar > 0 ? sStar : -1;
   }
   return d;
