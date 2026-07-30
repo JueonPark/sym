@@ -1,0 +1,8 @@
+{
+  "config": {"benchmark": "poc_transpose", "plan": "reference", "N": 32768, "dtype": "f32", "bytes": 4294967296, "n_buffers": 2, "n_streams": 2, "chunk_bytes": 67108864, "warmup": 10, "iters": 50, "reruns": 3, "gpu": "NVIDIA GeForce RTX 4070 Ti SUPER", "verified": true},
+  "methods": {
+    "ours_pipeline_2buf_2stream": {"wall_ms": {"reruns": [{"median": 419.377, "q1": 399.686, "q3": 428.598, "iqr": 28.911, "n": 50}, {"median": 393.789, "q1": 386.832, "q3": 402.623, "iqr": 15.7909, "n": 50}, {"median": 392.566, "q1": 388.778, "q3": 396.405, "iqr": 7.62774, "n": 50}], "median_spread_pct": 6.82962}},
+    "baseline_pinned_memcpy_naive_kernel": {"wall_ms": {"reruns": [{"median": 188.473, "q1": 187.978, "q3": 188.63, "iqr": 0.651329, "n": 50}, {"median": 188.523, "q1": 188.327, "q3": 188.631, "iqr": 0.304922, "n": 50}, {"median": 188.514, "q1": 188.272, "q3": 188.628, "iqr": 0.356184, "n": 50}], "median_spread_pct": 0.0268429}, "gpu_ms": {"reruns": [{"median": 171.223, "q1": 170.804, "q3": 171.36, "iqr": 0.556541, "n": 50}, {"median": 171.278, "q1": 171.12, "q3": 171.383, "iqr": 0.262089, "n": 50}, {"median": 171.277, "q1": 171.074, "q3": 171.372, "iqr": 0.298843, "n": 50}], "median_spread_pct": 0.0322601}}
+  },
+  "speedup_wall_median": 0.478718
+}
