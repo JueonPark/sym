@@ -123,12 +123,16 @@ MethodDecision decide(const PlanParams &, const CostModel &, int K = 1,
                       int64_t nReuse = -1);
 ```
 
-**Threshold precompute (single free symbol)**: both cost forms are
-piecewise-linear in `S` with breakpoints where the min/max arms switch;
-solve for the crossover `S*` analytically over the pieces →
-`thresholdBytes`. `bind` then only compares `totalBytes` against the
-stored threshold (the compile-time story, made real for every plan in
-the tree — all have one symbol). Plans with ≥2 free symbols:
+**Threshold precompute (single free symbol)**: both cost forms are affine
+in `S` with no `S`-dependent min/max arm switches, so the crossover is
+degenerate (always-A or always-B) unless the model carries per-transfer
+fixed costs; the calibration therefore includes `overhead.a_ms` /
+`overhead.b_ms` intercepts (two-point fits over committed N=2048 vs
+N=16384-class medians — see the implementation plan's header note,
+`docs/superpowers/plans/2026-07-29-v3-costmodel.md`), and `thresholdBytes`
+is the argmin-boundary of the resulting affine cost lines. `bind` then
+only compares `totalBytes` against the stored threshold (the compile-time
+story, made real for every plan in the tree — all have one symbol). Plans with ≥2 free symbols:
 evaluate-at-bind fallback (`decide()` at the bound values — still
 microseconds). Piecewise-linear multi-symbol *regions* are explicitly
 deferred (YAGNI: no such plan exists; note kept in this spec).
