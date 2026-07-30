@@ -1,0 +1,196 @@
+#!/usr/bin/env python3
+"""V3 pre-registered prediction gate (issue #97): evaluate the calibrated
+cost model's predictions against every committed measured cell. Bars are
+FIXED here, BEFORE any prediction run happens against data -- this file is
+committed standalone first; `libreloc/python/tests/test_prediction.py`
+only runs afterward, producing the report this reads. Structure mirrors
+`bench/rtrack/exp4v_gate.py`.
+
+  MISCLASS_BAR = 0.15    winner misclassification rate over all
+                         modelable single-GPU (a vs b_fair) and multi-GPU
+                         (a vs bxk) cells
+  RSTAR_ABS_BAR = 0.15   |r*_pred - r*_meas|, families where BOTH a
+                         measured and a predicted r* exist (both-none is
+                         reported separately as a correct "no crossing"
+                         outcome; it does not enter this bar)
+  REGRET_P90_BAR = 0.20  p90 of regret = (T_chosen - T_oracle)/T_oracle
+                         over all modelable cells, T_chosen = the measured
+                         time of whichever method the model picked
+
+Also runs a CALIBRATION-REGEN check (Task-6 review addendum): re-invokes
+bench/rtrack/make_calibration.py for both machines to temp paths and diffs
+the output against the committed calibration/*.cal files, so the
+committed numbers stay honest.
+
+Exit code is always 0 -- this prints verdicts, it does not gate CI.
+Whatever the bars say IS the result; misses are reported and explained
+(Task 9's doc), never refit.
+
+  python3 bench/rtrack/v3_gate.py --report bench/results/v3_prediction_report.json
+"""
+import argparse
+import json
+import math
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+MISCLASS_BAR = 0.15
+RSTAR_ABS_BAR = 0.15
+REGRET_P90_BAR = 0.20
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+CALIBRATIONS = {
+    "epyc7351-2080ti": REPO_ROOT / "calibration" / "epyc7351-2080ti.cal",
+    "7800x3d-4070tis": REPO_ROOT / "calibration" / "7800x3d-4070tis.cal",
+}
+
+
+def load_report(path):
+    with open(path) as f:
+        return json.load(f)
+
+
+def percentile(vals, p):
+    """Nearest-rank percentile over an ascending-sorted list; None if
+    empty (mirrors the same helper in test_prediction.py)."""
+    if not vals:
+        return None
+    s = sorted(vals)
+    k = max(0, min(len(s) - 1, math.ceil(p * len(s)) - 1))
+    return s[k]
+
+
+def gate_misclass(report):
+    cells = [c for c in report["cells"] if c["modelable"]]
+    n = len(cells)
+    miss = [c for c in cells if c["winner_predicted"] != c["winner_measured"]]
+    rate = len(miss) / n if n else 0.0
+    verdict = "PASS" if (n and rate <= MISCLASS_BAR) else (
+        "no data" if not n else "FAIL")
+    print(f"V3-MISCLASS: {len(miss)}/{n} = {rate:.3f}  "
+          f"(bar <= {MISCLASS_BAR})  {verdict}")
+    if miss:
+        print("\n| cell_id | machine | family | winner_meas | winner_pred "
+              "| t_a_meas | t_b_meas | t_a_pred | t_b_pred |")
+        print("|---" * 9 + "|")
+        for c in miss:
+            print(f"| {c['cell_id']} | {c['machine']} | {c['family']} | "
+                  f"{c['winner_measured']} | {c['winner_predicted']} | "
+                  f"{c['t_a_meas']:.4f} | {c['t_b_meas']:.4f} | "
+                  f"{c['t_a_pred']:.4f} | {c['t_b_pred']:.4f} |")
+    return rate, verdict
+
+
+def gate_rstar(report):
+    rows = report.get("rstar", [])
+    both = [r for r in rows if r.get("agreement") == "both_exist"]
+    no_crossing = [r for r in rows if r.get("agreement") == "both_no_crossing"]
+    mismatched = [r for r in rows if r.get("agreement") == "mismatch_one_sided"]
+    diffs = [r["abs_diff"] for r in both]
+    worst = max(diffs) if diffs else None
+    verdict = "PASS" if (worst is not None and worst <= RSTAR_ABS_BAR) else (
+        "no data" if worst is None else "FAIL")
+    print(f"\nV3-RSTAR: max |r*_pred - r*_meas| over {len(both)} "
+          f"both-exist families = "
+          f"{'--' if worst is None else f'{worst:.4f}'} "
+          f"(bar <= {RSTAR_ABS_BAR})  {verdict}")
+    print(f"  (+ {len(no_crossing)} family/box pairs agree on 'no crossing' "
+          "-- correct winner-shaped outcome, not counted in the bar above; "
+          f"{len(mismatched)} one-sided mismatches)")
+    print("\n| family | machine | source | r*_meas | r*_pred | agreement |")
+    print("|---" * 6 + "|")
+    for r in rows:
+        meas = "--" if r["rstar_measured"] is None else f"{r['rstar_measured']:.4f}"
+        pred = "--" if r["rstar_predicted"] is None else f"{r['rstar_predicted']:.4f}"
+        agreement = r.get("agreement", "unmodelable")
+        print(f"| {r['family']} | {r['machine']} | {r['source']} | {meas} "
+              f"| {pred} | {agreement} |")
+    return worst, verdict
+
+
+def gate_regret(report):
+    cells = [c for c in report["cells"] if c["modelable"]]
+    regrets = sorted(c["regret"] for c in cells)
+    p90 = percentile(regrets, 0.90)
+    verdict = "PASS" if (p90 is not None and p90 <= REGRET_P90_BAR) else (
+        "no data" if p90 is None else "FAIL")
+    print(f"\nV3-REGRET-P90: {'--' if p90 is None else f'{p90:.4f}'}  "
+          f"(bar <= {REGRET_P90_BAR})  {verdict}")
+    return p90, verdict
+
+
+def print_ablation(report):
+    a = report.get("ablation", {})
+    print("\n| policy | mean regret |")
+    print("|---|---|")
+    for label, key in (("model", "model_mean_regret"),
+                       ("always-A", "always_a_mean_regret"),
+                       ("always-B", "always_b_mean_regret")):
+        v = a.get(key)
+        print(f"| {label} | {'--' if v is None else f'{v:.4f}'} |")
+    print(f"(n={a.get('n_cells', 0)} modelable winner-vs-winner cells)")
+
+
+def print_unmodelable(report):
+    cells = [c for c in report["cells"] if not c["modelable"]]
+    print(f"\nUnmodelable cells (missing calibration keys): {len(cells)}")
+    for c in cells:
+        print(f"  {c['cell_id']}")
+    rstar_unmod = [r for r in report.get("rstar", []) if not r.get("modelable")]
+    if rstar_unmod:
+        print(f"Unmodelable r* families: {len(rstar_unmod)}")
+        for r in rstar_unmod:
+            print(f"  {r['family']} ({r['source']})")
+
+
+def calibration_regen_check():
+    print("\n=== CALIBRATION-REGEN ===")
+    with tempfile.TemporaryDirectory() as td:
+        for machine, committed in sorted(CALIBRATIONS.items()):
+            out = Path(td) / f"{machine}.cal"
+            proc = subprocess.run(
+                [sys.executable, "bench/rtrack/make_calibration.py",
+                 "--machine", machine, "--out", str(out)],
+                cwd=REPO_ROOT, capture_output=True, text=True)
+            if proc.returncode != 0:
+                print(f"CALIBRATION-REGEN {machine}: FAIL (regen errored)\n"
+                      f"{proc.stderr.strip()}")
+                continue
+            regen_text = out.read_text()
+            committed_text = committed.read_text()
+            if regen_text == committed_text:
+                print(f"CALIBRATION-REGEN {machine}: PASS "
+                      f"(matches committed {committed.relative_to(REPO_ROOT)})")
+            else:
+                regen_lines = regen_text.splitlines()
+                committed_lines = committed_text.splitlines()
+                first_diff = next(
+                    (i for i, (a, b) in enumerate(
+                        zip(regen_lines, committed_lines)) if a != b),
+                    min(len(regen_lines), len(committed_lines)))
+                print(f"CALIBRATION-REGEN {machine}: FAIL (diverges from "
+                      f"{committed.relative_to(REPO_ROOT)} at line "
+                      f"{first_diff + 1})")
+
+
+def main():
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--report", required=True)
+    args = ap.parse_args()
+    report = load_report(args.report)
+
+    gate_misclass(report)
+    gate_rstar(report)
+    gate_regret(report)
+    print_ablation(report)
+    print_unmodelable(report)
+    calibration_regen_check()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
