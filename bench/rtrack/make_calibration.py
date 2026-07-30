@@ -42,10 +42,26 @@ SOURCES per machine (frozen provenance -- see task-6 brief / design doc
     (per-plan files carrying ALL kernels; identity/blocked/transpose/nchw
     -> contiguous/blocked/single_element/tiled; pack_s8_s4 measured
     directly per-plan here, no reuse needed for it), and
-    bench/results/v1_gen4_matrix_nsweep_rerun_7800x3d_4070tis.csv for
-    overheads. No multigpu or HBM sweep exists on this box: hbm.bw_gbps
-    and hbm.m.* are PROXIED from the 2080 Ti computation with an explicit
-    note; multigpu.*, hiding.ratio and prefold.* are omitted outright.
+    bench/results/v1_gen4_matrix_nsweep_7800x3d_4070tis.csv (224-row
+    original) MERGED with its
+    bench/results/v1_gen4_matrix_nsweep_rerun_7800x3d_4070tis.csv
+    companion for overheads. No multigpu or HBM sweep exists on this box:
+    hbm.bw_gbps and hbm.m.* are PROXIED from the 2080 Ti computation with
+    an explicit note; multigpu.*, hiding.ratio and prefold.* are omitted
+    outright.
+
+    Fix-report addenda (post-review, see task-6-report.md "Fix report"):
+    - Gen4 rooflines are pinned at N=8192 for BOTH t1 and t8 (not
+      "largest N wins"): only t8 has N=16384 files, so the old rule
+      compared t1@8192 against t8@16384 and produced a V-cache-residency
+      inversion (t1 pack_s8_s4 35.0 > t8's 26.5) that is an artifact of
+      the N mismatch, not a real T1-vs-T8 effect. N=8192 exists for every
+      plan at both thread counts, so it is used uniformly.
+    - Gen4 overhead.{a,b}_ms fit over the MERGED original+rerun T3 quant
+      rows (stabler-of-the-two-files best-chunk per (method, N), per the
+      pre-declared rule in docs/r2-exp2-gen4-crossover.md:48-58), across
+      the full N span the original file covers (2048..16384) -- not just
+      the rerun file's partial 2048/4096 span used previously.
 
   NOTE on pack_s8_s4 provenance (inspected, not assumed): the only
   pack_s8_s4 measurement committed outside r2_rooflines is
@@ -74,6 +90,8 @@ import sys
 from pathlib import Path
 
 RESULTS = "bench/results"
+ENCODING = "utf-8"  # explicit: em-dashes in header/comments crash under
+                    # a plain-C locale's default open() encoding otherwise.
 
 # ---------------------------------------------------------------- helpers --
 
@@ -81,7 +99,7 @@ def must_read_text(path):
     p = Path(path)
     if not p.exists():
         sys.exit(f"error: missing required source file: {path}")
-    return p.read_text()
+    return p.read_text(encoding=ENCODING)
 
 
 def must_read_json(path):
@@ -92,12 +110,33 @@ def read_json_optional(path):
     p = Path(path)
     if not p.exists():
         return None
-    return json.loads(p.read_text())
+    return json.loads(p.read_text(encoding=ENCODING))
 
 
-def load_csv_rows(path):
+def load_csv_rows(path, machine):
+    """Load non-comment CSV rows and assert every row's `machine` column
+    matches --machine (M5): a source file mismatched to the wrong box
+    would silently miscalibrate it."""
     text = must_read_text(path)
-    return list(csv.DictReader(l for l in text.splitlines() if not l.startswith("#")))
+    rows = list(csv.DictReader(l for l in text.splitlines() if not l.startswith("#")))
+    bad = {r.get("machine") for r in rows} - {machine}
+    if bad:
+        sys.exit(f"error: {path} has machine column value(s) {sorted(bad)}, "
+                 f"expected only {machine!r}")
+    return rows
+
+
+def must_read_gate_report(path, machine):
+    """Parse a `v1*_gate_report.txt`: assert its `=== <slug> ===` line
+    matches --machine (M5), then return the pinned H2D GB/s figure."""
+    text = must_read_text(path)
+    slug_m = re.search(r"^=== (\S+) ===\s*$", text, re.MULTILINE)
+    if not slug_m:
+        sys.exit(f"error: could not find '=== <machine> ===' line in {path}")
+    if slug_m.group(1) != machine:
+        sys.exit(f"error: {path} is for machine {slug_m.group(1)!r}, "
+                 f"expected {machine!r}")
+    return parse_pinned_h2d(text, path)
 
 
 def fmt_num(x):
@@ -160,7 +199,7 @@ def build_epyc(e):
 
     # pcie.h2d_gbps <- V1 admissible anchor.
     gate_path = f"{RESULTS}/v1_gate_report.txt"
-    h2d = parse_pinned_h2d(must_read_text(gate_path), gate_path)
+    h2d = must_read_gate_report(gate_path, e.machine)
     e.emit("pcie.h2d_gbps", h2d, gate_path)
 
     # contiguous-pattern kernels: files without a plan tag.
@@ -243,13 +282,18 @@ def build_epyc(e):
     if not reuse_k1:
         sys.exit(f"error: no mode=reuse, K=1 rows in {v4_path}")
     row = reuse_k1[0]
-    r_times_s_bytes = 64 * 2 ** 20  # r*S at K=1: N=8192, r=0.25 -> 64 MiB
+    n_v4 = v4["config"]["N"]
+    v4_r = 0.25  # quantize scatter's dtype ratio (K=1 reuse rows); not in
+                 # the JSON's config, so named here rather than folded into
+                 # a bare byte constant (M2: r*S derives from config.N).
+    r_times_s_bytes = v4_r * source_bytes(n_v4)
     r_times_s_gib = r_times_s_bytes / 2 ** 30
     alloc_ms_per_gib = (row["t_prefold_cold_ms"] - row["t_transform_ms"]) \
         / r_times_s_gib
     e.emit("prefold.alloc_ms_per_gib", round(alloc_ms_per_gib, 2), v4_path,
-           note="(t_prefold_cold_ms-t_transform_ms)/(r*S GiB), reuse rows, "
-                "K=1, r*S=64 MiB")
+           note=f"(t_prefold_cold_ms-t_transform_ms)/(r*S GiB), reuse rows, "
+                f"K=1, r*S = {v4_r}*config.N^2*4 (N={n_v4}) = "
+                f"{r_times_s_bytes / 2**20:g} MiB")
 
     # Overhead intercepts.
     nsweep_path = f"{RESULTS}/v1_gen3_nsweep_epyc_2080ti.csv"
@@ -265,46 +309,58 @@ def build_gen4(e):
     r2 = f"{RESULTS}/r2_rooflines"
 
     gate_path = f"{RESULTS}/v1_gen4_gate_report.txt"
-    h2d = parse_pinned_h2d(must_read_text(gate_path), gate_path)
+    h2d = must_read_gate_report(gate_path, e.machine)
     e.emit("pcie.h2d_gbps", h2d, gate_path)
 
     PLAN_TO_PATTERN = {"identity": "contiguous", **GATHER_PLAN_TO_PATTERN}
-    KERNELS_BY_PATTERN = {
-        "contiguous": ("contig_read", "quantize_pack", "convert_f32_f16",
-                       "pack_s8_s4"),
-        "blocked": ("gather_f32", "gather_quantize"),
-        "single_element": ("gather_f32", "gather_quantize"),
-        "tiled": ("gather_f32", "gather_quantize"),
-    }
 
-    contig_val = {t: {} for t in THREADS}
+    # I2 fix: pin N=8192 uniformly across every plan and BOTH thread
+    # counts, rather than "largest N wins" (only t8 has N=16384 files;
+    # comparing t1@8192 vs t8@16384 produced a spurious V-cache-residency
+    # inversion). N=8192 exists for all four plans at both t1 and t8.
+    GEN4_ROOFLINE_N = 8192
+    n_pin_note = (f"N pinned at {GEN4_ROOFLINE_N} across all plans/threads "
+                  "(I2 fix: avoids a t1-vs-t8 N mismatch/V-cache-residency "
+                  "inversion; matches epyc's single-N r1 rooflines)")
+
     plan_files = {}  # (plan, t) -> (path, doc)
     for plan_tag in PLAN_TO_PATTERN:
         for t in THREADS:
-            candidates = sorted(
-                Path(r2).glob(f"{plan_tag}_n*_t{t}.json"),
-                key=lambda p: must_read_json(p)["config"]["N"])
-            if not candidates:
-                continue
-            path = candidates[-1]  # largest N wins
-            plan_files[(plan_tag, t)] = (str(path), must_read_json(path))
+            path = f"{r2}/{plan_tag}_n{GEN4_ROOFLINE_N}_t{t}.json"
+            if not Path(path).exists():
+                sys.exit(f"error: missing required gen4 roofline source "
+                         f"(pinned N={GEN4_ROOFLINE_N}): {path}")
+            plan_files[(plan_tag, t)] = (path, must_read_json(path))
 
+    def pf(plan_tag, t):
+        """Guarded plan_files accessor (M4): a clear error instead of a
+        bare KeyError if a (plan, threads) cell was never populated."""
+        key = (plan_tag, t)
+        if key not in plan_files:
+            sys.exit(f"error: no roofline source loaded for plan={plan_tag!r} "
+                     f"threads={t} (expected {r2}/{plan_tag}_n"
+                     f"{GEN4_ROOFLINE_N}_t{t}.json)")
+        return plan_files[key]
+
+    contig_val = {t: {} for t in THREADS}
     for t in THREADS:
-        path, doc = plan_files[("identity", t)]
+        path, doc = pf("identity", t)
         for kernel in ("contig_read", "quantize_pack", "convert_f32_f16",
                        "pack_s8_s4"):
             val = doc["kernels"][kernel]["in_gb_per_s"]
-            e.emit(f"cpu.t{t}.contiguous.{kernel}_gbps", val, path)
+            e.emit(f"cpu.t{t}.contiguous.{kernel}_gbps", val, path,
+                   note=n_pin_note)
             contig_val[t][kernel] = val
 
     for plan_tag, pattern in GATHER_PLAN_TO_PATTERN.items():
         for t in THREADS:
-            path, doc = plan_files[(plan_tag, t)]
+            path, doc = pf(plan_tag, t)
             for kernel in ("gather_f32", "gather_quantize"):
                 val = doc["kernels"][kernel]["in_gb_per_s"]
-                e.emit(f"cpu.t{t}.{pattern}.{kernel}_gbps", val, path)
+                e.emit(f"cpu.t{t}.{pattern}.{kernel}_gbps", val, path,
+                       note=n_pin_note)
         for t in THREADS:
-            src_path, _ = plan_files[("identity", t)]
+            src_path, _ = pf("identity", t)
             e.emit(f"cpu.t{t}.{pattern}.convert_f32_f16_gbps",
                    contig_val[t]["convert_f32_f16"], src_path,
                    note="second pass is contiguous by construction")
@@ -336,42 +392,99 @@ def build_gen4(e):
            note=proxy_note)
     # multigpu.*, hiding.ratio, prefold.*: no Gen4 data -- omitted.
 
-    nsweep_path = (f"{RESULTS}/v1_gen4_matrix_nsweep_rerun_7800x3d_4070tis"
-                   ".csv")
-    fit_overheads(e, nsweep_path)
+    nsweep_path = f"{RESULTS}/v1_gen4_matrix_nsweep_7800x3d_4070tis.csv"
+    nsweep_rerun_path = (f"{RESULTS}/v1_gen4_matrix_nsweep_rerun_"
+                         "7800x3d_4070tis.csv")
+    fit_overheads(e, nsweep_path, rerun_path=nsweep_rerun_path)
 
     emit_strategy_defaults(e)
 
 
 # --------------------------------------------------------- shared pieces --
 
-def fit_overheads(e, csv_path):
-    """overhead.{a,b}_ms: intercept of a two-point affine fit (in source
-    bytes S) over the T3 (transform=='quant') rows, best chunk per
-    (method, N), at this file's min and max N; clamp >= 0."""
-    rows = load_csv_rows(csv_path)
-    rows = [r for r in rows
+def source_bytes(n, elem_bytes=4):
+    """Total f32-source byte count for an NxN transform: S = N^2 * 4."""
+    return n * n * elem_bytes
+
+
+def _quant_rows(csv_path, machine):
+    rows = load_csv_rows(csv_path, machine)
+    return [r for r in rows
             if r["transform"] == "quant"
             and (r.get("variant") or "matrix") == "matrix"]
-    if not rows:
+
+
+def _best_chunk(rows, method, n):
+    cand = [r for r in rows if r["method"] == method and int(r["N"]) == n]
+    if not cand:
+        return None
+    return min(cand, key=lambda r: float(r["median_ms"]))
+
+
+def _merged_endpoint(orig_rows, rerun_rows, method, n):
+    """The (row, which_file) for (method, N): the stabler (lower IQR) of
+    the original and rerun files' independently-recomputed best-chunk
+    rows, per the pre-declared merge rule in
+    docs/r2-exp2-gen4-crossover.md:48-58. Falls back to whichever file
+    actually has rows for this point."""
+    o = _best_chunk(orig_rows, method, n)
+    r = _best_chunk(rerun_rows, method, n) if rerun_rows is not None else None
+    if o is None and r is None:
+        return None
+    if o is None:
+        return r, "rerun"
+    if r is None:
+        return o, "original"
+    o_iqr = float(o["iqr_over_median_pct"])
+    r_iqr = float(r["iqr_over_median_pct"])
+    return (r, "rerun") if r_iqr < o_iqr else (o, "original")
+
+
+def fit_overheads(e, csv_path, rerun_path=None):
+    """overhead.{a,b}_ms: intercept of a two-point affine fit (in source
+    bytes S) over the T3 (transform=='quant') rows, best chunk per
+    (method, N), at the min and max N present; clamp >= 0.
+
+    When `rerun_path` is given (I1 fix, gen4 only), the best-chunk row
+    per (method, N) is the stabler (lower IQR) of the two files'
+    independently-recomputed best-chunk rows -- the merge rule
+    pre-declared in docs/r2-exp2-gen4-crossover.md:48-58 -- and the N
+    span is the union of both files' N values (so the endpoints reach
+    whatever the ORIGINAL file's full sweep covers, not just the
+    (possibly partial) rerun file's span)."""
+    orig_rows = _quant_rows(csv_path, e.machine)
+    if not orig_rows:
         sys.exit(f"error: no transform=quant rows in {csv_path}")
-    ns = sorted({int(r["N"]) for r in rows})
+    rerun_rows = _quant_rows(rerun_path, e.machine) if rerun_path else None
+
+    all_rows = orig_rows + (rerun_rows or [])
+    ns = sorted({int(r["N"]) for r in all_rows})
     n_lo, n_hi = ns[0], ns[-1]
+
     for method, key in (("a", "overhead.a_ms"), ("b_fair", "overhead.b_ms")):
-        points = []
+        points, which = [], []
         for n in (n_lo, n_hi):
-            cand = [r for r in rows
-                    if r["method"] == method and int(r["N"]) == n]
-            if not cand:
+            result = _merged_endpoint(orig_rows, rerun_rows, method, n)
+            if result is None:
                 sys.exit(f"error: no method={method} N={n} rows in "
-                         f"{csv_path}")
-            best = min(cand, key=lambda r: float(r["median_ms"]))
-            points.append((n * n * 4, float(best["median_ms"])))
+                         f"{csv_path}" + (f" or {rerun_path}" if rerun_path
+                                          else ""))
+            row, src = result
+            points.append((source_bytes(n), float(row["median_ms"])))
+            which.append(src)
         (s1, t1), (s2, t2) = points
         slope = (t2 - t1) / (s2 - s1)
         intercept = max(0.0, t1 - slope * s1)
-        e.emit(key, round(intercept, 4), csv_path,
-               note=f"two-point fit, T3 quant, best chunk, N={n_lo},{n_hi}")
+        if rerun_path is None:
+            source = csv_path
+            note = f"two-point fit, T3 quant, best chunk, N={n_lo},{n_hi}"
+        else:
+            source = f"{csv_path} + {rerun_path}"
+            note = (f"two-point fit, T3 quant, best chunk, MERGED original+"
+                    f"rerun (stabler-IQR preference per docs/r2-exp2-gen4-"
+                    f"crossover.md:48-58), N={n_lo}({which[0]}),{n_hi}"
+                    f"({which[1]})")
+        e.emit(key, round(intercept, 4), source, note=note)
 
 
 def emit_strategy_defaults(e):
@@ -398,7 +511,7 @@ def main():
     e = Emitter(args.machine)
     BUILDERS[args.machine](e)
 
-    Path(args.out).write_text(e.text())
+    Path(args.out).write_text(e.text(), encoding=ENCODING)
     print(args.out)
 
 

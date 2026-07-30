@@ -34,7 +34,7 @@ hbm.m.tiled 2.97  # bench/results/r4_hiding_ratio_epyc_2080ti.json -- no separat
 hiding.ratio 41.7  # bench/results/r4_hiding_ratio_epyc_2080ti.json -- copy_f32(N=8192) / pcie.h2d_gbps
 multigpu.delivery_gbps.k2 21.02  # bench/results/m0_multigpu_h2d_pair01.json
 multigpu.delivery_gbps.k4 41.96  # bench/results/m0_multigpu_h2d_all4.json
-prefold.alloc_ms_per_gib 956.1  # bench/results/v4_scatter_n8192_epyc_2080ti.json -- (t_prefold_cold_ms-t_transform_ms)/(r*S GiB), reuse rows, K=1, r*S=64 MiB
+prefold.alloc_ms_per_gib 956.1  # bench/results/v4_scatter_n8192_epyc_2080ti.json -- (t_prefold_cold_ms-t_transform_ms)/(r*S GiB), reuse rows, K=1, r*S = 0.25*config.N^2*4 (N=8192) = 64 MiB
 overhead.a_ms 0.068  # bench/results/v1_gen3_nsweep_epyc_2080ti.csv -- two-point fit, T3 quant, best chunk, N=2048,16384
 overhead.b_ms 0.0242  # bench/results/v1_gen3_nsweep_epyc_2080ti.csv -- two-point fit, T3 quant, best chunk, N=2048,16384
 strategy.single_thread_max_bytes 262144  # libreloc/src/Bind.cpp -- P2 default seed (no small-size sweep exists yet)
