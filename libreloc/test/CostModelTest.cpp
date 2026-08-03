@@ -73,6 +73,7 @@ TEST(CostModelParse, LoadReportsUnreadablePath) {
   ASSERT_TRUE(std::holds_alternative<std::string>(r));
 }
 
+using reloc::costmodel::BPlacement;
 using reloc::costmodel::classify;
 using reloc::costmodel::cpuBw;
 using reloc::costmodel::pathCosts;
@@ -164,9 +165,77 @@ TEST(CostModelPathCosts, AffineFormsAndK) {
       pathCosts(m, Pattern::Contiguous, S, 0.25, 8, 2, false).has_value());
 }
 
+TEST(CostModelPathCosts, SerialPlacementSumsLinkAndHbm) {
+  // Issue #109: Serial B (b_fair) pays transfer THEN kernel -- slopes
+  // add. kSynth contiguous r=0.25, S=1e9: overlapped B slope
+  // max(1/10, 1/100) -> 100 ms; serial 1/10 + 1/100 -> 110 ms.
+  CostModel m = mustParse(kSynth);
+  const int64_t S = 1000000000;
+  auto ov = pathCosts(m, Pattern::Contiguous, S, 0.25, 8, 1, false,
+                      BPlacement::Overlapped);
+  auto se = pathCosts(m, Pattern::Contiguous, S, 0.25, 8, 1, false,
+                      BPlacement::Serial);
+  ASSERT_TRUE(ov.has_value());
+  ASSERT_TRUE(se.has_value());
+  EXPECT_NEAR(ov->tBMs, 0.1 + 100.0, 1e-9);
+  EXPECT_NEAR(se->tBMs, 0.1 + 110.0, 1e-9);
+  // Placement touches only the B side.
+  EXPECT_DOUBLE_EQ(se->tAMs, ov->tAMs);
+  EXPECT_DOUBLE_EQ(se->aSlopeMsPerByte, ov->aSlopeMsPerByte);
+}
+
+TEST(CostModelDecide, SerialKillsRoneSlopeTie) {
+  // Issue #109 test (i) / docs/v3-costmodel.md S4: at r=1.0 the
+  // overlapped model's A and B DMA slopes are algebraically identical
+  // whenever A is DMA-bound, so the decision collapses to intercept
+  // noise. Serial's slope a+b can never tie A's for any K/broadcast.
+  CostModel m = mustParse(kSynth);
+  // The canonical degenerate cell: K=1 contiguous r=1 (A DMA-bound:
+  // dma 1e-7 > cpu 5e-8). Overlapped ties exactly...
+  auto ov = pathCosts(m, Pattern::Contiguous, 1 << 20, 1.0, 8, 1, false,
+                      BPlacement::Overlapped);
+  ASSERT_TRUE(ov.has_value());
+  EXPECT_DOUBLE_EQ(ov->bSlopeMsPerByte, ov->aSlopeMsPerByte);
+  auto dOv = decide(m, Pattern::Contiguous, 1 << 20, 1.0, 8, 1, -1, false,
+                    BPlacement::Overlapped);
+  ASSERT_TRUE(dOv.has_value());
+  EXPECT_DOUBLE_EQ(dOv->thresholdBytes, -1); // parallel lines: no boundary
+  // ...and Serial breaks the tie with a real, finite boundary:
+  // bSlope = 1/10+1/100 = 1.1e-7 > aSlope 1e-7;
+  // S* = (0.1-0.5)/(1e-7-1.1e-7) = 4e7.
+  auto dSe = decide(m, Pattern::Contiguous, 1 << 20, 1.0, 8, 1, -1, false,
+                    BPlacement::Serial);
+  ASSERT_TRUE(dSe.has_value());
+  EXPECT_NEAR(dSe->thresholdBytes, 4e7, 1.0);
+  // No (K, broadcast) combination ties under Serial at r=1.
+  for (int K : {1, 4}) {
+    for (bool bc : {false, true}) {
+      auto pc = pathCosts(m, Pattern::Contiguous, 1 << 20, 1.0, 8, K, bc,
+                          BPlacement::Serial);
+      ASSERT_TRUE(pc.has_value()) << "K=" << K << " bc=" << bc;
+      EXPECT_NE(pc->bSlopeMsPerByte, pc->aSlopeMsPerByte)
+          << "K=" << K << " bc=" << bc;
+    }
+  }
+}
+
+TEST(CostModelDecide, PlacementRecordedOnDecision) {
+  CostModel m = mustParse(kSynth);
+  auto dDefault = decide(m, Pattern::Contiguous, 1 << 20, 0.25, 8);
+  ASSERT_TRUE(dDefault.has_value());
+  EXPECT_EQ(dDefault->bPlacement, BPlacement::Overlapped);
+  auto dSe = decide(m, Pattern::Contiguous, 1 << 20, 0.25, 8, 1, -1, false,
+                    BPlacement::Serial);
+  ASSERT_TRUE(dSe.has_value());
+  EXPECT_EQ(dSe->bPlacement, BPlacement::Serial);
+  EXPECT_STREQ(placementName(BPlacement::Serial), "serial");
+  EXPECT_STREQ(placementName(BPlacement::Overlapped), "overlapped");
+}
+
 using reloc::costmodel::decide;
 using reloc::costmodel::MethodDecision;
 using reloc::costmodel::methodName;
+using reloc::costmodel::placementName;
 
 TEST(CostModelDecide, MethodNameStrings) {
   EXPECT_STREQ(methodName(MethodDecision::Method::A), "a");

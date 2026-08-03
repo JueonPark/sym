@@ -22,6 +22,16 @@ enum class Pattern { Contiguous, Blocked, SingleElement, Tiled };
 
 const char *patternName(Pattern p);
 
+/// Which B implementation the decision prices (issue #109/CM1).
+/// Serial (b_fair): the receive kernel runs after the whole transfer,
+/// so link and HBM slopes ADD. Overlapped (b_pipelined): chunked
+/// double-buffering hides the smaller stage under the larger -- max,
+/// plus a fill/drain term when the calibration carries
+/// pipeline.chunks_per_buffer.
+enum class BPlacement { Serial, Overlapped };
+
+const char *placementName(BPlacement p);
+
 /// L == totalElems -> Contiguous; L == 1 -> SingleElement;
 /// L >= kBlockedRunFloor -> Blocked; else Tiled.
 constexpr int64_t kBlockedRunFloor = 64; // elements
@@ -35,6 +45,7 @@ struct MethodDecision {
   Pattern pattern = Pattern::Contiguous;
   int k = 1;
   int64_t nReuse = -1;
+  BPlacement bPlacement = BPlacement::Overlapped;
 };
 
 const char *methodName(MethodDecision::Method m);

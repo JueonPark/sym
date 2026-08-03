@@ -97,6 +97,16 @@ const char *patternName(Pattern p) {
   return "?";
 }
 
+const char *placementName(BPlacement p) {
+  switch (p) {
+  case BPlacement::Serial:
+    return "serial";
+  case BPlacement::Overlapped:
+    return "overlapped";
+  }
+  return "?";
+}
+
 Pattern classify(const BoundPlan &b) {
   const int64_t totalElems = b.elementSize ? b.totalBytes / b.elementSize : 0;
   if (b.L >= totalElems && totalElems > 0)
@@ -158,7 +168,8 @@ static std::optional<double> deliveryGbps(const CostModel &m, int K) {
 
 std::optional<PathCosts> pathCosts(const CostModel &m, Pattern p,
                                    int64_t srcBytes, double r, int threads,
-                                   int K, bool broadcast) {
+                                   int K, bool broadcast,
+                                   BPlacement bPlace) {
   if (srcBytes <= 0 || r <= 0 || K < 1)
     return std::nullopt;
   auto bwCpu = cpuBw(m, p, r, threads);
@@ -186,10 +197,25 @@ std::optional<PathCosts> pathCosts(const CostModel &m, Pattern p,
   const double aDmaSlope = kMult * r * msPerByteAt(*bwDel); // per source byte
   pc.aSlopeMsPerByte = std::max(aCpuSlope, aDmaSlope);
   pc.aInterceptMs = m.get("overhead.a_ms", 0.0);
-  // B: max(DMA of kMult*S, GPU transform m*kMult*S over HBM).
+  // B: DMA of kMult*S vs GPU transform m*kMult*S over HBM (issue #109).
   const double bDmaSlope = kMult * msPerByteAt(*bwDel);
   const double bHbmSlope = kMult * mm * msPerByteAt(bwHbm);
-  pc.bSlopeMsPerByte = std::max(bDmaSlope, bHbmSlope);
+  if (bPlace == BPlacement::Serial) {
+    // b_fair: the kernel starts only after the whole transfer landed --
+    // the stages ADD, so B's slope strictly exceeds the bare DMA slope
+    // for any m > 0 and the r=1 A/B slope tie (v3-costmodel.md S4) is
+    // dead by construction.
+    pc.bSlopeMsPerByte = bDmaSlope + bHbmSlope;
+  } else {
+    // b_pipelined: chunks overlap; the hidden stage still pays one
+    // chunk of fill/drain. chunk = S/n in ChunkSchedule's mid-range,
+    // so the term folds into the slope (min/n) and stays affine in S.
+    // n absent or <= 0 -> term 0 -> exactly the V3 formula.
+    const double nChunks = m.get("pipeline.chunks_per_buffer", 0.0);
+    const double fillDrain =
+        nChunks > 0 ? std::min(bDmaSlope, bHbmSlope) / nChunks : 0.0;
+    pc.bSlopeMsPerByte = std::max(bDmaSlope, bHbmSlope) + fillDrain;
+  }
   pc.bInterceptMs = m.get("overhead.b_ms", 0.0);
   pc.tAMs = pc.aInterceptMs + pc.aSlopeMsPerByte * srcBytes;
   pc.tBMs = pc.bInterceptMs + pc.bSlopeMsPerByte * srcBytes;
@@ -210,8 +236,9 @@ const char *methodName(MethodDecision::Method m) {
 
 std::optional<MethodDecision> decide(const CostModel &m, Pattern p,
                                      int64_t srcBytes, double r, int threads,
-                                     int K, int64_t nReuse, bool broadcast) {
-  auto pc = pathCosts(m, p, srcBytes, r, threads, K, broadcast);
+                                     int K, int64_t nReuse, bool broadcast,
+                                     BPlacement bPlace) {
+  auto pc = pathCosts(m, p, srcBytes, r, threads, K, broadcast, bPlace);
   if (!pc)
     return std::nullopt;
 
@@ -219,6 +246,7 @@ std::optional<MethodDecision> decide(const CostModel &m, Pattern p,
   d.pattern = p;
   d.k = K;
   d.nReuse = nReuse;
+  d.bPlacement = bPlace;
 
   // Plain A is always a candidate arm.
   const double aIntPlain = pc->aInterceptMs;
