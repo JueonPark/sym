@@ -436,4 +436,30 @@ TEST(CostModelDecide, ThresholdAgreesWithBruteForce) {
   }
 }
 
+TEST(CostModelPathCosts, FillDrainTermFromChunksKey) {
+  // Issue #109 test (iii): with pipeline.chunks_per_buffer the
+  // Overlapped slope gains exactly min(a,b)/n; without the key the
+  // formula is byte-for-byte V3's max -- which is also the R4 hiding
+  // condition's limit (m/BW_hbm <= 1/BW_link => max picks DMA).
+  CostModel base = mustParse(kSynth);
+  CostModel withN =
+      mustParse(std::string(kSynth) + "pipeline.chunks_per_buffer 8\n");
+  const int64_t S = 1000000000;
+  auto pcBase = pathCosts(base, Pattern::Contiguous, S, 0.25, 8, 1, false,
+                          BPlacement::Overlapped);
+  auto pcN = pathCosts(withN, Pattern::Contiguous, S, 0.25, 8, 1, false,
+                       BPlacement::Overlapped);
+  ASSERT_TRUE(pcBase.has_value());
+  ASSERT_TRUE(pcN.has_value());
+  // kSynth contiguous: a = 1e-7 (link 10), b = 1e-8 (m=1, HBM 100).
+  EXPECT_DOUBLE_EQ(pcBase->bSlopeMsPerByte, 1e-7); // V3 exactly
+  EXPECT_NEAR(pcN->bSlopeMsPerByte, 1e-7 + 1e-8 / 8.0, 1e-18);
+  EXPECT_NEAR(pcN->tBMs, 0.1 + 101.25, 1e-9);
+  // Serial ignores the chunks key (no pipeline to fill/drain).
+  auto seN = pathCosts(withN, Pattern::Contiguous, S, 0.25, 8, 1, false,
+                       BPlacement::Serial);
+  ASSERT_TRUE(seN.has_value());
+  EXPECT_NEAR(seN->tBMs, 0.1 + 110.0, 1e-9);
+}
+
 } // namespace
