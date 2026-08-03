@@ -55,3 +55,22 @@ def test_predict_prefold_arm(cal):
 def test_predict_missing_keys_raise(cal):
     with pytest.raises(ValueError):
         pyreloc.predict(cal, pattern="blocked", src_bytes=10**9, r=0.25)
+
+
+def test_predict_b_placement_serial(cal):
+    # CM1 (#109): serial B adds link+HBM slopes. Mirrors the C++
+    # SerialPlacementSumsLinkAndHbm numbers: overlapped 100.1, serial 110.1.
+    ov = pyreloc.predict(cal, pattern="contiguous", src_bytes=10**9, r=0.25)
+    se = pyreloc.predict(cal, pattern="contiguous", src_bytes=10**9, r=0.25,
+                         b_placement="serial")
+    assert ov["b_placement"] == "overlapped"
+    assert se["b_placement"] == "serial"
+    assert ov["t_b_ms"] == pytest.approx(100.1)
+    assert se["t_b_ms"] == pytest.approx(110.1)
+    assert se["t_a_ms"] == pytest.approx(ov["t_a_ms"])
+
+
+def test_predict_rejects_unknown_placement(cal):
+    with pytest.raises(ValueError):
+        pyreloc.predict(cal, pattern="contiguous", src_bytes=10**9, r=0.25,
+                        b_placement="pipelined")
