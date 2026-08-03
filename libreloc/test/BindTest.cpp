@@ -377,6 +377,8 @@ TEST(Bind, CostModelDecisionPopulatedWhenModelPassed) {
   // srcStride==dstStride==1 with extent==totalElems: classify() must call
   // this Contiguous, the pattern this fixture is actually observable at.
   EXPECT_EQ(bound->decision->pattern, reloc::costmodel::Pattern::Contiguous);
+  EXPECT_EQ(bound->decision->bPlacement,
+            reloc::costmodel::BPlacement::Overlapped);
 }
 
 TEST(Bind, CalibrationOverrideChangesSelectedStrategy) {

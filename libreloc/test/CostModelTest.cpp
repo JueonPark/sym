@@ -392,46 +392,53 @@ TEST(CostModelDecide, BroadcastKAndPrefoldCombine) {
 
 TEST(CostModelDecide, ThresholdAgreesWithBruteForce) {
   // Issue #97 acceptance: threshold precompute vs brute-force agreement.
+  // Issue #109 test (ii): retained for BOTH placements.
   CostModel m = mustParse(kSynth);
-  for (double r : {1.0, 0.5, 0.25, 0.125}) {
-    for (Pattern p : {Pattern::Contiguous, Pattern::Blocked}) {
-      auto probe = decide(m, p, 1 << 20, r, 8);
-      if (!probe.has_value())
-        continue;
-      const double thr = probe->thresholdBytes;
-      // Brute-force every S against the direct tAMs/tBMs comparison,
-      // and separately confirm (a) the stored boundary is the *only*
-      // place the method flips across the whole scanned range, and (b)
-      // it actually *localizes* that flip -- it must fall inside the
-      // bracket [Sprev, S] straddling the transition, not just exist
-      // somewhere. (b) is what catches a threshold scaled by an
-      // arbitrary factor: that still flips exactly once, but lands
-      // outside the narrow power-of-2 bracket.
-      MethodDecision::Method prevMethod = MethodDecision::Method::B;
-      int64_t prevS = 0;
-      bool havePrev = false;
-      int flips = 0;
-      for (int64_t S = 1 << 12; S <= (1ll << 34); S <<= 1) {
-        auto d = decide(m, p, S, r, 8);
-        ASSERT_TRUE(d.has_value());
-        auto pc = pathCosts(m, p, S, r, 8, 1, false);
-        ASSERT_TRUE(pc.has_value());
-        EXPECT_EQ(d->method == MethodDecision::Method::A, pc->tAMs <= pc->tBMs)
-            << patternName(p) << " r=" << r << " S=" << S;
-        if (havePrev && d->method != prevMethod) {
-          ++flips;
-          EXPECT_LE(static_cast<double>(prevS), thr)
-              << patternName(p) << " r=" << r << " prevS=" << prevS
-              << " thr=" << thr;
-          EXPECT_LE(thr, static_cast<double>(S))
-              << patternName(p) << " r=" << r << " S=" << S << " thr=" << thr;
+  for (BPlacement bp : {BPlacement::Overlapped, BPlacement::Serial}) {
+    for (double r : {1.0, 0.5, 0.25, 0.125}) {
+      for (Pattern p : {Pattern::Contiguous, Pattern::Blocked}) {
+        auto probe = decide(m, p, 1 << 20, r, 8, 1, -1, false, bp);
+        if (!probe.has_value())
+          continue;
+        const double thr = probe->thresholdBytes;
+        // Brute-force every S against the direct tAMs/tBMs comparison,
+        // and separately confirm (a) the stored boundary is the *only*
+        // place the method flips across the whole scanned range, and (b)
+        // it actually *localizes* that flip -- it must fall inside the
+        // bracket [Sprev, S] straddling the transition, not just exist
+        // somewhere. (b) is what catches a threshold scaled by an
+        // arbitrary factor: that still flips exactly once, but lands
+        // outside the narrow power-of-2 bracket.
+        MethodDecision::Method prevMethod = MethodDecision::Method::B;
+        int64_t prevS = 0;
+        bool havePrev = false;
+        int flips = 0;
+        for (int64_t S = 1 << 12; S <= (1ll << 34); S <<= 1) {
+          auto d = decide(m, p, S, r, 8, 1, -1, false, bp);
+          ASSERT_TRUE(d.has_value());
+          auto pc = pathCosts(m, p, S, r, 8, 1, false, bp);
+          ASSERT_TRUE(pc.has_value());
+          EXPECT_EQ(d->method == MethodDecision::Method::A,
+                    pc->tAMs <= pc->tBMs)
+              << placementName(bp) << " " << patternName(p) << " r=" << r
+              << " S=" << S;
+          if (havePrev && d->method != prevMethod) {
+            ++flips;
+            EXPECT_LE(static_cast<double>(prevS), thr)
+                << placementName(bp) << " " << patternName(p) << " r=" << r
+                << " prevS=" << prevS << " thr=" << thr;
+            EXPECT_LE(thr, static_cast<double>(S))
+                << placementName(bp) << " " << patternName(p) << " r=" << r
+                << " S=" << S << " thr=" << thr;
+          }
+          prevMethod = d->method;
+          prevS = S;
+          havePrev = true;
         }
-        prevMethod = d->method;
-        prevS = S;
-        havePrev = true;
+        EXPECT_EQ(flips, thr > 0 ? 1 : 0)
+            << placementName(bp) << " " << patternName(p) << " r=" << r
+            << " thr=" << thr;
       }
-      EXPECT_EQ(flips, thr > 0 ? 1 : 0)
-          << patternName(p) << " r=" << r << " thr=" << thr;
     }
   }
 }
