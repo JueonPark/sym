@@ -163,3 +163,12 @@ slope-tie regression test in place (test 1).
 CALIBRATION-REGEN + REPORT-REGEN PASS; clang-format clean; Gen3 cross-check reported.
 File-adjacency note: #57 also touches `Bind.cpp` — per #107, whichever lands second
 rebases; stated in the PR notes.
+
+## Amendment (2026-08-04, during implementation)
+
+§2's table above listed `pipeline.chunks_per_buffer` as a CM1 key for both machines.
+During implementation this was found to activate the `Overlapped` fill/drain term on the
+frozen V3 prediction cells and silently re-score `bench/results/v3_prediction_report.json`
+(RSTAR 0.363→0.078 without pre-registration) — violating #107's "V3 verdicts stand as
+measured" and V3 §5's pre-registration obligation. Ruling: the key is deferred to CM5;
+CM1 ships the term implemented + tested against synthetic calibrations only.

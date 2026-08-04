@@ -308,6 +308,35 @@ rstar.json`, which is then passed back into `gates.py --rstar` for
 R2-G5. All three configs target the 7800X3D + 4070 Ti SUPER (Gen4) box,
 no `numactl` (single-NUMA).
 
+### CM1 Gen4 recv-kernel run (issue #109 runbook)
+
+The Gen4 box has no `copy_f32` ceiling measurement and no usable committed
+recv-kernel data (`gpu_recv_ms` in the pipeline CSVs is chunked/overlapped
+event time and collapses on several cells), so all three `recv.m.*` keys
+are omitted from `calibration/7800x3d-4070tis.cal` until this run lands.
+On the 7800X3D/4070 Ti SUPER box:
+
+1. Build `bench-hiding-ratio` (CUDA cmake tree, or the standalone recipe in
+   `docs/m0-2080ti-bringup.md` with `-arch=sm_89`).
+2. `bench-hiding-ratio --json bench/results/cm1_recv_kernel_bw_7800x3d_4070tis.json`
+   — this also produces the first real Gen4 `copy_f32` ceiling.
+3. Commit the JSON, then regenerate:
+   `python3 bench/rtrack/make_calibration.py --machine 7800x3d-4070tis --out calibration/7800x3d-4070tis.cal`
+   (the three `recv.m.*` keys appear automatically; every pre-existing
+   line must stay byte-identical) and commit the `.cal`.
+4. `python3 bench/rtrack/v3_gate.py` — CALIBRATION-REGEN must PASS.
+
+Deliberately out of scope here: re-baselining the existing Gen4 `hbm.*`
+proxy keys onto the new run's ceiling. That would change committed keys
+("byte-identical except the new keys" would fail) and re-open V3's
+as-measured verdicts — a separate decision for CM5's re-run, recorded
+here so it isn't lost. `pipeline.chunks_per_buffer` is likewise deferred
+to CM5 for the same frozen-verdict reason: the C++ `Overlapped` fill/drain
+term is implemented and unit-tested but dormant in both committed
+calibrations, since emitting the key would activate it on the frozen V3
+prediction cells and silently re-score `bench/results/v3_prediction_report.json`
+without pre-registration.
+
 ## V3 cost-model tools (issue #97)
 
 - **`make_calibration.py`** — assembles a `calibration/<machine>.cal` flat
