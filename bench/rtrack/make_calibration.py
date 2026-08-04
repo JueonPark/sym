@@ -36,6 +36,17 @@ SOURCES per machine (frozen provenance -- see task-6 brief / design doc
     - prefold.alloc_ms_per_gib     <- bench/results/v4_scatter_n8192_epyc_2080ti.json
     - overhead.{a,b}_ms            <- bench/results/v1_gen3_nsweep_epyc_2080ti.csv
     - strategy.*                   <- P2 defaults (no small-size sweep yet)
+    - pipeline.chunks_per_buffer: NOT emitted in CM1 -- activating the
+      Overlapped fill/drain term re-scores the frozen V3 prediction
+      report (issue #97 pre-registered verdicts, which stand as measured
+      per #107); the key lands in CM5 together with the CM4
+      re-registered gate rule.
+    - recv.m.{convert_f16_f32,dequant_s8_f32}
+                                     <- bench/results/v2_isa_gen3_rsweep_avx2_epyc7351-2080ti.csv
+      (gpu_recv_ms, method=a transform=quant, min over chunk sweep, vs
+      the R4 copy_f32 ceiling at the m-table N)
+    - recv.m.unpack_dequant_s4       <- bench/results/cm1_recv_kernel_bw_epyc_2080ti.json
+      (CM1 targeted isolated run; same-run copy_f32 ceiling)
 
   7800x3d-4070tis: same key shapes, sourced from
     bench/results/v1_gen4_gate_report.txt, bench/results/r2_rooflines/*.json
@@ -49,6 +60,15 @@ SOURCES per machine (frozen provenance -- see task-6 brief / design doc
     hbm.bw_gbps and hbm.m.* are PROXIED from the 2080 Ti computation with
     an explicit note; multigpu.*, hiding.ratio and prefold.* are omitted
     outright.
+    - pipeline.chunks_per_buffer: NOT emitted in CM1 -- activating the
+      Overlapped fill/drain term re-scores the frozen V3 prediction
+      report (issue #97 pre-registered verdicts, which stand as measured
+      per #107); the key lands in CM5 together with the CM4
+      re-registered gate rule.
+    - recv.m.*                       <- bench/results/cm1_recv_kernel_bw_7800x3d_4070tis.json
+      when it exists (issue #109 runbook); omitted until then. The
+      "relocate/transpose recv" m values from the issue's list are the
+      existing hbm.m.{pattern} keys -- not duplicated under recv.m.*.
 
     Fix-report addenda (post-review, see task-6-report.md "Fix report"):
     - Gen4 rooflines are pinned at N=8192 for BOTH t1 and t8 (not
@@ -263,6 +283,36 @@ def build_epyc(e):
     e.emit("hiding.ratio", round(copy_head / h2d, 1), r4_path,
            note=f"copy_f32(N={n_head}) / pcie.h2d_gbps")
 
+    # pipeline.chunks_per_buffer deliberately NOT emitted here (see
+    # SOURCES docstring / module-level note): activating the Overlapped
+    # fill/drain term would re-score the frozen V3 prediction report.
+
+    # Recv-kernel multipliers (issue #109/CM1): Method A's post-DMA GPU
+    # decompress kernels. f16/s8 derive from the committed V2 rsweep's
+    # per-chunk gpu_recv_ms ("from committed artifacts where possible"):
+    # traffic = r*S read + S written; min gpu_recv_ms over the chunk
+    # sweep (largest chunk = least launch-diluted, closest to isolated);
+    # divided into copy_f32 at the m-table N (same rule as hbm.m.*).
+    rsweep_path = f"{RESULTS}/v2_isa_gen3_rsweep_avx2_epyc7351-2080ti.csv"
+    rrows = [row for row in load_csv_rows(rsweep_path, e.machine)
+             if row["method"] == "a" and row["transform"] == "quant"]
+    for key, r_wire in (("recv.m.convert_f16_f32", 0.5),
+                        ("recv.m.dequant_s8_f32", 0.25)):
+        cells = [row for row in rrows if float(row["r"]) == r_wire]
+        if not cells:
+            sys.exit(f"error: no method=a quant r={r_wire} rows in "
+                     f"{rsweep_path}")
+        best = min(cells, key=lambda row: float(row["gpu_recv_ms"]))
+        s = source_bytes(int(best["N"]))
+        bw = (1.0 + r_wire) * s / (float(best["gpu_recv_ms"]) * 1e-3) / 1e9
+        e.emit(key, round(copy_m / bw, 2), rsweep_path,
+               note=f"copy_f32(N={n_m})/recv BW; traffic=(1+{r_wire})*S, "
+                    f"min gpu_recv_ms over chunks, N={best['N']} (issue #109)")
+    # s4 has no committed Gen3 measurement -> the CM1 targeted run.
+    emit_recv_from_cm1_run(
+        e, f"{RESULTS}/cm1_recv_kernel_bw_epyc_2080ti.json",
+        ["unpack_dequant_s4"])
+
     # Multi-GPU aggregate delivery.
     pair01_path = f"{RESULTS}/m0_multigpu_h2d_pair01.json"
     all4_path = f"{RESULTS}/m0_multigpu_h2d_all4.json"
@@ -392,6 +442,19 @@ def build_gen4(e):
            note=proxy_note)
     # multigpu.*, hiding.ratio, prefold.*: no Gen4 data -- omitted.
 
+    # pipeline.chunks_per_buffer deliberately NOT emitted here (see
+    # SOURCES docstring / module-level note): activating the Overlapped
+    # fill/drain term would re-score the frozen V3 prediction report.
+
+    # Recv-kernel multipliers (issue #109/CM1): the committed Gen4
+    # pipeline CSVs are too noisy for an R4-style derivation (in-pipeline
+    # event timings collapse to 23-52 GB/s on some cells) and no Gen4
+    # copy_f32 ceiling exists at all -- ALL THREE keys wait for the
+    # targeted run (runbook: bench/rtrack/README.md, issue #109).
+    emit_recv_from_cm1_run(
+        e, f"{RESULTS}/cm1_recv_kernel_bw_7800x3d_4070tis.json",
+        ["convert_f16_f32", "dequant_s8_f32", "unpack_dequant_s4"])
+
     nsweep_path = f"{RESULTS}/v1_gen4_matrix_nsweep_7800x3d_4070tis.csv"
     nsweep_rerun_path = (f"{RESULTS}/v1_gen4_matrix_nsweep_rerun_"
                          "7800x3d_4070tis.csv")
@@ -493,6 +556,24 @@ def emit_strategy_defaults(e):
            "libreloc/src/Bind.cpp", note=seed_note)
     e.emit("strategy.multi_thread_max_bytes", 268435456,
            "libreloc/src/Bind.cpp", note=seed_note)
+
+
+def emit_recv_from_cm1_run(e, path, kernels):
+    """recv.m.* from a CM1 targeted isolated-kernel run (issue #109),
+    R4-style: m = copy_f32 / kernel BW at the largest measured N, both
+    from the SAME run (session self-consistency: a different session's
+    ceiling would bias every m derived against it). Artifact absent ->
+    keys omitted (loud omission, the pack_s8_s4 precedent)."""
+    doc = read_json_optional(path)
+    if doc is None:
+        return
+    by_n = doc["by_n"]
+    n_ref = str(max(int(k) for k in by_n))
+    copy = by_n[n_ref]["copy_f32"]["gb_per_s"]
+    for kern in kernels:
+        bw = by_n[n_ref][kern]["gb_per_s"]
+        e.emit(f"recv.m.{kern}", round(copy / bw, 2), path,
+               note=f"copy_f32/{kern} at N={n_ref}, same-run ceiling")
 
 
 BUILDERS = {
