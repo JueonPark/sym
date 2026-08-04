@@ -71,8 +71,10 @@ extremes are a knowingly accepted approximation error (documented in a code comm
 
 **`decide()` / threshold**: mechanically unchanged — the new `bSlope` flows through the
 existing `sStar = (bIntercept − aIntercept)/(aSlope − bSlope)` precompute. Under Serial,
-`bSlope = a + b > max(cpuSlope, r·a) = aSlope` holds for any r ≤ 1, m > 0, so
-`dSlope ≠ 0` is guaranteed and the §4 slope-tie is dead by construction.
+the algebraic A/B DMA-slope identity cannot occur: when A is DMA-bound (the §4 tie case),
+`bSlope = a + b > a = aSlope` strictly; in CPU-bound regimes the slopes differ generically
+(the regression test asserts inequality across all K/broadcast combos), so `dSlope ≠ 0`
+is guaranteed and the §4 slope-tie is dead by construction.
 `MethodDecision` gains a `BPlacement bPlacement` field recording which placement the
 decision priced against.
 
@@ -172,3 +174,12 @@ frozen V3 prediction cells and silently re-score `bench/results/v3_prediction_re
 (RSTAR 0.363→0.078 without pre-registration) — violating #107's "V3 verdicts stand as
 measured" and V3 §5's pre-registration obligation. Ruling: the key is deferred to CM5;
 CM1 ships the term implemented + tested against synthetic calibrations only.
+
+The final review additionally found §1/§2's "chunk = S/8" mapping wrong by the buffer
+count: `ChunkSchedule.h` divides by `kChunksPerBuffer * nBuffers`, and the pipeline's
+`nBuffers = 2`, so the mid-range chunk is actually `S/16`, not `S/8`. When CM5 emits
+`pipeline.chunks_per_buffer`, its value must be the total chunk count (16 at 2 buffers) —
+`kChunksPerBuffer` alone (8) would understate the divisor and overstate the fill/drain
+term by 2x. (The key name is now slightly misleading given it must hold the total, not the
+per-buffer, count — CM5 may prefer a name like `pipeline.total_chunks`; the C++ key string
+itself is left unchanged in CM1.)

@@ -207,8 +207,10 @@ std::optional<PathCosts> pathCosts(const CostModel &m, Pattern p,
     pc.bSlopeMsPerByte = bDmaSlope + bHbmSlope;
   } else {
     // b_pipelined: chunks overlap; the hidden stage still pays one
-    // chunk of fill/drain. chunk = S/n in ChunkSchedule's mid-range,
-    // so the term folds into the slope (min/n) and stays affine in S.
+    // chunk of fill/drain. n must be the TOTAL chunk count across the
+    // schedule (ChunkSchedule's mid-range: kChunksPerBuffer x nBuffers
+    // = 16 at the pipeline's 2 buffers), so chunk = S/n folds into the
+    // slope (min/n) and stays affine in S.
     // n absent or <= 0 -> term 0 -> exactly the V3 formula.
     const double nChunks = m.get("pipeline.chunks_per_buffer", 0.0);
     const double fillDrain =

@@ -38,8 +38,8 @@ SOURCES per machine (frozen provenance -- see task-6 brief / design doc
     - strategy.*                   <- P2 defaults (no small-size sweep yet)
     - pipeline.chunks_per_buffer: NOT emitted in CM1 -- activating the
       Overlapped fill/drain term re-scores the frozen V3 prediction
-      report (issue #97 pre-registered verdicts, which stand as measured
-      per #107); the key lands in CM5 together with the CM4
+      report (#97-pre-registered verdicts, shipped in #106, which stand
+      as measured per #107); the key lands in CM5 together with the CM4
       re-registered gate rule.
     - recv.m.{convert_f16_f32,dequant_s8_f32}
                                      <- bench/results/v2_isa_gen3_rsweep_avx2_epyc7351-2080ti.csv
@@ -62,8 +62,8 @@ SOURCES per machine (frozen provenance -- see task-6 brief / design doc
     outright.
     - pipeline.chunks_per_buffer: NOT emitted in CM1 -- activating the
       Overlapped fill/drain term re-scores the frozen V3 prediction
-      report (issue #97 pre-registered verdicts, which stand as measured
-      per #107); the key lands in CM5 together with the CM4
+      report (#97-pre-registered verdicts, shipped in #106, which stand
+      as measured per #107); the key lands in CM5 together with the CM4
       re-registered gate rule.
     - recv.m.*                       <- bench/results/cm1_recv_kernel_bw_7800x3d_4070tis.json
       when it exists (issue #109 runbook); omitted until then. The

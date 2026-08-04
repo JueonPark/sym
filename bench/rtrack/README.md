@@ -337,6 +337,12 @@ calibrations, since emitting the key would activate it on the frozen V3
 prediction cells and silently re-score `bench/results/v3_prediction_report.json`
 without pre-registration.
 
+Also note for CM5: `recv.m.convert_f16_f32`/`recv.m.dequant_s8_f32` derive from
+L2-warm in-pipeline `gpu_recv_ms`, while `recv.m.unpack_dequant_s4` derives from
+an isolated cold run — the two bases differ by ~20% on dequant. CM5's `m_eff`
+composition must first decide on a single measurement basis (warm in-pipeline
+vs. cold isolated) before consuming the `recv.m.*` keys.
+
 ## V3 cost-model tools (issue #97)
 
 - **`make_calibration.py`** — assembles a `calibration/<machine>.cal` flat

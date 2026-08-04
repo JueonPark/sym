@@ -5,8 +5,8 @@
 // committed bench/results artifacts) feeds a two-path cost model
 //   T_A = overhead.a_ms + S * max(1/BW_cpu(pattern), wireBytes/S/BW_link)
 //   T_B(Overlapped) = overhead.b_ms + S * (max(1/BW_link, m/BW_hbm)
-//                     + min(1/BW_link, m/BW_hbm)/n)   [n = chunks/buffer, 0 if
-//                     uncalibrated]
+//                     + min(1/BW_link, m/BW_hbm)/n)   [n = total chunk count,
+//                     0 if uncalibrated]
 //   T_B(Serial)     = overhead.b_ms + S * (1/BW_link + m/BW_hbm)
 // (all affine in S), a gather-pattern classifier over BoundPlan
 // properties, and a decision with a single-free-symbol threshold
