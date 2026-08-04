@@ -326,6 +326,21 @@ On the 7800X3D/4070 Ti SUPER box:
    line must stay byte-identical) and commit the `.cal`.
 4. `python3 bench/rtrack/v3_gate.py` — CALIBRATION-REGEN must PASS.
 
+Gen4 run notes (as executed, 2026-08-05): the box runs CUDA 13.2, which
+removed `cudaDeviceProp::memoryClockRate` (`hiding_ratio.cu` reads the
+memory clock via `cudaDeviceGetAttribute` instead), and the standalone
+nvcc recipe additionally needs `libreloc/quant/Quant.cpp` plus
+`QuantAVX2.cpp` built with `-mavx2 -mfma -mf16c` (its per-file cmake
+flags). On this WSL2 box the WDDM driver repositions P-states in the
+inter-kernel verify gaps: unlocked, the memory clock oscillates
+10251<->5001 MHz mid-run and the recv-kernel medians (and the
+copy_f32/kernel m ratios with them) swing run-to-run by up to 2x, at
+temperature and power nowhere near their limits. Lock the clocks first
+from an elevated Windows-side shell (`nvidia-smi -lgc 2610` and
+`-lmc 10251`; `-rgc`/`-rmc` to undo) — the committed artifact was
+measured with 100% locked-clock residency and
+`iqr_over_median_pct < 2.5` on every N=16384 cell.
+
 Deliberately out of scope here: re-baselining the existing Gen4 `hbm.*`
 proxy keys onto the new run's ceiling. That would change committed keys
 ("byte-identical except the new keys" would fail) and re-open V3's

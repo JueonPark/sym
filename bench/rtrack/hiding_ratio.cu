@@ -504,9 +504,14 @@ int runN(int64_t n, const Options &opt, cudaStream_t stream,
 int run(const Options &opt) {
   cudaDeviceProp prop{};
   CUDA_CHECK(cudaGetDeviceProperties(&prop, 0));
-  // Theoretical HBM peak from the memory clock + bus width (both in prop).
+  // Theoretical HBM peak from the memory clock + bus width. The clock comes
+  // from cudaDeviceGetAttribute (same kHz value as the pre-CUDA-13
+  // cudaDeviceProp::memoryClockRate member, which CUDA 13 removed).
+  int memClockKhz = 0;
+  CUDA_CHECK(
+      cudaDeviceGetAttribute(&memClockKhz, cudaDevAttrMemoryClockRate, 0));
   const double hbmPeakGbps =
-      2.0 * (prop.memoryClockRate * 1e3) * (prop.memoryBusWidth / 8) / 1e9;
+      2.0 * (memClockKhz * 1e3) * (prop.memoryBusWidth / 8) / 1e9;
   cudaStream_t stream;
   CUDA_CHECK(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
 
