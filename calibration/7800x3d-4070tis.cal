@@ -39,6 +39,9 @@ hbm.m.contiguous 1  # bench/results/r4_hiding_ratio_epyc_2080ti.json -- proxy: n
 hbm.m.blocked 2.97  # bench/results/r4_hiding_ratio_epyc_2080ti.json -- proxy: no Gen4 HBM sweep exists (R4 ran on 2080 Ti); B is link-bound whenever m < ratio, so this only matters if m/BW_hbm exceeds 1/BW_link
 hbm.m.single_element 1.43  # bench/results/r4_hiding_ratio_epyc_2080ti.json -- proxy: no Gen4 HBM sweep exists (R4 ran on 2080 Ti); B is link-bound whenever m < ratio, so this only matters if m/BW_hbm exceeds 1/BW_link
 hbm.m.tiled 2.97  # bench/results/r4_hiding_ratio_epyc_2080ti.json -- proxy: no Gen4 HBM sweep exists (R4 ran on 2080 Ti); B is link-bound whenever m < ratio, so this only matters if m/BW_hbm exceeds 1/BW_link
+recv.m.convert_f16_f32 1.01  # bench/results/cm1_recv_kernel_bw_7800x3d_4070tis.json -- copy_f32/convert_f16_f32 at N=16384, same-run ceiling
+recv.m.dequant_s8_f32 1.04  # bench/results/cm1_recv_kernel_bw_7800x3d_4070tis.json -- copy_f32/dequant_s8_f32 at N=16384, same-run ceiling
+recv.m.unpack_dequant_s4 1.07  # bench/results/cm1_recv_kernel_bw_7800x3d_4070tis.json -- copy_f32/unpack_dequant_s4 at N=16384, same-run ceiling
 overhead.a_ms 0  # bench/results/v1_gen4_matrix_nsweep_7800x3d_4070tis.csv + bench/results/v1_gen4_matrix_nsweep_rerun_7800x3d_4070tis.csv -- two-point fit, T3 quant, best chunk, MERGED original+rerun (stabler-IQR preference per docs/r2-exp2-gen4-crossover.md:48-58), N=2048(rerun),16384(original)
 overhead.b_ms 0.0927  # bench/results/v1_gen4_matrix_nsweep_7800x3d_4070tis.csv + bench/results/v1_gen4_matrix_nsweep_rerun_7800x3d_4070tis.csv -- two-point fit, T3 quant, best chunk, MERGED original+rerun (stabler-IQR preference per docs/r2-exp2-gen4-crossover.md:48-58), N=2048(rerun),16384(original)
 strategy.single_thread_max_bytes 262144  # libreloc/src/Bind.cpp -- P2 default seed (no small-size sweep exists yet)

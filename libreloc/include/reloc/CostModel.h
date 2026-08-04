@@ -4,7 +4,10 @@
 // calibration file (per machine, assembled deterministically from
 // committed bench/results artifacts) feeds a two-path cost model
 //   T_A = overhead.a_ms + S * max(1/BW_cpu(pattern), wireBytes/S/BW_link)
-//   T_B = overhead.b_ms + S * max(1/BW_link, m/BW_hbm)
+//   T_B(Overlapped) = overhead.b_ms + S * (max(1/BW_link, m/BW_hbm)
+//                     + min(1/BW_link, m/BW_hbm)/n)   [n = total chunk count,
+//                     0 if uncalibrated]
+//   T_B(Serial)     = overhead.b_ms + S * (1/BW_link + m/BW_hbm)
 // (all affine in S), a gather-pattern classifier over BoundPlan
 // properties, and a decision with a single-free-symbol threshold
 // precompute so bind() only compares the bound size against a stored
@@ -70,13 +73,15 @@ struct PathCosts {
 /// tensor; scatter: receivers partition it). nullopt on missing keys.
 std::optional<PathCosts> pathCosts(const CostModel &m, Pattern p,
                                    int64_t srcBytes, double r, int threads,
-                                   int K = 1, bool broadcast = false);
+                                   int K = 1, bool broadcast = false,
+                                   BPlacement bPlace = BPlacement::Overlapped);
 
 /// The decision. nReuse < 0 disables the prefold arm; nReuse >= 1
 /// enables it via reloc::prefold::prefoldWins (V4's validated rule).
 std::optional<MethodDecision>
 decide(const CostModel &m, Pattern p, int64_t srcBytes, double r,
-       int threads = 8, int K = 1, int64_t nReuse = -1, bool broadcast = false);
+       int threads = 8, int K = 1, int64_t nReuse = -1, bool broadcast = false,
+       BPlacement bPlace = BPlacement::Overlapped);
 
 } // namespace costmodel
 } // namespace reloc

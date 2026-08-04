@@ -343,7 +343,11 @@ BindResult bind(const RelocationPlan &plan, const SymbolMap &symbolMap,
   if (model) {
     const costmodel::Pattern pat = costmodel::classify(bound);
     if (auto d = costmodel::decide(*model, pat, bound.totalBytes, wireRatio,
-                                   /*threads=*/8, K, nReuse))
+                                   /*threads=*/8, K, nReuse,
+                                   /*broadcast=*/false,
+                                   // The library's real B is the double-
+                                   // buffered pipeline (Pipeline.cpp).
+                                   costmodel::BPlacement::Overlapped))
       bound.decision = *d;
   }
 

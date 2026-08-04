@@ -315,7 +315,7 @@ PYBIND11_MODULE(_pyreloc, m) {
       "predict",
       [](const cmns::CostModel &cal, const std::string &pattern,
          int64_t srcBytes, double r, int threads, int k, int64_t nReuse,
-         bool broadcast) {
+         bool broadcast, const std::string &bPlacement) {
         cmns::Pattern p;
         if (pattern == "contiguous")
           p = cmns::Pattern::Contiguous;
@@ -327,8 +327,16 @@ PYBIND11_MODULE(_pyreloc, m) {
           p = cmns::Pattern::Tiled;
         else
           throw py::value_error("unknown pattern '" + pattern + "'");
-        auto d =
-            cmns::decide(cal, p, srcBytes, r, threads, k, nReuse, broadcast);
+        cmns::BPlacement bp;
+        if (bPlacement == "overlapped")
+          bp = cmns::BPlacement::Overlapped;
+        else if (bPlacement == "serial")
+          bp = cmns::BPlacement::Serial;
+        else
+          throw py::value_error("unknown b_placement '" + bPlacement +
+                                "' (expected 'overlapped' or 'serial')");
+        auto d = cmns::decide(cal, p, srcBytes, r, threads, k, nReuse,
+                              broadcast, bp);
         if (!d)
           throw py::value_error("calibration lacks keys for pattern '" +
                                 pattern + "' at r=" + std::to_string(r) + " t" +
@@ -340,13 +348,15 @@ PYBIND11_MODULE(_pyreloc, m) {
         out["t_b_ms"] = d->tBMs;
         out["threshold_bytes"] = d->thresholdBytes;
         out["pattern"] = std::string(cmns::patternName(d->pattern));
+        out["b_placement"] = std::string(cmns::placementName(d->bPlacement));
         return out;
       },
       py::arg("calibration"), py::kw_only(), py::arg("pattern"),
       py::arg("src_bytes"), py::arg("r"), py::arg("threads") = 8,
       py::arg("k") = 1, py::arg("n_reuse") = -1, py::arg("broadcast") = false,
+      py::arg("b_placement") = "overlapped",
       "Run the C++ cost model. Returns {method, t_a_ms, t_b_ms, "
-      "threshold_bytes, pattern}.");
+      "threshold_bytes, pattern, b_placement}.");
 
   py::class_<reloc::GatherPool, std::shared_ptr<reloc::GatherPool>>(
       m, "GatherPool",

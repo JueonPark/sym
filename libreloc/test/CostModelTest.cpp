@@ -73,6 +73,7 @@ TEST(CostModelParse, LoadReportsUnreadablePath) {
   ASSERT_TRUE(std::holds_alternative<std::string>(r));
 }
 
+using reloc::costmodel::BPlacement;
 using reloc::costmodel::classify;
 using reloc::costmodel::cpuBw;
 using reloc::costmodel::pathCosts;
@@ -164,9 +165,77 @@ TEST(CostModelPathCosts, AffineFormsAndK) {
       pathCosts(m, Pattern::Contiguous, S, 0.25, 8, 2, false).has_value());
 }
 
+TEST(CostModelPathCosts, SerialPlacementSumsLinkAndHbm) {
+  // Issue #109: Serial B (b_fair) pays transfer THEN kernel -- slopes
+  // add. kSynth contiguous r=0.25, S=1e9: overlapped B slope
+  // max(1/10, 1/100) -> 100 ms; serial 1/10 + 1/100 -> 110 ms.
+  CostModel m = mustParse(kSynth);
+  const int64_t S = 1000000000;
+  auto ov = pathCosts(m, Pattern::Contiguous, S, 0.25, 8, 1, false,
+                      BPlacement::Overlapped);
+  auto se = pathCosts(m, Pattern::Contiguous, S, 0.25, 8, 1, false,
+                      BPlacement::Serial);
+  ASSERT_TRUE(ov.has_value());
+  ASSERT_TRUE(se.has_value());
+  EXPECT_NEAR(ov->tBMs, 0.1 + 100.0, 1e-9);
+  EXPECT_NEAR(se->tBMs, 0.1 + 110.0, 1e-9);
+  // Placement touches only the B side.
+  EXPECT_DOUBLE_EQ(se->tAMs, ov->tAMs);
+  EXPECT_DOUBLE_EQ(se->aSlopeMsPerByte, ov->aSlopeMsPerByte);
+}
+
+TEST(CostModelDecide, SerialKillsRoneSlopeTie) {
+  // Issue #109 test (i) / docs/v3-costmodel.md S4: at r=1.0 the
+  // overlapped model's A and B DMA slopes are algebraically identical
+  // whenever A is DMA-bound, so the decision collapses to intercept
+  // noise. Serial's slope a+b can never tie A's for any K/broadcast.
+  CostModel m = mustParse(kSynth);
+  // The canonical degenerate cell: K=1 contiguous r=1 (A DMA-bound:
+  // dma 1e-7 > cpu 5e-8). Overlapped ties exactly...
+  auto ov = pathCosts(m, Pattern::Contiguous, 1 << 20, 1.0, 8, 1, false,
+                      BPlacement::Overlapped);
+  ASSERT_TRUE(ov.has_value());
+  EXPECT_DOUBLE_EQ(ov->bSlopeMsPerByte, ov->aSlopeMsPerByte);
+  auto dOv = decide(m, Pattern::Contiguous, 1 << 20, 1.0, 8, 1, -1, false,
+                    BPlacement::Overlapped);
+  ASSERT_TRUE(dOv.has_value());
+  EXPECT_DOUBLE_EQ(dOv->thresholdBytes, -1); // parallel lines: no boundary
+  // ...and Serial breaks the tie with a real, finite boundary:
+  // bSlope = 1/10+1/100 = 1.1e-7 > aSlope 1e-7;
+  // S* = (0.1-0.5)/(1e-7-1.1e-7) = 4e7.
+  auto dSe = decide(m, Pattern::Contiguous, 1 << 20, 1.0, 8, 1, -1, false,
+                    BPlacement::Serial);
+  ASSERT_TRUE(dSe.has_value());
+  EXPECT_NEAR(dSe->thresholdBytes, 4e7, 1.0);
+  // No (K, broadcast) combination ties under Serial at r=1.
+  for (int K : {1, 4}) {
+    for (bool bc : {false, true}) {
+      auto pc = pathCosts(m, Pattern::Contiguous, 1 << 20, 1.0, 8, K, bc,
+                          BPlacement::Serial);
+      ASSERT_TRUE(pc.has_value()) << "K=" << K << " bc=" << bc;
+      EXPECT_NE(pc->bSlopeMsPerByte, pc->aSlopeMsPerByte)
+          << "K=" << K << " bc=" << bc;
+    }
+  }
+}
+
+TEST(CostModelDecide, PlacementRecordedOnDecision) {
+  CostModel m = mustParse(kSynth);
+  auto dDefault = decide(m, Pattern::Contiguous, 1 << 20, 0.25, 8);
+  ASSERT_TRUE(dDefault.has_value());
+  EXPECT_EQ(dDefault->bPlacement, BPlacement::Overlapped);
+  auto dSe = decide(m, Pattern::Contiguous, 1 << 20, 0.25, 8, 1, -1, false,
+                    BPlacement::Serial);
+  ASSERT_TRUE(dSe.has_value());
+  EXPECT_EQ(dSe->bPlacement, BPlacement::Serial);
+  EXPECT_STREQ(placementName(BPlacement::Serial), "serial");
+  EXPECT_STREQ(placementName(BPlacement::Overlapped), "overlapped");
+}
+
 using reloc::costmodel::decide;
 using reloc::costmodel::MethodDecision;
 using reloc::costmodel::methodName;
+using reloc::costmodel::placementName;
 
 TEST(CostModelDecide, MethodNameStrings) {
   EXPECT_STREQ(methodName(MethodDecision::Method::A), "a");
@@ -323,48 +392,81 @@ TEST(CostModelDecide, BroadcastKAndPrefoldCombine) {
 
 TEST(CostModelDecide, ThresholdAgreesWithBruteForce) {
   // Issue #97 acceptance: threshold precompute vs brute-force agreement.
+  // Issue #109 test (ii): retained for BOTH placements.
   CostModel m = mustParse(kSynth);
-  for (double r : {1.0, 0.5, 0.25, 0.125}) {
-    for (Pattern p : {Pattern::Contiguous, Pattern::Blocked}) {
-      auto probe = decide(m, p, 1 << 20, r, 8);
-      if (!probe.has_value())
-        continue;
-      const double thr = probe->thresholdBytes;
-      // Brute-force every S against the direct tAMs/tBMs comparison,
-      // and separately confirm (a) the stored boundary is the *only*
-      // place the method flips across the whole scanned range, and (b)
-      // it actually *localizes* that flip -- it must fall inside the
-      // bracket [Sprev, S] straddling the transition, not just exist
-      // somewhere. (b) is what catches a threshold scaled by an
-      // arbitrary factor: that still flips exactly once, but lands
-      // outside the narrow power-of-2 bracket.
-      MethodDecision::Method prevMethod = MethodDecision::Method::B;
-      int64_t prevS = 0;
-      bool havePrev = false;
-      int flips = 0;
-      for (int64_t S = 1 << 12; S <= (1ll << 34); S <<= 1) {
-        auto d = decide(m, p, S, r, 8);
-        ASSERT_TRUE(d.has_value());
-        auto pc = pathCosts(m, p, S, r, 8, 1, false);
-        ASSERT_TRUE(pc.has_value());
-        EXPECT_EQ(d->method == MethodDecision::Method::A, pc->tAMs <= pc->tBMs)
-            << patternName(p) << " r=" << r << " S=" << S;
-        if (havePrev && d->method != prevMethod) {
-          ++flips;
-          EXPECT_LE(static_cast<double>(prevS), thr)
-              << patternName(p) << " r=" << r << " prevS=" << prevS
-              << " thr=" << thr;
-          EXPECT_LE(thr, static_cast<double>(S))
-              << patternName(p) << " r=" << r << " S=" << S << " thr=" << thr;
+  for (BPlacement bp : {BPlacement::Overlapped, BPlacement::Serial}) {
+    for (double r : {1.0, 0.5, 0.25, 0.125}) {
+      for (Pattern p : {Pattern::Contiguous, Pattern::Blocked}) {
+        auto probe = decide(m, p, 1 << 20, r, 8, 1, -1, false, bp);
+        if (!probe.has_value())
+          continue;
+        const double thr = probe->thresholdBytes;
+        // Brute-force every S against the direct tAMs/tBMs comparison,
+        // and separately confirm (a) the stored boundary is the *only*
+        // place the method flips across the whole scanned range, and (b)
+        // it actually *localizes* that flip -- it must fall inside the
+        // bracket [Sprev, S] straddling the transition, not just exist
+        // somewhere. (b) is what catches a threshold scaled by an
+        // arbitrary factor: that still flips exactly once, but lands
+        // outside the narrow power-of-2 bracket.
+        MethodDecision::Method prevMethod = MethodDecision::Method::B;
+        int64_t prevS = 0;
+        bool havePrev = false;
+        int flips = 0;
+        for (int64_t S = 1 << 12; S <= (1ll << 34); S <<= 1) {
+          auto d = decide(m, p, S, r, 8, 1, -1, false, bp);
+          ASSERT_TRUE(d.has_value());
+          auto pc = pathCosts(m, p, S, r, 8, 1, false, bp);
+          ASSERT_TRUE(pc.has_value());
+          EXPECT_EQ(d->method == MethodDecision::Method::A,
+                    pc->tAMs <= pc->tBMs)
+              << placementName(bp) << " " << patternName(p) << " r=" << r
+              << " S=" << S;
+          if (havePrev && d->method != prevMethod) {
+            ++flips;
+            EXPECT_LE(static_cast<double>(prevS), thr)
+                << placementName(bp) << " " << patternName(p) << " r=" << r
+                << " prevS=" << prevS << " thr=" << thr;
+            EXPECT_LE(thr, static_cast<double>(S))
+                << placementName(bp) << " " << patternName(p) << " r=" << r
+                << " S=" << S << " thr=" << thr;
+          }
+          prevMethod = d->method;
+          prevS = S;
+          havePrev = true;
         }
-        prevMethod = d->method;
-        prevS = S;
-        havePrev = true;
+        EXPECT_EQ(flips, thr > 0 ? 1 : 0)
+            << placementName(bp) << " " << patternName(p) << " r=" << r
+            << " thr=" << thr;
       }
-      EXPECT_EQ(flips, thr > 0 ? 1 : 0)
-          << patternName(p) << " r=" << r << " thr=" << thr;
     }
   }
+}
+
+TEST(CostModelPathCosts, FillDrainTermFromChunksKey) {
+  // Issue #109 test (iii): with pipeline.chunks_per_buffer the
+  // Overlapped slope gains exactly min(a,b)/n; without the key the
+  // formula is byte-for-byte V3's max -- which is also the R4 hiding
+  // condition's limit (m/BW_hbm <= 1/BW_link => max picks DMA).
+  CostModel base = mustParse(kSynth);
+  CostModel withN =
+      mustParse(std::string(kSynth) + "pipeline.chunks_per_buffer 8\n");
+  const int64_t S = 1000000000;
+  auto pcBase = pathCosts(base, Pattern::Contiguous, S, 0.25, 8, 1, false,
+                          BPlacement::Overlapped);
+  auto pcN = pathCosts(withN, Pattern::Contiguous, S, 0.25, 8, 1, false,
+                       BPlacement::Overlapped);
+  ASSERT_TRUE(pcBase.has_value());
+  ASSERT_TRUE(pcN.has_value());
+  // kSynth contiguous: a = 1e-7 (link 10), b = 1e-8 (m=1, HBM 100).
+  EXPECT_DOUBLE_EQ(pcBase->bSlopeMsPerByte, 1e-7); // V3 exactly
+  EXPECT_NEAR(pcN->bSlopeMsPerByte, 1e-7 + 1e-8 / 8.0, 1e-18);
+  EXPECT_NEAR(pcN->tBMs, 0.1 + 101.25, 1e-9);
+  // Serial ignores the chunks key (no pipeline to fill/drain).
+  auto seN = pathCosts(withN, Pattern::Contiguous, S, 0.25, 8, 1, false,
+                       BPlacement::Serial);
+  ASSERT_TRUE(seN.has_value());
+  EXPECT_NEAR(seN->tBMs, 0.1 + 110.0, 1e-9);
 }
 
 } // namespace

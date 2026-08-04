@@ -308,6 +308,56 @@ rstar.json`, which is then passed back into `gates.py --rstar` for
 R2-G5. All three configs target the 7800X3D + 4070 Ti SUPER (Gen4) box,
 no `numactl` (single-NUMA).
 
+### CM1 Gen4 recv-kernel run (issue #109 runbook)
+
+The Gen4 box has no `copy_f32` ceiling measurement and no usable committed
+recv-kernel data (`gpu_recv_ms` in the pipeline CSVs is chunked/overlapped
+event time and collapses on several cells), so all three `recv.m.*` keys
+are omitted from `calibration/7800x3d-4070tis.cal` until this run lands.
+On the 7800X3D/4070 Ti SUPER box:
+
+1. Build `bench-hiding-ratio` (CUDA cmake tree, or the standalone recipe in
+   `docs/m0-2080ti-bringup.md` with `-arch=sm_89`).
+2. `bench-hiding-ratio --json bench/results/cm1_recv_kernel_bw_7800x3d_4070tis.json`
+   — this also produces the first real Gen4 `copy_f32` ceiling.
+3. Commit the JSON, then regenerate:
+   `python3 bench/rtrack/make_calibration.py --machine 7800x3d-4070tis --out calibration/7800x3d-4070tis.cal`
+   (the three `recv.m.*` keys appear automatically; every pre-existing
+   line must stay byte-identical) and commit the `.cal`.
+4. `python3 bench/rtrack/v3_gate.py` — CALIBRATION-REGEN must PASS.
+
+Gen4 run notes (as executed, 2026-08-05): the box runs CUDA 13.2, which
+removed `cudaDeviceProp::memoryClockRate` (`hiding_ratio.cu` reads the
+memory clock via `cudaDeviceGetAttribute` instead), and the standalone
+nvcc recipe additionally needs `libreloc/quant/Quant.cpp` plus
+`QuantAVX2.cpp` built with `-mavx2 -mfma -mf16c` (its per-file cmake
+flags). On this WSL2 box the WDDM driver repositions P-states in the
+inter-kernel verify gaps: unlocked, the memory clock oscillates
+10251<->5001 MHz mid-run and the recv-kernel medians (and the
+copy_f32/kernel m ratios with them) swing run-to-run by up to 2x, at
+temperature and power nowhere near their limits. Lock the clocks first
+from an elevated Windows-side shell (`nvidia-smi -lgc 2610` and
+`-lmc 10251`; `-rgc`/`-rmc` to undo) — the committed artifact was
+measured with 100% locked-clock residency and
+`iqr_over_median_pct < 2.5` on every N=16384 cell.
+
+Deliberately out of scope here: re-baselining the existing Gen4 `hbm.*`
+proxy keys onto the new run's ceiling. That would change committed keys
+("byte-identical except the new keys" would fail) and re-open V3's
+as-measured verdicts — a separate decision for CM5's re-run, recorded
+here so it isn't lost. `pipeline.chunks_per_buffer` is likewise deferred
+to CM5 for the same frozen-verdict reason: the C++ `Overlapped` fill/drain
+term is implemented and unit-tested but dormant in both committed
+calibrations, since emitting the key would activate it on the frozen V3
+prediction cells and silently re-score `bench/results/v3_prediction_report.json`
+without pre-registration.
+
+Also note for CM5: `recv.m.convert_f16_f32`/`recv.m.dequant_s8_f32` derive from
+L2-warm in-pipeline `gpu_recv_ms`, while `recv.m.unpack_dequant_s4` derives from
+an isolated cold run — the two bases differ by ~20% on dequant. CM5's `m_eff`
+composition must first decide on a single measurement basis (warm in-pipeline
+vs. cold isolated) before consuming the `recv.m.*` keys.
+
 ## V3 cost-model tools (issue #97)
 
 - **`make_calibration.py`** — assembles a `calibration/<machine>.cal` flat

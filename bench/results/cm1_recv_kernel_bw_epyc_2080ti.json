@@ -1,0 +1,31 @@
+{
+  "config": {"benchmark": "hiding_ratio", "gpu": "NVIDIA GeForce RTX 2080 Ti", "hbm_peak_gb_per_s": 616, "warmup": 5, "iters": 30},
+  "by_n": {
+  "8192": {
+    "copy_f32": {"traffic_bytes": 536870912, "median_ms": 0.987024, "min_ms": 0.985216, "p95_ms": 0.989054, "iqr_over_median_pct": 0.0429572, "gb_per_s": 543.929},
+    "relocate_naive_f32": {"traffic_bytes": 536870912, "median_ms": 3.1075, "min_ms": 3.10477, "p95_ms": 3.11091, "iqr_over_median_pct": 0.0640986, "gb_per_s": 172.766},
+    "transpose_smem_unpadded": {"traffic_bytes": 536870912, "median_ms": 1.43397, "min_ms": 1.42563, "p95_ms": 1.4397, "iqr_over_median_pct": 0.204747, "gb_per_s": 374.395},
+    "transpose_smem_padded": {"traffic_bytes": 536870912, "median_ms": 1.39035, "min_ms": 1.38595, "p95_ms": 1.39302, "iqr_over_median_pct": 0.167442, "gb_per_s": 386.14},
+    "convert_f16_f32": {"traffic_bytes": 402653184, "median_ms": 0.77688, "min_ms": 0.77488, "p95_ms": 0.780088, "iqr_over_median_pct": 0.21522, "gb_per_s": 518.295},
+    "dequant_s8_f32": {"traffic_bytes": 335544320, "median_ms": 0.846912, "min_ms": 0.845152, "p95_ms": 0.848323, "iqr_over_median_pct": 0.156804, "gb_per_s": 396.197},
+    "unpack_dequant_s4": {"traffic_bytes": 436207616, "median_ms": 1.20045, "min_ms": 1.19808, "p95_ms": 1.20281, "iqr_over_median_pct": 0.103966, "gb_per_s": 363.371},
+    "scatter_random_f32_blk1": {"traffic_bytes": 536870912, "median_ms": 1.90021, "min_ms": 1.89869, "p95_ms": 1.90109, "iqr_over_median_pct": 0.0349418, "gb_per_s": 282.533, "block": 1, "block_bytes": 4},
+    "scatter_random_f32_blk1024": {"traffic_bytes": 536870912, "median_ms": 2.04427, "min_ms": 2.04042, "p95_ms": 2.04746, "iqr_over_median_pct": 0.0923603, "gb_per_s": 262.622, "block": 1024, "block_bytes": 4096},
+    "scatter_random_f32_blk1048576": {"traffic_bytes": 536870912, "median_ms": 6.52048, "min_ms": 6.50102, "p95_ms": 6.54264, "iqr_over_median_pct": 0.202317, "gb_per_s": 82.3361, "block": 1048576, "block_bytes": 4194304},
+    "scatter_random_f32_blk67108864": {"traffic_bytes": 536870912, "median_ms": 26.2196, "min_ms": 26.196, "p95_ms": 26.3997, "iqr_over_median_pct": 0.0598329, "gb_per_s": 20.4759, "block": 67108864, "block_bytes": 268435456}
+  },
+  "16384": {
+    "copy_f32": {"traffic_bytes": 2147483648, "median_ms": 3.94581, "min_ms": 3.93802, "p95_ms": 3.99513, "iqr_over_median_pct": 0.0798811, "gb_per_s": 544.244},
+    "relocate_naive_f32": {"traffic_bytes": 2147483648, "median_ms": 12.1324, "min_ms": 11.749, "p95_ms": 13.2484, "iqr_over_median_pct": 11.7169, "gb_per_s": 177.004},
+    "transpose_smem_unpadded": {"traffic_bytes": 2147483648, "median_ms": 5.7867, "min_ms": 5.76714, "p95_ms": 5.79385, "iqr_over_median_pct": 0.139493, "gb_per_s": 371.107},
+    "transpose_smem_padded": {"traffic_bytes": 2147483648, "median_ms": 5.64795, "min_ms": 5.63472, "p95_ms": 5.65526, "iqr_over_median_pct": 0.0913643, "gb_per_s": 380.223},
+    "convert_f16_f32": {"traffic_bytes": 1610612736, "median_ms": 3.14514, "min_ms": 3.14256, "p95_ms": 3.14774, "iqr_over_median_pct": 0.0605383, "gb_per_s": 512.096},
+    "dequant_s8_f32": {"traffic_bytes": 1342177280, "median_ms": 3.16411, "min_ms": 3.16045, "p95_ms": 3.16758, "iqr_over_median_pct": 0.112514, "gb_per_s": 424.188},
+    "unpack_dequant_s4": {"traffic_bytes": 1744830464, "median_ms": 4.42362, "min_ms": 4.41968, "p95_ms": 4.42588, "iqr_over_median_pct": 0.0244152, "gb_per_s": 394.435},
+    "scatter_random_f32_blk1": {"traffic_bytes": 2147483648, "median_ms": 7.68731, "min_ms": 7.68598, "p95_ms": 7.69184, "iqr_over_median_pct": 0.0260166, "gb_per_s": 279.354, "block": 1, "block_bytes": 4},
+    "scatter_random_f32_blk1024": {"traffic_bytes": 2147483648, "median_ms": 7.69437, "min_ms": 7.69229, "p95_ms": 7.69972, "iqr_over_median_pct": 0.0207901, "gb_per_s": 279.098, "block": 1024, "block_bytes": 4096},
+    "scatter_random_f32_blk1048576": {"traffic_bytes": 2147483648, "median_ms": 25.4147, "min_ms": 25.3782, "p95_ms": 25.5578, "iqr_over_median_pct": 0.0712347, "gb_per_s": 84.4978, "block": 1048576, "block_bytes": 4194304},
+    "scatter_random_f32_blk268435456": {"traffic_bytes": 2147483648, "median_ms": 106.107, "min_ms": 106.076, "p95_ms": 106.156, "iqr_over_median_pct": 0.0201543, "gb_per_s": 20.2388, "block": 268435456, "block_bytes": 1073741824}
+  }
+  }
+}

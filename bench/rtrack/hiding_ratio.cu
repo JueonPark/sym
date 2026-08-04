@@ -10,10 +10,13 @@
 //
 // Kernels: copy_f32 (the HBM ceiling), relocate_naive_f32, an UNPADDED
 // SMEM transpose (bench-local, to expose the bank-conflict delta the
-// library's padded relocateF32 avoids), the padded library transpose, and
+// library's padded relocateF32 avoids), the padded library transpose,
 // scatter_random_f32 over an index-entropy sweep (within-block random
-// permutations of decreasing locality). Every kernel is verified against a
-// CPU/oracle reference before it is timed (the repo rule).
+// permutations of decreasing locality), and three Method-A receive
+// kernels (CM1, issue #109): convert_f16_f32, dequant_s8_f32, and
+// unpack_dequant_s4 (the r=0.125 unpack+dequant chain). Every kernel is
+// verified against a CPU/oracle reference before it is timed (the repo
+// rule).
 //
 //===----------------------------------------------------------------------===//
 
@@ -34,14 +37,14 @@
 #include <string>
 #include <vector>
 
-#define CUDA_CHECK(x)                                                         \
-  do {                                                                        \
-    cudaError_t err_ = (x);                                                   \
-    if (err_ != cudaSuccess) {                                                \
-      std::fprintf(stderr, "CUDA error at %s:%d: %s (%s)\n", __FILE__,        \
-                   __LINE__, cudaGetErrorString(err_), #x);                   \
-      std::exit(1);                                                           \
-    }                                                                         \
+#define CUDA_CHECK(x)                                                          \
+  do {                                                                         \
+    cudaError_t err_ = (x);                                                    \
+    if (err_ != cudaSuccess) {                                                 \
+      std::fprintf(stderr, "CUDA error at %s:%d: %s (%s)\n", __FILE__,         \
+                   __LINE__, cudaGetErrorString(err_), #x);                    \
+      std::exit(1);                                                            \
+    }                                                                          \
   } while (0)
 
 namespace {
@@ -117,7 +120,10 @@ struct DeviceBuf {
   ~DeviceBuf() { cudaFree(p); }
   DeviceBuf(const DeviceBuf &) = delete;
   DeviceBuf &operator=(const DeviceBuf &) = delete;
-  template <typename T> T *as() const { return static_cast<T *>(p); }
+  template <typename T>
+  T *as() const {
+    return static_cast<T *>(p);
+  }
 };
 
 struct Timing {
@@ -128,8 +134,8 @@ struct Timing {
 // Time `launch` with CUDA events: warmup, then iters timed; median via the
 // R0.3 protocol. trafficBytes = HBM bytes moved (read + write) per call.
 template <typename Launch>
-Timing timeKernel(Launch &&launch, int64_t trafficBytes, int warmup,
-                  int iters, cudaStream_t stream) {
+Timing timeKernel(Launch &&launch, int64_t trafficBytes, int warmup, int iters,
+                  cudaStream_t stream) {
   cudaEvent_t beg, end;
   CUDA_CHECK(cudaEventCreate(&beg));
   CUDA_CHECK(cudaEventCreate(&end));
@@ -159,8 +165,8 @@ Timing timeKernel(Launch &&launch, int64_t trafficBytes, int warmup,
 
 std::string timingJson(const std::string &name, int64_t traffic,
                        const Timing &t, const std::string &extra = "") {
-  return "    \"" + name + "\": {\"traffic_bytes\": " +
-         std::to_string(traffic) +
+  return "    \"" + name +
+         "\": {\"traffic_bytes\": " + std::to_string(traffic) +
          ", \"median_ms\": " + bench::jsonNumber(t.ms.median) +
          ", \"min_ms\": " + bench::jsonNumber(t.ms.min) +
          ", \"p95_ms\": " + bench::jsonNumber(t.ms.p95) +
@@ -177,11 +183,40 @@ struct Options {
   const char *jsonPath = "-";
 };
 
+// Exact host IEEE binary16 -> binary32 (finite inputs only; the bench
+// forces finite bit patterns below, so the inf/NaN branch is untaken).
+float f16ToF32(uint16_t h) {
+  const uint32_t sign = static_cast<uint32_t>(h & 0x8000u) << 16;
+  uint32_t exp = (h >> 10) & 0x1f;
+  uint32_t man = h & 0x3ffu;
+  uint32_t bits;
+  if (exp == 0) {
+    if (man == 0) {
+      bits = sign; // signed zero
+    } else {       // subnormal: renormalize into f32
+      int shift = 0;
+      while (!(man & 0x400u)) {
+        man <<= 1;
+        ++shift;
+      }
+      man &= 0x3ffu;
+      bits = sign | ((113u - static_cast<uint32_t>(shift)) << 23) | (man << 13);
+    }
+  } else if (exp == 0x1f) {
+    bits = sign | 0x7f800000u | (man << 13); // inf/NaN (untaken)
+  } else {
+    bits = sign | ((exp + 112u) << 23) | (man << 13);
+  }
+  float f;
+  std::memcpy(&f, &bits, 4);
+  return f;
+}
+
 int runN(int64_t n, const Options &opt, cudaStream_t stream,
          std::string &body) {
   const int64_t total = n * n;
-  const int64_t S = total * 4;    // tensor bytes
-  const int64_t traffic = 2 * S;  // read + write, the copy/transpose basis
+  const int64_t S = total * 4;   // tensor bytes
+  const int64_t traffic = 2 * S; // read + write, the copy/transpose basis
   std::vector<float> hSrc = makeSrc(total);
 
   DeviceBuf dSrc(static_cast<size_t>(S)), dDst(static_cast<size_t>(S));
@@ -214,17 +249,19 @@ int runN(int64_t n, const Options &opt, cudaStream_t stream,
   clearDst();
   reloc::cuda::copyF32(dSrc.as<float>(), dDst.as<float>(), total, stream);
   CUDA_CHECK(cudaStreamSynchronize(stream));
-  if (std::memcmp(download(dDst).data(), hSrc.data(),
-                  static_cast<size_t>(S)) != 0) {
+  if (std::memcmp(download(dDst).data(), hSrc.data(), static_cast<size_t>(S)) !=
+      0) {
     std::fprintf(stderr, "VERIFY FAILED: copy_f32 N=%lld\n",
                  static_cast<long long>(n));
     return 1;
   }
-  emit(timingJson(
-      "copy_f32", traffic,
-      timeKernel([&] { reloc::cuda::copyF32(dSrc.as<float>(),
-                                            dDst.as<float>(), total, stream); },
-                 traffic, opt.warmup, opt.iters, stream)));
+  emit(timingJson("copy_f32", traffic,
+                  timeKernel(
+                      [&] {
+                        reloc::cuda::copyF32(dSrc.as<float>(), dDst.as<float>(),
+                                             total, stream);
+                      },
+                      traffic, opt.warmup, opt.iters, stream)));
 
   // --- transpose references (naive, unpadded SMEM, padded SMEM) ----------
   reloc::BoundPlan tp = transposePlan(n);
@@ -288,6 +325,136 @@ int runN(int64_t n, const Options &opt, cudaStream_t stream,
                       },
                       traffic, opt.warmup, opt.iters, stream)));
 
+  // --- Method-A receive kernels (issue #109/CM1) --------------------------
+  // R4-style: isolated kernel BW on a read+write traffic basis, later
+  // divided into the same run's copy_f32 ceiling by make_calibration.py.
+  {
+    // convert_f16_f32: read 2B + write 4B per element = 1.5*S traffic.
+    const int64_t halfBytes = total * 2;
+    DeviceBuf dHalf(static_cast<size_t>(halfBytes));
+    std::vector<uint16_t> hHalf(static_cast<size_t>(total));
+    for (int64_t i = 0; i < total; ++i) {
+      uint16_t h = static_cast<uint16_t>((i * 2654435761ull) & 0xffff);
+      if ((h & 0x7c00) == 0x7c00)
+        h = static_cast<uint16_t>(h ^ 0x0400); // force finite
+      hHalf[static_cast<size_t>(i)] = h;
+    }
+    CUDA_CHECK(cudaMemcpyAsync(dHalf.p, hHalf.data(),
+                               static_cast<size_t>(halfBytes),
+                               cudaMemcpyHostToDevice, stream));
+    std::vector<float> ref(static_cast<size_t>(total));
+    for (int64_t i = 0; i < total; ++i)
+      ref[static_cast<size_t>(i)] = f16ToF32(hHalf[static_cast<size_t>(i)]);
+    clearDst();
+    reloc::cuda::convertF16F32(dHalf.as<uint16_t>(), dDst.as<float>(), total,
+                               stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    if (std::memcmp(download(dDst).data(), ref.data(),
+                    static_cast<size_t>(S)) != 0) {
+      std::fprintf(stderr, "VERIFY FAILED: convert_f16_f32 N=%lld\n",
+                   static_cast<long long>(n));
+      return 1;
+    }
+    const int64_t trConv = halfBytes + S;
+    emit(timingJson("convert_f16_f32", trConv,
+                    timeKernel(
+                        [&] {
+                          reloc::cuda::convertF16F32(dHalf.as<uint16_t>(),
+                                                     dDst.as<float>(), total,
+                                                     stream);
+                        },
+                        trConv, opt.warmup, opt.iters, stream)));
+  }
+  {
+    // dequant_s8_f32: read 1B + write 4B per element = 1.25*S traffic
+    // (per-channel scales excluded by definition: n floats, negligible).
+    DeviceBuf dS8(static_cast<size_t>(total));
+    DeviceBuf dScales(static_cast<size_t>(n) * 4);
+    std::vector<int8_t> hS8(static_cast<size_t>(total));
+    for (int64_t i = 0; i < total; ++i)
+      hS8[static_cast<size_t>(i)] = static_cast<int8_t>((i * 131) & 0xff);
+    std::vector<float> hScales(static_cast<size_t>(n));
+    for (int64_t c = 0; c < n; ++c)
+      hScales[static_cast<size_t>(c)] = 0.25f * static_cast<float>((c & 7) + 1);
+    CUDA_CHECK(cudaMemcpyAsync(dS8.p, hS8.data(), static_cast<size_t>(total),
+                               cudaMemcpyHostToDevice, stream));
+    CUDA_CHECK(cudaMemcpyAsync(dScales.p, hScales.data(),
+                               static_cast<size_t>(n) * 4,
+                               cudaMemcpyHostToDevice, stream));
+    std::vector<float> ref(static_cast<size_t>(total));
+    for (int64_t c = 0; c < n; ++c)
+      for (int64_t j = 0; j < n; ++j)
+        ref[static_cast<size_t>(c * n + j)] =
+            static_cast<float>(hS8[static_cast<size_t>(c * n + j)]) *
+            hScales[static_cast<size_t>(c)];
+    clearDst();
+    reloc::cuda::dequantS8F32(dS8.as<int8_t>(), dDst.as<float>(), n, n,
+                              dScales.as<float>(), stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    if (std::memcmp(download(dDst).data(), ref.data(),
+                    static_cast<size_t>(S)) != 0) {
+      std::fprintf(stderr, "VERIFY FAILED: dequant_s8_f32 N=%lld\n",
+                   static_cast<long long>(n));
+      return 1;
+    }
+    const int64_t trDeq = total + S;
+    emit(timingJson("dequant_s8_f32", trDeq,
+                    timeKernel(
+                        [&] {
+                          reloc::cuda::dequantS8F32(
+                              dS8.as<int8_t>(), dDst.as<float>(), n, n,
+                              dScales.as<float>(), stream);
+                        },
+                        trDeq, opt.warmup, opt.iters, stream)));
+
+    // unpack_dequant_s4: the r=0.125 receive CHAIN (unpackS4S8 then
+    // dequantS8F32, two launches -- how rtrack_bench.cu:716-722 runs it).
+    // Traffic: 0.5B read + 1B write (unpack) + 1B read + 4B write
+    // (dequant) per element = 1.625*S.
+    const int64_t pairs = total / 2;
+    DeviceBuf dPacked(static_cast<size_t>(pairs));
+    DeviceBuf dS8mid(static_cast<size_t>(total));
+    std::vector<uint8_t> hPacked(static_cast<size_t>(pairs));
+    for (int64_t i = 0; i < pairs; ++i)
+      hPacked[static_cast<size_t>(i)] = static_cast<uint8_t>((i * 37) & 0xff);
+    CUDA_CHECK(cudaMemcpyAsync(dPacked.p, hPacked.data(),
+                               static_cast<size_t>(pairs),
+                               cudaMemcpyHostToDevice, stream));
+    for (int64_t i = 0; i < pairs; ++i) {
+      const uint8_t b = hPacked[static_cast<size_t>(i)];
+      const int8_t lo = static_cast<int8_t>(static_cast<int8_t>(b << 4) >> 4);
+      const int8_t hi = static_cast<int8_t>(static_cast<int8_t>(b) >> 4);
+      const int64_t e0 = 2 * i, e1 = 2 * i + 1;
+      ref[static_cast<size_t>(e0)] =
+          static_cast<float>(lo) * hScales[static_cast<size_t>(e0 / n)];
+      ref[static_cast<size_t>(e1)] =
+          static_cast<float>(hi) * hScales[static_cast<size_t>(e1 / n)];
+    }
+    clearDst();
+    reloc::cuda::unpackS4S8(dPacked.as<uint8_t>(), dS8mid.as<int8_t>(), pairs,
+                            stream);
+    reloc::cuda::dequantS8F32(dS8mid.as<int8_t>(), dDst.as<float>(), n, n,
+                              dScales.as<float>(), stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    if (std::memcmp(download(dDst).data(), ref.data(),
+                    static_cast<size_t>(S)) != 0) {
+      std::fprintf(stderr, "VERIFY FAILED: unpack_dequant_s4 N=%lld\n",
+                   static_cast<long long>(n));
+      return 1;
+    }
+    const int64_t trS4 = pairs + total + total + S;
+    emit(timingJson(
+        "unpack_dequant_s4", trS4,
+        timeKernel(
+            [&] {
+              reloc::cuda::unpackS4S8(dPacked.as<uint8_t>(),
+                                      dS8mid.as<int8_t>(), pairs, stream);
+              reloc::cuda::dequantS8F32(dS8mid.as<int8_t>(), dDst.as<float>(),
+                                        n, n, dScales.as<float>(), stream);
+            },
+            trS4, opt.warmup, opt.iters, stream)));
+  }
+
   // --- scatter_random_f32 over the entropy sweep -------------------------
   std::vector<int64_t> blks = opt.entropyBlk;
   if (blks.empty())
@@ -315,19 +482,17 @@ int runN(int64_t n, const Options &opt, cudaStream_t stream,
                    static_cast<long long>(blk), static_cast<long long>(n));
       return 1;
     }
-    const std::string extra =
-        ", \"block\": " + std::to_string(blk) +
-        ", \"block_bytes\": " + std::to_string(blk * 4);
-    emit(timingJson(
-        "scatter_random_f32_blk" + std::to_string(blk), traffic,
-        timeKernel(
-            [&] {
-              reloc::cuda::scatterRandomF32(dSrc.as<float>(),
-                                            dIdx.as<int64_t>(),
-                                            dDst.as<float>(), total, stream);
-            },
-            traffic, opt.warmup, opt.iters, stream),
-        extra));
+    const std::string extra = ", \"block\": " + std::to_string(blk) +
+                              ", \"block_bytes\": " + std::to_string(blk * 4);
+    emit(timingJson("scatter_random_f32_blk" + std::to_string(blk), traffic,
+                    timeKernel(
+                        [&] {
+                          reloc::cuda::scatterRandomF32(
+                              dSrc.as<float>(), dIdx.as<int64_t>(),
+                              dDst.as<float>(), total, stream);
+                        },
+                        traffic, opt.warmup, opt.iters, stream),
+                    extra));
   }
 
   if (!body.empty())
@@ -339,9 +504,14 @@ int runN(int64_t n, const Options &opt, cudaStream_t stream,
 int run(const Options &opt) {
   cudaDeviceProp prop{};
   CUDA_CHECK(cudaGetDeviceProperties(&prop, 0));
-  // Theoretical HBM peak from the memory clock + bus width (both in prop).
+  // Theoretical HBM peak from the memory clock + bus width. The clock comes
+  // from cudaDeviceGetAttribute (same kHz value as the pre-CUDA-13
+  // cudaDeviceProp::memoryClockRate member, which CUDA 13 removed).
+  int memClockKhz = 0;
+  CUDA_CHECK(
+      cudaDeviceGetAttribute(&memClockKhz, cudaDevAttrMemoryClockRate, 0));
   const double hbmPeakGbps =
-      2.0 * (prop.memoryClockRate * 1e3) * (prop.memoryBusWidth / 8) / 1e9;
+      2.0 * (memClockKhz * 1e3) * (prop.memoryBusWidth / 8) / 1e9;
   cudaStream_t stream;
   CUDA_CHECK(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
 
@@ -355,8 +525,8 @@ int run(const Options &opt) {
       std::string(prop.name) +
       "\", \"hbm_peak_gb_per_s\": " + bench::jsonNumber(hbmPeakGbps) +
       ", \"warmup\": " + std::to_string(opt.warmup) +
-      ", \"iters\": " + std::to_string(opt.iters) +
-      "},\n  \"by_n\": {\n" + body + "\n  }\n}\n";
+      ", \"iters\": " + std::to_string(opt.iters) + "},\n  \"by_n\": {\n" +
+      body + "\n  }\n}\n";
   cudaStreamDestroy(stream);
   if (std::strcmp(opt.jsonPath, "-") == 0) {
     std::fputs(doc.c_str(), stdout);
@@ -369,8 +539,8 @@ int run(const Options &opt) {
     std::fputs(doc.c_str(), f);
     std::fclose(f);
   }
-  std::fprintf(stderr, "hiding_ratio: %s HBM peak %.1f GB/s, done\n",
-               prop.name, hbmPeakGbps);
+  std::fprintf(stderr, "hiding_ratio: %s HBM peak %.1f GB/s, done\n", prop.name,
+               hbmPeakGbps);
   return 0;
 }
 
