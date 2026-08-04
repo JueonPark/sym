@@ -168,8 +168,7 @@ static std::optional<double> deliveryGbps(const CostModel &m, int K) {
 
 std::optional<PathCosts> pathCosts(const CostModel &m, Pattern p,
                                    int64_t srcBytes, double r, int threads,
-                                   int K, bool broadcast,
-                                   BPlacement bPlace) {
+                                   int K, bool broadcast, BPlacement bPlace) {
   if (srcBytes <= 0 || r <= 0 || K < 1)
     return std::nullopt;
   auto bwCpu = cpuBw(m, p, r, threads);

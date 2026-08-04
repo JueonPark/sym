@@ -335,8 +335,8 @@ PYBIND11_MODULE(_pyreloc, m) {
         else
           throw py::value_error("unknown b_placement '" + bPlacement +
                                 "' (expected 'overlapped' or 'serial')");
-        auto d =
-            cmns::decide(cal, p, srcBytes, r, threads, k, nReuse, broadcast, bp);
+        auto d = cmns::decide(cal, p, srcBytes, r, threads, k, nReuse,
+                              broadcast, bp);
         if (!d)
           throw py::value_error("calibration lacks keys for pattern '" +
                                 pattern + "' at r=" + std::to_string(r) + " t" +

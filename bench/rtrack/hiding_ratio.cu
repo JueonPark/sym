@@ -37,14 +37,14 @@
 #include <string>
 #include <vector>
 
-#define CUDA_CHECK(x)                                                         \
-  do {                                                                        \
-    cudaError_t err_ = (x);                                                   \
-    if (err_ != cudaSuccess) {                                                \
-      std::fprintf(stderr, "CUDA error at %s:%d: %s (%s)\n", __FILE__,        \
-                   __LINE__, cudaGetErrorString(err_), #x);                   \
-      std::exit(1);                                                           \
-    }                                                                         \
+#define CUDA_CHECK(x)                                                          \
+  do {                                                                         \
+    cudaError_t err_ = (x);                                                    \
+    if (err_ != cudaSuccess) {                                                 \
+      std::fprintf(stderr, "CUDA error at %s:%d: %s (%s)\n", __FILE__,         \
+                   __LINE__, cudaGetErrorString(err_), #x);                    \
+      std::exit(1);                                                            \
+    }                                                                          \
   } while (0)
 
 namespace {
@@ -120,7 +120,10 @@ struct DeviceBuf {
   ~DeviceBuf() { cudaFree(p); }
   DeviceBuf(const DeviceBuf &) = delete;
   DeviceBuf &operator=(const DeviceBuf &) = delete;
-  template <typename T> T *as() const { return static_cast<T *>(p); }
+  template <typename T>
+  T *as() const {
+    return static_cast<T *>(p);
+  }
 };
 
 struct Timing {
@@ -131,8 +134,8 @@ struct Timing {
 // Time `launch` with CUDA events: warmup, then iters timed; median via the
 // R0.3 protocol. trafficBytes = HBM bytes moved (read + write) per call.
 template <typename Launch>
-Timing timeKernel(Launch &&launch, int64_t trafficBytes, int warmup,
-                  int iters, cudaStream_t stream) {
+Timing timeKernel(Launch &&launch, int64_t trafficBytes, int warmup, int iters,
+                  cudaStream_t stream) {
   cudaEvent_t beg, end;
   CUDA_CHECK(cudaEventCreate(&beg));
   CUDA_CHECK(cudaEventCreate(&end));
@@ -162,8 +165,8 @@ Timing timeKernel(Launch &&launch, int64_t trafficBytes, int warmup,
 
 std::string timingJson(const std::string &name, int64_t traffic,
                        const Timing &t, const std::string &extra = "") {
-  return "    \"" + name + "\": {\"traffic_bytes\": " +
-         std::to_string(traffic) +
+  return "    \"" + name +
+         "\": {\"traffic_bytes\": " + std::to_string(traffic) +
          ", \"median_ms\": " + bench::jsonNumber(t.ms.median) +
          ", \"min_ms\": " + bench::jsonNumber(t.ms.min) +
          ", \"p95_ms\": " + bench::jsonNumber(t.ms.p95) +
@@ -190,7 +193,7 @@ float f16ToF32(uint16_t h) {
   if (exp == 0) {
     if (man == 0) {
       bits = sign; // signed zero
-    } else { // subnormal: renormalize into f32
+    } else {       // subnormal: renormalize into f32
       int shift = 0;
       while (!(man & 0x400u)) {
         man <<= 1;
@@ -212,8 +215,8 @@ float f16ToF32(uint16_t h) {
 int runN(int64_t n, const Options &opt, cudaStream_t stream,
          std::string &body) {
   const int64_t total = n * n;
-  const int64_t S = total * 4;    // tensor bytes
-  const int64_t traffic = 2 * S;  // read + write, the copy/transpose basis
+  const int64_t S = total * 4;   // tensor bytes
+  const int64_t traffic = 2 * S; // read + write, the copy/transpose basis
   std::vector<float> hSrc = makeSrc(total);
 
   DeviceBuf dSrc(static_cast<size_t>(S)), dDst(static_cast<size_t>(S));
@@ -246,17 +249,19 @@ int runN(int64_t n, const Options &opt, cudaStream_t stream,
   clearDst();
   reloc::cuda::copyF32(dSrc.as<float>(), dDst.as<float>(), total, stream);
   CUDA_CHECK(cudaStreamSynchronize(stream));
-  if (std::memcmp(download(dDst).data(), hSrc.data(),
-                  static_cast<size_t>(S)) != 0) {
+  if (std::memcmp(download(dDst).data(), hSrc.data(), static_cast<size_t>(S)) !=
+      0) {
     std::fprintf(stderr, "VERIFY FAILED: copy_f32 N=%lld\n",
                  static_cast<long long>(n));
     return 1;
   }
-  emit(timingJson(
-      "copy_f32", traffic,
-      timeKernel([&] { reloc::cuda::copyF32(dSrc.as<float>(),
-                                            dDst.as<float>(), total, stream); },
-                 traffic, opt.warmup, opt.iters, stream)));
+  emit(timingJson("copy_f32", traffic,
+                  timeKernel(
+                      [&] {
+                        reloc::cuda::copyF32(dSrc.as<float>(), dDst.as<float>(),
+                                             total, stream);
+                      },
+                      traffic, opt.warmup, opt.iters, stream)));
 
   // --- transpose references (naive, unpadded SMEM, padded SMEM) ----------
   reloc::BoundPlan tp = transposePlan(n);
@@ -396,10 +401,9 @@ int runN(int64_t n, const Options &opt, cudaStream_t stream,
     emit(timingJson("dequant_s8_f32", trDeq,
                     timeKernel(
                         [&] {
-                          reloc::cuda::dequantS8F32(dS8.as<int8_t>(),
-                                                    dDst.as<float>(), n, n,
-                                                    dScales.as<float>(),
-                                                    stream);
+                          reloc::cuda::dequantS8F32(
+                              dS8.as<int8_t>(), dDst.as<float>(), n, n,
+                              dScales.as<float>(), stream);
                         },
                         trDeq, opt.warmup, opt.iters, stream)));
 
@@ -418,8 +422,7 @@ int runN(int64_t n, const Options &opt, cudaStream_t stream,
                                cudaMemcpyHostToDevice, stream));
     for (int64_t i = 0; i < pairs; ++i) {
       const uint8_t b = hPacked[static_cast<size_t>(i)];
-      const int8_t lo =
-          static_cast<int8_t>(static_cast<int8_t>(b << 4) >> 4);
+      const int8_t lo = static_cast<int8_t>(static_cast<int8_t>(b << 4) >> 4);
       const int8_t hi = static_cast<int8_t>(static_cast<int8_t>(b) >> 4);
       const int64_t e0 = 2 * i, e1 = 2 * i + 1;
       ref[static_cast<size_t>(e0)] =
@@ -440,18 +443,16 @@ int runN(int64_t n, const Options &opt, cudaStream_t stream,
       return 1;
     }
     const int64_t trS4 = pairs + total + total + S;
-    emit(timingJson("unpack_dequant_s4", trS4,
-                    timeKernel(
-                        [&] {
-                          reloc::cuda::unpackS4S8(dPacked.as<uint8_t>(),
-                                                  dS8mid.as<int8_t>(), pairs,
-                                                  stream);
-                          reloc::cuda::dequantS8F32(dS8mid.as<int8_t>(),
-                                                    dDst.as<float>(), n, n,
-                                                    dScales.as<float>(),
-                                                    stream);
-                        },
-                        trS4, opt.warmup, opt.iters, stream)));
+    emit(timingJson(
+        "unpack_dequant_s4", trS4,
+        timeKernel(
+            [&] {
+              reloc::cuda::unpackS4S8(dPacked.as<uint8_t>(),
+                                      dS8mid.as<int8_t>(), pairs, stream);
+              reloc::cuda::dequantS8F32(dS8mid.as<int8_t>(), dDst.as<float>(),
+                                        n, n, dScales.as<float>(), stream);
+            },
+            trS4, opt.warmup, opt.iters, stream)));
   }
 
   // --- scatter_random_f32 over the entropy sweep -------------------------
@@ -481,19 +482,17 @@ int runN(int64_t n, const Options &opt, cudaStream_t stream,
                    static_cast<long long>(blk), static_cast<long long>(n));
       return 1;
     }
-    const std::string extra =
-        ", \"block\": " + std::to_string(blk) +
-        ", \"block_bytes\": " + std::to_string(blk * 4);
-    emit(timingJson(
-        "scatter_random_f32_blk" + std::to_string(blk), traffic,
-        timeKernel(
-            [&] {
-              reloc::cuda::scatterRandomF32(dSrc.as<float>(),
-                                            dIdx.as<int64_t>(),
-                                            dDst.as<float>(), total, stream);
-            },
-            traffic, opt.warmup, opt.iters, stream),
-        extra));
+    const std::string extra = ", \"block\": " + std::to_string(blk) +
+                              ", \"block_bytes\": " + std::to_string(blk * 4);
+    emit(timingJson("scatter_random_f32_blk" + std::to_string(blk), traffic,
+                    timeKernel(
+                        [&] {
+                          reloc::cuda::scatterRandomF32(
+                              dSrc.as<float>(), dIdx.as<int64_t>(),
+                              dDst.as<float>(), total, stream);
+                        },
+                        traffic, opt.warmup, opt.iters, stream),
+                    extra));
   }
 
   if (!body.empty())
@@ -521,8 +520,8 @@ int run(const Options &opt) {
       std::string(prop.name) +
       "\", \"hbm_peak_gb_per_s\": " + bench::jsonNumber(hbmPeakGbps) +
       ", \"warmup\": " + std::to_string(opt.warmup) +
-      ", \"iters\": " + std::to_string(opt.iters) +
-      "},\n  \"by_n\": {\n" + body + "\n  }\n}\n";
+      ", \"iters\": " + std::to_string(opt.iters) + "},\n  \"by_n\": {\n" +
+      body + "\n  }\n}\n";
   cudaStreamDestroy(stream);
   if (std::strcmp(opt.jsonPath, "-") == 0) {
     std::fputs(doc.c_str(), stdout);
@@ -535,8 +534,8 @@ int run(const Options &opt) {
     std::fputs(doc.c_str(), f);
     std::fclose(f);
   }
-  std::fprintf(stderr, "hiding_ratio: %s HBM peak %.1f GB/s, done\n",
-               prop.name, hbmPeakGbps);
+  std::fprintf(stderr, "hiding_ratio: %s HBM peak %.1f GB/s, done\n", prop.name,
+               hbmPeakGbps);
   return 0;
 }
 
