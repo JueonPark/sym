@@ -60,7 +60,7 @@ timestamps).
 **`bench/results/cm4_registered_predictions.json`** schema:
 
 - Header block: `generated_by`, calibration paths, `model` description string
-  ("reloc::costmodel as of CM1(#109)+CM2(#110)"), and the **split declaration**:
+  ("reloc::costmodel as of CM1(#109)+CM2(#110)+CM3(#111)"), and the **split declaration**:
   `{"train_n": [2048, 8192], "test_n": [4096, 16384], "heldout_bars":
   {"misclass": 0.15, "regret_p90": 0.20}}` plus a caveat string recording honestly that
   the committed calibrations' `overhead.{a,b}_ms` intercepts were two-point-fit on
@@ -104,3 +104,22 @@ registration = the split declaration block; registered per-cell predictions = th
 + rstar sections (winner, T_A, T_B per placement, r* per family); pre-declared bimodal
 list = `cm4_bimodal_cells.json`; "merged standalone, commit-order verifiably before the
 first `bp_*` artifact" = this PR merging while no `bp_*` exists.
+
+## Amendment (2026-08-05, during implementation)
+
+Two drifts surfaced between this spec and the committed artifacts during the final
+review of PR #121. In both cases the artifact is correct and this spec text is updated
+to match it, not the other way around:
+
+1. **§2 model string.** This spec originally wrote the `model` header field as
+   `"reloc::costmodel as of CM1(#109)+CM2(#110)"`, omitting CM3. The committed
+   `bench/rtrack/cm4_register.py` and `bench/results/cm4_registered_predictions.json`
+   correctly emit `"reloc::costmodel as of CM1(#109)+CM2(#110)+CM3(#111)"` -- CM3
+   (#111) landed before CM4 and is part of the model CM4 registers against. §2 above
+   has been corrected in place to read `+CM3(#111)`.
+2. **Bimodal-list "rule block" naming.** §2 above describes
+   `bench/results/cm4_bimodal_cells.json` as carrying "a `rule` block restating #BP2's
+   matched-percentile requirement." The committed artifact names this field `purpose`,
+   not `rule` (see the file's top-level `"purpose"` key). The artifact's naming is
+   correct as committed; this spec's prose used the wrong field name and is recorded
+   here rather than silently reworded away.

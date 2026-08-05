@@ -124,19 +124,28 @@ def main():
             src = RSTAR_N * RSTAR_N * 4
             for placement in PLACEMENTS:
                 pb1 = predict(cal, pattern, src, 1.0, placement)
+                t_b_r1 = None if pb1 is None else pb1["t_b_ms"]
                 grid = {}
+                t_a_grid = {}
                 for r in R_POINTS:
                     if pb1 is None:
                         grid[str(r)] = None
+                        t_a_grid[str(r)] = None
                         continue
                     pr = predict(cal, pattern, src, r, placement)
-                    grid[str(r)] = (None if pr is None
-                                    else pb1["t_b_ms"] / pr["t_a_ms"])
+                    if pr is None:
+                        grid[str(r)] = None
+                        t_a_grid[str(r)] = None
+                    else:
+                        grid[str(r)] = t_b_r1 / pr["t_a_ms"]
+                        t_a_grid[str(r)] = pr["t_a_ms"]
                 pts = sorted((float(k), v) for k, v in grid.items()
                              if v is not None)
                 rstar.append({"box": box, "family": fam,
                               "placement": placement, "n": RSTAR_N,
                               "speedup_predicted": grid,
+                              "t_a_ms": t_a_grid,
+                              "t_b_r1_ms": t_b_r1,
                               "grid_used": [p[0] for p in pts],
                               "rstar_predicted": crossing(pts)})
 
@@ -156,6 +165,11 @@ def main():
                        "reconciliation in #107), not calibration -- "
                        "recorded, not fixed; bars unchanged"),
         },
+        "speedup_definition": (
+            "speedup_predicted[r] = t_b_r1_ms / t_a_ms[r] (the "
+            "docs/v3-costmodel.md S4 quantity); speedup > 1.0 means method "
+            "a is predicted to win at that r; rstar_predicted = the 1.0 "
+            "crossing interpolated linearly in log2(r) (crossing())"),
         "cells": cells,
         "rstar": rstar,
     }

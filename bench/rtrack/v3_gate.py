@@ -204,8 +204,9 @@ def cm4_regen_check():
     """CM4-REGEN (issue #112): the registered predictions must stay
     byte-reproducible from the committed model + calibrations. Re-runs
     cm4_register.py to a temp path and compares against the committed
-    file. Skips loudly (not silently) when the file or pyreloc is
-    absent -- e.g. on a checkout predating CM4."""
+    file. Skips loudly (not silently) when the committed file is
+    absent (a pre-CM4 checkout); a missing pyreloc surfaces as a loud
+    regen FAIL, by design."""
     print("\n=== CM4-REGEN ===")
     committed = REPO_ROOT / "bench" / "results" / "cm4_registered_predictions.json"
     if not committed.exists():
