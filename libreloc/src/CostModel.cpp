@@ -141,6 +141,7 @@ std::optional<double> cpuBw(const CostModel &m, Pattern p, double r,
       // concurrent DMA (mutual host-DRAM contention; on the EPYC box
       // both overlapped stages derate ~16% vs their isolated rates).
       // Absent key -> roofline fallback, current behavior.
+      // A pipe key alone (no roofline key) is sufficient -- deliberate.
       const std::string pipeKey = "cpu_pipe.t" + std::to_string(threads) +
                                   ".contiguous.convert_f32_f16_gbps";
       if (m.has(pipeKey))

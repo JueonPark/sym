@@ -57,7 +57,11 @@ transform=quant, r=0.5, N=16384, t8 row:
   1073741824 B / 74.1677 ms ⇒ **≈14.48 GB/s** (round(…, 2), provenance-commented).
 - **Gen4**: same rule against the committed Gen4 rsweep CSV carrying `cpu_stage_ms` for
   quant r=0.5 N=16384. If no usable row exists, the key is **omitted** (loud omission —
-  `cpuBw` falls back to the roofline key, preserving current behavior).
+  `cpuBw` falls back to the roofline key, preserving current behavior). (Discharged at plan
+  time: the Gen4 row was verified to exist in the named CSV, so the implementation uses
+  listed-source hard-fail semantics — `sys.exit` on missing rows, like every other
+  rsweep-derived key — rather than the omission path this clause reserved for genuinely
+  absent data.)
 - Existing `.cal` lines unchanged — pure insertions; CALIBRATION-REGEN stays byte-identical.
 
 **Model change** (`libreloc/src/CostModel.cpp`, `cpuBw` r=0.5 contiguous branch only): if
