@@ -1,0 +1,133 @@
+{
+  "issue": "#112 (CM4), jointly owned with #115 (BP2) -- Build Doc v3 s5.3",
+  "declared": "before any bench/results/bp_* artifact exists (commit-order verifiable)",
+  "purpose": "Cells with historically bimodal timing distributions. For flagged cells, median-of-20 comparison is disallowed; #BP2's matched-percentile rule applies: p50<->p50 and p10<->p10 reporting, verdict from matched percentiles, increased reps.",
+  "lineage_rule": "B_xK at K=4 is flagged at every N and scenario: R3/V4 evidence shows the bimodality is a property of the 4-GPU delivery path, not of one tensor size. Any future cell matching {method: bxk, K: 4} inherits the flag.",
+  "entry_convention": "one entry per committed source-artifact row; the same (scenario, N) may appear once per artifact (different runs)",
+  "cells": [
+    {
+      "scenario": "scatter",
+      "method": "bxk",
+      "K": 4,
+      "N": 8192,
+      "wall_min_ms": 8.66338,
+      "wall_median_ms": 15.2059,
+      "wall_p95_ms": 16.6569,
+      "evidence": [
+        {
+          "source": "bench/results/r3_scatter_n8192_epyc_2080ti.json",
+          "note": "R3 (2026-07-27): min/median/p95 above; the direct bimodal observation"
+        },
+        {
+          "source": "docs/v4-prefold.md:100-121",
+          "note": "V4 re-observation: same bimodal distribution (min ~9 ms, upper mode ~15-17 ms); V4-G1 miss explained by endpoint match (min/p95), IQR 19.7%"
+        }
+      ]
+    },
+    {
+      "scenario": "scatter",
+      "method": "bxk",
+      "K": 4,
+      "N": 16384,
+      "wall_min_ms": 34.822,
+      "wall_median_ms": 58.0285,
+      "wall_p95_ms": 63.8048,
+      "evidence": [
+        {
+          "source": "bench/results/r3_scatter_n16384_epyc_2080ti.json",
+          "note": "flagged by lineage_rule; stats recorded as committed"
+        }
+      ]
+    },
+    {
+      "scenario": "broadcast",
+      "method": "bxk",
+      "K": 4,
+      "N": 8192,
+      "wall_min_ms": 34.4325,
+      "wall_median_ms": 37.0642,
+      "wall_p95_ms": 55.4211,
+      "evidence": [
+        {
+          "source": "bench/results/r3_broadcast_n8192_epyc_2080ti.json",
+          "note": "flagged by lineage_rule; stats recorded as committed"
+        }
+      ]
+    },
+    {
+      "scenario": "broadcast_contig",
+      "method": "bxk",
+      "K": 4,
+      "N": 8192,
+      "wall_min_ms": 34.7216,
+      "wall_median_ms": 45.0738,
+      "wall_p95_ms": 64.1229,
+      "evidence": [
+        {
+          "source": "bench/results/v5_broadcast_contig_epyc_2080ti.json",
+          "note": "flagged by lineage_rule; stats recorded as committed"
+        }
+      ]
+    },
+    {
+      "scenario": "broadcast",
+      "method": "bxk",
+      "K": 4,
+      "N": 8192,
+      "wall_min_ms": 35.2427,
+      "wall_median_ms": 41.0055,
+      "wall_p95_ms": 52.2209,
+      "evidence": [
+        {
+          "source": "bench/results/v5_broadcast_k14_epyc_2080ti.json",
+          "note": "flagged by lineage_rule; stats recorded as committed"
+        }
+      ]
+    },
+    {
+      "scenario": "broadcast",
+      "method": "bxk",
+      "K": 4,
+      "N": 8192,
+      "wall_min_ms": 34.9739,
+      "wall_median_ms": 50.44,
+      "wall_p95_ms": 59.8665,
+      "evidence": [
+        {
+          "source": "bench/results/v4_broadcast_n8192_epyc_2080ti.json",
+          "note": "flagged by lineage_rule; stats recorded as committed (Task-3 glob missed this file -- only covered r3_*/v5_*; a fourth independent evidence source for broadcast N=8192, distinct run from the r3_*/v5_* entries above)"
+        }
+      ]
+    },
+    {
+      "scenario": "scatter",
+      "method": "bxk",
+      "K": 4,
+      "N": 8192,
+      "wall_min_ms": 9.01438,
+      "wall_median_ms": 9.13311,
+      "wall_p95_ms": 16.5958,
+      "evidence": [
+        {
+          "source": "bench/results/v4_scatter_n8192_epyc_2080ti.json",
+          "note": "flagged by lineage_rule; stats recorded as committed (Task-3 glob missed this file -- only covered r3_*/v5_*; a second, independent run for scatter N=8192 distinct from the R3 entry above)"
+        }
+      ]
+    },
+    {
+      "scenario": "scatter",
+      "method": "bxk",
+      "K": 4,
+      "N": 16384,
+      "wall_min_ms": 33.4193,
+      "wall_median_ms": 38.4657,
+      "wall_p95_ms": 55.9539,
+      "evidence": [
+        {
+          "source": "bench/results/v4_scatter_n16384_epyc_2080ti.json",
+          "note": "flagged by lineage_rule; stats recorded as committed (Task-3 glob missed this file -- only covered r3_*/v5_*; a second, independent run for scatter N=16384 distinct from the R3 entry above)"
+        }
+      ]
+    }
+  ]
+}
