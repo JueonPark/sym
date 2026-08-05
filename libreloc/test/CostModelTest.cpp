@@ -144,8 +144,7 @@ TEST(CostModelCpuBw, PipeKeyPreferredAtR05Contiguous) {
   CostModel base = mustParse(kSynth);
   EXPECT_DOUBLE_EQ(*cpuBw(base, Pattern::Contiguous, 0.5, 8), 20.0);
   CostModel withPipe = mustParse(
-      std::string(kSynth) +
-      "cpu_pipe.t8.contiguous.convert_f32_f16_gbps 10\n");
+      std::string(kSynth) + "cpu_pipe.t8.contiguous.convert_f32_f16_gbps 10\n");
   EXPECT_DOUBLE_EQ(*cpuBw(withPipe, Pattern::Contiguous, 0.5, 8), 10.0);
   // Scope guards: other tiers and non-contiguous r=0.5 are untouched by
   // the pipe key (blocked r=0.5 stays harmonic(gather 5, convert 20)=4).
