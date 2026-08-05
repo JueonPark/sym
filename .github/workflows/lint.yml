@@ -27,3 +27,43 @@ jobs:
           find . -name "*.cpp" -o -name "*.h" | grep -v build | while read file; do
             clang-format-21 --dry-run --Werror "$file"
           done
+
+  cost-model-single-implementation:
+    name: cost-model single implementation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Assert no second roofline formula under bench/
+        run: |
+          # Issue #111: the A/B cost model lives ONLY in reloc::costmodel
+          # (consumed via pyreloc.predict). Signatures of the retired
+          # figure_rstar internal model must not reappear in bench/
+          # python. grep's status must be exactly 1: 0 means a duplicate
+          # model was found, >=2 means the scan itself failed. Never
+          # `! grep` -- that converts scan failure into a false PASS
+          # (see the MLIR-free guard in build.yml).
+          # Known limit: the patterns key on the retired code's variable names -- a renamed reimplementation evades them; the positive pyreloc-import check below is the structural complement.
+          set +e
+          grep -rEn --include='*.py' \
+            'def cpu_bw\(|min\(\s*bw\s*,|1\.0\s*/\s*\(\s*1\.0\s*/\s*bw' \
+            bench/
+          scan=$?
+          set -e
+          if [ "$scan" -eq 0 ]; then
+            echo "ERROR: a second cost-model implementation appeared under bench/ (issue #111)" >&2
+            exit 1
+          elif [ "$scan" -ne 1 ]; then
+            echo "ERROR: scan failed (exit $scan; missing dir?)" >&2
+            exit 1
+          fi
+
+      - name: Assert figure_rstar consumes pyreloc
+        run: |
+          # The prediction path imports the model from exactly one module.
+          grep -q 'import pyreloc' bench/rtrack/figure_rstar.py || {
+            echo "ERROR: bench/rtrack/figure_rstar.py no longer imports pyreloc (issue #111)" >&2
+            exit 1
+          }
