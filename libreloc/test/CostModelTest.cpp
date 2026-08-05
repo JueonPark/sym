@@ -135,6 +135,32 @@ TEST(CostModelCpuBw, FigureRstarComposition) {
   EXPECT_FALSE(cpuBw(m, Pattern::Blocked, 0.3, 8).has_value());
 }
 
+TEST(CostModelCpuBw, PipeKeyPreferredAtR05Contiguous) {
+  // Issue #110 (CM2): the isolated convert_f32_f16 roofline over-credits
+  // A's r=0.5 stage under concurrent DMA (in-pipeline host-DRAM
+  // contention). When the calibration carries the measured in-pipeline
+  // value, cpuBw must prefer it; absent, the roofline fallback keeps
+  // current behavior.
+  CostModel base = mustParse(kSynth);
+  EXPECT_DOUBLE_EQ(*cpuBw(base, Pattern::Contiguous, 0.5, 8), 20.0);
+  CostModel withPipe = mustParse(
+      std::string(kSynth) +
+      "cpu_pipe.t8.contiguous.convert_f32_f16_gbps 10\n");
+  EXPECT_DOUBLE_EQ(*cpuBw(withPipe, Pattern::Contiguous, 0.5, 8), 10.0);
+  // Scope guards: other tiers and non-contiguous r=0.5 are untouched by
+  // the pipe key (blocked r=0.5 stays harmonic(gather 5, convert 20)=4).
+  EXPECT_DOUBLE_EQ(*cpuBw(withPipe, Pattern::Contiguous, 1.0, 8), 20.0);
+  EXPECT_DOUBLE_EQ(*cpuBw(withPipe, Pattern::Blocked, 0.5, 8), 4.0);
+  // Thread count is part of the key: t1 has no pipe key -> nullopt path
+  // unchanged (kSynth has no t1 keys at all).
+  EXPECT_FALSE(cpuBw(withPipe, Pattern::Contiguous, 0.5, 1).has_value());
+  // And the preferred value flows through pathCosts' A slope:
+  // aCpuSlope = 1e-6/10 = 1e-7 > aDmaSlope = 0.5e-6/10 = 5e-8.
+  auto pc = pathCosts(withPipe, Pattern::Contiguous, 1000000000, 0.5, 8);
+  ASSERT_TRUE(pc.has_value());
+  EXPECT_DOUBLE_EQ(pc->aSlopeMsPerByte, 1e-7);
+}
+
 TEST(CostModelPathCosts, AffineFormsAndK) {
   CostModel m = mustParse(kSynth);
   const int64_t S = 1000000000; // 1 GB -> 1 s per 1 GB/s: easy arithmetic

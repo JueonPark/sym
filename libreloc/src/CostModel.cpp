@@ -135,9 +135,19 @@ std::optional<double> cpuBw(const CostModel &m, Pattern p, double r,
   if (r == 1.0)
     return contig ? need("contig_read") : need("gather_f32");
   if (r == 0.5) {
+    if (contig) {
+      // Issue #110 (CM2): prefer the measured in-pipeline bandwidth --
+      // the isolated roofline over-credits the convert stage under
+      // concurrent DMA (mutual host-DRAM contention; on the EPYC box
+      // both overlapped stages derate ~16% vs their isolated rates).
+      // Absent key -> roofline fallback, current behavior.
+      const std::string pipeKey = "cpu_pipe.t" + std::to_string(threads) +
+                                  ".contiguous.convert_f32_f16_gbps";
+      if (m.has(pipeKey))
+        return m.at(pipeKey);
+      return need("convert_f32_f16");
+    }
     auto conv = need("convert_f32_f16");
-    if (contig)
-      return conv;
     auto g = need("gather_f32");
     if (!g || !conv)
       return std::nullopt;
