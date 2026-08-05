@@ -47,6 +47,11 @@ SOURCES per machine (frozen provenance -- see task-6 brief / design doc
       the R4 copy_f32 ceiling at the m-table N)
     - recv.m.unpack_dequant_s4       <- bench/results/cm1_recv_kernel_bw_epyc_2080ti.json
       (CM1 targeted isolated run; same-run copy_f32 ceiling)
+    - cpu_pipe.t8.contiguous.convert_f32_f16_gbps
+                                   <- bench/results/v2_isa_gen3_rsweep_avx2_epyc7351-2080ti.csv
+      (cpu_stage_ms of the best-chunk a/quant/r=0.5/N=16384 row -- the
+      in-pipeline effective convert BW; issue #110 contention derate.
+      Same file as the box's frozen r* comparison source.)
 
   7800x3d-4070tis: same key shapes, sourced from
     bench/results/v1_gen4_gate_report.txt, bench/results/r2_rooflines/*.json
@@ -69,6 +74,11 @@ SOURCES per machine (frozen provenance -- see task-6 brief / design doc
       when it exists (issue #109 runbook); omitted until then. The
       "relocate/transpose recv" m values from the issue's list are the
       existing hbm.m.{pattern} keys -- not duplicated under recv.m.*.
+    - cpu_pipe.t8.contiguous.convert_f32_f16_gbps
+                                   <- bench/results/v1_gen4_rsweep_7800x3d_4070tis.csv
+      (cpu_stage_ms of the best-chunk a/quant/r=0.5/N=16384 row -- the
+      in-pipeline effective convert BW; issue #110 contention derate.
+      Same file as the box's frozen r* comparison source.)
 
     Fix-report addenda (post-review, see task-6-report.md "Fix report"):
     - Gen4 rooflines are pinned at N=8192 for BOTH t1 and t8 (not
@@ -312,6 +322,8 @@ def build_epyc(e):
     emit_recv_from_cm1_run(
         e, f"{RESULTS}/cm1_recv_kernel_bw_epyc_2080ti.json",
         ["unpack_dequant_s4"])
+    emit_cpu_pipe_convert(
+        e, f"{RESULTS}/v2_isa_gen3_rsweep_avx2_epyc7351-2080ti.csv")
 
     # Multi-GPU aggregate delivery.
     pair01_path = f"{RESULTS}/m0_multigpu_h2d_pair01.json"
@@ -454,6 +466,8 @@ def build_gen4(e):
     emit_recv_from_cm1_run(
         e, f"{RESULTS}/cm1_recv_kernel_bw_7800x3d_4070tis.json",
         ["convert_f16_f32", "dequant_s8_f32", "unpack_dequant_s4"])
+    emit_cpu_pipe_convert(
+        e, f"{RESULTS}/v1_gen4_rsweep_7800x3d_4070tis.csv")
 
     nsweep_path = f"{RESULTS}/v1_gen4_matrix_nsweep_7800x3d_4070tis.csv"
     nsweep_rerun_path = (f"{RESULTS}/v1_gen4_matrix_nsweep_rerun_"
@@ -556,6 +570,31 @@ def emit_strategy_defaults(e):
            "libreloc/src/Bind.cpp", note=seed_note)
     e.emit("strategy.multi_thread_max_bytes", 268435456,
            "libreloc/src/Bind.cpp", note=seed_note)
+
+
+def emit_cpu_pipe_convert(e, csv_path):
+    """cpu_pipe.t8.contiguous.convert_f32_f16_gbps (issue #110/CM2): the
+    convert stage's IN-PIPELINE effective bandwidth -- srcBytes /
+    cpu_stage_ms of the best-chunk (min median_ms) method=a,
+    transform=quant, r=0.5, N=16384, t8 row. The isolated roofline
+    over-credits this stage under concurrent DMA (mutual host-DRAM
+    contention; prior art docs/poc-reproduction-v2.md). Sourced from the
+    same rsweep file that feeds the frozen r* comparison for this box,
+    so the model is judged against the regime it was calibrated in."""
+    rows = [r for r in load_csv_rows(csv_path, e.machine)
+            if r["method"] == "a" and r["transform"] == "quant"
+            and float(r["r"]) == 0.5 and int(r["N"]) == 16384
+            and int(r["threads"]) == 8]
+    if not rows:
+        sys.exit(f"error: no method=a quant r=0.5 N=16384 t8 rows in "
+                 f"{csv_path}")
+    best = min(rows, key=lambda r: float(r["median_ms"]))
+    bw = source_bytes(16384) / (float(best["cpu_stage_ms"]) * 1e-3) / 1e9
+    e.emit("cpu_pipe.t8.contiguous.convert_f32_f16_gbps", round(bw, 2),
+           csv_path,
+           note=f"srcBytes/cpu_stage_ms, best chunk "
+                f"({best['chunk_req_mib']} MiB), in-pipeline vs isolated "
+                f"roofline (issue #110 contention derate)")
 
 
 def emit_recv_from_cm1_run(e, path, kernels):

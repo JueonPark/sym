@@ -1,8 +1,9 @@
 """V3 (issue #97): the pre-registered prediction test. Walks the frozen
 cell inventory (task-7 brief) over committed R-track measurements, calls
 the identical C++ cost model through `pyreloc.predict` for each cell, and
-writes `bench/results/v3_prediction_report.json` -- the single source
-`bench/rtrack/v3_gate.py` judges against.
+writes the report to a pytest scratch path; the committed
+`bench/results/v3_prediction_report.json` is V3's frozen as-measured record
+(#107) that `bench/rtrack/v3_gate.py` judges/guards.
 
 Ordering discipline: `v3_gate.py` (with its bars fixed in code) is
 committed BEFORE this file ever runs against data. This file only
@@ -21,7 +22,6 @@ pyreloc = pytest.importorskip("pyreloc")
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
 RESULTS = REPO_ROOT / "bench" / "results"
 CAL_DIR = REPO_ROOT / "calibration"
-REPORT_PATH = RESULTS / "v3_prediction_report.json"
 
 THREADS = 8
 
@@ -328,14 +328,20 @@ def build_report():
     return report
 
 
-def test_write_prediction_report():
+def test_write_prediction_report(tmp_path):
+    # CM2 (#110): the report is written to a scratch path, never to the
+    # committed bench/results/v3_prediction_report.json -- that file is
+    # V3's as-measured record against the model that produced it (#107;
+    # v3_gate.py's REPORT-REGEN guards it). Re-registering predictions
+    # against the corrected model is #CM4's job, not a pytest side
+    # effect.
     report = build_report()
-    REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    REPORT_PATH.write_text(json.dumps(report, indent=2))
+    report_path = tmp_path / "v3_prediction_report.json"
+    report_path.write_text(json.dumps(report, indent=2))
 
     # Structural sanity only -- the BARS are judged by v3_gate.py, never
     # here (measurement and judgment stay separate).
-    assert REPORT_PATH.exists()
+    assert report_path.exists()
     assert report["summary"]["n_modelable"] >= 30, (
         f"only {report['summary']['n_modelable']} modelable cells "
         "(expected >= 30)")
