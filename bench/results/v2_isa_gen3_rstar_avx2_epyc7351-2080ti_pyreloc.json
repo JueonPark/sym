@@ -1,0 +1,36 @@
+{
+  "h2d_gbps": 13.076997754210245,
+  "n": 16384,
+  "threads": 8,
+  "b_method": "b_fair",
+  "families": {
+    "blocked_transpose": {
+      "speedup_measured": {
+        "0.5": 0.49813317704652404,
+        "1.0": 0.6771269906977108
+      },
+      "speedup_predicted": {
+        "0.5": 0.5660477120543961,
+        "1.0": 0.9376668918662532
+      },
+      "rstar_measured": null,
+      "rstar_predicted": null,
+      "unstable": false
+    },
+    "quant": {
+      "speedup_measured": {
+        "0.25": 1.4588451379230103,
+        "0.5": 1.0601163292018307,
+        "1.0": 0.8865224877077272
+      },
+      "speedup_predicted": {
+        "0.25": 1.8009705063685586,
+        "0.5": 1.133784939498064,
+        "1.0": 1.023473155531973
+      },
+      "rstar_measured": 0.6356499947188486,
+      "rstar_predicted": null,
+      "unstable": false
+    }
+  }
+}
