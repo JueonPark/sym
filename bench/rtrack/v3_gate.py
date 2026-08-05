@@ -9,10 +9,21 @@ only runs afterward, producing the report this reads. Structure mirrors
   MISCLASS_BAR = 0.15    winner misclassification rate over all
                          modelable single-GPU (a vs b_fair) and multi-GPU
                          (a vs bxk) cells
-  RSTAR_ABS_BAR = 0.15   |r*_pred - r*_meas|, families where BOTH a
-                         measured and a predicted r* exist (both-none is
-                         reported separately as a correct "no crossing"
-                         outcome; it does not enter this bar)
+  RSTAR_ABS_BAR = 0.15   |r*_pred - r*_meas| over families where BOTH a
+                         measured and a predicted r* exist. RULE v1
+                         (CM4, issue #112, discharging v3-costmodel.md
+                         S5's obligation): `mismatch_one_sided` rows
+                         (one side has a crossing, the other doesn't)
+                         are an AUTOMATIC FAIL contribution counted at
+                         the bar value -- S5: "treating
+                         `mismatch_one_sided` as an automatic FAIL
+                         contribution rather than an exclusion" -- so a
+                         more-wrong prediction can no longer escape the
+                         bar by reclassification. `both_no_crossing`
+                         remains a qualitative PASS outcome (a correctly
+                         predicted "no crossing"). The v0 verdicts in
+                         docs/v3-costmodel.md stand as recorded; this
+                         rule applies to every run from CM4 onward.
   REGRET_P90_BAR = 0.20  p90 of regret = (T_chosen - T_oracle)/T_oracle
                          over all modelable cells, T_chosen = the measured
                          time of whichever method the model picked
@@ -94,17 +105,25 @@ def gate_rstar(report):
     both = [r for r in rows if r.get("agreement") == "both_exist"]
     no_crossing = [r for r in rows if r.get("agreement") == "both_no_crossing"]
     mismatched = [r for r in rows if r.get("agreement") == "mismatch_one_sided"]
-    diffs = [r["abs_diff"] for r in both]
+    # Rule v1 (CM4, #112): every one-sided mismatch contributes the bar
+    # value to the reported statistic AND forces the verdict to FAIL --
+    # v3-costmodel.md S5's tightening, registered before any bp_* data.
+    diffs = [r["abs_diff"] for r in both] + [RSTAR_ABS_BAR for _ in mismatched]
     worst = max(diffs) if diffs else None
-    verdict = "PASS" if (worst is not None and worst <= RSTAR_ABS_BAR) else (
-        "no data" if worst is None else "FAIL")
-    print(f"\nV3-RSTAR: max |r*_pred - r*_meas| over {len(both)} "
-          f"both-exist families = "
+    if worst is None:
+        verdict = "no data"
+    elif mismatched or worst > RSTAR_ABS_BAR:
+        verdict = "FAIL"
+    else:
+        verdict = "PASS"
+    print(f"\nV3-RSTAR [rule v1, CM4-tightened, v3-costmodel.md S5]: "
+          f"max |r*_pred - r*_meas| over {len(both)} both-exist + "
+          f"{len(mismatched)} one-sided-mismatch families = "
           f"{'--' if worst is None else f'{worst:.4f}'} "
-          f"(bar <= {RSTAR_ABS_BAR})  {verdict}")
+          f"(bar <= {RSTAR_ABS_BAR}; any one-sided mismatch => FAIL)  "
+          f"{verdict}")
     print(f"  (+ {len(no_crossing)} family/box pairs agree on 'no crossing' "
-          "-- correct winner-shaped outcome, not counted in the bar above; "
-          f"{len(mismatched)} one-sided mismatches)")
+          "-- correct winner-shaped outcome, not counted in the bar above)")
     print("\n| family | machine | source | r*_meas | r*_pred | agreement |")
     print("|---" * 6 + "|")
     for r in rows:
