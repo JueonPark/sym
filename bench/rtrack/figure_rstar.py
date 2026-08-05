@@ -75,7 +75,6 @@ def crossing(points):
     return None
 
 
-
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--csv", nargs="+", required=True)

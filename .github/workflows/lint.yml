@@ -45,6 +45,7 @@ jobs:
           # model was found, >=2 means the scan itself failed. Never
           # `! grep` -- that converts scan failure into a false PASS
           # (see the MLIR-free guard in build.yml).
+          # Known limit: the patterns key on the retired code's variable names -- a renamed reimplementation evades them; the positive pyreloc-import check below is the structural complement.
           set +e
           grep -rEn --include='*.py' \
             'def cpu_bw\(|min\(\s*bw\s*,|1\.0\s*/\s*\(\s*1\.0\s*/\s*bw' \
