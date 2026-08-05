@@ -80,7 +80,7 @@ old→new tables:
    blocked 0.1807-vs-0.2914 and quant 0.1640-vs-0.4806 gaps.
 2. **CM1/CM2 model drift since V3**: gen3 quant `rstar_predicted` 0.9989→0.9966 (CM2's
    `cpu_pipe` key); **gen4 quant's crossing disappears** (r=0.5 predicted speedup
-   0.864→1.195 lifts the whole grid above 1) — a live instance of the
+   0.978→1.195 lifts the whole grid above 1) — a live instance of the
    `both_exist`→`mismatch_one_sided` reclassification fragility V3 §5 flagged; recorded
    as a CM4 hand-off (the tightened rule must handle it).
 3. **The placement axis**: `b_fair` artifacts are serial-B measurements, so the new files
@@ -115,3 +115,11 @@ old→new tables:
 **Acceptance mapping** (#111): one arithmetic, two consumers = internal model deleted +
 figure_rstar consumes pyreloc (gate side already does); reconcile note merged =
 `docs/cm3-one-implementation.md`; guard in CI = the lint.yml step.
+
+## Amendment (2026-08-05, during implementation)
+
+§2 point 2's Axis-2 example mixed the retired internal model's stored value (0.864,
+`v1_gen4_rstar_bfair.json`'s stored `quant` `speedup_predicted["0.5"]` — Axis-1 material)
+into what was meant to be a pyreloc-vs-pyreloc drift comparison; corrected to the verified
+V3-era `pyreloc.predict` value 0.978 (`docs/v3-costmodel.md:386-387`, which reproduces the
+frozen 0.4806 crossing), so the point now reads 0.978→1.195.
