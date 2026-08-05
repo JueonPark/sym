@@ -2,27 +2,28 @@
 """R2 / EXP-2 (issue #83): A/B speedup vs r per family + measured and
 model-predicted critical r*.
 
-  python3 bench/rtrack/figure_rstar.py --csv rsweep.csv \
-      [--rooflines r2_rooflines/*.json] [--h2d GBPS] [--n N] [--threads T] \
-      [--b-method b|b_fair] [--out figure_rstar.png] [--json rstar.json]
+  PYTHONPATH=build/sym/python python3 bench/rtrack/figure_rstar.py \
+      --csv rsweep.csv [--calibration calibration/<machine>.cal] \
+      [--h2d GBPS] [--n N] [--threads T] [--b-method b|b_fair] \
+      [--out figure_rstar.png] [--json rstar.json]
 
 Measured: variant=rsweep rows at --n/--threads (defaults: largest present
 per family), best chunk per (method, r); speedup(r) = median_ms(B at
 r=1.0) / median_ms(A at r). r*_measured = the 1.0 crossing, interpolated
 linearly in log2(r); None when the curve never crosses in [0.125, 1.0].
 --b-method picks the Method-B baseline rows (issue #95): "b" is the
-staged baseline (default, the R2 figure), "b_fair" the admissible
-pinned-source one; the choice is recorded in the JSON as "b_method".
+staged baseline, "b_fair" the admissible pinned-source one; the choice is
+recorded in the JSON as "b_method".
 
-Model (stage rooflines, effective INPUT GB/s, H2D from --h2d or derived
-from the CSV's method-b h2d_ms):
-  pipelined: BW_A(r) = min(BW_cpu(family, r), H2D / r); BW_B = H2D
-  serial:    1 / BW_A(r) = 1 / BW_cpu + r / H2D
-BW_cpu comes from cpu_rooflines JSONs; two-pass stages compose
-harmonically in source-normalized GB/s (pack reads S/4 bytes, so its
-source-normalized BW is 4x its measured input BW). A crossover exists in
-range iff BW_cpu(family, r) > BW_B somewhere -- the host transform must
-beat the link.
+Predictions (issue #111): computed exclusively by pyreloc.predict -- the
+maintained reloc::costmodel, the same C++ arithmetic decide() uses --
+from the --calibration .cal file. speedup_predicted(r) =
+t_b_pred(r=1.0) / t_a_pred(r), with b_placement mapped from --b-method
+(b -> "overlapped", b_fair -> "serial": a serial-B measurement is
+compared against a serial-B prediction, CM1's placement term). Without
+--calibration the output is measured-only. The pre-#111 standalone
+roofline model (and its A-side "serial bound" series, which has no
+pyreloc counterpart) is retired; see docs/cm3-one-implementation.md.
 """
 
 import argparse
@@ -32,9 +33,20 @@ import math
 import sys
 from collections import defaultdict
 
+try:
+    import pyreloc  # the single cost-model implementation (issue #111)
+except ImportError:
+    pyreloc = None  # only fatal when --calibration asks for predictions
+
 R_POINTS = [1.0, 0.5, 0.25, 0.125]
-FAMILY_PLAN = {"quant": "identity", "blocked_transpose": "blocked",
-               "transpose_quant": "transpose", "nchw_nhwc_quant": "nchw"}
+# transform family -> reloc::costmodel Pattern name (the same map
+# libreloc/python/tests/test_prediction.py uses).
+FAMILY_PATTERN = {"quant": "contiguous", "blocked_transpose": "blocked",
+                  "transpose_quant": "single_element",
+                  "nchw_nhwc_quant": "tiled"}
+# --b-method -> pyreloc b_placement: measured-serial-B (b_fair) is
+# compared against a serial-B prediction, staged b against overlapped.
+B_METHOD_PLACEMENT = {"b": "overlapped", "b_fair": "serial"}
 
 
 def load_rows(paths):
@@ -63,44 +75,13 @@ def crossing(points):
     return None
 
 
-def load_rooflines(paths):
-    """-> {(plan, threads): {kernel: in_gb_per_s}} at the largest N seen."""
-    best = {}
-    for path in paths or []:
-        with open(path) as f:
-            doc = json.load(f)
-        cfg = doc["config"]
-        key = (cfg["plan"], cfg["threads"])
-        if key in best and best[key][0] >= cfg["N"]:
-            continue
-        best[key] = (cfg["N"], {k: v["in_gb_per_s"]
-                                for k, v in doc["kernels"].items()})
-    return {k: v[1] for k, v in best.items()}
-
-
-def cpu_bw(kernels, family, r):
-    """Source-normalized CPU GB/s for the family's Method-A stage at r."""
-    def h(*bws):  # harmonic composition of sequential passes
-        return 1.0 / sum(1.0 / b for b in bws)
-    contig = family == "quant"
-    if r == 1.0:
-        return kernels["contig_read"] if contig else kernels["gather_f32"]
-    if r == 0.5:
-        return (kernels["convert_f32_f16"] if contig else
-                h(kernels["gather_f32"], kernels["convert_f32_f16"]))
-    if r == 0.25:
-        return kernels["quantize_pack"] if contig else kernels["gather_quantize"]
-    if r == 0.125:
-        base = (kernels["quantize_pack"] if contig
-                else kernels["gather_quantize"])
-        return h(base, 4.0 * kernels["pack_s8_s4"])
-    raise ValueError(f"no model for r={r}")
-
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--csv", nargs="+", required=True)
-    ap.add_argument("--rooflines", nargs="*", default=[])
+    ap.add_argument("--calibration", default=None,
+                    help=".cal file for pyreloc.predict predictions "
+                         "(issue #111); absent -> measured-only output")
     ap.add_argument("--h2d", type=float, default=None)
     ap.add_argument("--n", type=int, default=None)
     ap.add_argument("--threads", type=int, default=None)
@@ -108,6 +89,17 @@ def main():
     ap.add_argument("--out", default="figure_rstar.png")
     ap.add_argument("--json", dest="json_out", default=None)
     args = ap.parse_args()
+
+    cal = None
+    if args.calibration:
+        if pyreloc is None:
+            sys.exit("error: pyreloc not importable -- build it "
+                     "(ninja -C build/sym) and run with "
+                     "PYTHONPATH=build/sym/python")
+        try:
+            cal = pyreloc.load_calibration(args.calibration)
+        except ValueError as e:
+            sys.exit(f"error: {e}")
 
     rows = load_rows(args.csv)
     if not rows:
@@ -135,7 +127,6 @@ def main():
     for r in rows:
         fams[r["transform"]][(r["method"], r["r"])].append(r)
 
-    rooflines = load_rooflines(args.rooflines)
     result = {"h2d_gbps": h2d, "n": n, "threads": threads,
               "b_method": args.b_method, "families": {}}
     for fam, grp in sorted(fams.items()):
@@ -150,18 +141,29 @@ def main():
             best_a = min(grp[("a", rr)], key=lambda r: r["median_ms"])
             meas[rr] = best_b["median_ms"] / best_a["median_ms"]
             unstable |= best_a["unstable"]
-        pred, serial = {}, {}
-        kernels = rooflines.get((FAMILY_PLAN.get(fam), threads))
-        for rr in sorted(meas):
-            if kernels:
-                bw = cpu_bw(kernels, fam, rr)
-                pred[rr] = min(bw, h2d / rr) / h2d
-                serial[rr] = (1.0 / (1.0 / bw + rr / h2d)) / h2d
+        pred = {}
+        if cal is not None and fam in FAMILY_PATTERN:
+            placement = B_METHOD_PLACEMENT[args.b_method]
+            pattern = FAMILY_PATTERN[fam]
+            try:
+                t_b1 = pyreloc.predict(
+                    cal, pattern=pattern, src_bytes=n * n * 4, r=1.0,
+                    threads=threads, b_placement=placement)["t_b_ms"]
+                for rr in sorted(meas):
+                    t_a = pyreloc.predict(
+                        cal, pattern=pattern, src_bytes=n * n * 4, r=rr,
+                        threads=threads, b_placement=placement)["t_a_ms"]
+                    pred[rr] = t_b1 / t_a
+            except ValueError:
+                # Missing calibration keys: the family is unmodelable --
+                # omit ALL predicted points (test_prediction.py's
+                # all-or-nothing modelable convention), never a partial
+                # grid.
+                pred = {}
         pts = sorted(meas.items())
         result["families"][fam] = {
             "speedup_measured": {str(k): v for k, v in pts},
             "speedup_predicted": {str(k): v for k, v in sorted(pred.items())},
-            "speedup_serial": {str(k): v for k, v in sorted(serial.items())},
             "rstar_measured": crossing(pts),
             "rstar_predicted": crossing(sorted(pred.items())),
             "unstable": unstable,
@@ -174,7 +176,12 @@ def main():
             json.dump(result, f, indent=2)
         print(f"figure_rstar: wrote {args.json_out}", file=sys.stderr)
 
-    import matplotlib
+    try:
+        import matplotlib
+    except ImportError:
+        print("figure_rstar: matplotlib not available -- skipping figure",
+              file=sys.stderr)
+        return 0
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
@@ -186,8 +193,7 @@ def main():
     for ax, fam in zip(axes, fams_sorted):
         d = result["families"][fam]
         for key, style, label in (("speedup_measured", "o-", "measured"),
-                                  ("speedup_predicted", "s--", "model"),
-                                  ("speedup_serial", "^:", "serial bound")):
+                                  ("speedup_predicted", "s--", "model")):
             if d[key]:
                 xs = [float(k) for k in d[key]]
                 ax.plot(xs, list(d[key].values()), style, label=label)
