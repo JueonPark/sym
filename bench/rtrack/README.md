@@ -255,7 +255,12 @@ min / p95, `iqr_over_median_pct`, and `unstable` (> 5%). Stage columns
 first stage, stop after the last enqueued op, then stream sync),
 `cpu_stage_ms` (fenced `steady_clock` sums of the per-chunk CPU sections),
 `h2d_ms` (summed per-chunk DMA event pairs), `gpu_kernel_ms` (Method B's
-transform kernels). `effective_input_GBps` = S / wall median.
+transform kernels; for `b_pipelined` this column is instead the per-chunk
+SUM of `Pipeline::kernBeg`/`kernEnd` spans — it therefore includes
+launch-granularity overhead and, for the rank-2 transposePlan family, the
+naive-fallback kernel cost noted in `launchBPipeChunkKernel`'s comment,
+whereas `b`/`b_fair` report the single monolithic `kBeg`→`kEnd` span).
+`effective_input_GBps` = S / wall median.
 
 R2 (issue #83) adds four columns: `gpu_recv_ms` (median, summed per-chunk
 in-stream receive-kernel event time — Method A's r-sweep decompress

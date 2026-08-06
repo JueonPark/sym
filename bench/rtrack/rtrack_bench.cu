@@ -823,11 +823,27 @@ char *methodBDmaDst(const Fixture &f) {
                                          : reinterpret_cast<char *>(f.dLin);
 }
 
-[[noreturn]] void bpipeMisaligned(const char *id, int64_t off) {
+[[noreturn]] void bpipeMisaligned(const char *id, int64_t off, int64_t len) {
   std::fprintf(stderr,
-               "error: b_pipelined chunk misaligned for %s at byte %lld -- "
-               "refusing to approximate (issue #114 chunkability audit)\n",
-               id, static_cast<long long>(off));
+               "error: b_pipelined chunk misaligned for %s at byte %lld "
+               "(chunk length %lld bytes) -- refusing to approximate "
+               "(issue #114 chunkability audit)\n",
+               id, static_cast<long long>(off), static_cast<long long>(len));
+  std::exit(1);
+}
+
+// (final-review, issue #114) launchBPipeChunkKernel's per-family slicing
+// math below assumes the exact stride shapes the audited plans.h builders
+// (transposePlan/blockedTransposePlan/nchwToNhwcPlan) produce. A
+// --plan-wire corpus plan that binds to the same rank but a different
+// stride pattern would otherwise silently mis-slice under --no-verify;
+// hard-fail loudly instead.
+[[noreturn]] void bpipeShapeMismatch(const char *id, const char *family) {
+  std::fprintf(stderr,
+               "error: b_pipelined: %s: plan stride signature does not "
+               "match the audited %s family shape -- refusing to slice "
+               "(issue #114 audit)\n",
+               id, family);
   std::exit(1);
 }
 
@@ -856,7 +872,7 @@ void launchBPipeChunkKernel(const Fixture &f, int64_t byteOff, int64_t bytes,
     return;
   case GpuStage::Quantize: {
     if (elemOff % f.channelSize != 0 || elems % f.channelSize != 0)
-      bpipeMisaligned(w.id, byteOff);
+      bpipeMisaligned(w.id, byteOff, bytes);
     const int64_t c0 = elemOff / f.channelSize;
     reloc::cuda::quantizeF32S8(
         f.dLin + elemOff, static_cast<int8_t *>(f.dOut) + elemOff,
@@ -874,9 +890,12 @@ void launchBPipeChunkKernel(const Fixture &f, int64_t byteOff, int64_t bytes,
       // blockedTransposePlan {64, m, n}: slab = whole 64-src-row groups
       // (group = 64*n elems); slice axis 1, shift dst by j0*n.
       const int64_t n = f.bound.extents[2];
+      if (f.bound.srcStrides[0] != n || f.bound.srcStrides[1] != 64 * n ||
+          f.bound.srcStrides[2] != 1 || f.bound.dstStrides[1] != n)
+        bpipeShapeMismatch(w.id, "rank-3");
       const int64_t group = 64 * n;
       if (elemOff % group != 0 || elems % group != 0)
-        bpipeMisaligned(w.id, byteOff);
+        bpipeMisaligned(w.id, byteOff, bytes);
       const int64_t j0 = elemOff / group;
       sub.extents[1] = elems / group;
       relocDst = static_cast<float *>(f.dOut) + j0 * n;
@@ -884,16 +903,21 @@ void launchBPipeChunkKernel(const Fixture &f, int64_t byteOff, int64_t bytes,
       // nchwToNhwcPlan {b, H, W, C}: slab = whole images (64*n elems);
       // slice axis 0 -- the dst channel axis, so the quantize leg
       // chunks with dInv + b0.
+      if (f.bound.srcStrides[0] != f.channelSize ||
+          f.bound.dstStrides[0] != f.channelSize)
+        bpipeShapeMismatch(w.id, "rank-4");
       const int64_t image = f.channelSize; // = 64*n
       if (elemOff % image != 0 || elems % image != 0)
-        bpipeMisaligned(w.id, byteOff);
+        bpipeMisaligned(w.id, byteOff, bytes);
       chanBegin = elemOff / image;
       chanCount = elems / image;
       sub.extents[0] = chanCount;
+      // chanBegin * f.channelSize == elemOff here (the alignment guard
+      // above forces elemOff to be an exact multiple of f.channelSize).
       relocDst = (w.gpuStage == GpuStage::RelocateQuant
                       ? f.dTmp
                       : static_cast<float *>(f.dOut)) +
-                 elemOff;
+                 chanBegin * f.channelSize;
     } else {
       // transposePlan {n, n}, srcStrides {1, n}: slab = axis-1 band
       // (dst column band j0..j0+nj). RelocateQuant on this shape is T2,
@@ -906,8 +930,11 @@ void launchBPipeChunkKernel(const Fixture &f, int64_t byteOff, int64_t bytes,
         std::exit(1);
       }
       const int64_t n = f.bound.extents[0];
+      if (f.bound.srcStrides[0] != 1 || f.bound.srcStrides[1] != n ||
+          f.bound.dstStrides[0] != n || f.bound.dstStrides[1] != 1)
+        bpipeShapeMismatch(w.id, "rank-2");
       if (elemOff % n != 0 || elems % n != 0)
-        bpipeMisaligned(w.id, byteOff);
+        bpipeMisaligned(w.id, byteOff, bytes);
       const int64_t j0 = elemOff / n;
       sub.extents[1] = elems / n;
       relocDst = static_cast<float *>(f.dOut) + j0;
