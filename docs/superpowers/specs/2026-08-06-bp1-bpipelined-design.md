@@ -96,3 +96,63 @@ evidence; stage split + occupancy in the CSV schema = `gpu_kernel_ms` (per-chunk
 `h2d_ms` + the new `h2d_occupancy`; N/A cells listed = the T2 loud skip + the audit
 comment on the issue; chunkability audit recorded before coding = the issue comment
 (posted 2026-08-06, before any implementation commit).
+
+## Amendment (2026-08-06, during implementation)
+
+§1's `runMethodBPipelined` design followed issue #114's literal wording — the per-chunk
+kernel issued "in-stream after each chunk's copy", all on `pl.stream` — matching Method
+A's loop shape exactly. Task 2's `h2d_occupancy` semantics check falsified this the
+moment it ran: on one CUDA stream, submission order is FIFO regardless of data
+dependencies, so chunk c+1's copy could not start until chunk c's kernel finished.
+Measured occupancy came out statistically identical to `b_fair` (0.9242 vs 0.9245 on
+`blocked_transpose`), and `h2d_ms + gpu_kernel_ms ≈ gpu_pipeline_ms` for both — i.e. the
+literal single-stream reading reproduces `b_fair`'s non-overlapping behavior plus
+per-chunk kernel-launch overhead, not #108's pre-registered expectation
+`wall ≈ max(h2d, kern)`. The finding (with the same numbers) was recorded as a comment
+on issue #114 before any reimplementation.
+
+Per the user's ruling that the pre-registered **intent** governs over the issue's
+literal phrasing (the method is named *overlap-fair*, its acceptance metric is *overlap
+occupancy*, and #108's expectation assumes hiding), `runMethodBPipelined` and `Pipeline`
+were corrected to a **two-stream** design: `Pipeline` gains `kernStream` (a second
+non-blocking stream, created only when `withKern`), and each chunk's kernel is gated by
+`cudaStreamWaitEvent(pl.kernStream, pl.h2dEnd[c], 0)` instead of shared-stream submission
+order — so chunk c's kernel waits only for chunk c's bytes, and chunk c+1's copy proceeds
+on the copy stream immediately, concurrently with chunk c's kernel on the kernel stream.
+`evStop` moves to `kernStream` when the row has a kernel leg (its last kernel is itself
+ordered after the last copy via that chunk's wait-event, so it still covers both legs);
+both streams are synchronized before computing `t.wall`/`t.gpu`. Verification is
+unaffected (bit-exact memcmp still gates every config; the two streams are fully
+synchronized before `runMethodBPipelined` returns, so the blocking `cudaMemcpy`
+readback in `runConfig` sees completed work either way; `dLin`/`dOut` chunk regions stay
+disjoint across `c`).
+
+Re-measured after the fix (2080 Ti, `--n 16384`, `--transform T1b,T3`, non-degenerate
+chunking so every chunk-mib point yields `n_chunks > 1`):
+
+| transform | method | h2d_ms | kern_ms | gpu_pipeline_ms | h2d_occupancy |
+|---|---|---|---|---|---|
+| blocked_transpose (4 MiB, 256 chunks) | b_fair | 82.88 | 4.47 | 87.76 | 0.944 |
+| blocked_transpose (4 MiB, 256 chunks) | b_pipelined | 82.94 | 6.79 | 83.38 | 0.995 |
+| quant (4 MiB, 256 chunks) | b_fair | 82.84 | 2.53 | 85.78 | 0.966 |
+| quant (4 MiB, 256 chunks) | b_pipelined | 82.88 | 3.90 | 83.30 | 0.995 |
+
+`b_pipelined`'s `gpu_pipeline_ms` now sits within ~0.5 ms of `h2d_ms` alone (≈
+`max(h2d, kern)`), not near `h2d_ms + kern_ms` (`b_fair`'s behavior, and the old
+single-stream `b_pipelined`'s behavior) — the intended overlap is realized. This holds
+at every chunk granularity tested (4 through 256 chunks), not just the one above.
+
+One residual, non-regression caveat found during re-verification: at the smoke's default
+`--n 2048`, the `16 MiB` chunk-sweep point equals the workload's full 16 MiB input, so
+`n_chunks = 1` there — a config where cross-chunk overlap is structurally unavailable to
+*any* design (there is no next chunk to overlap the one kernel against). Task 2's
+semantics-check script picks the CSV's last-written row per (method, transform), which
+at `--n 2048` happens to be this degenerate single-chunk point, so re-running that exact
+script unmodified at `--n 2048` still reports near-identical occupancy for that one point
+— correctly, since no implementation can do better there. The `--n 16384` re-run above
+uses chunk sizes that all divide the input into `n_chunks > 1`, exercising the design the
+fix targets, and passes the identical assertion logic unmodified.
+
+The chunkability audit (transposePlan column-band slicing, blocked/nchw group-aligned
+sub-plans, the T2 N/A verdict) is unaffected by this amendment — it governs *what* each
+chunk's kernel computes, not which stream it runs on or when it starts.

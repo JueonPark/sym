@@ -481,6 +481,14 @@ struct StageTimes {
 // double-buffer reuse gate), pipeline start/stop + kernel events.
 struct Pipeline {
   cudaStream_t stream = nullptr;
+  // BPipelined's kernel leg (issue #114): a second non-blocking stream so
+  // chunk c's kernel -- gated on chunk c's copy via cudaStreamWaitEvent,
+  // not stream FIFO order -- does not block chunk c+1's copy behind it.
+  // A single shared stream serializes copy and kernel in submission order
+  // regardless of dependencies, which measurably collapses to b_fair
+  // (identical occupancy, h2d+kern ~= span) -- see the issue #114 comment
+  // recording that finding before this redesign.
+  cudaStream_t kernStream = nullptr;
   void *staging[2] = {nullptr, nullptr};
   int64_t nChunks = 0;
   std::vector<cudaEvent_t> h2dBeg, h2dEnd;
@@ -491,11 +499,14 @@ struct Pipeline {
 
   // allocStaging=false for B_fair/BPipelined: their source is already
   // pinned, so there is no staging buffer to double-buffer through.
-  // withKern=true only for BPipelined on a workload with a kernel leg.
+  // withKern=true only for BPipelined on a workload with a kernel leg;
+  // it also gates kernStream's creation.
   Pipeline(int64_t stagingBytes, int64_t chunks, bool withRecv,
            bool allocStaging = true, bool withKern = false)
       : nChunks(chunks) {
     CUDA_CHECK(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+    if (withKern)
+      CUDA_CHECK(cudaStreamCreateWithFlags(&kernStream, cudaStreamNonBlocking));
     if (allocStaging)
       for (void *&p : staging) {
         if (cudaHostAlloc(&p, static_cast<size_t>(stagingBytes),
@@ -553,6 +564,8 @@ struct Pipeline {
     cudaEventDestroy(kEnd);
     for (void *p : staging)
       cudaFreeHost(p);
+    if (kernStream)
+      cudaStreamDestroy(kernStream);
     cudaStreamDestroy(stream);
   }
 
@@ -1001,11 +1014,21 @@ StageTimes runMethodBFair(const Fixture &f, const ByteChunks &ck,
 
 // Method B (pipelined) -- issue #114's overlap-fair baseline: b_fair's
 // DMA path (pinned source, no staging, no reuse gate) with the per-chunk
-// transform kernel issued in-stream after each chunk's copy -- Method
-// A's loop shape on B's buffer model. Chunk c's kernel is ordered after
-// chunk c's copy by the stream; dLin chunk regions are disjoint across
-// c. Per-family slicing: see launchBPipeChunkKernel and the audit on
-// issue #114.
+// transform kernel issued on a SECOND stream, gated per chunk by
+// cudaStreamWaitEvent(h2dEnd[c]) rather than shared-stream FIFO order --
+// Method A's loop shape on B's buffer model, redesigned to actually
+// overlap. A single shared stream was tried first (the issue's literal
+// "in-stream" wording) and measurably collapsed to b_fair: submission
+// order on one stream serializes chunk c's kernel before chunk c+1's
+// copy regardless of data dependencies, so occupancy came out identical
+// to b_fair and h2d+kern ~= span (finding recorded on issue #114 before
+// this redesign, per the pre-registered intent in #108: wall ~=
+// max(h2d, kern)). With the wait-event on a second stream, chunk c's
+// kernel waits only for chunk c's bytes, so chunk c+1's copy proceeds
+// immediately on the copy stream while chunk c's kernel runs concurrently
+// on the kernel stream. dLin/dOut chunk regions are disjoint across c, so
+// this reorders no writes. Per-family slicing: see
+// launchBPipeChunkKernel and the audit on issue #114.
 StageTimes runMethodBPipelined(const Fixture &f, const ByteChunks &ck,
                                Pipeline &pl) {
   const char *src = reinterpret_cast<const char *>(f.pinnedSrc);
@@ -1022,15 +1045,29 @@ StageTimes runMethodBPipelined(const Fixture &f, const ByteChunks &ck,
                                cudaMemcpyHostToDevice, pl.stream));
     CUDA_CHECK(cudaEventRecord(pl.h2dEnd[static_cast<size_t>(c)], pl.stream));
     if (hasKern) {
+      // Chunk c's kernel waits only for chunk c's copy -- not the copy
+      // stream's FIFO order -- so chunk c+1's copy is free to proceed on
+      // pl.stream while chunk c's kernel runs on pl.kernStream.
+      CUDA_CHECK(cudaStreamWaitEvent(pl.kernStream,
+                                     pl.h2dEnd[static_cast<size_t>(c)], 0));
       CUDA_CHECK(
-          cudaEventRecord(pl.kernBeg[static_cast<size_t>(c)], pl.stream));
-      launchBPipeChunkKernel(f, off, bytes, pl.stream);
+          cudaEventRecord(pl.kernBeg[static_cast<size_t>(c)], pl.kernStream));
+      launchBPipeChunkKernel(f, off, bytes, pl.kernStream);
       CUDA_CHECK(
-          cudaEventRecord(pl.kernEnd[static_cast<size_t>(c)], pl.stream));
+          cudaEventRecord(pl.kernEnd[static_cast<size_t>(c)], pl.kernStream));
     }
   }
-  CUDA_CHECK(cudaEventRecord(pl.evStop, pl.stream));
+  // evStop on whichever stream carries the last-ordered op: the kernel
+  // stream when there is a kernel leg (its last kernel is itself ordered
+  // after the last copy via that chunk's wait-event, so evStop there
+  // covers both legs); the copy stream otherwise (GpuStage::None rows).
+  if (hasKern)
+    CUDA_CHECK(cudaEventRecord(pl.evStop, pl.kernStream));
+  else
+    CUDA_CHECK(cudaEventRecord(pl.evStop, pl.stream));
   CUDA_CHECK(cudaStreamSynchronize(pl.stream));
+  if (pl.kernStream)
+    CUDA_CHECK(cudaStreamSynchronize(pl.kernStream));
   t.wall = nowMs() - w0;
   float ms = 0;
   CUDA_CHECK(cudaEventElapsedTime(&ms, pl.evStart, pl.evStop));
