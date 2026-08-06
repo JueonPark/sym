@@ -269,7 +269,12 @@ check), `variant` (`matrix` | `rsweep` — absent in pre-R2 CSVs, and both
 from the `Workload` table regardless of method or variant, so e.g. a
 matrix T2 row also reports `wire=s8`). Column order in the CSV
 (`bench/rtrack/csv.h::csvHeaderLine`) is: ...,
-`gpu_kernel_ms,gpu_recv_ms,verified,variant,wire`.
+`gpu_kernel_ms,gpu_recv_ms,verified,variant,wire,h2d_occupancy`.
+
+BP1 (issue #114) adds `h2d_occupancy`: median over iterations of
+sum(per-chunk h2d event time) / (evStart→evStop span); ~1.0 = the
+pipeline is DMA-saturated (kernels fully hidden), lower = exposed kernel
+or gaps. Populated for every method (issue #114).
 
 ## R0 exit criteria status
 

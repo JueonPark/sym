@@ -1108,7 +1108,7 @@ bool runConfig(const Fixture &f, Method method, int64_t chunkReqBytes,
     }
   }
 
-  std::vector<double> wall, gpu, cpu, h2d, kern, recv;
+  std::vector<double> wall, gpu, cpu, h2d, kern, recv, occ;
   for (int i = 0; i < opt.warmup; ++i)
     (void)iterate();
   for (int i = 0; i < opt.iters; ++i) {
@@ -1119,6 +1119,9 @@ bool runConfig(const Fixture &f, Method method, int64_t chunkReqBytes,
     h2d.push_back(t.h2d);
     kern.push_back(t.kern);
     recv.push_back(t.recv);
+    // h2d-busy / pipeline-span, both event-derived -- the issue #114
+    // overlap-occupancy figure (WSL2-compatible substitute for a trace).
+    occ.push_back(t.gpu > 0 ? t.h2d / t.gpu : 0.0);
   }
 
   CsvRow row;
@@ -1139,6 +1142,7 @@ bool runConfig(const Fixture &f, Method method, int64_t chunkReqBytes,
   row.h2d = summarizeSamples(h2d);
   row.gpuKernel = summarizeSamples(kern);
   row.gpuRecv = summarizeSamples(recv);
+  row.h2dOcc = summarizeSamples(occ);
   row.variant = w.variant;
   row.wire = wireName(w.wire);
   row.effectiveInputGbps =
