@@ -226,6 +226,7 @@ TEST(RtrackCsv, RowGolden) {
   r.h2d = {2.75, 0, 0, 0, false, 30};
   r.gpuKernel = {0.0, 0, 0, 0, false, 30};
   r.gpuRecv = {0.0, 0, 0, 0, false, 30};
+  r.h2dOcc = {0.92, 0, 0, 0, false, 30};
   r.variant = "matrix";
   r.wire = "s8";
   r.effectiveInputGbps = 21.47;
@@ -233,7 +234,7 @@ TEST(RtrackCsv, RowGolden) {
   EXPECT_EQ(bench::rtrack::csvRowLine(r),
             "epyc-2080ti,NVIDIA GeForce RTX 2080 Ti,a,transpose,8192,s8,0.25,"
             "8,4,4194304,16,12.5,12,13.75,2.4,0,21.47,12.4,8,2.75,0,0,1,"
-            "matrix,s8");
+            "matrix,s8,0.92");
 }
 
 TEST(RtrackCsv, CommaInFieldSanitized) {

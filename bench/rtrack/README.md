@@ -255,7 +255,12 @@ min / p95, `iqr_over_median_pct`, and `unstable` (> 5%). Stage columns
 first stage, stop after the last enqueued op, then stream sync),
 `cpu_stage_ms` (fenced `steady_clock` sums of the per-chunk CPU sections),
 `h2d_ms` (summed per-chunk DMA event pairs), `gpu_kernel_ms` (Method B's
-transform kernels). `effective_input_GBps` = S / wall median.
+transform kernels; for `b_pipelined` this column is instead the per-chunk
+SUM of `Pipeline::kernBeg`/`kernEnd` spans — it therefore includes
+launch-granularity overhead and, for the rank-2 transposePlan family, the
+naive-fallback kernel cost noted in `launchBPipeChunkKernel`'s comment,
+whereas `b`/`b_fair` report the single monolithic `kBeg`→`kEnd` span).
+`effective_input_GBps` = S / wall median.
 
 R2 (issue #83) adds four columns: `gpu_recv_ms` (median, summed per-chunk
 in-stream receive-kernel event time — Method A's r-sweep decompress
@@ -269,7 +274,12 @@ check), `variant` (`matrix` | `rsweep` — absent in pre-R2 CSVs, and both
 from the `Workload` table regardless of method or variant, so e.g. a
 matrix T2 row also reports `wire=s8`). Column order in the CSV
 (`bench/rtrack/csv.h::csvHeaderLine`) is: ...,
-`gpu_kernel_ms,gpu_recv_ms,verified,variant,wire`.
+`gpu_kernel_ms,gpu_recv_ms,verified,variant,wire,h2d_occupancy`.
+
+BP1 (issue #114) adds `h2d_occupancy`: median over iterations of
+sum(per-chunk h2d event time) / (evStart→evStop span); ~1.0 = the
+pipeline is DMA-saturated (kernels fully hidden), lower = exposed kernel
+or gaps. Populated for every method (issue #114).
 
 ## R0 exit criteria status
 

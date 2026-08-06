@@ -146,13 +146,17 @@ reloc::BoundPlan decodeAndBindWire(const char *path, int64_t n) {
 // (it has no static plan builder), so it is special-cased in the
 // --transform parser rather than looked up by findWorkload.
 const Workload &wireWorkload() {
-  static const Workload w = {
-      "TW",       "blocked_transpose_wire",
-      "matrix",   DtypeOut::F32,
-      Wire::F32,  1.0,
-      nullptr,    CpuStage::GatherF32,
-      GpuStage::Relocate, RecvStage::None,
-      true};
+  static const Workload w = {"TW",
+                             "blocked_transpose_wire",
+                             "matrix",
+                             DtypeOut::F32,
+                             Wire::F32,
+                             1.0,
+                             nullptr,
+                             CpuStage::GatherF32,
+                             GpuStage::Relocate,
+                             RecvStage::None,
+                             true};
   return w;
 }
 
@@ -172,16 +176,20 @@ const char *variantName(reloc::quant::Variant v) {
   return "?";
 }
 
-// Method A (CPU transform + DMA of r*S bytes) vs the two Method-B baselines.
-// BStaged is the sym#63/#76 baseline: pageable source re-staged through a
-// pinned buffer per chunk before the DMA. BFair (issue #95) removes that
-// staging memcpy -- the source is resident in pinned memory and the DMA
-// reads it directly -- so B is measured as a competent pure-relocation
-// baseline would run it. Both emit the R0.2 receive kernels after transfer.
-enum class Method { A, BStaged, BFair };
+// Method A (CPU transform + DMA of r*S bytes) vs the three Method-B
+// baselines. BStaged is the sym#63/#76 baseline: pageable source re-staged
+// through a pinned buffer per chunk before the DMA. BFair (issue #95)
+// removes that staging memcpy -- the source is resident in pinned memory
+// and the DMA reads it directly -- so B is measured as a competent
+// pure-relocation baseline would run it. Both emit the R0.2 receive kernels
+// after transfer. BPipelined (issue #114) rides BFair's DMA path but issues
+// the transform kernel per chunk, in-stream, instead of once after the full
+// transfer -- Method A's loop shape on B's buffer model.
+enum class Method { A, BStaged, BFair, BPipelined };
 
 // CSV method tag. BStaged stays "b" so the R1/figure1/gates consumers that
-// key off "a"/"b" are unchanged; BFair is a new tag they ignore.
+// key off "a"/"b" are unchanged; BFair and BPipelined are new tags they
+// ignore.
 const char *methodTag(Method m) {
   switch (m) {
   case Method::A:
@@ -190,6 +198,10 @@ const char *methodTag(Method m) {
     return "b";
   case Method::BFair:
     return "b_fair";
+  case Method::BPipelined:
+    // Reserved: cm4_registered_predictions.json's placement_map keys the
+    // Overlapped placement off this tag.
+    return "b_pipelined";
   }
   return "?";
 }
@@ -473,19 +485,32 @@ struct StageTimes {
 // double-buffer reuse gate), pipeline start/stop + kernel events.
 struct Pipeline {
   cudaStream_t stream = nullptr;
+  // BPipelined's kernel leg (issue #114): a second non-blocking stream so
+  // chunk c's kernel -- gated on chunk c's copy via cudaStreamWaitEvent,
+  // not stream FIFO order -- does not block chunk c+1's copy behind it.
+  // A single shared stream serializes copy and kernel in submission order
+  // regardless of dependencies, which measurably collapses to b_fair
+  // (identical occupancy, h2d+kern ~= span) -- see the issue #114 comment
+  // recording that finding before this redesign.
+  cudaStream_t kernStream = nullptr;
   void *staging[2] = {nullptr, nullptr};
   int64_t nChunks = 0;
   std::vector<cudaEvent_t> h2dBeg, h2dEnd;
   std::vector<cudaEvent_t> recvBeg, recvEnd; // Method A receive stages only
+  std::vector<cudaEvent_t> kernBeg, kernEnd; // BPipelined per-chunk kernel leg
   cudaEvent_t evStart = nullptr, evStop = nullptr, kBeg = nullptr,
               kEnd = nullptr;
 
-  // allocStaging=false for B_fair: its source is already pinned, so there
-  // is no staging buffer to double-buffer through.
+  // allocStaging=false for B_fair/BPipelined: their source is already
+  // pinned, so there is no staging buffer to double-buffer through.
+  // withKern=true only for BPipelined on a workload with a kernel leg;
+  // it also gates kernStream's creation.
   Pipeline(int64_t stagingBytes, int64_t chunks, bool withRecv,
-           bool allocStaging = true)
+           bool allocStaging = true, bool withKern = false)
       : nChunks(chunks) {
     CUDA_CHECK(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+    if (withKern)
+      CUDA_CHECK(cudaStreamCreateWithFlags(&kernStream, cudaStreamNonBlocking));
     if (allocStaging)
       for (void *&p : staging) {
         if (cudaHostAlloc(&p, static_cast<size_t>(stagingBytes),
@@ -510,6 +535,14 @@ struct Pipeline {
         CUDA_CHECK(cudaEventCreate(&recvEnd[static_cast<size_t>(c)]));
       }
     }
+    if (withKern) {
+      kernBeg.resize(static_cast<size_t>(chunks));
+      kernEnd.resize(static_cast<size_t>(chunks));
+      for (int64_t c = 0; c < chunks; ++c) {
+        CUDA_CHECK(cudaEventCreate(&kernBeg[static_cast<size_t>(c)]));
+        CUDA_CHECK(cudaEventCreate(&kernEnd[static_cast<size_t>(c)]));
+      }
+    }
     CUDA_CHECK(cudaEventCreate(&evStart));
     CUDA_CHECK(cudaEventCreate(&evStop));
     CUDA_CHECK(cudaEventCreate(&kBeg));
@@ -525,12 +558,18 @@ struct Pipeline {
       cudaEventDestroy(e);
     for (cudaEvent_t e : recvEnd)
       cudaEventDestroy(e);
+    for (cudaEvent_t e : kernBeg)
+      cudaEventDestroy(e);
+    for (cudaEvent_t e : kernEnd)
+      cudaEventDestroy(e);
     cudaEventDestroy(evStart);
     cudaEventDestroy(evStop);
     cudaEventDestroy(kBeg);
     cudaEventDestroy(kEnd);
     for (void *p : staging)
       cudaFreeHost(p);
+    if (kernStream)
+      cudaStreamDestroy(kernStream);
     cudaStreamDestroy(stream);
   }
 
@@ -553,6 +592,16 @@ struct Pipeline {
     for (size_t c = 0; c < recvBeg.size(); ++c) {
       float ms = 0;
       CUDA_CHECK(cudaEventElapsedTime(&ms, recvBeg[c], recvEnd[c]));
+      total += ms;
+    }
+    return total;
+  }
+
+  double sumKernMs() const {
+    double total = 0;
+    for (size_t c = 0; c < kernBeg.size(); ++c) {
+      float ms = 0;
+      CUDA_CHECK(cudaEventElapsedTime(&ms, kernBeg[c], kernEnd[c]));
       total += ms;
     }
     return total;
@@ -774,6 +823,138 @@ char *methodBDmaDst(const Fixture &f) {
                                          : reinterpret_cast<char *>(f.dLin);
 }
 
+[[noreturn]] void bpipeMisaligned(const char *id, int64_t off, int64_t len) {
+  std::fprintf(stderr,
+               "error: b_pipelined chunk misaligned for %s at byte %lld "
+               "(chunk length %lld bytes) -- refusing to approximate "
+               "(issue #114 chunkability audit)\n",
+               id, static_cast<long long>(off), static_cast<long long>(len));
+  std::exit(1);
+}
+
+// (final-review, issue #114) launchBPipeChunkKernel's per-family slicing
+// math below assumes the exact stride shapes the audited plans.h builders
+// (transposePlan/blockedTransposePlan/nchwToNhwcPlan) produce. A
+// --plan-wire corpus plan that binds to the same rank but a different
+// stride pattern would otherwise silently mis-slice under --no-verify;
+// hard-fail loudly instead.
+[[noreturn]] void bpipeShapeMismatch(const char *id, const char *family) {
+  std::fprintf(stderr,
+               "error: b_pipelined: %s: plan stride signature does not "
+               "match the audited %s family shape -- refusing to slice "
+               "(issue #114 audit)\n",
+               id, family);
+  std::exit(1);
+}
+
+// b_pipelined's per-chunk kernel (issue #114): the chunk is a contiguous
+// slab [byteOff, byteOff+bytes) of the linear fp32 source that just
+// landed in dLin; launch the workload's transform over exactly that
+// slab. Slicing per the chunkability audit recorded on issue #114:
+// identity plans use pointer/channel offsets; blocked/nchw plans slice
+// whole 64-row groups / images (a rectangular sub-plan); transposePlan
+// slabs are dst column bands (legal relocateF32 input, but no longer
+// isTranspose2D-shaped, so the SMEM tile path falls back to the naive
+// kernel -- the audit's recorded perf-class caveat). T2 (RelocateQuant
+// on transposePlan) never reaches here: run() skips it as N/A.
+void launchBPipeChunkKernel(const Fixture &f, int64_t byteOff, int64_t bytes,
+                            cudaStream_t stream) {
+  const Workload &w = *f.w;
+  const int64_t elemOff = byteOff / 4;
+  const int64_t elems = bytes / 4;
+  switch (w.gpuStage) {
+  case GpuStage::None:
+    return; // DMA-only row (T3R100): no kernel leg by construction
+  case GpuStage::ConvertF16:
+    launchConvertF32F16(f.dLin + elemOff,
+                        static_cast<uint16_t *>(f.dOut) + elemOff, elems,
+                        stream);
+    return;
+  case GpuStage::Quantize: {
+    if (elemOff % f.channelSize != 0 || elems % f.channelSize != 0)
+      bpipeMisaligned(w.id, byteOff, bytes);
+    const int64_t c0 = elemOff / f.channelSize;
+    reloc::cuda::quantizeF32S8(
+        f.dLin + elemOff, static_cast<int8_t *>(f.dOut) + elemOff,
+        elems / f.channelSize, f.channelSize, f.dInv + c0, stream);
+    return;
+  }
+  case GpuStage::Relocate:
+  case GpuStage::RelocateQuant: {
+    reloc::BoundPlan sub = f.bound;
+    const float *src = f.dLin + elemOff;
+    float *relocDst = nullptr;
+    int64_t chanBegin = 0, chanCount = 0;
+    const size_t rank = f.bound.extents.size();
+    if (rank == 3) {
+      // blockedTransposePlan {64, m, n}: slab = whole 64-src-row groups
+      // (group = 64*n elems); slice axis 1, shift dst by j0*n.
+      const int64_t n = f.bound.extents[2];
+      if (f.bound.srcStrides[0] != n || f.bound.srcStrides[1] != 64 * n ||
+          f.bound.srcStrides[2] != 1 || f.bound.dstStrides[1] != n)
+        bpipeShapeMismatch(w.id, "rank-3");
+      const int64_t group = 64 * n;
+      if (elemOff % group != 0 || elems % group != 0)
+        bpipeMisaligned(w.id, byteOff, bytes);
+      const int64_t j0 = elemOff / group;
+      sub.extents[1] = elems / group;
+      relocDst = static_cast<float *>(f.dOut) + j0 * n;
+    } else if (rank == 4) {
+      // nchwToNhwcPlan {b, H, W, C}: slab = whole images (64*n elems);
+      // slice axis 0 -- the dst channel axis, so the quantize leg
+      // chunks with dInv + b0.
+      if (f.bound.srcStrides[0] != f.channelSize ||
+          f.bound.dstStrides[0] != f.channelSize)
+        bpipeShapeMismatch(w.id, "rank-4");
+      const int64_t image = f.channelSize; // = 64*n
+      if (elemOff % image != 0 || elems % image != 0)
+        bpipeMisaligned(w.id, byteOff, bytes);
+      chanBegin = elemOff / image;
+      chanCount = elems / image;
+      sub.extents[0] = chanCount;
+      // chanBegin * f.channelSize == elemOff here (the alignment guard
+      // above forces elemOff to be an exact multiple of f.channelSize).
+      relocDst = (w.gpuStage == GpuStage::RelocateQuant
+                      ? f.dTmp
+                      : static_cast<float *>(f.dOut)) +
+                 chanBegin * f.channelSize;
+    } else {
+      // transposePlan {n, n}, srcStrides {1, n}: slab = axis-1 band
+      // (dst column band j0..j0+nj). RelocateQuant on this shape is T2,
+      // which run() already skipped as N/A -- guard defensively.
+      if (w.gpuStage == GpuStage::RelocateQuant) {
+        std::fprintf(stderr,
+                     "error: %s: RelocateQuant on a rank-2 transpose plan "
+                     "is N/A for b_pipelined (issue #114 audit)\n",
+                     w.id);
+        std::exit(1);
+      }
+      const int64_t n = f.bound.extents[0];
+      if (f.bound.srcStrides[0] != 1 || f.bound.srcStrides[1] != n ||
+          f.bound.dstStrides[0] != n || f.bound.dstStrides[1] != 1)
+        bpipeShapeMismatch(w.id, "rank-2");
+      if (elemOff % n != 0 || elems % n != 0)
+        bpipeMisaligned(w.id, byteOff, bytes);
+      const int64_t j0 = elemOff / n;
+      sub.extents[1] = elems / n;
+      relocDst = static_cast<float *>(f.dOut) + j0;
+    }
+    if (w.gpuStage == GpuStage::Relocate) {
+      reloc::cuda::relocateF32(sub, src, relocDst, stream);
+      return;
+    }
+    // RelocateQuant (rank-4 / T4 family only): relocate the image slab
+    // into dTmp, then per-channel quantize exactly that channel range.
+    reloc::cuda::relocateF32(sub, src, relocDst, stream);
+    reloc::cuda::quantizeF32S8(
+        f.dTmp + chanBegin * f.channelSize,
+        static_cast<int8_t *>(f.dOut) + chanBegin * f.channelSize, chanCount,
+        f.channelSize, f.dInv + chanBegin, stream);
+    return;
+  }
+  }
+}
+
 // Method B (staged): per-chunk pageable->pinned memcpy + DMA of the raw fp32
 // tensor, then the R0.2 transform kernels into the final layout (after the
 // full transfer, matching the sym#63 baseline; the kernel cost shows up in
@@ -860,6 +1041,72 @@ StageTimes runMethodBFair(const Fixture &f, const ByteChunks &ck,
   return t;
 }
 
+// Method B (pipelined) -- issue #114's overlap-fair baseline: b_fair's
+// DMA path (pinned source, no staging, no reuse gate) with the per-chunk
+// transform kernel issued on a SECOND stream, gated per chunk by
+// cudaStreamWaitEvent(h2dEnd[c]) rather than shared-stream FIFO order --
+// Method A's loop shape on B's buffer model, redesigned to actually
+// overlap. A single shared stream was tried first (the issue's literal
+// "in-stream" wording) and measurably collapsed to b_fair: submission
+// order on one stream serializes chunk c's kernel before chunk c+1's
+// copy regardless of data dependencies, so occupancy came out identical
+// to b_fair and h2d+kern ~= span (finding recorded on issue #114 before
+// this redesign, per the pre-registered intent in #108: wall ~=
+// max(h2d, kern)). With the wait-event on a second stream, chunk c's
+// kernel waits only for chunk c's bytes, so chunk c+1's copy proceeds
+// immediately on the copy stream while chunk c's kernel runs concurrently
+// on the kernel stream. dLin/dOut chunk regions are disjoint across c, so
+// this reorders no writes. Per-family slicing: see
+// launchBPipeChunkKernel and the audit on issue #114.
+StageTimes runMethodBPipelined(const Fixture &f, const ByteChunks &ck,
+                               Pipeline &pl) {
+  const char *src = reinterpret_cast<const char *>(f.pinnedSrc);
+  const bool hasKern = f.w->gpuStage != GpuStage::None;
+  StageTimes t;
+  const double w0 = nowMs();
+  CUDA_CHECK(cudaEventRecord(pl.evStart, pl.stream));
+  for (int64_t c = 0; c < ck.nChunks; ++c) {
+    const int64_t off = c * ck.bytesPerChunk;
+    const int64_t bytes = std::min(ck.bytesPerChunk, f.inBytes - off);
+    CUDA_CHECK(cudaEventRecord(pl.h2dBeg[static_cast<size_t>(c)], pl.stream));
+    CUDA_CHECK(cudaMemcpyAsync(methodBDmaDst(f) + off, src + off,
+                               static_cast<size_t>(bytes),
+                               cudaMemcpyHostToDevice, pl.stream));
+    CUDA_CHECK(cudaEventRecord(pl.h2dEnd[static_cast<size_t>(c)], pl.stream));
+    if (hasKern) {
+      // Chunk c's kernel waits only for chunk c's copy -- not the copy
+      // stream's FIFO order -- so chunk c+1's copy is free to proceed on
+      // pl.stream while chunk c's kernel runs on pl.kernStream.
+      CUDA_CHECK(cudaStreamWaitEvent(pl.kernStream,
+                                     pl.h2dEnd[static_cast<size_t>(c)], 0));
+      CUDA_CHECK(
+          cudaEventRecord(pl.kernBeg[static_cast<size_t>(c)], pl.kernStream));
+      launchBPipeChunkKernel(f, off, bytes, pl.kernStream);
+      CUDA_CHECK(
+          cudaEventRecord(pl.kernEnd[static_cast<size_t>(c)], pl.kernStream));
+    }
+  }
+  // evStop on whichever stream carries the last-ordered op: the kernel
+  // stream when there is a kernel leg (its last kernel is itself ordered
+  // after the last copy via that chunk's wait-event, so evStop there
+  // covers both legs); the copy stream otherwise (GpuStage::None rows).
+  if (hasKern)
+    CUDA_CHECK(cudaEventRecord(pl.evStop, pl.kernStream));
+  else
+    CUDA_CHECK(cudaEventRecord(pl.evStop, pl.stream));
+  CUDA_CHECK(cudaStreamSynchronize(pl.stream));
+  if (pl.kernStream)
+    CUDA_CHECK(cudaStreamSynchronize(pl.kernStream));
+  t.wall = nowMs() - w0;
+  float ms = 0;
+  CUDA_CHECK(cudaEventElapsedTime(&ms, pl.evStart, pl.evStop));
+  t.gpu = ms;
+  t.h2d = pl.sumH2dMs();
+  t.kern = pl.sumKernMs(); // 0 when hasKern is false (empty vectors)
+  t.cpu = 0.0;             // pinned source: no host staging copy
+  return t;
+}
+
 // Run one (workload, method, chunk) config: verify gate, 5+30 protocol,
 // emit a CSV row. Returns false on a verify failure.
 bool runConfig(const Fixture &f, Method method, int64_t chunkReqBytes,
@@ -885,10 +1132,15 @@ bool runConfig(const Fixture &f, Method method, int64_t chunkReqBytes,
     stagingBytes = bck.bytesPerChunk;
     nChunks = bck.nChunks;
   }
-  // B_fair's source is already pinned; it needs no staging buffers.
+  // B_fair/BPipelined's source is already pinned; they need no staging
+  // buffers. withKern is set only for BPipelined on a workload with a
+  // kernel leg (GpuStage::None rows, T3R100, have none).
   Pipeline pl(stagingBytes, nChunks,
               /*withRecv=*/methodA && w.recvStage != RecvStage::None,
-              /*allocStaging=*/method != Method::BFair);
+              /*allocStaging=*/method != Method::BFair &&
+                  method != Method::BPipelined,
+              /*withKern=*/method == Method::BPipelined &&
+                  w.gpuStage != GpuStage::None);
 
   auto iterate = [&]() -> StageTimes {
     switch (method) {
@@ -898,6 +1150,8 @@ bool runConfig(const Fixture &f, Method method, int64_t chunkReqBytes,
       return runMethodB(f, bck, pl, pool);
     case Method::BFair:
       return runMethodBFair(f, bck, pl);
+    case Method::BPipelined:
+      return runMethodBPipelined(f, bck, pl);
     }
     return {};
   };
@@ -920,7 +1174,7 @@ bool runConfig(const Fixture &f, Method method, int64_t chunkReqBytes,
     }
   }
 
-  std::vector<double> wall, gpu, cpu, h2d, kern, recv;
+  std::vector<double> wall, gpu, cpu, h2d, kern, recv, occ;
   for (int i = 0; i < opt.warmup; ++i)
     (void)iterate();
   for (int i = 0; i < opt.iters; ++i) {
@@ -931,6 +1185,9 @@ bool runConfig(const Fixture &f, Method method, int64_t chunkReqBytes,
     h2d.push_back(t.h2d);
     kern.push_back(t.kern);
     recv.push_back(t.recv);
+    // h2d-busy / pipeline-span, both event-derived -- the issue #114
+    // overlap-occupancy figure (WSL2-compatible substitute for a trace).
+    occ.push_back(t.gpu > 0 ? t.h2d / t.gpu : 0.0);
   }
 
   CsvRow row;
@@ -951,6 +1208,7 @@ bool runConfig(const Fixture &f, Method method, int64_t chunkReqBytes,
   row.h2d = summarizeSamples(h2d);
   row.gpuKernel = summarizeSamples(kern);
   row.gpuRecv = summarizeSamples(recv);
+  row.h2dOcc = summarizeSamples(occ);
   row.variant = w.variant;
   row.wire = wireName(w.wire);
   row.effectiveInputGbps =
@@ -1000,6 +1258,7 @@ int run(const Options &opt) {
   reloc::GatherPool pool(opt.threads);
   const bool needB = hasMethod(opt.methods, Method::BStaged);
   const bool needBFair = hasMethod(opt.methods, Method::BFair);
+  const bool needBPipe = hasMethod(opt.methods, Method::BPipelined);
   int rc = 0;
   for (const Workload *w : opt.workloads) {
     Fixture f;
@@ -1009,8 +1268,11 @@ int run(const Options &opt) {
       wireBound = decodeAndBindWire(opt.planWire, opt.n);
       boundOverride = &wireBound;
     }
-    buildFixture(f, *w, opt.n, needB && w->methodB, needBFair && w->methodB,
-                 opt.verify, boundOverride);
+    // BPipelined rides the BFair predicate: same pinned source, same
+    // dLin/dTmp.
+    buildFixture(f, *w, opt.n, needB && w->methodB,
+                 (needBFair || needBPipe) && w->methodB, opt.verify,
+                 boundOverride);
     // Chunk requests past the artifact size all clamp to the same 1-chunk
     // plan; measuring the identical config again would only hand
     // figure1's best-chunk argmin duplicate samples. Dedup is per method:
@@ -1022,6 +1284,15 @@ int run(const Options &opt) {
         // family measures both B paths once, on its R100 row.
         if (m != Method::A && !w->methodB)
           continue;
+        // T2's quantize leg cannot run per chunk (column bands are not
+        // channel-contiguous): N/A per the chunkability audit recorded
+        // on issue #114 -- a loud skip, never a silent omission.
+        if (m == Method::BPipelined && std::strcmp(w->id, "T2") == 0) {
+          std::fprintf(stderr,
+                       "rtrack: T2   b_pipelined N/A (chunkability audit, "
+                       "issue #114); skipped\n");
+          continue;
+        }
         std::pair<int64_t, int64_t> key;
         if (m == Method::A) {
           RowChunks rck = planRowChunks(f.rows, f.rowOutBytes, chunk);
@@ -1084,7 +1355,8 @@ int usage() {
   std::fprintf(
       stderr,
       "usage: bench-rtrack [--transform all|matrix|rsweep|T1,T1b,...,T3R0125]\n"
-      "  [--method both|all|a|b|bfair] [--n N] [--chunk-mib 4,16,64,256]\n"
+      "  [--method both|all|a|b|bfair|bpipe] [--n N] [--chunk-mib "
+      "4,16,64,256]\n"
       "  [--threads T] [--variant auto|scalar|avx2|avx512|avx512pf]\n"
       "  [--warmup W] [--iters I] [--machine NAME] [--csv PATH|-]\n"
       "  [--csv-header] [--no-verify] [--plan-wire PATH]\n"
@@ -1113,10 +1385,13 @@ int main(int argc, char **argv) {
         opt.methods = {Method::BStaged};
       else if (m == "bfair")
         opt.methods = {Method::BFair};
+      else if (m == "bpipe")
+        opt.methods = {Method::BPipelined};
       else if (m == "both")
         opt.methods = {Method::A, Method::BStaged};
       else if (m == "all")
-        opt.methods = {Method::A, Method::BStaged, Method::BFair};
+        opt.methods = {Method::A, Method::BStaged, Method::BFair,
+                       Method::BPipelined};
       else
         return usage();
     } else if (a == "--n")
@@ -1192,13 +1467,12 @@ int main(int argc, char **argv) {
   // makePlan (buildFixture would dereference a null function pointer), and
   // --plan-wire silently interacting with any other transform in the same
   // sweep is exactly what issue #97's brief calls out to avoid.
-  const bool hasTW =
-      std::any_of(opt.workloads.begin(), opt.workloads.end(),
-                  [](const Workload *w) { return std::strcmp(w->id, "TW") == 0; });
+  const bool hasTW = std::any_of(
+      opt.workloads.begin(), opt.workloads.end(),
+      [](const Workload *w) { return std::strcmp(w->id, "TW") == 0; });
   if (opt.planWire && !(hasTW && opt.workloads.size() == 1)) {
-    std::fprintf(stderr,
-                 "error: --plan-wire is only valid with --transform TW "
-                 "(and no other transform)\n");
+    std::fprintf(stderr, "error: --plan-wire is only valid with --transform TW "
+                         "(and no other transform)\n");
     return usage();
   }
   if (hasTW && !opt.planWire) {
