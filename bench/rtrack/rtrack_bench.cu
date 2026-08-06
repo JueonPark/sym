@@ -146,13 +146,17 @@ reloc::BoundPlan decodeAndBindWire(const char *path, int64_t n) {
 // (it has no static plan builder), so it is special-cased in the
 // --transform parser rather than looked up by findWorkload.
 const Workload &wireWorkload() {
-  static const Workload w = {
-      "TW",       "blocked_transpose_wire",
-      "matrix",   DtypeOut::F32,
-      Wire::F32,  1.0,
-      nullptr,    CpuStage::GatherF32,
-      GpuStage::Relocate, RecvStage::None,
-      true};
+  static const Workload w = {"TW",
+                             "blocked_transpose_wire",
+                             "matrix",
+                             DtypeOut::F32,
+                             Wire::F32,
+                             1.0,
+                             nullptr,
+                             CpuStage::GatherF32,
+                             GpuStage::Relocate,
+                             RecvStage::None,
+                             true};
   return w;
 }
 
@@ -854,10 +858,9 @@ void launchBPipeChunkKernel(const Fixture &f, int64_t byteOff, int64_t bytes,
     if (elemOff % f.channelSize != 0 || elems % f.channelSize != 0)
       bpipeMisaligned(w.id, byteOff);
     const int64_t c0 = elemOff / f.channelSize;
-    reloc::cuda::quantizeF32S8(f.dLin + elemOff,
-                               static_cast<int8_t *>(f.dOut) + elemOff,
-                               elems / f.channelSize, f.channelSize,
-                               f.dInv + c0, stream);
+    reloc::cuda::quantizeF32S8(
+        f.dLin + elemOff, static_cast<int8_t *>(f.dOut) + elemOff,
+        elems / f.channelSize, f.channelSize, f.dInv + c0, stream);
     return;
   }
   case GpuStage::Relocate:
@@ -887,9 +890,9 @@ void launchBPipeChunkKernel(const Fixture &f, int64_t byteOff, int64_t bytes,
       chanBegin = elemOff / image;
       chanCount = elems / image;
       sub.extents[0] = chanCount;
-      relocDst = (w.gpuStage == GpuStage::RelocateQuant ? f.dTmp
-                                                        : static_cast<float *>(
-                                                              f.dOut)) +
+      relocDst = (w.gpuStage == GpuStage::RelocateQuant
+                      ? f.dTmp
+                      : static_cast<float *>(f.dOut)) +
                  elemOff;
     } else {
       // transposePlan {n, n}, srcStrides {1, n}: slab = axis-1 band
@@ -916,11 +919,10 @@ void launchBPipeChunkKernel(const Fixture &f, int64_t byteOff, int64_t bytes,
     // RelocateQuant (rank-4 / T4 family only): relocate the image slab
     // into dTmp, then per-channel quantize exactly that channel range.
     reloc::cuda::relocateF32(sub, src, relocDst, stream);
-    reloc::cuda::quantizeF32S8(f.dTmp + chanBegin * f.channelSize,
-                               static_cast<int8_t *>(f.dOut) +
-                                   chanBegin * f.channelSize,
-                               chanCount, f.channelSize, f.dInv + chanBegin,
-                               stream);
+    reloc::cuda::quantizeF32S8(
+        f.dTmp + chanBegin * f.channelSize,
+        static_cast<int8_t *>(f.dOut) + chanBegin * f.channelSize, chanCount,
+        f.channelSize, f.dInv + chanBegin, stream);
     return;
   }
   }
@@ -1438,13 +1440,12 @@ int main(int argc, char **argv) {
   // makePlan (buildFixture would dereference a null function pointer), and
   // --plan-wire silently interacting with any other transform in the same
   // sweep is exactly what issue #97's brief calls out to avoid.
-  const bool hasTW =
-      std::any_of(opt.workloads.begin(), opt.workloads.end(),
-                  [](const Workload *w) { return std::strcmp(w->id, "TW") == 0; });
+  const bool hasTW = std::any_of(
+      opt.workloads.begin(), opt.workloads.end(),
+      [](const Workload *w) { return std::strcmp(w->id, "TW") == 0; });
   if (opt.planWire && !(hasTW && opt.workloads.size() == 1)) {
-    std::fprintf(stderr,
-                 "error: --plan-wire is only valid with --transform TW "
-                 "(and no other transform)\n");
+    std::fprintf(stderr, "error: --plan-wire is only valid with --transform TW "
+                         "(and no other transform)\n");
     return usage();
   }
   if (hasTW && !opt.planWire) {

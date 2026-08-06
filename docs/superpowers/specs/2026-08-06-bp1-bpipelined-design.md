@@ -99,6 +99,8 @@ comment on the issue; chunkability audit recorded before coding = the issue comm
 
 ## Amendment (2026-08-06, during implementation)
 
+### 1. Two-stream redesign (wording vs. intent)
+
 §1's `runMethodBPipelined` design followed issue #114's literal wording — the per-chunk
 kernel issued "in-stream after each chunk's copy", all on `pl.stream` — matching Method
 A's loop shape exactly. Task 2's `h2d_occupancy` semantics check falsified this the
@@ -156,3 +158,15 @@ fix targets, and passes the identical assertion logic unmodified.
 The chunkability audit (transposePlan column-band slicing, blocked/nchw group-aligned
 sub-plans, the T2 N/A verdict) is unaffected by this amendment — it governs *what* each
 chunk's kernel computes, not which stream it runs on or when it starts.
+
+### 2. Uncheckable byte-compare replaced with function-body-diff proof
+
+§2's "b/b_fair rows byte-compare against a pre-change smoke CSV" was uncheckable as
+written — timing medians differ across runs (CSV rows can never byte-match across runs).
+The three-generations-intact proof used instead: the `runMethodB` and `runMethodBFair`
+function bodies are byte-identical between `main` and this branch (extracted via `awk
+'/^StageTimes runMethodB\(/,/^}/'` / the `runMethodBFair` equivalent, diffed — zero
+hunks for either function; separately confirmed that `git diff main` touches no line
+inside either function's pre-change body, only inserts `runMethodBPipelined` after
+`runMethodBFair`'s closing brace), plus both methods still print `[verified]` in the
+`--method all` smoke.
