@@ -271,6 +271,23 @@ nvcc -ccbin g++ -O3 -DNDEBUG -std=c++17 -arch=sm_75 \
    machines to 0) and BP-G3 "no data" (no registered prediction row
    matches), so BP3 runs must use the canonical machine tags.
 
+### BP3 Gen4 session runbook (issue #116; run at the home box, then undraft PR)
+
+WSL2 caveats are recorded, not controlled (cpufreq unreadable; `nvidia-smi -lgc`
+refused in WSL) — lock clocks from the WINDOWS side first: `nvidia-smi -lgc 2610
+-lmc 10251` (the CM1 session's lesson; unlocked WDDM P-states corrupt medians).
+1. Build `bench-rtrack` with the standalone recipe above, `-arch=sm_89`.
+2. Fresh calibration: `python3 bench/rtrack/calibrate.py --out calibration.json
+   --load-bin ./bench-rtrack`; commit as
+   `bench/results/bp_calibration_7800x3d-4070tis.json`.
+3. Run `bench/rtrack/configs/bp_matrix_nsweep_gen4.json` then
+   `bp_rsweep_gen4.json` via `run_rtrack.py` — every row `[verified]`.
+4. Unstable best-chunk points (IQR/median > 5%): targeted `bench-rtrack` reruns
+   into `bench/results/bp_{matrix_nsweep|rsweep}_rerun_7800x3d-4070tis.csv`
+   (bare header, no session comments) — the pre-declared stabler-preference rule
+   (docs/r2-exp2-gen4-crossover.md:48-58) applies at analysis time.
+5. Commit CSVs + calibration, list flagged points in the PR, undraft.
+
 ## Protocol
 
 5 warmup + 30 timed iterations per config; the CSV reports wall median /
