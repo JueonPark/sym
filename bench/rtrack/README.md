@@ -234,6 +234,7 @@ nvcc -ccbin g++ -O3 -DNDEBUG -std=c++17 -arch=sm_75 \
    python3 bench/rtrack/gates.py --exp r2 --csv run.csv \
        [--rstar rstar.json]                              # R2/EXP-2 gates
    python3 bench/rtrack/gates.py --exp v1 --csv run.csv  # V1 admissibility bar
+   python3 bench/rtrack/gates.py --exp bp --csv bp_run.csv   # BP pre-registered gates (issue #115); --selftest runs without data
    ```
 
    `--exp v1` (issue #95) checks whether each Method-B baseline reaches
@@ -246,6 +247,24 @@ nvcc -ccbin g++ -O3 -DNDEBUG -std=c++17 -arch=sm_75 \
    `python3 bench/rtrack/exp4v_gate.py --json <run.json ...>` evaluates
    its V4-G1..G3 gates (speedup bar, DMA-leg admissibility, counter-case
    + rule-match) over the resulting JSON.
+
+   `--exp bp` (issue #115) is the two-stream overlap-fair gate set,
+   registered before any `bp_*` data exists: BP-G1 checks `b_pipelined`
+   effective input bandwidth ≥ 0.95× the box's pinned H2D on r=1.0 rows
+   only (machine-conditional strict-N, dispatch-overhead caution); BP-G2
+   bars per-chunk kernel exposure, defined as `1 - h2d_occupancy` with
+   the GPU pipeline span as denominator, at ≤ 5% on multi-chunk rows
+   (`n_chunks > 1`) with `N >= 8192`; BP-G3 compares measured A/B_pipelined
+   against the 24 hardcoded registered predictions within ±0.10, anchored
+   to the fair Method-B baseline divided by 1.06 (Gen3) or 1.09 (Gen4) per
+   the fair-baseline correction in
+   [issue #108's comment](https://github.com/JueonPark/sym/issues/108#issuecomment-5215567565).
+   The bimodal rule treats the committed 8-cell list
+   (`cm4_bimodal_cells.json`) as armed-but-empty when no cell is flagged,
+   and loudly FAILs any flagged cell missing its p10 percentile column --
+   the p10 precondition is required before a flagged cell can be graded.
+   `--selftest` (8/8 checks) exercises all of the above against synthetic
+   rows and runs without any `bp_*` CSV on disk.
 
 ## Protocol
 

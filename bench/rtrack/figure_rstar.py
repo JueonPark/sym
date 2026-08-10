@@ -46,7 +46,11 @@ FAMILY_PATTERN = {"quant": "contiguous", "blocked_transpose": "blocked",
                   "nchw_nhwc_quant": "tiled"}
 # --b-method -> pyreloc b_placement: measured-serial-B (b_fair) is
 # compared against a serial-B prediction, staged b against overlapped.
-B_METHOD_PLACEMENT = {"b": "overlapped", "b_fair": "serial"}
+# b (staged) keeps its historical "overlapped" mapping;
+# cm4_registered_predictions.json's placement_map {b_fair: serial,
+# b_pipelined: overlapped} is the authority CM5 evaluates against.
+B_METHOD_PLACEMENT = {"b": "overlapped", "b_fair": "serial",
+                       "b_pipelined": "overlapped"}
 
 
 def load_rows(paths):
@@ -84,7 +88,8 @@ def main():
     ap.add_argument("--h2d", type=float, default=None)
     ap.add_argument("--n", type=int, default=None)
     ap.add_argument("--threads", type=int, default=None)
-    ap.add_argument("--b-method", default="b", choices=("b", "b_fair"))
+    ap.add_argument("--b-method", default="b",
+                    choices=("b", "b_fair", "b_pipelined"))
     ap.add_argument("--out", default="figure_rstar.png")
     ap.add_argument("--json", dest="json_out", default=None)
     args = ap.parse_args()
