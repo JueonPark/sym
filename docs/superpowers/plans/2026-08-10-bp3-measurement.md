@@ -188,9 +188,12 @@ Record the list verbatim (it goes in the PR). If empty: skip Step 2, note "0 fla
 ```bash
 # example for a flagged matrix point (T1b, N=16384); repeat per point, >> after the first
 taskset -c 4-7,20-23 ./bench-rtrack --transform T1b --n 16384 --method all \
-  --chunk-mib 4,16,64,256 --warmup 5 --iters 30 \
+  --chunk-mib 4,16,64,256 --threads 8 --warmup 5 --iters 30 \
   --machine epyc7351-2080ti --csv-header \
   --csv bench/results/bp_matrix_nsweep_rerun_epyc7351-2080ti.csv
+# --threads 8 is MANDATORY: it must match the originals' threads column (the
+# binary defaults to 1; a threads=1 rerun measures a different machine state —
+# method a ~5x slower single-threaded — and cannot be merged with the originals).
 ```
 
 (Use `run_in_background` if a point exceeds ~5 minutes.) Confirm rerun rows print `[verified]`; confirm the rerun file starts with the bare column header (no `#` lines — matching V1's rerun convention). Commit whatever rerun files exist:
