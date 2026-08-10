@@ -120,7 +120,9 @@ taskset -c 4-7,20-23 python3 bench/rtrack/calibrate.py --out calibration.json \
 python3 -c "import json; d=json.load(open('calibration.json')); print(d['pcie_under_load'], d['triad_gbps'], d['gpus'][0]['name'])"
 ```
 
-Expected: `pcie_under_load` gen "3" width "16"; triad ≈ 44; 2080 Ti. Copy it now:
+Expected: `pcie_under_load` gen "3" width "16"; triad ≈ 26 under the pinned-session
+protocol (v1: 26.07, v2_gen3: 26.14; the ≈44 figure was the R1-era pre-pinning value);
+2080 Ti. Copy it now:
 `cp calibration.json bench/results/bp_calibration_epyc7351-2080ti.json`.
 
 - [ ] **Step 3: Matrix run** — LAUNCH IN BACKGROUND (this exceeds the 600s Bash cap):
