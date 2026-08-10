@@ -228,7 +228,6 @@ def exp_bp(rows, bimodal_path=BP_BIMODAL_PATH, cm4_path=BP_CM4_PATH):
     """BP pre-registered gates (issue #115). Prints verdicts and returns
     {(machine, gate): verdict} so --selftest can assert on them. Always
     exit 0 via main() -- reports, never gates CI."""
-    # sections 4-5 land with the selftest (#115 Task 2)
     verdicts = {}
     by_machine = defaultdict(list)
     for r in rows:
@@ -331,7 +330,139 @@ def exp_bp(rows, bimodal_path=BP_BIMODAL_PATH, cm4_path=BP_CM4_PATH):
         verdicts[(machine, "BP-G3")] = v
         print(f"BP-G3 verdict: {v}")
 
+    # Bimodal matched-percentile rule (jointly owned with CM4 -- Build
+    # Doc v3 s5.3; list fixed pre-data in cm4_bimodal_cells.json).
+    try:
+        with open(bimodal_path) as f:
+            bimodal = json.load(f)
+    except OSError:
+        bimodal = None
+    if bimodal is None:
+        v = "no data (bimodal list unreadable)"
+    else:
+        # A measured row is flagged iff it matches a listed identity or
+        # the lineage rule {method: bxk, K: 4}. rtrack CSVs carry no K
+        # column and no bxk method, so the single-GPU BP matrix normally
+        # arms the rule without any flagged cell present.
+        flagged = [r for r in rows if r.get("method") == "bxk"]
+        if not flagged:
+            v = f"PASS (rule armed; 0 flagged cells present; " \
+                f"{len(bimodal['cells'])} identities listed)"
+        else:
+            # Median-based verdicts are disallowed for flagged cells;
+            # p50<->p50 AND p10<->p10 matched percentiles are required.
+            # No producer emits p10 today (csv.h has median/min/p95
+            # only) -- a flagged cell without p10 is a loud FAIL, never
+            # a silent median fallback.
+            has_p10 = all("p10_ms" in r and r.get("p10_ms") not in
+                          (None, "") for r in flagged)
+            v = ("FAIL (flagged cells measured without p10 statistics "
+                 "-- re-measure with increased reps and percentile "
+                 "emission)" if not has_p10 else
+                 "PASS (matched-percentile data present)")
+    verdicts[("*", "BP-BIMODAL")] = v.split(" ")[0]
+    print(f"\nBP-BIMODAL: {v}")
+
+    # CM4 cross-link (#115: one dataset evaluates both tracks). The
+    # formal model scoring is #CM5's; this prints the registered model
+    # prediction next to each BP-G3 cell for cross-reference.
+    try:
+        with open(cm4_path) as f:
+            cm4 = {(c["box"], c["family"], c["N"]): c
+                   for c in json.load(f)["cells"]}
+    except OSError:
+        cm4 = {}
+    if cm4:
+        print("\nCM4 registration cross-link (winner_vs_b_pipelined, "
+              "model t_b_overlapped/t_a):")
+        for (pm, t, n) in sorted(BP_G3_PREDICTIONS):
+            c = cm4.get((pm, t, n))
+            if c is None or c.get("t_a_ms") in (None, 0):
+                continue
+            model_ratio = c["t_b_overlapped_ms"] / c["t_a_ms"]
+            print(f"  {pm} {t} N={n}: model winner "
+                  f"{c['winner_vs_b_pipelined']}, model B/A "
+                  f"{model_ratio:.4f} (cm4_registered_predictions.json)")
+    else:
+        print("\nCM4 registration cross-link: file unreadable -- skipped")
+
     return verdicts
+
+
+def bp_selftest():
+    """Pre-data check of the BP gate logic on synthetic rows (issue
+    #115): PASS/FAIL/no-data/filter paths, tolerance edges at exactly
+    +-BP_G3_TOL. Returns 0 on success, 1 on failure -- the one nonzero
+    exit in this file (a developer check, not a verdict report)."""
+    def row(machine, method, t, n, eff, h2d_ms=10.0, kern=1.0, occ=0.97,
+            nch=4, r=1.0):
+        return {"machine": machine, "method": method, "transform": t,
+                "N": n, "r": r, "median_ms": 10.0,
+                "effective_input_GBps": eff, "h2d_ms": h2d_ms,
+                "gpu_kernel_ms": kern, "n_chunks": nch,
+                "h2d_occupancy": occ, "variant": "matrix"}
+    M3, M4 = "epyc7351-2080ti", "7800x3d-4070tis"
+    failures = []
+
+    def check(name, got, want):
+        if got != want:
+            failures.append(f"{name}: got {got!r}, want {want!r}")
+        print(f"SELFTEST {name}: {'PASS' if got == want else 'FAIL'}")
+
+    # G3 tolerance boundary region (values chosen just inside/outside so
+    # float rounding at exactly +-tol cannot flake the check):
+    # pred(quant,16384,gen3)=1.4389; a=eff_a, b=eff_b, ratio = a/b.
+    pred = BP_G3_PREDICTIONS[(M3, "quant", 16384)]
+    v = exp_bp([row(M3, "a", "quant", 16384, (pred + 0.099) * 10.0),
+                row(M3, "b_pipelined", "quant", 16384, 10.0, h2d_ms=82.0)],
+               bimodal_path="/nonexistent", cm4_path="/nonexistent")
+    check("g3-just-inside-tolerance", v[(M3, "BP-G3")], "PASS")
+    v = exp_bp([row(M3, "a", "quant", 16384, (pred + 0.110) * 10.0),
+                row(M3, "b_pipelined", "quant", 16384, 10.0, h2d_ms=82.0)],
+               bimodal_path="/nonexistent", cm4_path="/nonexistent")
+    check("g3-just-outside-tolerance", v[(M3, "BP-G3")], "FAIL")
+
+    # G1 machine-conditional N: a gen4 small-N miss must NOT fail BP-G1.
+    # (N=16384 @ h2d 40ms -> pinned 26.84 -> bar 25.50; eff=26.5 clears it
+    # with margin, so the verdict hinges only on the small-N exclusion.)
+    v = exp_bp([row(M4, "b_pipelined", "quant", 2048, eff=1.0, h2d_ms=1.0),
+                row(M4, "b_pipelined", "quant", 16384, eff=26.5,
+                    h2d_ms=40.0)],
+               bimodal_path="/nonexistent", cm4_path="/nonexistent")
+    check("g1-gen4-small-n-excluded", v[(M4, "BP-G1")], "PASS")
+    # ...but the same rows on gen3 (strict every N) must fail.
+    v = exp_bp([row(M3, "b_pipelined", "quant", 2048, eff=1.0, h2d_ms=1.0),
+                row(M3, "b_pipelined", "quant", 16384, eff=26.5,
+                    h2d_ms=40.0)],
+               bimodal_path="/nonexistent", cm4_path="/nonexistent")
+    check("g1-gen3-strict", v[(M3, "BP-G1")], "FAIL")
+
+    # G2 filters: n_chunks=1 rows are excluded (verdict from the nch>1
+    # row alone); exposure above bar fails.
+    v = exp_bp([row(M3, "b_pipelined", "quant", 16384, 13.9, occ=0.99,
+                    nch=1),
+                row(M3, "b_pipelined", "quant", 16384, 13.8, occ=0.97,
+                    nch=4)],
+               bimodal_path="/nonexistent", cm4_path="/nonexistent")
+    check("g2-single-chunk-filtered", v[(M3, "BP-G2")], "PASS")
+    v = exp_bp([row(M3, "b_pipelined", "quant", 16384, 13.9, occ=0.90,
+                    nch=4)],
+               bimodal_path="/nonexistent", cm4_path="/nonexistent")
+    check("g2-exposure-fail", v[(M3, "BP-G2")], "FAIL")
+
+    # Bimodal: armed-but-empty on the committed list; flagged-without-p10
+    # fails loudly.
+    v = exp_bp([row(M3, "b_pipelined", "quant", 16384, 13.9, h2d_ms=82.0)],
+               bimodal_path=BP_BIMODAL_PATH, cm4_path="/nonexistent")
+    check("bimodal-armed-empty", v[("*", "BP-BIMODAL")], "PASS")
+    v = exp_bp([row(M3, "bxk", "quant", 16384, 13.9)],
+               bimodal_path=BP_BIMODAL_PATH, cm4_path="/nonexistent")
+    check("bimodal-flagged-no-p10", v[("*", "BP-BIMODAL")], "FAIL")
+
+    print(f"\nSELFTEST: {'ALL PASS' if not failures else 'FAILURES:'}")
+    for f_ in failures:
+        print(f"  {f_}")
+    return 1 if failures else 0
 
 
 def exp_gates(rows, exp, rstar_path=None):
@@ -422,11 +553,16 @@ def main():
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--exp", choices=("r1", "r2", "v1", "bp"), default="r1")
-    ap.add_argument("--csv", nargs="+", required=True)
+    ap.add_argument("--csv", nargs="+", required=False)
     ap.add_argument("--rstar")
     ap.add_argument("--bimodal", default=BP_BIMODAL_PATH)
     ap.add_argument("--cm4", default=BP_CM4_PATH)
+    ap.add_argument("--selftest", action="store_true")
     args = ap.parse_args()
+    if args.selftest:
+        return bp_selftest()
+    if not args.csv:
+        sys.exit("error: --csv is required (or use --selftest)")
     rows = load_rows(args.csv)
     if not rows:
         sys.exit("error: no data rows")
