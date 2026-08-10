@@ -4,7 +4,7 @@ model-predicted critical r*.
 
   PYTHONPATH=build/sym/python python3 bench/rtrack/figure_rstar.py \
       --csv rsweep.csv [--calibration calibration/<machine>.cal] \
-      [--h2d GBPS] [--n N] [--threads T] [--b-method b|b_fair] \
+      [--h2d GBPS] [--n N] [--threads T] [--b-method b|b_fair|b_pipelined] \
       [--out figure_rstar.png] [--json rstar.json]
 
 Measured: variant=rsweep rows at --n/--threads (defaults: largest present
@@ -12,7 +12,8 @@ per family), best chunk per (method, r); speedup(r) = median_ms(B at
 r=1.0) / median_ms(A at r). r*_measured = the 1.0 crossing, interpolated
 linearly in log2(r); None when the curve never crosses in [0.125, 1.0].
 --b-method picks the Method-B baseline rows (issue #95): "b" is the
-staged baseline, "b_fair" the admissible pinned-source one; the choice is
+staged baseline, "b_fair" the admissible pinned-source one, "b_pipelined"
+BP1's overlap-fair two-stream baseline (issue #114); the choice is
 recorded in the JSON as "b_method".
 
 Predictions (issue #111): computed exclusively by pyreloc.predict -- the

@@ -266,9 +266,15 @@ def exp_bp(rows, bimodal_path=BP_BIMODAL_PATH, cm4_path=BP_CM4_PATH):
         # best-chunk row, kernel-bearing b_pipelined rows only,
         # N >= BP_G2_MIN_N and n_chunks > 1 (BP1: single-chunk configs
         # cannot overlap by construction -- filtered, reason printed).
+        # The 5% bar grades the canonical-r kernel: an r=0.125 rsweep row
+        # is ~8x smaller and trivially hides, so only matrix rows compete
+        # for best-chunk-per-cell here (rsweep rows are excluded from the
+        # candidate pool, not from exp_bp's input as a whole).
         g2_ok, g2_seen, g2_skipped = True, False, 0
         best_rows = {}
         for r in mrows:
+            if r["variant"] != "matrix":
+                continue
             if r["method"] != "b_pipelined" or r["N"] < BP_G2_MIN_N:
                 continue
             if float(r.get("gpu_kernel_ms") or 0) <= 0:
@@ -302,8 +308,18 @@ def exp_bp(rows, bimodal_path=BP_BIMODAL_PATH, cm4_path=BP_CM4_PATH):
         print(f"BP-G2 verdict: {v}")
 
         # BP-G3: measured a/b_pipelined vs the registered prediction.
+        # BP_G3_PREDICTIONS is derived from the committed V1 baselines,
+        # which are matrix-only at canonical r -- the measurement
+        # population here must match the registered one, or a cheaper
+        # rsweep row (non-canonical r) can win best() and corrupt the
+        # ratio against a prediction that was never registered for it.
+        # (BP-G1 is deliberately NOT filtered this way: its kernel-bearing
+        # r=1.0 b_pipelined cells exist only in rsweep rows and are the
+        # intended population there.)
         best = defaultdict(float)
         for r in mrows:
+            if r["variant"] != "matrix":
+                continue
             key = (r["transform"], r["N"], r["method"])
             best[key] = max(best[key], r["effective_input_GBps"])
         g3_ok, g3_seen = True, False
@@ -360,7 +376,11 @@ def exp_bp(rows, bimodal_path=BP_BIMODAL_PATH, cm4_path=BP_CM4_PATH):
                  "-- re-measure with increased reps and percentile "
                  "emission)" if not has_p10 else
                  "PASS (matched-percentile data present)")
-    verdicts[("*", "BP-BIMODAL")] = v.split(" ")[0]
+    # v.split(" ")[0] used to be used here, but that truncates the
+    # "no data (...)" strings to just "no" -- take the two-word "no data"
+    # token as a unit, else the bare first word (PASS/FAIL).
+    verdicts[("*", "BP-BIMODAL")] = (
+        "no data" if v.startswith("no data") else v.split(" ")[0])
     print(f"\nBP-BIMODAL: {v}")
 
     # CM4 cross-link (#115: one dataset evaluates both tracks). The
@@ -395,12 +415,12 @@ def bp_selftest():
     +-BP_G3_TOL. Returns 0 on success, 1 on failure -- the one nonzero
     exit in this file (a developer check, not a verdict report)."""
     def row(machine, method, t, n, eff, h2d_ms=10.0, kern=1.0, occ=0.97,
-            nch=4, r=1.0):
+            nch=4, r=1.0, variant="matrix"):
         return {"machine": machine, "method": method, "transform": t,
                 "N": n, "r": r, "median_ms": 10.0,
                 "effective_input_GBps": eff, "h2d_ms": h2d_ms,
                 "gpu_kernel_ms": kern, "n_chunks": nch,
-                "h2d_occupancy": occ, "variant": "matrix"}
+                "h2d_occupancy": occ, "variant": variant}
     M3, M4 = "epyc7351-2080ti", "7800x3d-4070tis"
     failures = []
 
@@ -421,6 +441,20 @@ def bp_selftest():
                 row(M3, "b_pipelined", "quant", 16384, 10.0, h2d_ms=82.0)],
                bimodal_path="/nonexistent", cm4_path="/nonexistent")
     check("g3-just-outside-tolerance", v[(M3, "BP-G3")], "FAIL")
+
+    # Mixed-variant invariance (final-review Critical, #115): a matrix
+    # fixture that PASSes BP-G3 must keep PASSing when an rsweep row for
+    # the same (transform, N, method) cell is also present with a wildly
+    # different eff -- the rsweep row must never win best() against the
+    # registered matrix-only population (reviewer-demonstrated flip: one
+    # rsweep r=0.125 row flipped quant N=16384 from PASS to FAIL before
+    # the variant=="matrix" filter went in).
+    v = exp_bp([row(M3, "a", "quant", 16384, (pred + 0.099) * 10.0),
+                row(M3, "b_pipelined", "quant", 16384, 10.0, h2d_ms=82.0),
+                row(M3, "a", "quant", 16384, (pred + 0.099) * 10.0 * 1.5,
+                    variant="rsweep")],
+               bimodal_path="/nonexistent", cm4_path="/nonexistent")
+    check("mixed-variant-invariance", v[(M3, "BP-G3")], "PASS")
 
     # G1 machine-conditional N: a gen4 small-N miss must NOT fail BP-G1.
     # (N=16384 @ h2d 40ms -> pinned 26.84 -> bar 25.50; eff=26.5 clears it

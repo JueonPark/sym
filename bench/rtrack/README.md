@@ -263,8 +263,13 @@ nvcc -ccbin g++ -O3 -DNDEBUG -std=c++17 -arch=sm_75 \
    (`cm4_bimodal_cells.json`) as armed-but-empty when no cell is flagged,
    and loudly FAILs any flagged cell missing its p10 percentile column --
    the p10 precondition is required before a flagged cell can be graded.
-   `--selftest` (8/8 checks) exercises all of the above against synthetic
-   rows and runs without any `bp_*` CSV on disk.
+   `--selftest` (9/9 checks) exercises all of the above against synthetic
+   rows and runs without any `bp_*` CSV on disk. The BP-G1/BP-G3 bars are
+   keyed to the exact machine strings `epyc7351-2080ti` /
+   `7800x3d-4070tis`; a CSV tagged with any other `--machine` value
+   degrades to strict BP-G1 (`BP_G1_STRICT_MIN_N` defaults unknown
+   machines to 0) and BP-G3 "no data" (no registered prediction row
+   matches), so BP3 runs must use the canonical machine tags.
 
 ## Protocol
 
