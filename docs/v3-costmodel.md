@@ -427,13 +427,20 @@ header note).
 
 **Verdicts (bars fixed pre-data; rule v1 per CM4):**
 
-| gate | universe | b_fair (Serial) | b_pipelined (Overlapped) |
-|---|---|---|---|
-| MISCLASS ≤ 0.15 | all cells (48/40) | 2/48 = 0.0417 PASS | 2/40 = 0.0500 PASS |
-| MISCLASS ≤ 0.15 | held-out test-N (24/20) | 1/24 = 0.0417 PASS | 1/20 = 0.0500 PASS |
-| REGRET-p90 ≤ 0.20 | all cells | 0.0000 PASS | 0.0000 PASS |
-| REGRET-p90 ≤ 0.20 | held-out test-N | 0.0000 PASS | 0.0000 PASS |
-| RSTAR ≤ 0.15 (rule v1) | 8 rows/placement (16 measurable of 24 registered) | max\|Δ\|=0.0709, 2 one-sided FAIL | max\|Δ\|=0.2942, 1 one-sided FAIL |
+| gate | universe | b_fair (Serial) | b_pipelined (Overlapped) | v0 (in-sample, #97) |
+|---|---|---|---|---|
+| MISCLASS ≤ 0.15 | all cells (48/40) | 2/48 = 0.0417 PASS | 2/40 = 0.0500 PASS | 8/60 = 0.133 PASS |
+| MISCLASS ≤ 0.15 | held-out test-N (24/20) | 1/24 = 0.0417 PASS | 1/20 = 0.0500 PASS | none (v0 evaluated in-sample only, no held-out split) |
+| REGRET-p90 ≤ 0.20 | all cells | 0.0000 PASS | 0.0000 PASS | 0.1837 PASS |
+| REGRET-p90 ≤ 0.20 | held-out test-N | 0.0000 PASS | 0.0000 PASS | none (v0 evaluated in-sample only, no held-out split) |
+| RSTAR ≤ 0.15 (rule v1) | 8 rows/placement (16 measurable of 24 registered) | max\|Δ\|=0.0709, 2 one-sided FAIL | max\|Δ\|=0.2942, 1 one-sided FAIL | max\|Δ\|=0.363 FAIL |
+
+The v0 column quotes the frozen §0 verdicts (V3-MISCLASS/V3-RSTAR/V3-REGRET-P90
+above) exactly as recorded there -- v0 evaluated one pooled 60-cell universe
+across both boxes and both placements, not split by pairing the way v1 is, so
+the same v0 figure appears in both the b_fair and b_pipelined rows' place (one
+column, not two) per spec S3's "side-by-side with v0" (not a re-run: v0's own
+bars and cells are untouched by this evaluation).
 
 Data: BP3 (#116/#124), stabler-preference merged (merge_audit in the report).
 Predictions: cm4_registered_predictions.json only. Held-out caveat re-quoted:
