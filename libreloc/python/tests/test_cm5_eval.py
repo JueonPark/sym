@@ -225,3 +225,11 @@ def test_report_shape_and_determinism():
     assert len(report["provenance"]) == 9
     # byte determinism
     assert cm5_eval.render(report) == cm5_eval.render(cm5_eval.build_report())
+
+
+def test_committed_report_regenerates_byte_identical():
+    """CI-side twin of v3_gate.py's CM5-REPORT-REGEN (CI runs pytest, not
+    v3_gate.py): the committed report must reproduce from committed inputs."""
+    committed = REPO_ROOT / "bench" / "results" / "cm5_eval_report.json"
+    assert committed.exists(), "cm5_eval_report.json not committed"
+    assert cm5_eval.render(cm5_eval.build_report()) == committed.read_text()
