@@ -229,6 +229,32 @@ def cm4_regen_check():
                   "the committed model + calibrations)")
 
 
+def cm5_regen_check():
+    """CM5-REPORT-REGEN (issue #113): the committed evaluation report must
+    stay byte-reproducible from the committed measurement + registration.
+    Loud SKIP on pre-CM5 checkouts."""
+    print("\n=== CM5-REPORT-REGEN ===")
+    committed = REPO_ROOT / "bench" / "results" / "cm5_eval_report.json"
+    if not committed.exists():
+        print("CM5-REPORT-REGEN: SKIP (no committed cm5_eval_report.json)")
+        return
+    with tempfile.TemporaryDirectory() as td:
+        out = Path(td) / "cm5.json"
+        proc = subprocess.run(
+            [sys.executable, "bench/rtrack/cm5_eval.py", "--out", str(out)],
+            cwd=REPO_ROOT, capture_output=True, text=True)
+        if proc.returncode != 0:
+            print(f"CM5-REPORT-REGEN: FAIL (regen errored)\n"
+                  f"{proc.stderr.strip()}")
+            return
+        if out.read_text() == committed.read_text():
+            print("CM5-REPORT-REGEN: PASS (matches committed "
+                  "bench/results/cm5_eval_report.json)")
+        else:
+            print("CM5-REPORT-REGEN: FAIL (report no longer reproduces "
+                  "from committed inputs)")
+
+
 # added post-run for integrity (commit history: bars untouched;
 # 5b9572e..this-commit diff shows no bar change): a dirty
 # bench/results/v3_prediction_report.json means the committed prediction
@@ -264,6 +290,7 @@ def main():
     print_unmodelable(report)
     calibration_regen_check()
     cm4_regen_check()
+    cm5_regen_check()
     report_regen_check(args.report)
     return 0
 

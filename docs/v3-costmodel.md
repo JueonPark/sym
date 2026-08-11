@@ -422,3 +422,114 @@ header note).
 `bench/rtrack/make_calibration.py`, `bench/rtrack/v3_gate.py`, and
 `bench-rtrack`'s `--plan-wire` flag are documented in
 `bench/rtrack/README.md`.
+
+## v1 — CM5 gate re-run on the BP dataset (issue #113)
+
+**Verdicts (bars fixed pre-data; rule v1 per CM4):**
+
+| gate | universe | b_fair (Serial) | b_pipelined (Overlapped) | v0 (in-sample, #97) |
+|---|---|---|---|---|
+| MISCLASS ≤ 0.15 | all cells (48/40) | 2/48 = 0.0417 PASS | 2/40 = 0.0500 PASS | 8/60 = 0.133 PASS |
+| MISCLASS ≤ 0.15 | held-out test-N (24/20) | 1/24 = 0.0417 PASS | 1/20 = 0.0500 PASS | none (v0 evaluated in-sample only, no held-out split) |
+| REGRET-p90 ≤ 0.20 | all cells | 0.0000 PASS | 0.0000 PASS | 0.1837 PASS |
+| REGRET-p90 ≤ 0.20 | held-out test-N | 0.0000 PASS | 0.0000 PASS | none (v0 evaluated in-sample only, no held-out split) |
+| RSTAR ≤ 0.15 (rule v1) | 8 rows/placement (16 measurable of 24 registered) | max\|Δ\|=0.0709, 2 one-sided FAIL | max\|Δ\|=0.2942, 1 one-sided FAIL | max\|Δ\|=0.363 FAIL |
+
+The v0 column quotes the frozen §0 verdicts (V3-MISCLASS/V3-RSTAR/V3-REGRET-P90
+above) exactly as recorded there -- v0 evaluated one pooled 60-cell universe
+across both boxes and both placements, not split by pairing the way v1 is, so
+the same v0 figure appears in both the b_fair and b_pipelined rows' place (one
+column, not two) per spec S3's "side-by-side with v0" (not a re-run: v0's own
+bars and cells are untouched by this evaluation).
+
+Data: BP3 (#116/#124), stabler-preference merged (merge_audit in the report).
+Predictions: cm4_registered_predictions.json only. Held-out caveat re-quoted:
+"the committed calibrations' overhead.{a,b}_ms intercepts were two-point-fit
+on N in {2048, 16384} endpoints, so test-N data touched calibration inputs;
+the split stratifies evaluation (per #87's reconciliation in #107), not
+calibration -- recorded, not fixed; bars unchanged". No held-out RSTAR
+(r-sweep is N=16384-only — already all-test-N). v0 verdicts above stand as
+recorded.
+
+### Ablation (mean regret; p90 in parentheses)
+
+| policy | b_fair all | b_fair held-out | b_pipelined all | b_pipelined held-out |
+|---|---|---|---|---|
+| model | 0.0021 (0.0000) | 0.0030 (0.0000) | 0.0036 (0.0000) | 0.0049 (0.0000) |
+| always-A | 4.2493 (18.0291) | 4.8301 (18.3654) | 2.8690 (6.3474) | 3.2046 (6.3474) |
+| always-B | 0.1502 (0.5073) | 0.1597 (0.5073) | 0.1640 (0.4817) | 0.1706 (0.4230) |
+| oracle | 0 | 0 | 0 | 0 |
+
+### Ablation, per box (all-cells scope; issue #113, spec §2 "per box and pooled")
+
+| policy | b_fair epyc all | b_fair gen4 all | b_pipelined epyc all | b_pipelined gen4 all |
+|---|---|---|---|---|
+| model | 0.0042 (0.0000) | 0.0000 (0.0000) | 0.0072 (0.0000) | 0.0000 (0.0000) |
+| always-A | 6.6741 (23.2013) | 1.8246 (4.9343) | 4.2980 (18.8135) | 1.4400 (4.5803) |
+| always-B | 0.0891 (0.4488) | 0.2114 (0.5947) | 0.0968 (0.4275) | 0.2312 (0.5236) |
+| oracle | 0 | 0 | 0 | 0 |
+
+epyc = epyc7351-2080ti, gen4 = 7800x3d-4070tis. The held-out-scope per-box
+split is not tabulated here — it lives in the report JSON's
+`ablation.<pairing>.held_out_by_box`.
+
+### Misses, per family (findings, not refit targets)
+
+**convert_f16 (epyc7351-2080ti only).** All 4 registered MISCLASS misses
+are this family and box: b_fair at N=2048 (train split, `t_a_meas=1.38842`
+ms vs `t_b_meas=1.34893` ms) and N=4096 (test split, `t_a_meas=5.71905` ms
+vs `t_b_meas=5.33385` ms), plus the matching b_pipelined cells at the same
+two N (`t_b_meas=1.32661` ms and `5.21035` ms respectively) — the model
+calls `a`, B measures faster in every one of the four. §3 above documents
+the same family+box direction error at N=2048 (`gen3:convert_f16:N=2048`),
+characterized there as **confidently wrong, not a near-tie** (a 26.8%
+predicted margin the wrong way against a 1.19% measured gap) — the
+intercept-scale coin-flip pattern §3 describes belongs to the *gen4*
+convert_f16 misses instead, not gen3/epyc. These four BP cells reproduce
+that same gen3/epyc direction error at N=2048 and extend it to N=4096; the
+report carries no field decomposing *why* A is confidently favored here
+beyond that shared attribution — cause not further determined by this
+evaluation.
+
+**quant (both boxes).** Three of the four registered RSTAR rows for this
+family are `mismatch_one_sided` (7800x3d-4070tis serial and overlapped,
+epyc7351-2080ti serial): the model's predicted speedup curve never crosses
+1.0 on the measured grid while the measured curve does (`rstar_meas` 0.6107
+and 0.6150 on 7800x3d-4070tis, 0.7025 on epyc7351-2080ti) — rule v1 (CM4)
+counts any one-sided mismatch as an automatic FAIL contribution regardless
+of a numeric delta. The fourth row, epyc7351-2080ti/overlapped, is
+`both_exist` and carries this evaluation's largest delta: predicted
+r*=0.9966 against measured r*=0.7024 (`|Δ|=0.2942`). That predicted value
+sits within 0.35% of the r=1.0 grid edge — the same
+`t_b_intercept/t_a_intercept`-scale-noise mechanism §4 above documents for
+this exact family/box/N (where the analogous r=1 speedup landed at
+0.99947, just below 1.0, and drove V0's own RSTAR FAIL): a prediction
+sitting a fraction of a percent from the grid boundary can manufacture or
+miss a "crossing" that has nothing to do with the transform's actual
+roofline behavior. (Correction to an earlier working note: `rstar_rows`
+excludes `convert_f16` entirely — no BP r-sweep measurement, per
+`excluded_cells` — but the registration does carry `convert_f16` rstar
+predictions, including one numerically identical to `quant`'s at this
+box/placement, since both families share `pattern="contiguous"` in
+`cm4_register.py`'s `FAMILY_MAP`. Only `quant` has a measured counterpart
+in this evaluation, so the 0.294 delta and the 0.9966 near-edge prediction
+this section describes are `quant`'s alone.)
+
+**blocked_transpose (7800x3d-4070tis) — not a gate miss, noted for
+context.** This family's overlapped RSTAR row is `both_exist` with
+`|Δ|=0.0691` (predicted r*=0.2914, measured r*=0.3605), under the 0.15 bar
+on its own and not counted among the misses above. The predicted value
+(0.2914) is the same `pyreloc.predict` r*-prediction §4's "Two-sided
+implementation note" already flagged as diverging 1.6–2.9× from
+`figure_rstar.py`'s own stored value (0.1807) for this exact family/box — a
+known V0-era cross-implementation gap, not a new finding here.
+
+### Deferred-item disposition
+
+`pipeline.chunks_per_buffer` emission, `recv.m.*` m_eff composition
+(measurement-basis decision included), and Gen4 `hbm.*` re-baselining were
+deferred out of CM5 (evaluation-only scope, user decision 2026-08-11):
+emitting any of them mid-evaluation would re-score the model against its own
+pre-registered predictions and break CM4-REGEN. CM1's "the key lands in CM5"
+is superseded; all three land in the CM6 follow-up issue (filed with this
+PR), motivated by the miss table above.
