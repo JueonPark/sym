@@ -110,3 +110,64 @@ def test_misclass_and_regret():
 def test_empty_universe_verdict_none():
     assert cm5_eval.misclass([], 0.15)["verdict"] is None
     assert cm5_eval.regret_gate([], 0.20)["verdict"] is None
+
+
+def _reg_rstar(box="boxA", family="quant", placement="serial", n=16384,
+               grid=(0.25, 0.5, 1.0), pred=0.5):
+    return {"box": box, "family": family, "placement": placement, "n": n,
+            "grid_used": list(grid), "rstar_predicted": pred}
+
+
+def _rsweep_merged(family, n, b_method, a_medians, b_median):
+    """a_medians: {r_str: median}. B measured once at r=1."""
+    entries = [(family, n, "a", "rsweep", r, m) for r, m in a_medians.items()]
+    entries.append((family, n, b_method, "rsweep", "1", b_median))
+    return _merged(entries)
+
+
+def test_rstar_grid_restriction_and_both_exist():
+    # speedup(r) = B(1)/A(r): at r=1 -> 2.0/4.0=0.5, r=0.5 -> 2.0/1.0=2.0
+    # -> crossing between 0.5 and 1.0. The r=0.125 row (speedup 100) must be
+    # ignored because grid_used excludes it.
+    merged = {"boxA": _rsweep_merged(
+        "quant", 16384, "b_fair",
+        {"1": 4.0, "0.5": 1.0, "0.25": 1.0, "0.125": 0.02}, 2.0)}
+    reg = {"rstar": [_reg_rstar(grid=(0.25, 0.5, 1.0), pred=0.9)]}
+    rows, excluded = cm5_eval.eval_rstar(merged, reg)
+    assert excluded == []
+    (row,) = rows
+    assert row["classification"] == "both_exist"
+    assert 0.5 < row["rstar_meas"] < 1.0
+    assert row["abs_delta"] == pytest.approx(abs(0.9 - row["rstar_meas"]))
+
+
+def test_rstar_one_sided_mismatch_fails_gate():
+    # predicted crossing, measured curve never crosses (speedup always < 1)
+    merged = {"boxA": _rsweep_merged(
+        "quant", 16384, "b_fair", {"1": 4.0, "0.5": 4.0, "0.25": 4.0}, 2.0)}
+    reg = {"rstar": [_reg_rstar(pred=0.5)]}
+    rows, _ = cm5_eval.eval_rstar(merged, reg)
+    assert rows[0]["classification"] == "mismatch_one_sided"
+    gate = cm5_eval.rstar_gate(rows, "serial", 0.15)
+    assert gate["verdict"] == "FAIL" and gate["n_one_sided_mismatch"] == 1
+
+
+def test_rstar_non_rsweep_family_excluded():
+    reg = {"rstar": [_reg_rstar(family="transpose", pred=None)]}
+    rows, excluded = cm5_eval.eval_rstar({"boxA": {}}, reg)
+    assert rows == []
+    assert excluded[0]["reason"].startswith("family not in the BP r-sweep")
+
+
+def test_rstar_all_no_crossing_passes():
+    merged = {"boxA": _rsweep_merged(
+        "quant", 16384, "b_fair", {"1": 4.0, "0.5": 4.0, "0.25": 4.0}, 2.0)}
+    reg = {"rstar": [_reg_rstar(pred=None)]}
+    rows, _ = cm5_eval.eval_rstar(merged, reg)
+    assert rows[0]["classification"] == "both_no_crossing"
+    assert cm5_eval.rstar_gate(rows, "serial", 0.15)["verdict"] == "PASS"
+
+
+def test_crossing_is_the_shared_implementation():
+    import figure_rstar
+    assert cm5_eval.crossing is figure_rstar.crossing

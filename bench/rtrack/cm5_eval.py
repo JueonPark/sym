@@ -144,3 +144,59 @@ def regret_gate(cells, bar):
     return {"n_cells": len(cells), "p90": p90, "bar": bar,
             "verdict": None if p90 is None else
             ("PASS" if p90 <= bar else "FAIL")}
+
+
+def eval_rstar(merged_rsweep_by_box, registration):
+    """Measured r* per registered (box, family, placement) at N=16384 from
+    speedup(r) = median_B(r=1) / median_A(r), restricted to the registered
+    grid_used, via the shared crossing(). Families outside the BP r-sweep
+    protocol and rows with missing measured rsweep rows are excluded with
+    reason (never silently classified)."""
+    rows_out, excluded = [], []
+    for reg in registration["rstar"]:
+        box, family = reg["box"], reg["family"]
+        placement, n = reg["placement"], reg["n"]
+        method = METHOD_FOR_PLACEMENT[placement]
+        base = {"box": box, "family": family, "placement": placement}
+        if family not in RSWEEP_FAMILIES:
+            excluded.append(dict(base, reason=(
+                "family not in the BP r-sweep protocol (T1b/T2/T3/T4 only)")))
+            continue
+        merged = merged_rsweep_by_box[box]
+        b1 = merged.get((family, n, method, "rsweep", "1"))
+        a_rows = {g: merged.get((family, n, "a", "rsweep", fmt_r(g)))
+                  for g in reg["grid_used"]}
+        if b1 is None or any(v is None for v in a_rows.values()):
+            excluded.append(dict(base, reason="missing measured rsweep rows"))
+            continue
+        pts = sorted((g, float(b1["median_ms"]) / float(a_rows[g]["median_ms"]))
+                     for g in reg["grid_used"])
+        meas = crossing(pts)
+        pred = reg["rstar_predicted"]
+        if pred is not None and meas is not None:
+            cls, delta = "both_exist", abs(pred - meas)
+        elif pred is None and meas is None:
+            cls, delta = "both_no_crossing", None
+        else:
+            cls, delta = "mismatch_one_sided", None
+        rows_out.append(dict(base, rstar_pred=pred, rstar_meas=meas,
+                             classification=cls, abs_delta=delta))
+    return rows_out, excluded
+
+
+def rstar_gate(rows, placement, bar):
+    rows = [r for r in rows if r["placement"] == placement]
+    one_sided = sum(1 for r in rows
+                    if r["classification"] == "mismatch_one_sided")
+    deltas = [r["abs_delta"] for r in rows
+              if r["classification"] == "both_exist"]
+    max_delta = max(deltas) if deltas else None
+    if not rows:
+        verdict = None
+    elif one_sided or (max_delta is not None and max_delta > bar):
+        verdict = "FAIL"
+    else:
+        verdict = "PASS"
+    return {"n_rows": len(rows), "n_both_exist": len(deltas),
+            "n_one_sided_mismatch": one_sided, "max_abs_delta": max_delta,
+            "bar": bar, "verdict": verdict}
