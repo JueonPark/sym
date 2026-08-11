@@ -453,6 +453,19 @@ recorded.
 | always-B | 0.1502 (0.5073) | 0.1597 (0.5073) | 0.1640 (0.4817) | 0.1706 (0.4230) |
 | oracle | 0 | 0 | 0 | 0 |
 
+### Ablation, per box (all-cells scope; issue #113, spec §2 "per box and pooled")
+
+| policy | b_fair epyc all | b_fair gen4 all | b_pipelined epyc all | b_pipelined gen4 all |
+|---|---|---|---|---|
+| model | 0.0042 (0.0000) | 0.0000 (0.0000) | 0.0072 (0.0000) | 0.0000 (0.0000) |
+| always-A | 6.6741 (23.2013) | 1.8246 (4.9343) | 4.2980 (18.8135) | 1.4400 (4.5803) |
+| always-B | 0.0891 (0.4488) | 0.2114 (0.5947) | 0.0968 (0.4275) | 0.2312 (0.5236) |
+| oracle | 0 | 0 | 0 | 0 |
+
+epyc = epyc7351-2080ti, gen4 = 7800x3d-4070tis. The held-out-scope per-box
+split is not tabulated here — it lives in the report JSON's
+`ablation.<pairing>.held_out_by_box`.
+
 ### Misses, per family (findings, not refit targets)
 
 **convert_f16 (epyc7351-2080ti only).** All 4 registered MISCLASS misses

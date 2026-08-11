@@ -206,6 +206,20 @@ def test_ablation_policies():
     assert ab["oracle"] == {"mean": 0.0, "p90": 0.0}
 
 
+def test_ablation_by_box_partitions_the_pooled_universe():
+    report = cm5_eval.build_report()
+    for pairing in ("b_fair", "b_pipelined"):
+        blk = report["ablation"][pairing]
+        assert sorted(blk) == ["all_cells", "all_cells_by_box", "held_out",
+                               "held_out_by_box"]
+        for scope in ("all_cells", "held_out"):
+            by_box = blk[f"{scope}_by_box"]
+            assert sorted(by_box) == sorted(cm5_eval.BOXES)
+            for box_stats in by_box.values():
+                assert sorted(box_stats) == ["always_a", "always_b", "model",
+                                             "oracle"]
+
+
 def test_report_shape_and_determinism():
     report = cm5_eval.build_report()
     assert sorted(report) == ["ablation", "excluded_cells", "gates",

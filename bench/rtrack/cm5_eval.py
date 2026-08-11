@@ -255,8 +255,16 @@ def build_report():
             "regret": regret_gate(test_cells, ho_reg_bar)}
         gates["rstar"][placement] = rstar_gate(rstar_rows, placement,
                                                RSTAR_ABS_BAR)
-        ab[pairing] = {"all_cells": ablation(cells),
-                       "held_out": ablation(test_cells)}
+        ab[pairing] = {
+            "all_cells": ablation(cells),
+            "all_cells_by_box": {
+                box: ablation([c for c in cells if c["box"] == box])
+                for box in sorted(BOXES)},
+            "held_out": ablation(test_cells),
+            "held_out_by_box": {
+                box: ablation([c for c in test_cells if c["box"] == box])
+                for box in sorted(BOXES)},
+        }
     gates["all_cells"]["pooled_informational_no_bar"] = \
         misclass(pooled, MISCLASS_BAR) | {"bar": None, "verdict": None}
     verdicts = [gates["rstar"][p]["verdict"] for _, _, p in PAIRINGS]
