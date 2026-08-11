@@ -200,3 +200,124 @@ def rstar_gate(rows, placement, bar):
     return {"n_rows": len(rows), "n_both_exist": len(deltas),
             "n_one_sided_mismatch": one_sided, "max_abs_delta": max_delta,
             "bar": bar, "verdict": verdict}
+
+
+def ablation(cells):
+    out = {}
+    for policy in ("model", "always_a", "always_b"):
+        vals = [cell_regret(c, policy) for c in cells]
+        out[policy] = {"mean": sum(vals) / len(vals) if vals else None,
+                       "p90": percentile(vals, 0.9)}
+    out["oracle"] = {"mean": 0.0, "p90": 0.0}
+    return out
+
+
+def sha256(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def build_report():
+    registration = json.loads(REGISTRATION.read_text())
+    heldout = registration["heldout_split"]
+    ho_mis_bar = heldout["heldout_bars"]["misclass"]
+    ho_reg_bar = heldout["heldout_bars"]["regret_p90"]
+
+    inputs = [REGISTRATION]
+    merged_matrix, merged_rsweep, audit = {}, {}, []
+    for box in sorted(BOXES):
+        pairs = {"matrix": (RESULTS / f"bp_matrix_nsweep_{box}.csv",
+                            RESULTS / f"bp_matrix_nsweep_rerun_{box}.csv"),
+                 "rsweep": (RESULTS / f"bp_rsweep_{box}.csv",
+                            RESULTS / f"bp_rsweep_rerun_{box}.csv")}
+        for sweep, (orig, rerun) in sorted(pairs.items()):
+            inputs += [orig, rerun]
+            merged, entries = merge_points(load_rows(orig), load_rows(rerun))
+            (merged_matrix if sweep == "matrix" else merged_rsweep)[box] = merged
+            audit += [dict(e, box=box, sweep=sweep) for e in entries]
+
+    cells_by_pairing, excluded_cells = eval_winner_cells(
+        merged_matrix, registration)
+    rstar_rows, rstar_excluded = eval_rstar(merged_rsweep, registration)
+
+    gates = {"all_cells": {}, "held_out": {"caveat": heldout["caveat"]},
+             "rstar": {"rule": ("v1 (CM4): any one-sided mismatch => FAIL; "
+                                "bar on max |dr*| over both_exist")}}
+    ab, pooled = {}, []
+    for pairing, _, placement in PAIRINGS:
+        cells = cells_by_pairing[pairing]
+        test_cells = [c for c in cells if c["split"] == "test"]
+        pooled += cells
+        gates["all_cells"][pairing] = {
+            "misclass": misclass(cells, MISCLASS_BAR),
+            "regret": regret_gate(cells, REGRET_P90_BAR)}
+        gates["held_out"][pairing] = {
+            "misclass": misclass(test_cells, ho_mis_bar),
+            "regret": regret_gate(test_cells, ho_reg_bar)}
+        gates["rstar"][placement] = rstar_gate(rstar_rows, placement,
+                                               RSTAR_ABS_BAR)
+        ab[pairing] = {"all_cells": ablation(cells),
+                       "held_out": ablation(test_cells)}
+    gates["all_cells"]["pooled_informational_no_bar"] = \
+        misclass(pooled, MISCLASS_BAR) | {"bar": None, "verdict": None}
+    verdicts = [gates["rstar"][p]["verdict"] for _, _, p in PAIRINGS]
+    gates["rstar"]["overall_verdict"] = ("FAIL" if "FAIL" in verdicts
+                                         else "PASS")
+    gates["held_out"]["note"] = ("no separate held-out RSTAR: the r-sweep "
+                                 "exists only at N=16384, so RSTAR is "
+                                 "already an all-test-N metric")
+
+    misses = {
+        "misclass": sorted(
+            (c for cs in cells_by_pairing.values() for c in cs
+             if c["winner_pred"] != c["winner_meas"]),
+            key=lambda c: (c["pairing"], c["box"], c["family"], c["N"])),
+        "rstar": [r for r in rstar_rows
+                  if r["classification"] == "mismatch_one_sided"
+                  or (r["abs_delta"] is not None
+                      and r["abs_delta"] > RSTAR_ABS_BAR)],
+        "regret_over_bar": sorted(
+            (dict(c, regret=cell_regret(c, "model"))
+             for cs in cells_by_pairing.values() for c in cs
+             if cell_regret(c, "model") > REGRET_P90_BAR),
+            key=lambda c: (c["pairing"], c["box"], c["family"], c["N"]))}
+
+    return {
+        "generated_by": "bench/rtrack/cm5_eval.py",
+        "issue": ("#113 (CM5): BP measurement (#116/#124) vs CM4-registered "
+                  "predictions (#112/#121); evaluation only"),
+        "provenance": {str(p.relative_to(REPO_ROOT)): sha256(p)
+                       for p in inputs},
+        "merge_audit": audit,
+        "gates": gates,
+        "rstar_rows": rstar_rows,
+        "excluded_cells": excluded_cells + rstar_excluded,
+        "ablation": ab,
+        "misses": misses,
+    }
+
+
+def render(report):
+    return json.dumps(report, indent=2, sort_keys=True) + "\n"
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--out", required=True)
+    args = ap.parse_args()
+    report = build_report()
+    Path(args.out).write_text(render(report))
+    g = report["gates"]
+    for pairing, _, placement in PAIRINGS:
+        a = g["all_cells"][pairing]
+        h = g["held_out"][pairing]
+        print(f"{pairing}: MISCLASS {a['misclass']['n_wrong']}/"
+              f"{a['misclass']['n_cells']} {a['misclass']['verdict']} | "
+              f"REGRET-P90 {a['regret']['p90']:.4f} {a['regret']['verdict']}"
+              f" | held-out MISCLASS {h['misclass']['verdict']} "
+              f"REGRET {h['regret']['verdict']} | RSTAR({placement}) "
+              f"{g['rstar'][placement]['verdict']}")
+    print(f"RSTAR overall: {g['rstar']['overall_verdict']}")
+
+
+if __name__ == "__main__":
+    main()

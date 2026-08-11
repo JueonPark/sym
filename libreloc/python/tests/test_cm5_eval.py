@@ -194,3 +194,34 @@ def test_rstar_gate_filters_by_placement_and_empty_is_none():
     gate_empty = cm5_eval.rstar_gate(rows, "nonexistent", 0.15)
     assert gate_empty["n_rows"] == 0
     assert gate_empty["verdict"] is None
+
+
+def test_ablation_policies():
+    cells = [{"winner_pred": "b", "winner_meas": "a", "t_a_meas_ms": 1.0,
+              "t_b_meas_ms": 2.0}]
+    ab = cm5_eval.ablation(cells)
+    assert ab["model"]["mean"] == pytest.approx(1.0)     # picked b, paid 2x
+    assert ab["always_a"]["mean"] == pytest.approx(0.0)
+    assert ab["always_b"]["mean"] == pytest.approx(1.0)
+    assert ab["oracle"] == {"mean": 0.0, "p90": 0.0}
+
+
+def test_report_shape_and_determinism():
+    report = cm5_eval.build_report()
+    assert sorted(report) == ["ablation", "excluded_cells", "gates",
+                              "generated_by", "issue", "merge_audit",
+                              "misses", "provenance", "rstar_rows"]
+    # all-cells universes match the known data facts
+    ac = report["gates"]["all_cells"]
+    assert ac["b_fair"]["misclass"]["n_cells"] == 48
+    assert ac["b_pipelined"]["misclass"]["n_cells"] == 40
+    ho = report["gates"]["held_out"]
+    assert ho["b_fair"]["misclass"]["n_cells"] == 24
+    assert ho["b_pipelined"]["misclass"]["n_cells"] == 20
+    assert "caveat" in ho and "two-point-fit" in ho["caveat"]
+    rs = report["gates"]["rstar"]
+    assert rs["serial"]["n_rows"] == 8 and rs["overlapped"]["n_rows"] == 8
+    assert len(report["rstar_rows"]) == 16
+    assert len(report["provenance"]) == 9
+    # byte determinism
+    assert cm5_eval.render(report) == cm5_eval.render(cm5_eval.build_report())
