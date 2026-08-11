@@ -93,3 +93,54 @@ def merge_points(orig_rows, rerun_rows):
                       "rerun_median_ms": float(n["median_ms"]),
                       "rerun_iqr": float(n["iqr_over_median_pct"])})
     return merged, audit
+
+
+def eval_winner_cells(merged_by_box, registration):
+    """Per pairing, measured winner = argmin of best-chunk medians at the
+    family's native-r matrix rows vs the registered winner field. A cell
+    whose measured method is absent is excluded from that pairing's
+    denominator and disclosed (the V3 unmodelable-cells pattern)."""
+    cells_by_pairing = {p: [] for p, _, _ in PAIRINGS}
+    excluded = []
+    for cell in registration["cells"]:
+        box, family, n = cell["box"], cell["family"], cell["N"]
+        merged = merged_by_box[box]
+        r_str = fmt_r(cell["r_native"])
+        a = merged.get((family, n, "a", "matrix", r_str))
+        for pairing, field, _ in PAIRINGS:
+            b = merged.get((family, n, pairing, "matrix", r_str))
+            if a is None or b is None:
+                missing = "a" if a is None else pairing
+                excluded.append({"box": box, "family": family, "N": n,
+                                 "pairing": pairing,
+                                 "reason": f"no measured {missing} matrix row"})
+                continue
+            t_a, t_b = float(a["median_ms"]), float(b["median_ms"])
+            cells_by_pairing[pairing].append(
+                {"box": box, "family": family, "N": n, "split": cell["split"],
+                 "pairing": pairing, "winner_pred": cell[field],
+                 "winner_meas": "a" if t_a <= t_b else "b",
+                 "t_a_meas_ms": t_a, "t_b_meas_ms": t_b})
+    return cells_by_pairing, excluded
+
+
+def misclass(cells, bar):
+    wrong = sum(1 for c in cells if c["winner_pred"] != c["winner_meas"])
+    rate = wrong / len(cells) if cells else None
+    return {"n_cells": len(cells), "n_wrong": wrong, "rate": rate, "bar": bar,
+            "verdict": None if rate is None else
+            ("PASS" if rate <= bar else "FAIL")}
+
+
+def cell_regret(cell, policy):
+    chosen = {"model": cell["winner_pred"], "always_a": "a",
+              "always_b": "b"}[policy]
+    t = cell["t_a_meas_ms"] if chosen == "a" else cell["t_b_meas_ms"]
+    return t / min(cell["t_a_meas_ms"], cell["t_b_meas_ms"]) - 1.0
+
+
+def regret_gate(cells, bar):
+    p90 = percentile([cell_regret(c, "model") for c in cells], 0.9)
+    return {"n_cells": len(cells), "p90": p90, "bar": bar,
+            "verdict": None if p90 is None else
+            ("PASS" if p90 <= bar else "FAIL")}

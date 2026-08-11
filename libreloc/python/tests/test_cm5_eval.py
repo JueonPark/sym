@@ -60,3 +60,53 @@ def test_merge_best_chunk_per_file_before_comparison():
 def test_merge_rerun_only_point_is_loud_error():
     with pytest.raises(SystemExit):
         cm5_eval.merge_points([], [_row()])
+
+
+def _reg_cell(box="boxA", family="quant", N=2048, split="train",
+              wf="a", wp="a"):
+    return {"box": box, "family": family, "N": N, "split": split,
+            "winner_vs_b_fair": wf, "winner_vs_b_pipelined": wp}
+
+
+def _merged(entries):
+    """entries: list of (transform, N, method, variant, r, median_ms)."""
+    return {(t, n, m, v, r): _row(transform=t, N=str(n), method=m, variant=v,
+                                  r=r, median=str(med))
+            for t, n, m, v, r, med in entries}
+
+
+def test_winner_cells_and_exclusion():
+    reg = {"cells": [_reg_cell(wf="a", wp="b")]}
+    merged = {"boxA": _merged([
+        ("quant", 2048, "a", "matrix", "0.25", 1.0),
+        ("quant", 2048, "b_fair", "matrix", "0.25", 2.0),
+        # no b_pipelined row -> that pairing excluded
+    ])}
+    reg["cells"][0]["r_native"] = 0.25
+    cells, excluded = cm5_eval.eval_winner_cells(merged, reg)
+    assert [c["winner_meas"] for c in cells["b_fair"]] == ["a"]
+    assert cells["b_fair"][0]["winner_pred"] == "a"
+    assert cells["b_pipelined"] == []
+    assert excluded == [{"box": "boxA", "family": "quant", "N": 2048,
+                         "pairing": "b_pipelined",
+                         "reason": "no measured b_pipelined matrix row"}]
+
+
+def test_misclass_and_regret():
+    cells = [
+        {"winner_pred": "a", "winner_meas": "a", "t_a_meas_ms": 1.0,
+         "t_b_meas_ms": 2.0},
+        {"winner_pred": "b", "winner_meas": "a", "t_a_meas_ms": 1.0,
+         "t_b_meas_ms": 1.5},  # wrong: model pays 1.5 vs oracle 1.0
+    ]
+    mc = cm5_eval.misclass(cells, 0.15)
+    assert (mc["n_cells"], mc["n_wrong"], mc["verdict"]) == (2, 1, "FAIL")
+    assert cm5_eval.cell_regret(cells[1], "model") == pytest.approx(0.5)
+    assert cm5_eval.cell_regret(cells[1], "always_a") == pytest.approx(0.0)
+    rg = cm5_eval.regret_gate(cells, 0.20)
+    assert rg["p90"] == pytest.approx(0.5) and rg["verdict"] == "FAIL"
+
+
+def test_empty_universe_verdict_none():
+    assert cm5_eval.misclass([], 0.15)["verdict"] is None
+    assert cm5_eval.regret_gate([], 0.20)["verdict"] is None
