@@ -487,10 +487,13 @@ this exact family/box/N (where the analogous r=1 speedup landed at
 sitting a fraction of a percent from the grid boundary can manufacture or
 miss a "crossing" that has nothing to do with the transform's actual
 roofline behavior. (Correction to an earlier working note: `rstar_rows`
-and the underlying registration carry no `convert_f16` entries at all —
-that family is excluded from the BP r-sweep protocol entirely, per
-`excluded_cells` — so the 0.294 delta and the 0.9966 near-edge prediction
-belong to `quant` only.)
+excludes `convert_f16` entirely — no BP r-sweep measurement, per
+`excluded_cells` — but the registration does carry `convert_f16` rstar
+predictions, including one numerically identical to `quant`'s at this
+box/placement, since both families share `pattern="contiguous"` in
+`cm4_register.py`'s `FAMILY_MAP`. Only `quant` has a measured counterpart
+in this evaluation, so the 0.294 delta and the 0.9966 near-edge prediction
+this section describes are `quant`'s alone.)
 
 **blocked_transpose (7800x3d-4070tis) — not a gate miss, noted for
 context.** This family's overlapped RSTAR row is `both_exist` with
