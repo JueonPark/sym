@@ -126,12 +126,15 @@ def _rsweep_merged(family, n, b_method, a_medians, b_median):
 
 
 def test_rstar_grid_restriction_and_both_exist():
-    # speedup(r) = B(1)/A(r): at r=1 -> 2.0/4.0=0.5, r=0.5 -> 2.0/1.0=2.0
-    # -> crossing between 0.5 and 1.0. The r=0.125 row (speedup 100) must be
-    # ignored because grid_used excludes it.
+    # speedup(r) = B(1)/A(r). With grid_used=(0.25, 0.5, 1.0): r=0.25 -> 2.0/1.0=2.0
+    # (above 1), r=0.5 -> 2.0/1.0=2.0 (above 1), r=1 -> 2.0/4.0=0.5 (below 1)
+    # -> crossing between 0.5 and 1.0. The r=0.125 row (speedup 2.0/25.0=0.08,
+    # also below 1.0) must be ignored; if grid_used were leaked/ignored, the
+    # crossing would instead be found between r=0.125 and r=0.25, giving r* < 0.25
+    # and failing the assertion. This tests that grid restriction is enforced.
     merged = {"boxA": _rsweep_merged(
         "quant", 16384, "b_fair",
-        {"1": 4.0, "0.5": 1.0, "0.25": 1.0, "0.125": 0.02}, 2.0)}
+        {"1": 4.0, "0.5": 1.0, "0.25": 1.0, "0.125": 25.0}, 2.0)}
     reg = {"rstar": [_reg_rstar(grid=(0.25, 0.5, 1.0), pred=0.9)]}
     rows, excluded = cm5_eval.eval_rstar(merged, reg)
     assert excluded == []
@@ -171,3 +174,23 @@ def test_rstar_all_no_crossing_passes():
 def test_crossing_is_the_shared_implementation():
     import figure_rstar
     assert cm5_eval.crossing is figure_rstar.crossing
+
+
+def test_rstar_gate_filters_by_placement_and_empty_is_none():
+    # rstar_gate must filter rows by placement and return None verdict when
+    # no rows match the placement (not just when the input is empty).
+    rows = [
+        {"box": "boxA", "family": "quant", "placement": "serial",
+         "classification": "both_exist", "abs_delta": 0.05},
+        {"box": "boxA", "family": "quant", "placement": "overlapped",
+         "classification": "mismatch_one_sided", "abs_delta": None},
+    ]
+    gate_serial = cm5_eval.rstar_gate(rows, "serial", 0.15)
+    assert gate_serial["n_rows"] == 1
+    assert gate_serial["n_one_sided_mismatch"] == 0
+    assert gate_serial["verdict"] == "PASS"
+    gate_overlapped = cm5_eval.rstar_gate(rows, "overlapped", 0.15)
+    assert gate_overlapped["verdict"] == "FAIL"
+    gate_empty = cm5_eval.rstar_gate(rows, "nonexistent", 0.15)
+    assert gate_empty["n_rows"] == 0
+    assert gate_empty["verdict"] is None
