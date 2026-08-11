@@ -1,0 +1,63 @@
+{
+  "timestamp": "2026-08-10T17:20:52+0900",
+  "hostname": "rebel-gpu1",
+  "kernel": "Linux rebel-gpu1 6.8.0-124-generic #124~22.04.1-Ubuntu SMP PREEMPT_DYNAMIC Tue May 26 21:05:19 UTC  x86_64",
+  "cpu_model": "AMD EPYC 7351 16-Core Processor",
+  "governors": [
+    "performance"
+  ],
+  "transparent_hugepage": "always [madvise] never",
+  "numactl_available": false,
+  "cuda_toolkit": null,
+  "gpus": [
+    {
+      "name": "NVIDIA GeForce RTX 2080 Ti",
+      "driver": "595.71.05",
+      "pcie_gen_current_idle": "1",
+      "pcie_gen_max": "3",
+      "pcie_width_current_idle": "16",
+      "pcie_width_max": "16",
+      "clocks_sm": "300 MHz",
+      "clocks_mem": "405 MHz"
+    },
+    {
+      "name": "NVIDIA GeForce RTX 2080 Ti",
+      "driver": "595.71.05",
+      "pcie_gen_current_idle": "1",
+      "pcie_gen_max": "3",
+      "pcie_width_current_idle": "16",
+      "pcie_width_max": "16",
+      "clocks_sm": "300 MHz",
+      "clocks_mem": "405 MHz"
+    },
+    {
+      "name": "NVIDIA GeForce RTX 2080 Ti",
+      "driver": "595.71.05",
+      "pcie_gen_current_idle": "1",
+      "pcie_gen_max": "3",
+      "pcie_width_current_idle": "16",
+      "pcie_width_max": "16",
+      "clocks_sm": "300 MHz",
+      "clocks_mem": "405 MHz"
+    },
+    {
+      "name": "NVIDIA GeForce RTX 2080 Ti",
+      "driver": "595.71.05",
+      "pcie_gen_current_idle": "1",
+      "pcie_gen_max": "3",
+      "pcie_width_current_idle": "16",
+      "pcie_width_max": "16",
+      "clocks_sm": "300 MHz",
+      "clocks_mem": "405 MHz"
+    }
+  ],
+  "pcie_under_load": {
+    "gen": "3",
+    "width": "16"
+  },
+  "triad_gbps": 25.9,
+  "nvbandwidth": null,
+  "notes": [
+    "nvbandwidth not installed"
+  ]
+}

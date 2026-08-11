@@ -1,0 +1,32 @@
+{
+  "timestamp": "2026-08-11T22:08:14+0900",
+  "hostname": "JueonAtHome",
+  "kernel": "Linux JueonAtHome 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64",
+  "cpu_model": "AMD Ryzen 7 7800X3D 8-Core Processor",
+  "governors": [],
+  "transparent_hugepage": "always [madvise] never",
+  "numactl_available": false,
+  "cuda_toolkit": "nvcc: NVIDIA (R) Cuda compiler driver\nCopyright (c) 2005-2026 NVIDIA Corporation\nBuilt on Thu_Mar_19_11:12:51_PM_PDT_2026\nCuda compilation tools, release 13.2, V13.2.78\nBuild cuda_13.2.r13.2/compiler.37668154_0",
+  "gpus": [
+    {
+      "name": "NVIDIA GeForce RTX 4070 Ti SUPER",
+      "driver": "595.79",
+      "pcie_gen_current_idle": "4",
+      "pcie_gen_max": "4",
+      "pcie_width_current_idle": "16",
+      "pcie_width_max": "16",
+      "clocks_sm": "2610 MHz",
+      "clocks_mem": "10251 MHz"
+    }
+  ],
+  "pcie_under_load": {
+    "gen": "4",
+    "width": "16"
+  },
+  "triad_gbps": 39.87,
+  "nvbandwidth": null,
+  "notes": [
+    "cpufreq governors unreadable",
+    "nvbandwidth not installed"
+  ]
+}

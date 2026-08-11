@@ -1,0 +1,22 @@
+# NOTICE: digest of a b_pipelined T1 N=8192 chunk=16MiB trace (issue #116).
+# capture: nsys profile -t cuda,osrt -o <scratchpad>/bp_bpipelined_trace \
+#   ./bench-rtrack --transform T1 --method bpipe --n 8192 --chunk-mib 16 --warmup 2 --iters 8 --no-verify --csv /dev/null
+# nsys version: NVIDIA Nsight Systems version 2024.2.3.38-242334140272v0
+# policy: .nsys-rep not committed (digest-only, D3 precedent; R4's force-add was the exception).
+Generating SQLite file /tmp/claude-2017/-home-jueonpark-sym/e33a9c45-e759-40e3-b905-3b7cf69f69c6/scratchpad/bp_bpipelined_trace.sqlite from /tmp/claude-2017/-home-jueonpark-sym/e33a9c45-e759-40e3-b905-3b7cf69f69c6/scratchpad/bp_bpipelined_trace.nsys-rep
+Processing [/tmp/claude-2017/-home-jueonpark-sym/e33a9c45-e759-40e3-b905-3b7cf69f69c6/scratchpad/bp_bpipelined_trace.sqlite] with [/usr/local/cuda-12.5/nsight-systems-2024.2.3/host-linux-x64/reports/cuda_gpu_kern_sum.py]... 
+
+ ** CUDA GPU Kernel Summary (cuda_gpu_kern_sum):
+
+ Time (%)  Total Time (ns)  Instances  Avg (ns)   Med (ns)   Min (ns)  Max (ns)  StdDev (ns)                                                  Name                                                
+ --------  ---------------  ---------  ---------  ---------  --------  --------  -----------  ----------------------------------------------------------------------------------------------------
+    100.0       22,670,957        160  141,693.5  146,320.0   117,441   150,048     10,334.3  reloc::cuda::<unnamed>::relocateNaiveKernel(const float *, float *, reloc::cuda::<unnamed>::Axes, l…
+
+Processing [/tmp/claude-2017/-home-jueonpark-sym/e33a9c45-e759-40e3-b905-3b7cf69f69c6/scratchpad/bp_bpipelined_trace.sqlite] with [/usr/local/cuda-12.5/nsight-systems-2024.2.3/host-linux-x64/reports/cuda_gpu_mem_time_sum.py]... 
+
+ ** CUDA GPU MemOps Summary (by Time) (cuda_gpu_mem_time_sum):
+
+ Time (%)  Total Time (ns)  Count   Avg (ns)     Med (ns)    Min (ns)   Max (ns)   StdDev (ns)           Operation          
+ --------  ---------------  -----  -----------  -----------  ---------  ---------  -----------  ----------------------------
+    100.0      205,636,257    160  1,285,226.6  1,284,818.5  1,284,323  1,293,571      1,152.9  [CUDA memcpy Host-to-Device]
+

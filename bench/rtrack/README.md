@@ -271,6 +271,39 @@ nvcc -ccbin g++ -O3 -DNDEBUG -std=c++17 -arch=sm_75 \
    machines to 0) and BP-G3 "no data" (no registered prediction row
    matches), so BP3 runs must use the canonical machine tags.
 
+### BP3 Gen4 session runbook (issue #116; run at the home box, then undraft PR)
+
+WSL2 caveats are recorded, not controlled (cpufreq unreadable; `nvidia-smi -lgc`
+refused in WSL) — lock clocks from the WINDOWS side first: `nvidia-smi -lgc 2610
+-lmc 10251` (the CM1 session's lesson; unlocked WDDM P-states corrupt medians).
+1. Build `bench-rtrack` with the standalone recipe above, `-arch=sm_89`.
+2. Fresh calibration: `python3 bench/rtrack/calibrate.py --out calibration.json
+   --load-bin ./bench-rtrack`; commit as
+   `bench/results/bp_calibration_7800x3d-4070tis.json`.
+3. Run `bench/rtrack/configs/bp_matrix_nsweep_gen4.json` then
+   `bp_rsweep_gen4.json` via `run_rtrack.py` — every row `[verified]`.
+4. Unstable best-chunk points (IQR/median > 5%): targeted `bench-rtrack` reruns
+   into `bench/results/bp_{matrix_nsweep|rsweep}_rerun_7800x3d-4070tis.csv`
+   (bare header, no session comments) — the pre-declared stabler-preference rule
+   (docs/r2-exp2-gen4-crossover.md:48-58) applies at analysis time.
+5. Commit CSVs + calibration, list flagged points in the PR, undraft.
+
+As executed (2026-08-11): CUDA 13.2 builds the standalone recipe
+unchanged (no API fixes needed, unlike `hiding_ratio.cu`); clocks were
+locked Windows-side for the whole session (2610/10251, verified at
+every pass boundary); calibration measured PCIe gen4 x16 under load and
+triad 39.87 GB/s. 289 matrix + 339 rsweep rows, all `[verified]`. The
+unstable scan flagged 71 best-chunk points (24 matrix + 47 rsweep, ~3x
+the Gen3 session's 25) — overwhelmingly method `a`: the CPU-staging
+path rides the WSL2 CPU side, which is the box's recorded-not-
+controlled axis (governor unreadable, Windows background scheduling).
+Rerun medians agree with originals (mean ratio 0.979, range
+0.761–1.156x, no systematic direction), and 49/71 points stayed
+`unstable == 1` on the rerun at ratios indistinguishable from the ones
+that stabilized — ordinary jitter on this box, not a configuration
+defect (contrast the Gen3 session's Incident B, a systematic 1.3–6.2x
+threads=1 skew).
+
 ## Protocol
 
 5 warmup + 30 timed iterations per config; the CSV reports wall median /
