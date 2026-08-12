@@ -21,7 +21,7 @@ derived from bench/results/cm5_eval_report.json's regen-locked machinery.
 
 | claim | box | staged `b` | `b_fair` | `b_pipelined` | status | authoritative source |
 |---|---|---|---|---|---|---|
-| R1-G2: dtype reduction wins ≥1.5× (quant) | Gen3 | 1.74–2.43× PASS | 1.44/1.43/1.49/1.53× (issue #95, comment 2026-07-28) | 1.43–1.48× (below bar at every N) | narrowed | docs/r1-exp1-gen3-gates.md §BP restatement; boundary-law row below |
+| R1-G2: dtype reduction wins ≥1.5× (quant) | Gen3 | 1.74–2.43× PASS | 1.44/1.43/1.49/1.53× (issue #95, comment 2026-07-28) | 1.40–1.48× (below bar at every N) | narrowed | docs/r1-exp1-gen3-gates.md §BP restatement; boundary-law row below |
 | R2-G2: dtype reduction wins ≥1.5× (quant) | Gen4 | 4.18/3.66/2.12/2.12× (R2); 3.23/3.58/2.21/2.24× (V1 session) | 2.20/2.60/1.46/1.54× | 1.94/2.39/1.52/1.42× (below bar at N=16384) | narrowed | docs/r2-exp2-gen4-crossover.md §BP restatement |
 | R2-G4: pure relocation A/B ∈ [0.40, 0.80] (blocked_transpose) | Gen4 | **1.40/1.20/1.19/0.91× — WITHDRAWN, do not quote** (staged-baseline artifact; V1 found the baseline inadmissible) | 0.65–0.87× (direction reversed, in-band at N ≥ 8192) | 0.88/0.77/0.76/0.63× (loss direction confirmed, deeper) | withdrawn (staged number) / survives (loss direction, vs fair baselines) | docs/r2-exp2-gen4-crossover.md §§V1 + BP restatements |
 | r\* (blocked_transpose) | Gen4 | 0.499 (R2 rsweep, Jul 22) / 0.604 (V1-session staged) | 0.374 (V1 rsweep) | 0.3956 serial / 0.3605 overlapped (BP rsweep; pred 0.3247/0.2914) | narrowed (each column is a DIFFERENT dataset — see note) | r2 doc r\*-tables; cm5_eval_report.json rstar_rows |
@@ -42,7 +42,7 @@ bandwidth — a margin that shrinks each PCIe generation."
 
 | box | BW_cpu | BW_link (pinned, under load) | law BW_cpu/BW_link | measured A/B_pipelined (quant, N=16384) | residual |
 |---|---|---|---|---|---|
-| Gen3 | 23.2 (#108 pre-registered) / 23.01 (r1 rooflines, quantize_pack t8) | 13.06 | ≈1.78 / ≈1.76 | 1.4817 | −17% / −16% |
+| Gen3 | 23.2 (#108 pre-registered) / 23.01 (r1 rooflines, quantize_pack t8) | 13.06 (R1 gate figure; BP session read 13.08) | ≈1.78 / ≈1.76 | 1.4817 | −17% / −16% |
 | Gen4 | 38.4 (#108 pre-registered) / 36.61 (r2 rooflines, quantize_pack t8) | 26.87 (BP session) | ≈1.43 / ≈1.36 | 1.4153 | −1% / +4% |
 
 Both BW_cpu readings are shown — #108's pre-registered arithmetic verbatim
@@ -54,7 +54,7 @@ between them can tune the residual.
 2. Gen3's −16/−17% residual is a finding, not hidden: the naive law's
    BW_cpu term (isolated roofline) overstates the pipeline's effective CPU
    bandwidth. BP-G3's fair-baseline-corrected predictions (÷1.06:
-   1.36–1.44) bracket the measured 1.43–1.48, so the law's shape holds
+   1.35–1.44) bracket the measured 1.40–1.48, so the law's shape holds
    with BW_cpu read as *pipelined effective* bandwidth — recorded as a
    definition refinement (no number adjusted; not a refit). Gen4's V-cache
    makes the two readings nearly coincide (−1/+4%).
