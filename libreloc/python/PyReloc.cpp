@@ -335,8 +335,7 @@ PYBIND11_MODULE(_pyreloc, m) {
         py::arg("strategy") = "auto", py::kw_only(),
         py::arg("model") =
             static_cast<const reloc::costmodel::CostModel *>(nullptr),
-        py::arg("wire_ratio") = 1.0, py::arg("k") = 1,
-        py::arg("n_reuse") = -1,
+        py::arg("wire_ratio") = 1.0, py::arg("k") = 1, py::arg("n_reuse") = -1,
         "Bind a plan against {symbol: value}. Raises BindError on symbol "
         "mismatch or violated correctness constraints. With `model`, "
         "populates BoundPlan.decision (bind-time t8/Overlapped pricing); "
