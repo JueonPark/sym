@@ -40,9 +40,10 @@ decision.
 **Grid**: r ∈ {0.25, 0.5, 1.0} × N ∈ {2048, 4096, 8192, 16384} × both
 boxes = 24 cells. r maps to the measured rsweep wire tiers (0.25 → s8,
 0.5 → f16, 1.0 → f32). r = 0.125 (s4) is excluded because the
-calibrations carry no blocked s4 gather key — `predict`/`bind` raise on
-it; that boundary belongs to the CM track and gets a negative test plus
-a doc note here, not a workaround.
+calibrations carry no blocked s4 gather key — `predict` raises on it
+and `bind` leaves the decision unset (see the amended negative-test
+bullet below); that boundary belongs to the CM track and gets a
+negative test plus a doc note here, not a workaround.
 **Decision inputs**: `bind(plan, {"N": N}, model=<box .cal>,
 wire_ratio=r)` with defaults k=1, n_reuse=-1. The bind-time decision is
 threads=8 + `BPlacement::Overlapped` by construction
