@@ -131,7 +131,7 @@ pre-declared rule (both session PRs record this).
 
 | ratio | N=2048 | N=4096 | N=8192 | N=16384 |
 |---|---|---|---|---|
-| A/B_staged (as measured above) | 1.98 | no matrix entry (doc's stated range: 1.74–2.43×) | 1.80 | 2.43 |
+| A/B_staged (as measured above) | 1.98× | no matrix entry (doc's stated range: 1.74–2.43×) | 1.80× | 2.43× |
 | **A/B_pipelined** | 1.43× | 1.40× | 1.45× | 1.48× |
 
 The Full A-vs-B matrix above carries a quant (T3) row for N=2048, 8192 and

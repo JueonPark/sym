@@ -81,11 +81,13 @@ crossover); transpose_quant **PASS** (both: no in-range crossover).
 > verdicts above were measured against the staged Method B that the V1
 > audit later found INADMISSIBLE on this box. The V1 Gen4 re-run (see
 > [V1 restatement](#v1-restatement-issue-95--the-fair-baseline-resolves-g4s-direction)
-> [BP restatement](#bp-restatement-issue-117--the-pipelined-baseline)
 > at the end of this report) restates them against `B_fair`: G4's
 > direction reverses (A loses 0.65–0.87×, in-band at N ≥ 8192), and both
 > measured r\* move toward the model. This table is kept as measured for
 > provenance.
+>
+> (For the pipelined baseline, see the
+> [BP restatement](#bp-restatement-issue-117--the-pipelined-baseline).)
 
 ## Decision / summary
 
@@ -481,22 +483,28 @@ its best-of-max merge — e.g. quant N=2048 reads 2.09 there vs 1.94 here).
 | A/B_fair (V1 restatement) | 2.20× | 2.60× | 1.46× | 1.54× |
 | **A/B_pipelined** | 1.94× | 2.39× | 1.52× | 1.42× |
 
-N=16384 — the only N where the working set defeats the 7800X3D's 96 MB
-V-cache (AMD's published spec for this part; box confirmed via
+At N=16384 nothing fits in the 7800X3D's 96 MB V-cache (AMD's published
+spec for this part; box confirmed via
 `bench/results/bp_calibration_7800x3d-4070tis.json`'s `cpu_model:
 "AMD Ryzen 7 7800X3D 8-Core Processor"`, which does not itself record
-cache size) — lands at 1.42×, on the boundary-law prediction (≈1.43,
-#108's pre-registered arithmetic; docs/claim-ledger.md §Boundary law).
-The small-N cells sit at 1.9–2.4× because the quant source tensor is
-V-cache-resident there (N=2048: 16 MiB, N=4096: 64 MiB vs 96 MB L3 —
-source bytes = N×N×4 per `bench/rtrack/figure_rstar.py:155,159` and
+cache size): the quant source tensor is 1 GiB and even the s8 output is
+256 MiB, both far past the cache. That cell lands at 1.42×, on the
+boundary-law prediction (≈1.43, #108's pre-registered arithmetic;
+docs/claim-ledger.md §Boundary law). At N=8192 the 256 MiB source already
+spills the V-cache, but the 64 MiB s8 output still fits — consistent with
+the intermediate 1.52× measured there, which sits ~+6% above the ≈1.43
+law (a partial cache benefit, noted qualitatively here, not decomposed).
+The small-N cells (N=2048, N=4096) sit at 1.9–2.4× because the quant
+source tensor is fully V-cache-resident there (N=2048: 16 MiB, N=4096:
+64 MiB vs 96 MB L3 — source bytes = N×N×4 per
+`bench/rtrack/figure_rstar.py:155,159` and
 `bench/results/cm4_registered_predictions.json`), so effective BW_cpu far
-exceeds the DDR5 roofline — this discharges #108's "above 1.5× despite
-the arithmetic → investigate, not celebrate" obligation: the arithmetic
-holds once BW_cpu is read at the cache level the working set actually
-occupies.
+exceeds the DDR5 roofline. This discharges #108's "above 1.5× despite the
+arithmetic → investigate, not celebrate" obligation for the explained
+part — N=2048/4096's elevation is accounted for by full cache residency;
+N=8192's +6% above the law is noted here, not decomposed.
 
-### G4 restated: the loss direction deepens
+### G4 restated: the loss direction deepens at N ≥ 4096
 
 | ratio | N=2048 | N=4096 | N=8192 | N=16384 |
 |---|---|---|---|---|
@@ -505,12 +513,13 @@ occupies.
 | **A/B_pipelined** | 0.88× | 0.77× | 0.76× | 0.63× |
 
 The V1 direction reversal is confirmed and deepened by the faster
-baseline; the staged row is quoted only to mark it withdrawn
-(docs/claim-ledger.md).
+baseline at N ≥ 4096; at N=2048 the pipelined loss is marginally
+shallower instead (0.8796 vs `b_fair`'s 0.874). The staged row is quoted
+only to mark it withdrawn (docs/claim-ledger.md).
 
 ### r\* vs the pipelined baseline (BP rsweep, N=16384)
 
-| family | r\* vs staged (R2) | r\* vs b_fair (V1) | r\* serial (BP) | r\* overlapped (BP) | registered pred (overlapped) |
+| family | r\* vs staged (R2) | r\* vs b_fair (V1) | r\* serial (b_fair, BP) | r\* overlapped (BP) | registered pred (overlapped) |
 |---|---|---|---|---|---|
 | blocked_transpose | 0.499 | 0.374 | 0.3956 | 0.3605 | 0.2914 (Δ 0.0691) |
 | quant | 0.992 | 0.541 | 0.6107 | 0.6150 | none (one-sided) |
