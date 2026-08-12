@@ -1,0 +1,503 @@
+{
+ "cells": [
+  {
+   "N": 2048,
+   "bind_decision": {
+    "b_placement": "overlapped",
+    "k": 1,
+    "method": "b",
+    "n_reuse": -1,
+    "pattern": "blocked",
+    "t_a_ms": 4.85489804326613,
+    "t_b_ms": 1.3078431522570773,
+    "threshold_bytes": -1.0
+   },
+   "bound": {
+    "dst_strides": [
+     65536,
+     2048,
+     1
+    ],
+    "extents": [
+     64,
+     32,
+     2048
+    ],
+    "src_strides": [
+     2048,
+     131072,
+     1
+    ],
+    "strategy": "multi_thread_tiled",
+    "total_bytes": 16777216
+   },
+   "r": 0.25,
+   "serial_check": {
+    "b_placement": "serial",
+    "method": "b",
+    "pattern": "blocked",
+    "t_a_ms": 4.85489804326613,
+    "t_b_ms": 1.399439349904136,
+    "threshold_bytes": -1.0
+   }
+  },
+  {
+   "N": 4096,
+   "bind_decision": {
+    "b_placement": "overlapped",
+    "k": 1,
+    "method": "b",
+    "n_reuse": -1,
+    "pattern": "blocked",
+    "t_a_ms": 19.215592173064522,
+    "t_b_ms": 5.1587726090283095,
+    "threshold_bytes": -1.0
+   },
+   "bound": {
+    "dst_strides": [
+     262144,
+     4096,
+     1
+    ],
+    "extents": [
+     64,
+     64,
+     4096
+    ],
+    "src_strides": [
+     4096,
+     262144,
+     1
+    ],
+    "strategy": "multi_thread_tiled",
+    "total_bytes": 67108864
+   },
+   "r": 0.25,
+   "serial_check": {
+    "b_placement": "serial",
+    "method": "b",
+    "pattern": "blocked",
+    "t_a_ms": 19.215592173064522,
+    "t_b_ms": 5.525157399616544,
+    "threshold_bytes": -1.0
+   }
+  },
+  {
+   "N": 8192,
+   "bind_decision": {
+    "b_placement": "overlapped",
+    "k": 1,
+    "method": "b",
+    "n_reuse": -1,
+    "pattern": "blocked",
+    "t_a_ms": 76.65836869225808,
+    "t_b_ms": 20.562490436113237,
+    "threshold_bytes": -1.0
+   },
+   "bound": {
+    "dst_strides": [
+     1048576,
+     8192,
+     1
+    ],
+    "extents": [
+     64,
+     128,
+     8192
+    ],
+    "src_strides": [
+     8192,
+     524288,
+     1
+    ],
+    "strategy": "multi_thread_tiled",
+    "total_bytes": 268435456
+   },
+   "r": 0.25,
+   "serial_check": {
+    "b_placement": "serial",
+    "method": "b",
+    "pattern": "blocked",
+    "t_a_ms": 76.65836869225808,
+    "t_b_ms": 22.028029598466176,
+    "threshold_bytes": -1.0
+   }
+  },
+  {
+   "N": 16384,
+   "bind_decision": {
+    "b_placement": "overlapped",
+    "k": 1,
+    "method": "b",
+    "n_reuse": -1,
+    "pattern": "blocked",
+    "t_a_ms": 306.4294747690323,
+    "t_b_ms": 82.17736174445294,
+    "threshold_bytes": -1.0
+   },
+   "bound": {
+    "dst_strides": [
+     4194304,
+     16384,
+     1
+    ],
+    "extents": [
+     64,
+     256,
+     16384
+    ],
+    "src_strides": [
+     16384,
+     1048576,
+     1
+    ],
+    "strategy": "chunked_pipeline",
+    "total_bytes": 1073741824
+   },
+   "r": 0.25,
+   "serial_check": {
+    "b_placement": "serial",
+    "method": "b",
+    "pattern": "blocked",
+    "t_a_ms": 306.4294747690323,
+    "t_b_ms": 88.0395183938647,
+    "threshold_bytes": -1.0
+   }
+  },
+  {
+   "N": 2048,
+   "bind_decision": {
+    "b_placement": "overlapped",
+    "k": 1,
+    "method": "b",
+    "n_reuse": -1,
+    "pattern": "blocked",
+    "t_a_ms": 2.4971522073636465,
+    "t_b_ms": 1.3078431522570773,
+    "threshold_bytes": -1.0
+   },
+   "bound": {
+    "dst_strides": [
+     65536,
+     2048,
+     1
+    ],
+    "extents": [
+     64,
+     32,
+     2048
+    ],
+    "src_strides": [
+     2048,
+     131072,
+     1
+    ],
+    "strategy": "multi_thread_tiled",
+    "total_bytes": 16777216
+   },
+   "r": 0.5,
+   "serial_check": {
+    "b_placement": "serial",
+    "method": "b",
+    "pattern": "blocked",
+    "t_a_ms": 2.4971522073636465,
+    "t_b_ms": 1.399439349904136,
+    "threshold_bytes": -1.0
+   }
+  },
+  {
+   "N": 4096,
+   "bind_decision": {
+    "b_placement": "overlapped",
+    "k": 1,
+    "method": "b",
+    "n_reuse": -1,
+    "pattern": "blocked",
+    "t_a_ms": 9.784608829454585,
+    "t_b_ms": 5.1587726090283095,
+    "threshold_bytes": -1.0
+   },
+   "bound": {
+    "dst_strides": [
+     262144,
+     4096,
+     1
+    ],
+    "extents": [
+     64,
+     64,
+     4096
+    ],
+    "src_strides": [
+     4096,
+     262144,
+     1
+    ],
+    "strategy": "multi_thread_tiled",
+    "total_bytes": 67108864
+   },
+   "r": 0.5,
+   "serial_check": {
+    "b_placement": "serial",
+    "method": "b",
+    "pattern": "blocked",
+    "t_a_ms": 9.784608829454585,
+    "t_b_ms": 5.525157399616544,
+    "threshold_bytes": -1.0
+   }
+  },
+  {
+   "N": 8192,
+   "bind_decision": {
+    "b_placement": "overlapped",
+    "k": 1,
+    "method": "b",
+    "n_reuse": -1,
+    "pattern": "blocked",
+    "t_a_ms": 38.93443531781834,
+    "t_b_ms": 20.562490436113237,
+    "threshold_bytes": -1.0
+   },
+   "bound": {
+    "dst_strides": [
+     1048576,
+     8192,
+     1
+    ],
+    "extents": [
+     64,
+     128,
+     8192
+    ],
+    "src_strides": [
+     8192,
+     524288,
+     1
+    ],
+    "strategy": "multi_thread_tiled",
+    "total_bytes": 268435456
+   },
+   "r": 0.5,
+   "serial_check": {
+    "b_placement": "serial",
+    "method": "b",
+    "pattern": "blocked",
+    "t_a_ms": 38.93443531781834,
+    "t_b_ms": 22.028029598466176,
+    "threshold_bytes": -1.0
+   }
+  },
+  {
+   "N": 16384,
+   "bind_decision": {
+    "b_placement": "overlapped",
+    "k": 1,
+    "method": "b",
+    "n_reuse": -1,
+    "pattern": "blocked",
+    "t_a_ms": 155.53374127127339,
+    "t_b_ms": 82.17736174445294,
+    "threshold_bytes": -1.0
+   },
+   "bound": {
+    "dst_strides": [
+     4194304,
+     16384,
+     1
+    ],
+    "extents": [
+     64,
+     256,
+     16384
+    ],
+    "src_strides": [
+     16384,
+     1048576,
+     1
+    ],
+    "strategy": "chunked_pipeline",
+    "total_bytes": 1073741824
+   },
+   "r": 0.5,
+   "serial_check": {
+    "b_placement": "serial",
+    "method": "b",
+    "pattern": "blocked",
+    "t_a_ms": 155.53374127127339,
+    "t_b_ms": 88.0395183938647,
+    "threshold_bytes": -1.0
+   }
+  },
+  {
+   "N": 2048,
+   "bind_decision": {
+    "b_placement": "overlapped",
+    "k": 1,
+    "method": "b",
+    "n_reuse": -1,
+    "pattern": "blocked",
+    "t_a_ms": 1.5340016427535346,
+    "t_b_ms": 1.3078431522570773,
+    "threshold_bytes": -1.0
+   },
+   "bound": {
+    "dst_strides": [
+     65536,
+     2048,
+     1
+    ],
+    "extents": [
+     64,
+     32,
+     2048
+    ],
+    "src_strides": [
+     2048,
+     131072,
+     1
+    ],
+    "strategy": "multi_thread_tiled",
+    "total_bytes": 16777216
+   },
+   "r": 1.0,
+   "serial_check": {
+    "b_placement": "serial",
+    "method": "b",
+    "pattern": "blocked",
+    "t_a_ms": 1.5340016427535346,
+    "t_b_ms": 1.399439349904136,
+    "threshold_bytes": -1.0
+   }
+  },
+  {
+   "N": 4096,
+   "bind_decision": {
+    "b_placement": "overlapped",
+    "k": 1,
+    "method": "b",
+    "n_reuse": -1,
+    "pattern": "blocked",
+    "t_a_ms": 5.932006571014138,
+    "t_b_ms": 5.1587726090283095,
+    "threshold_bytes": -1.0
+   },
+   "bound": {
+    "dst_strides": [
+     262144,
+     4096,
+     1
+    ],
+    "extents": [
+     64,
+     64,
+     4096
+    ],
+    "src_strides": [
+     4096,
+     262144,
+     1
+    ],
+    "strategy": "multi_thread_tiled",
+    "total_bytes": 67108864
+   },
+   "r": 1.0,
+   "serial_check": {
+    "b_placement": "serial",
+    "method": "b",
+    "pattern": "blocked",
+    "t_a_ms": 5.932006571014138,
+    "t_b_ms": 5.525157399616544,
+    "threshold_bytes": -1.0
+   }
+  },
+  {
+   "N": 8192,
+   "bind_decision": {
+    "b_placement": "overlapped",
+    "k": 1,
+    "method": "b",
+    "n_reuse": -1,
+    "pattern": "blocked",
+    "t_a_ms": 23.524026284056553,
+    "t_b_ms": 20.562490436113237,
+    "threshold_bytes": -1.0
+   },
+   "bound": {
+    "dst_strides": [
+     1048576,
+     8192,
+     1
+    ],
+    "extents": [
+     64,
+     128,
+     8192
+    ],
+    "src_strides": [
+     8192,
+     524288,
+     1
+    ],
+    "strategy": "multi_thread_tiled",
+    "total_bytes": 268435456
+   },
+   "r": 1.0,
+   "serial_check": {
+    "b_placement": "serial",
+    "method": "b",
+    "pattern": "blocked",
+    "t_a_ms": 23.524026284056553,
+    "t_b_ms": 22.028029598466176,
+    "threshold_bytes": -1.0
+   }
+  },
+  {
+   "N": 16384,
+   "bind_decision": {
+    "b_placement": "overlapped",
+    "k": 1,
+    "method": "b",
+    "n_reuse": -1,
+    "pattern": "blocked",
+    "t_a_ms": 93.8921051362262,
+    "t_b_ms": 82.17736174445294,
+    "threshold_bytes": -1.0
+   },
+   "bound": {
+    "dst_strides": [
+     4194304,
+     16384,
+     1
+    ],
+    "extents": [
+     64,
+     256,
+     16384
+    ],
+    "src_strides": [
+     16384,
+     1048576,
+     1
+    ],
+    "strategy": "chunked_pipeline",
+    "total_bytes": 1073741824
+   },
+   "r": 1.0,
+   "serial_check": {
+    "b_placement": "serial",
+    "method": "b",
+    "pattern": "blocked",
+    "t_a_ms": 93.8921051362262,
+    "t_b_ms": 88.0395183938647,
+    "threshold_bytes": -1.0
+   }
+  }
+ ],
+ "generated_by": "bench/rtrack/r6_bind_demo.py",
+ "inputs": {
+  "calibration/epyc7351-2080ti.cal": "bc0721404c74f14fdb43e67fa071cacf6db4c43caaaab3e565dc88e1a926d610",
+  "libreloc/test/corpus/blocked_transpose_sym.bin": "ca69b39a5d72bbaf48e62365174319e7c979aaef259ba33b1042a110404ed25c"
+ },
+ "issue": "#87 (R6): cross-box no-recompile bind demo",
+ "machine": "epyc7351-2080ti"
+}
