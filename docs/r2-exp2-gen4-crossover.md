@@ -81,6 +81,7 @@ crossover); transpose_quant **PASS** (both: no in-range crossover).
 > verdicts above were measured against the staged Method B that the V1
 > audit later found INADMISSIBLE on this box. The V1 Gen4 re-run (see
 > [V1 restatement](#v1-restatement-issue-95--the-fair-baseline-resolves-g4s-direction)
+> [BP restatement](#bp-restatement-issue-117--the-pipelined-baseline)
 > at the end of this report) restates them against `B_fair`: G4's
 > direction reverses (A loses 0.65–0.87×, in-band at N ≥ 8192), and both
 > measured r\* move toward the model. This table is kept as measured for
@@ -462,3 +463,60 @@ which is itself an argument for gating on `b_fair`.
 - **Unchanged**: T2/T4 losses (they lose harder vs a faster baseline);
   the Gen3↔Gen4 crossover framing; all WSL2 caveats, which now also
   cover the small-N `b_fair` admissibility misses.
+
+## BP restatement (issue #117) — the pipelined baseline
+
+Measured history above is never edited (the staged table and the V1
+restatement both stand as recorded); this section restates against
+`b_pipelined` (#108/#114). Data/merge/convention: as in the R1 BP
+restatement (BP3 session #116/#124; stabler-preference merge; A/B = best
+effective-input GB/s ratio; gates.py --exp bp differs in some cells via
+its best-of-max merge — e.g. quant N=2048 reads 2.09 there vs 1.94 here).
+
+### G2 restated: below the bar exactly at the boundary point
+
+| ratio | N=2048 | N=4096 | N=8192 | N=16384 |
+|---|---|---|---|---|
+| A/B_staged (R2, above) | 4.18× | 3.66× | 2.12× | 2.12× |
+| A/B_fair (V1 restatement) | 2.20× | 2.60× | 1.46× | 1.54× |
+| **A/B_pipelined** | 1.94× | 2.39× | 1.52× | 1.42× |
+
+N=16384 — the only N where the working set defeats the 7800X3D's 96 MB
+V-cache (AMD's published spec for this part; box confirmed via
+`bench/results/bp_calibration_7800x3d-4070tis.json`'s `cpu_model:
+"AMD Ryzen 7 7800X3D 8-Core Processor"`, which does not itself record
+cache size) — lands at 1.42×, on the boundary-law prediction (≈1.43,
+#108's pre-registered arithmetic; docs/claim-ledger.md §Boundary law).
+The small-N cells sit at 1.9–2.4× because the quant source tensor is
+V-cache-resident there (N=2048: 16 MiB, N=4096: 64 MiB vs 96 MB L3 —
+source bytes = N×N×4 per `bench/rtrack/figure_rstar.py:155,159` and
+`bench/results/cm4_registered_predictions.json`), so effective BW_cpu far
+exceeds the DDR5 roofline — this discharges #108's "above 1.5× despite
+the arithmetic → investigate, not celebrate" obligation: the arithmetic
+holds once BW_cpu is read at the cache level the working set actually
+occupies.
+
+### G4 restated: the loss direction deepens
+
+| ratio | N=2048 | N=4096 | N=8192 | N=16384 |
+|---|---|---|---|---|
+| A/B_staged (WITHDRAWN — see ledger) | 1.40× | 1.20× | 1.19× | 0.91× |
+| A/B_fair (V1 restatement) | 0.87× | 0.81× | 0.80× | 0.65× |
+| **A/B_pipelined** | 0.88× | 0.77× | 0.76× | 0.63× |
+
+The V1 direction reversal is confirmed and deepened by the faster
+baseline; the staged row is quoted only to mark it withdrawn
+(docs/claim-ledger.md).
+
+### r\* vs the pipelined baseline (BP rsweep, N=16384)
+
+| family | r\* vs staged (R2) | r\* vs b_fair (V1) | r\* serial (BP) | r\* overlapped (BP) | registered pred (overlapped) |
+|---|---|---|---|---|---|
+| blocked_transpose | 0.499 | 0.374 | 0.3956 | 0.3605 | 0.2914 (Δ 0.0691) |
+| quant | 0.992 | 0.541 | 0.6107 | 0.6150 | none (one-sided) |
+| nchw_nhwc_quant | none | none | none | none | none (agree) |
+| transpose_quant | none | none | none | none | none (agree) |
+
+Columns are different datasets (R2 → V1 → BP rsweeps), labeled per the
+ledger's dataset note. The quant one-sided mismatch and blocked Δ are
+CM5's recorded RSTAR findings (#113).
