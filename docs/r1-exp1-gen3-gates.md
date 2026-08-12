@@ -114,3 +114,69 @@ number (13.08). The link is the floor, as claimed.
   clean Gen3 headline point.
 - The r-sweep (critical r\*) and the Gen4 repeat are R2 (issue for the next
   item).
+
+## BP restatement (issue #117) — the pipelined baseline
+
+Measured history above is never edited; this section restates the R1 gates
+against `b_pipelined` (#108/#114) — chunked H2D with the receive/transform
+kernel issued in-stream, the Method B a competent implementation would ship.
+Data: the BP3 session (#116/#124), stabler-preference merged
+(docs/r2-exp2-gen4-crossover.md:48-58) via the regen-locked
+bench/results/cm5_eval_report.json machinery. A/B = ratio of best
+effective-input GB/s per method. Note: `gates.py --exp bp` prints slightly
+different values in some cells — it merges best-of-max, which is NOT the
+pre-declared rule (both session PRs record this).
+
+### G2 restated: the ≥1.5× bar does not survive the pipelined baseline
+
+| ratio | N=2048 | N=4096 | N=8192 | N=16384 |
+|---|---|---|---|---|
+| A/B_staged (as measured above) | 1.98 | no matrix entry (doc's stated range: 1.74–2.43×) | 1.80 | 2.43 |
+| **A/B_pipelined** | 1.43× | 1.40× | 1.45× | 1.48× |
+
+The Full A-vs-B matrix above carries a quant (T3) row for N=2048, 8192 and
+16384 only — it does not list N=4096, so that cell quotes the Decision
+section's stated 1.74–2.43× range rather than an invented per-N figure.
+
+Every N lands below the strict 1.5× bar; the true range across all four N
+is 1.40–1.48× (the family dips at N=4096, not at an endpoint). This is
+#108's residual risk 1, realized — and its pre-registered handling
+governs: "even then the boundary law itself (both-box ratio consistency)
+stands and the claim completes as a when-does-it-win map (Build Doc v3
+§5.2)". The headline moves to the boundary law (docs/claim-ledger.md
+§Boundary law — the headline); the Gen3 dtype-reduction win survives as a
+direction (A wins every cell) with a narrowed margin (1.40–1.48× vs the
+originally-quoted 1.74–2.43×).
+
+### G3/G4 direction note
+
+On `epyc7351-2080ti` (this box), the transpose-family G3/G4 failures hold
+direction against the faster pipelined baseline. `transpose` (T1, G4)
+measures A/B_pipelined = 0.0826 / 0.0499 / 0.0505 / 0.0493 at N=2048 / 4096
+/ 8192 / 16384 — a 0.05–0.08× range, at or slightly below the staged
+0.06–0.08× band above. `nchw_nhwc_quant` (T4, G3) measures A/B_pipelined =
+0.2432 / 0.1995 / 0.1931 / 0.1786 over the same N — a 0.18–0.24× range,
+sitting inside the staged 0.11–0.33× band above. Both stay far below the
+G3/G4 bars at every N; Method A does not approach parity anywhere.
+`transpose_quant` (T2, also G3) has **no** `b_pipelined` measurement: the
+#114 chunkability audit recorded it N/A by construction — the relocate leg
+of a column-band chunk is legal, but the per-channel quantize leg cannot
+run per chunk once the source is no longer channel-contiguous, so chunking
+the relocate leg while running quantize as a monolithic tail would not be
+a genuinely pipelined B. The CM5 report's `excluded_cells` list
+(bench/results/cm5_eval_report.json, #113) discloses the same eight
+excluded rows (both boxes × all four N, reason "no measured b_pipelined
+matrix row") rather than approximating a number.
+
+### r\* vs the pipelined baseline (BP rsweep, N=16384)
+
+| family | r\* serial (b_fair) | r\* overlapped (b_pipelined) | registered prediction (overlapped) |
+|---|---|---|---|
+| quant | 0.7025 | 0.7024 | 0.9966 (Δ 0.2942) |
+| blocked_transpose | none | none | none (agree) |
+| nchw_nhwc_quant | none | none | none (agree) |
+| transpose_quant | none | none | none (agree) |
+
+Source: cm5_eval_report.json rstar_rows (CM5, #113); the Δ and the
+one-sided serial mismatch are CM5's recorded RSTAR findings, not new
+results.
