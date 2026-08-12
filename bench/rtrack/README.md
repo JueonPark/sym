@@ -425,6 +425,35 @@ an isolated cold run — the two bases differ by ~20% on dequant. CM5's `m_eff`
 composition must first decide on a single measurement basis (warm in-pipeline
 vs. cold isolated) before consuming the `recv.m.*` keys.
 
+## R6 bind demo (issue #87)
+
+`r6_bind_demo.py` — the cross-box no-recompile bind demo: binds the
+committed MLIR-folded corpus blob (`blocked_transpose_sym.bin`) at
+runtime N with this box's calibration as the bind model and writes the
+deterministic decision artifact `bench/results/r6_bind_demo_<machine>.json`.
+No GPU, no measurement — decisions only; verified against the BP
+measured winners by `libreloc/python/tests/test_r6_crossbox_bind.py`.
+See `docs/r6-crossbox-bind.md`.
+
+    PYTHONPATH=build/sym/python python3 bench/rtrack/r6_bind_demo.py \
+        --machine epyc7351-2080ti
+
+### R6 Gen4 runbook (issue #87; run at the home box, then undraft PR)
+
+No session ritual needed — this writes no measurement; any load state
+is fine.
+
+    git pull
+    ninja -C build/sym pyreloc_ext
+    PYTHONPATH=build/sym/python python3 bench/rtrack/r6_bind_demo.py \
+        --machine 7800x3d-4070tis
+    git add bench/results/r6_bind_demo_7800x3d-4070tis.json
+    git commit -m "bench(results): R6 — Gen4 bind-demo artifact (#87)"
+    git push
+
+CI's byte-equality check (previously skipping with "not committed yet")
+goes live on push; when it is green, undraft the PR.
+
 ## V3 cost-model tools (issue #97)
 
 - **`make_calibration.py`** — assembles a `calibration/<machine>.cal` flat
