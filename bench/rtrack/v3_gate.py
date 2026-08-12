@@ -200,33 +200,16 @@ def calibration_regen_check():
                       f"{first_diff + 1})")
 
 
-def cm4_regen_check():
-    """CM4-REGEN (issue #112): the registered predictions must stay
-    byte-reproducible from the committed model + calibrations. Re-runs
-    cm4_register.py to a temp path and compares against the committed
-    file. Skips loudly (not silently) when the committed file is
-    absent (a pre-CM4 checkout); a missing pyreloc surfaces as a loud
-    regen FAIL, by design."""
-    print("\n=== CM4-REGEN ===")
-    committed = REPO_ROOT / "bench" / "results" / "cm4_registered_predictions.json"
-    if not committed.exists():
-        print("CM4-REGEN: SKIP (no committed registration file)")
-        return
-    with tempfile.TemporaryDirectory() as td:
-        out = Path(td) / "cm4.json"
-        proc = subprocess.run(
-            [sys.executable, "bench/rtrack/cm4_register.py",
-             "--out", str(out)],
-            cwd=REPO_ROOT, capture_output=True, text=True)
-        if proc.returncode != 0:
-            print(f"CM4-REGEN: FAIL (regen errored)\n{proc.stderr.strip()}")
-            return
-        if out.read_text() == committed.read_text():
-            print("CM4-REGEN: PASS (matches committed "
-                  "bench/results/cm4_registered_predictions.json)")
-        else:
-            print("CM4-REGEN: FAIL (registration no longer reproduces from "
-                  "the committed model + calibrations)")
+def cm4_frozen_check():
+    """CM4-FROZEN (issue #125): the CM4 registration is superseded frozen
+    history (CM6 is the live generation) -- it must never change. A live
+    regen comparison is no longer meaningful: the calibrations have
+    legitimately moved past it."""
+    print("\n=== CM4-FROZEN ===")
+    rel = "bench/results/cm4_registered_predictions.json"
+    proc = subprocess.run(["git", "diff", "--exit-code", "--", rel],
+                          cwd=REPO_ROOT, capture_output=True, text=True)
+    print(f"CM4-FROZEN: {'PASS (committed file unchanged)' if proc.returncode == 0 else 'FAIL (frozen registration modified)'}")
 
 
 def cm5_regen_check():
@@ -289,7 +272,7 @@ def main():
     print_ablation(report)
     print_unmodelable(report)
     calibration_regen_check()
-    cm4_regen_check()
+    cm4_frozen_check()
     cm5_regen_check()
     report_regen_check(args.report)
     return 0
