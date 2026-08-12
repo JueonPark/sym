@@ -126,8 +126,11 @@ void checkGatherArgs(int gatherThreads,
 
 reloc::BoundPlan bindPlan(const reloc::RelocationPlan &plan,
                           const std::map<std::string, int64_t> &symbols,
-                          const std::string &strategy) {
-  auto result = reloc::bind(plan, symbols, parseStrategy(strategy));
+                          const std::string &strategy,
+                          const reloc::costmodel::CostModel *model,
+                          double wireRatio, int k, int64_t nReuse) {
+  auto result = reloc::bind(plan, symbols, parseStrategy(strategy), model,
+                            wireRatio, k, nReuse);
   if (auto *err = std::get_if<reloc::BindError>(&result))
     throw BindException(err->message);
   return std::get<reloc::BoundPlan>(std::move(result));
@@ -279,6 +282,28 @@ PYBIND11_MODULE(_pyreloc, m) {
           [](const reloc::BoundPlan &b) { return strategyName(b.strategy); })
       .def_property_readonly("valid_elements", &validElements)
       .def_property_readonly("min_src_bytes", &minSrcBytes)
+      .def_property_readonly(
+          "decision",
+          [](const reloc::BoundPlan &b) -> py::object {
+            if (!b.decision)
+              return py::none();
+            const reloc::costmodel::MethodDecision &d = *b.decision;
+            py::dict out;
+            out["method"] = std::string(reloc::costmodel::methodName(d.method));
+            out["t_a_ms"] = d.tAMs;
+            out["t_b_ms"] = d.tBMs;
+            out["threshold_bytes"] = d.thresholdBytes;
+            out["pattern"] =
+                std::string(reloc::costmodel::patternName(d.pattern));
+            out["b_placement"] =
+                std::string(reloc::costmodel::placementName(d.bPlacement));
+            out["k"] = d.k;
+            out["n_reuse"] = d.nReuse;
+            return std::move(out);
+          },
+          "Cost-model decision populated when bind() was given a model and "
+          "the calibration had the needed pattern/r keys; None otherwise "
+          "(bind-time pricing is t8 + Overlapped -- Bind.cpp step 8).")
       .def("__repr__", [](const reloc::BoundPlan &b) {
         std::ostringstream os;
         os << "BoundPlan(extents=[";
@@ -288,11 +313,6 @@ PYBIND11_MODULE(_pyreloc, m) {
            << strategyName(b.strategy) << "')";
         return os.str();
       });
-
-  m.def("bind", &bindPlan, py::arg("plan"), py::arg("symbols"),
-        py::arg("strategy") = "auto",
-        "Bind a plan against {symbol: value}. Raises BindError on symbol "
-        "mismatch or violated correctness constraints.");
 
   namespace cmns = reloc::costmodel;
   py::class_<cmns::CostModel>(m, "Calibration",
@@ -310,6 +330,17 @@ PYBIND11_MODULE(_pyreloc, m) {
       py::arg("path"),
       "Load a costmodel calibration (.cal). Raises ValueError with the "
       "parser diagnostic on invalid input.");
+
+  m.def("bind", &bindPlan, py::arg("plan"), py::arg("symbols"),
+        py::arg("strategy") = "auto", py::kw_only(),
+        py::arg("model") =
+            static_cast<const reloc::costmodel::CostModel *>(nullptr),
+        py::arg("wire_ratio") = 1.0, py::arg("k") = 1,
+        py::arg("n_reuse") = -1,
+        "Bind a plan against {symbol: value}. Raises BindError on symbol "
+        "mismatch or violated correctness constraints. With `model`, "
+        "populates BoundPlan.decision (bind-time t8/Overlapped pricing); "
+        "decision stays None if the calibration lacks the needed keys.");
 
   m.def(
       "predict",

@@ -101,7 +101,10 @@ is written, stated here so the demo cannot quietly move them**:
      pinned miss cell; serial (via `predict`) vs `b_fair` winners
      likewise;
    - flip row asserted explicitly (Gen3 `b` ×4, Gen4 `a` ×4 at r=0.25);
-   - negative test: r=0.125 raises (missing blocked s4 key).
+   - negative test at r=0.125 (missing blocked s4 key): `predict`
+     raises ValueError; `bind` succeeds with `decision is None`
+     (Bind.cpp step 8 is opt-in advice, never a bind failure) —
+     amended 2026-08-12 when the as-built behavior was confirmed.
 4. **Result doc** (`docs/r6-crossbox-bind.md`): the 24-cell table with
    measured medians and threshold_bytes column (bind-time decide is a
    constant compare — V3's threshold precompute), flip-row narrative,
