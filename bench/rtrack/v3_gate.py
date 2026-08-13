@@ -262,6 +262,34 @@ def cm5_regen_check():
                   "from committed inputs)")
 
 
+def cm6_report_regen_check():
+    """CM6-REPORT-REGEN (issue #125): the committed CM6 evaluation report
+    must stay byte-reproducible from the committed measurement + CM6
+    registration. Loud SKIP on pre-CM6 checkouts."""
+    print("\n=== CM6-REPORT-REGEN ===")
+    committed = REPO_ROOT / "bench" / "results" / "cm6_eval_report.json"
+    if not committed.exists():
+        print("CM6-REPORT-REGEN: SKIP (no committed cm6_eval_report.json)")
+        return
+    with tempfile.TemporaryDirectory() as td:
+        out = Path(td) / "cm6.json"
+        proc = subprocess.run(
+            [sys.executable, "bench/rtrack/cm5_eval.py",
+             "--registration", "bench/results/cm6_registered_predictions.json",
+             "--out", str(out)],
+            cwd=REPO_ROOT, capture_output=True, text=True)
+        if proc.returncode != 0:
+            print(f"CM6-REPORT-REGEN: FAIL (regen errored)\n"
+                  f"{proc.stderr.strip()}")
+            return
+        if out.read_text() == committed.read_text():
+            print("CM6-REPORT-REGEN: PASS (matches committed "
+                  "bench/results/cm6_eval_report.json)")
+        else:
+            print("CM6-REPORT-REGEN: FAIL (report no longer reproduces "
+                  "from committed inputs)")
+
+
 # added post-run for integrity (commit history: bars untouched;
 # 5b9572e..this-commit diff shows no bar change): a dirty
 # bench/results/v3_prediction_report.json means the committed prediction
@@ -299,6 +327,7 @@ def main():
     cm4_frozen_check()
     cm6_regen_check()
     cm5_regen_check()
+    cm6_report_regen_check()
     report_regen_check(args.report)
     return 0
 
