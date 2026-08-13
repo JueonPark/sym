@@ -291,10 +291,17 @@ def build_report(registration_path=None):
              if cell_regret(c, "model") > REGRET_P90_BAR),
             key=lambda c: (c["pairing"], c["box"], c["family"], c["N"]))}
 
+    if registration_path == REGISTRATION:
+        issue = ("#113 (CM5): BP measurement (#116/#124) vs CM4-registered "
+                 "predictions (#112/#121); evaluation only")
+    else:
+        issue = ("#125 (CM6): BP measurement (#116/#124) vs CM6-registered "
+                 "predictions (#125); post-hoc refinement, not a "
+                 "pre-registration")
+
     return {
         "generated_by": "bench/rtrack/cm5_eval.py",
-        "issue": ("#113 (CM5): BP measurement (#116/#124) vs CM4-registered "
-                  "predictions (#112/#121); evaluation only"),
+        "issue": issue,
         "provenance": {str(p.relative_to(REPO_ROOT)): sha256(p)
                        for p in inputs},
         "merge_audit": audit,

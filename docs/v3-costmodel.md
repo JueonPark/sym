@@ -553,15 +553,25 @@ unchanged from v0/v1.
 | RSTAR ≤ 0.15 rule v1 (overlapped) | 8 rows | FAIL (1 one-sided, Δ 0.294) | FAIL (2 one-sided, Δ 0.0673) |
 
 MISCLASS and REGRET are byte-identical to v1 at every field (`ablation`
-and the misclass/regret halves of `gates` are unchanged between
-`cm5_eval_report.json` and `cm6_eval_report.json`); only `rstar_rows` and
-the `rstar` half of `gates` differ.
+and the misclass/regret halves of `gates` and `misses` are unchanged
+between `cm5_eval_report.json` and `cm6_eval_report.json`); at top
+level, `rstar_rows`, the `rstar` half of `gates`, the `rstar` half of
+`misses`, and `provenance` (it names the CM6 registration file, not
+CM4's) differ — plus `issue`, which is keyed off the registration used
+to produce the report and so reads differently by design (CM5 vs CM6
+labeling).
 
 ### What moved and why
 
 **Registration** (`cm6_registered_predictions.json` vs the frozen
 `cm4_registered_predictions.json`): 4 of the 24 registered `rstar` rows
-moved.
+moved. That headline figure is about `rstar_predicted` (crossing)
+specifically; file-level churn is wider — 18 of the 24 `rstar` rows
+(`t_b_r1_ms` / `speedup_predicted`) and all 48 of the 48 `cells`
+(`t_b_serial_ms` / `t_b_overlapped_ms` / `threshold_bytes_*`) change
+numerically from the Gen4 hbm re-baseline plus fill/drain activation,
+with zero winner or crossing-classification changes beyond the 4 called
+out above.
 
 - **Gen4 `blocked_transpose`** (the only family with a measured Gen4
   r-sweep): `rstar_predicted` shifts serial 0.32467 → 0.31878 (`|Δ|` 0.0709

@@ -431,7 +431,7 @@
     }
   },
   "generated_by": "bench/rtrack/cm5_eval.py",
-  "issue": "#113 (CM5): BP measurement (#116/#124) vs CM4-registered predictions (#112/#121); evaluation only",
+  "issue": "#125 (CM6): BP measurement (#116/#124) vs CM6-registered predictions (#125); post-hoc refinement, not a pre-registration",
   "merge_audit": [
     {
       "N": 2048,
