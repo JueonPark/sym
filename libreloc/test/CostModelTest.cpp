@@ -494,4 +494,63 @@ TEST(CostModelPathCosts, FillDrainTermFromChunksKey) {
   EXPECT_NEAR(seN->tBMs, 0.1 + 110.0, 1e-9);
 }
 
+TEST(CostModelPathCosts, RecvComposesIntoBKernelMultiplier) {
+  // CM6 (issue #125): with a recv.m.{kernel(r)} key present, B's kernel
+  // multiplier is m_eff = m_pattern + m_recv. Serial placement makes the
+  // HBM term additive and the delta exactly visible.
+  CostModel base = mustParse(kSynth);
+  CostModel withRecv =
+      mustParse(std::string(kSynth) + "recv.m.dequant_s8_f32 0.5\n");
+  const int64_t S = 1000000000;
+  auto pcBase = pathCosts(base, Pattern::Contiguous, S, 0.25, 8, 1, false,
+                          BPlacement::Serial);
+  auto pcRecv = pathCosts(withRecv, Pattern::Contiguous, S, 0.25, 8, 1, false,
+                          BPlacement::Serial);
+  ASSERT_TRUE(pcBase.has_value());
+  ASSERT_TRUE(pcRecv.has_value());
+  // m_eff = 1 + 0.5 at HBM 100 GB/s: the b term grows by 0.5e-8 ms/byte.
+  // NEAR, not DOUBLE_EQ: subtracting two ~1.1e-7 slopes amplifies ULP
+  // error far past DOUBLE_EQ's 4-ULP budget; 1e-18 is 10 orders below
+  // the quantity under test.
+  EXPECT_NEAR(pcRecv->bSlopeMsPerByte - pcBase->bSlopeMsPerByte, 0.5e-8, 1e-18);
+}
+
+TEST(CostModelPathCosts, RecvAbsentOrOffGridReducesToPattern) {
+  // r=1.0 ships f32 (no receive pass, recvKernelForR(1.0) == nullptr);
+  // r=0.25's kernel is dequant_s8_f32, which the calibration below never
+  // sets (only recv.m.convert_f16_f32, r=0.5's kernel, is present) -- an
+  // r on cpuBw's grid whose recv key is simply absent. (The brief's
+  // literal r=0.3 is off cpuBw's own {1.0,0.5,0.25,0.125} grid, so
+  // pathCosts returns nullopt there regardless of recv -- a pre-existing
+  // CM1 guard, not something CM6 can exercise via pathCosts.) Both cases
+  // must ignore recv keys entirely -- the CM1 formula, bit for bit.
+  CostModel base = mustParse(kSynth);
+  CostModel withRecv =
+      mustParse(std::string(kSynth) + "recv.m.convert_f16_f32 9.0\n");
+  const int64_t S = 1000000000;
+  for (double r : {1.0, 0.25}) {
+    auto a = pathCosts(withRecv, Pattern::Contiguous, S, r, 8, 1, false,
+                       BPlacement::Serial);
+    auto b = pathCosts(base, Pattern::Contiguous, S, r, 8, 1, false,
+                       BPlacement::Serial);
+    ASSERT_TRUE(a.has_value());
+    ASSERT_TRUE(b.has_value());
+    EXPECT_DOUBLE_EQ(a->bSlopeMsPerByte, b->bSlopeMsPerByte);
+  }
+}
+
+TEST(CostModelPathCosts, RecvComposesWithFillDrain) {
+  // m_eff and the chunks key interact only through the Overlapped slope:
+  // max(a, m_eff*h) + min(a, m_eff*h)/n.
+  CostModel cal =
+      mustParse(std::string(kSynth) + "recv.m.dequant_s8_f32 0.5\n"
+                                      "pipeline.chunks_per_buffer 16\n");
+  const int64_t S = 1000000000;
+  auto pc = pathCosts(cal, Pattern::Contiguous, S, 0.25, 8, 1, false,
+                      BPlacement::Overlapped);
+  ASSERT_TRUE(pc.has_value());
+  // a = 1e-7; m_eff*h = 1.5e-8; max + min/16 = 1e-7 + 1.5e-8/16.
+  EXPECT_DOUBLE_EQ(pc->bSlopeMsPerByte, 1e-7 + 1.5e-8 / 16.0);
+}
+
 } // namespace

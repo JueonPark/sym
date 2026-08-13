@@ -32,8 +32,9 @@ hbm.m.blocked 2.97  # bench/results/r4_hiding_ratio_epyc_2080ti.json -- copy_f32
 hbm.m.single_element 1.43  # bench/results/r4_hiding_ratio_epyc_2080ti.json -- copy_f32/transpose_smem_padded at N=16384 -- T1's exact-transpose SMEM path
 hbm.m.tiled 2.97  # bench/results/r4_hiding_ratio_epyc_2080ti.json -- no separate tiled GPU-receive kernel measured; reuses relocate_naive_f32's ratio
 hiding.ratio 41.7  # bench/results/r4_hiding_ratio_epyc_2080ti.json -- copy_f32(N=8192) / pcie.h2d_gbps
-recv.m.convert_f16_f32 1.05  # bench/results/v2_isa_gen3_rsweep_avx2_epyc7351-2080ti.csv -- copy_f32(N=16384)/recv BW; traffic=(1+0.5)*S, min gpu_recv_ms over chunks, N=16384 (issue #109)
-recv.m.dequant_s8_f32 1.07  # bench/results/v2_isa_gen3_rsweep_avx2_epyc7351-2080ti.csv -- copy_f32(N=16384)/recv BW; traffic=(1+0.25)*S, min gpu_recv_ms over chunks, N=16384 (issue #109)
+pipeline.chunks_per_buffer 16  # libreloc/include/reloc/ChunkSchedule.h -- kChunksPerBuffer 8 x 2 pipeline buffers; CM6 (#125)
+recv.m.convert_f16_f32 1.06  # bench/results/cm1_recv_kernel_bw_epyc_2080ti.json -- copy_f32/convert_f16_f32 at N=16384, same-run ceiling
+recv.m.dequant_s8_f32 1.28  # bench/results/cm1_recv_kernel_bw_epyc_2080ti.json -- copy_f32/dequant_s8_f32 at N=16384, same-run ceiling
 recv.m.unpack_dequant_s4 1.38  # bench/results/cm1_recv_kernel_bw_epyc_2080ti.json -- copy_f32/unpack_dequant_s4 at N=16384, same-run ceiling
 cpu_pipe.t8.contiguous.convert_f32_f16_gbps 14.48  # bench/results/v2_isa_gen3_rsweep_avx2_epyc7351-2080ti.csv -- srcBytes/cpu_stage_ms, best chunk (4 MiB), in-pipeline vs isolated roofline (issue #110 contention derate)
 multigpu.delivery_gbps.k2 21.02  # bench/results/m0_multigpu_h2d_pair01.json

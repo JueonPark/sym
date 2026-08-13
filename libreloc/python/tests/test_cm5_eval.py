@@ -247,3 +247,23 @@ def test_committed_report_regenerates_byte_identical():
     committed = REPO_ROOT / "bench" / "results" / "cm5_eval_report.json"
     assert committed.exists(), "cm5_eval_report.json not committed"
     assert cm5_eval.render(cm5_eval.build_report()) == committed.read_text()
+
+
+def test_build_report_registration_parameter_default_unchanged():
+    """The cm4 default must stay byte-identical (CM5's frozen record)."""
+    default = cm5_eval.render(cm5_eval.build_report())
+    explicit = cm5_eval.render(
+        cm5_eval.build_report(registration_path=cm5_eval.REGISTRATION))
+    assert default == explicit
+    committed = REPO_ROOT / "bench" / "results" / "cm5_eval_report.json"
+    assert default == committed.read_text()
+
+
+def test_committed_cm6_report_regenerates_byte_identical():
+    cm6_reg = REPO_ROOT / "bench" / "results" / "cm6_registered_predictions.json"
+    committed = REPO_ROOT / "bench" / "results" / "cm6_eval_report.json"
+    assert committed.exists(), "cm6_eval_report.json not committed"
+    report = cm5_eval.build_report(registration_path=cm6_reg)
+    assert cm5_eval.render(report) == committed.read_text()
+    # provenance names the CM6 registration, not cm4's
+    assert "bench/results/cm6_registered_predictions.json" in report["provenance"]

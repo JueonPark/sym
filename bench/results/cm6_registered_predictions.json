@@ -1,0 +1,1469 @@
+{
+  "generated_by": "bench/rtrack/cm6_register.py",
+  "issue": "#125 (CM6); post-hoc refinement over the BP dataset (#116/#124); supersedes #112's registration (frozen)",
+  "model": "reloc::costmodel as of CM1(#109)+CM2(#110)+CM3(#111)+CM6(#125)",
+  "calibrations": [
+    "calibration/7800x3d-4070tis.cal",
+    "calibration/epyc7351-2080ti.cal"
+  ],
+  "placement_map": {
+    "b_fair": "serial",
+    "b_pipelined": "overlapped"
+  },
+  "heldout_split": {
+    "train_n": [
+      2048,
+      8192
+    ],
+    "test_n": [
+      4096,
+      16384
+    ],
+    "heldout_bars": {
+      "misclass": 0.15,
+      "regret_p90": 0.2
+    },
+    "caveat": "the committed calibrations' overhead.{a,b}_ms intercepts were two-point-fit on N in {2048, 16384} endpoints, so test-N data touched calibration inputs; the split stratifies evaluation (per #87's reconciliation in #107), not calibration -- recorded, not fixed; bars unchanged"
+  },
+  "speedup_definition": "speedup_predicted[r] = t_b_r1_ms / t_a_ms[r] (the docs/v3-costmodel.md S4 quantity); speedup > 1.0 means method a is predicted to win at that r; rstar_predicted = the 1.0 crossing interpolated linearly in log2(r) (crossing())",
+  "cells": [
+    {
+      "box": "7800x3d-4070tis",
+      "family": "blocked_transpose",
+      "N": 2048,
+      "pattern": "blocked",
+      "r_native": 1.0,
+      "src_bytes": 16777216,
+      "split": "train",
+      "t_a_ms": 1.084570172603271,
+      "t_b_serial_ms": 0.7915723580506552,
+      "t_b_overlapped_ms": 0.721958077850988,
+      "threshold_bytes_serial": 4032296.4365353887,
+      "threshold_bytes_overlapped": 3415784.340291131,
+      "winner_vs_b_fair": "b",
+      "winner_vs_b_pipelined": "b"
+    },
+    {
+      "box": "7800x3d-4070tis",
+      "family": "blocked_transpose",
+      "N": 4096,
+      "pattern": "blocked",
+      "r_native": 1.0,
+      "src_bytes": 67108864,
+      "split": "test",
+      "t_a_ms": 4.338280690413084,
+      "t_b_serial_ms": 2.888189432202621,
+      "t_b_overlapped_ms": 2.6097323114039517,
+      "threshold_bytes_serial": 4032296.4365353887,
+      "threshold_bytes_overlapped": 3415784.340291131,
+      "winner_vs_b_fair": "b",
+      "winner_vs_b_pipelined": "b"
+    },
+    {
+      "box": "7800x3d-4070tis",
+      "family": "blocked_transpose",
+      "N": 8192,
+      "pattern": "blocked",
+      "r_native": 1.0,
+      "src_bytes": 268435456,
+      "split": "train",
+      "t_a_ms": 17.353122761652337,
+      "t_b_serial_ms": 11.274657728810483,
+      "t_b_overlapped_ms": 10.160829245615808,
+      "threshold_bytes_serial": 4032296.4365353887,
+      "threshold_bytes_overlapped": 3415784.340291131,
+      "winner_vs_b_fair": "b",
+      "winner_vs_b_pipelined": "b"
+    },
+    {
+      "box": "7800x3d-4070tis",
+      "family": "blocked_transpose",
+      "N": 16384,
+      "pattern": "blocked",
+      "r_native": 1.0,
+      "src_bytes": 1073741824,
+      "split": "test",
+      "t_a_ms": 69.41249104660935,
+      "t_b_serial_ms": 44.82053091524193,
+      "t_b_overlapped_ms": 40.36521698246323,
+      "threshold_bytes_serial": 4032296.4365353887,
+      "threshold_bytes_overlapped": 3415784.340291131,
+      "winner_vs_b_fair": "b",
+      "winner_vs_b_pipelined": "b"
+    },
+    {
+      "box": "7800x3d-4070tis",
+      "family": "convert_f16",
+      "N": 2048,
+      "pattern": "contiguous",
+      "r_native": 0.5,
+      "src_bytes": 16777216,
+      "split": "train",
+      "t_a_ms": 0.5239605246720799,
+      "t_b_serial_ms": 0.7734272825098898,
+      "t_b_overlapped_ms": 0.7208240106296901,
+      "threshold_bytes_serial": -1.0,
+      "threshold_bytes_overlapped": -1.0,
+      "winner_vs_b_fair": "a",
+      "winner_vs_b_pipelined": "a"
+    },
+    {
+      "box": "7800x3d-4070tis",
+      "family": "convert_f16",
+      "N": 4096,
+      "pattern": "contiguous",
+      "r_native": 0.5,
+      "src_bytes": 67108864,
+      "split": "test",
+      "t_a_ms": 2.0958420986883195,
+      "t_b_serial_ms": 2.815609130039559,
+      "t_b_overlapped_ms": 2.6051960425187604,
+      "threshold_bytes_serial": -1.0,
+      "threshold_bytes_overlapped": -1.0,
+      "winner_vs_b_fair": "a",
+      "winner_vs_b_pipelined": "a"
+    },
+    {
+      "box": "7800x3d-4070tis",
+      "family": "convert_f16",
+      "N": 8192,
+      "pattern": "contiguous",
+      "r_native": 0.5,
+      "src_bytes": 268435456,
+      "split": "train",
+      "t_a_ms": 8.383368394753278,
+      "t_b_serial_ms": 10.984336520158237,
+      "t_b_overlapped_ms": 10.142684170075043,
+      "threshold_bytes_serial": -1.0,
+      "threshold_bytes_overlapped": -1.0,
+      "winner_vs_b_fair": "a",
+      "winner_vs_b_pipelined": "a"
+    },
+    {
+      "box": "7800x3d-4070tis",
+      "family": "convert_f16",
+      "N": 16384,
+      "pattern": "contiguous",
+      "r_native": 0.5,
+      "src_bytes": 1073741824,
+      "split": "test",
+      "t_a_ms": 33.53347357901311,
+      "t_b_serial_ms": 43.65924608063295,
+      "t_b_overlapped_ms": 40.29263668030017,
+      "threshold_bytes_serial": -1.0,
+      "threshold_bytes_overlapped": -1.0,
+      "winner_vs_b_fair": "a",
+      "winner_vs_b_pipelined": "a"
+    },
+    {
+      "box": "7800x3d-4070tis",
+      "family": "nchw_nhwc_quant",
+      "N": 2048,
+      "pattern": "tiled",
+      "r_native": 0.25,
+      "src_bytes": 16777216,
+      "split": "train",
+      "t_a_ms": 1.9910513617467192,
+      "t_b_serial_ms": 0.8206044789158798,
+      "t_b_overlapped_ms": 0.7237725854050645,
+      "threshold_bytes_serial": 1231248.6729290998,
+      "threshold_bytes_overlapped": 1143582.495738367,
+      "winner_vs_b_fair": "b",
+      "winner_vs_b_pipelined": "b"
+    },
+    {
+      "box": "7800x3d-4070tis",
+      "family": "nchw_nhwc_quant",
+      "N": 4096,
+      "pattern": "tiled",
+      "r_native": 0.25,
+      "src_bytes": 67108864,
+      "split": "test",
+      "t_a_ms": 7.964205446986877,
+      "t_b_serial_ms": 3.0043179156635196,
+      "t_b_overlapped_ms": 2.616990341620258,
+      "threshold_bytes_serial": 1231248.6729290998,
+      "threshold_bytes_overlapped": 1143582.495738367,
+      "winner_vs_b_fair": "b",
+      "winner_vs_b_pipelined": "b"
+    },
+    {
+      "box": "7800x3d-4070tis",
+      "family": "nchw_nhwc_quant",
+      "N": 8192,
+      "pattern": "tiled",
+      "r_native": 0.25,
+      "src_bytes": 268435456,
+      "split": "train",
+      "t_a_ms": 31.856821787947506,
+      "t_b_serial_ms": 11.739171662654078,
+      "t_b_overlapped_ms": 10.189861366481033,
+      "threshold_bytes_serial": 1231248.6729290998,
+      "threshold_bytes_overlapped": 1143582.495738367,
+      "winner_vs_b_fair": "b",
+      "winner_vs_b_pipelined": "b"
+    },
+    {
+      "box": "7800x3d-4070tis",
+      "family": "nchw_nhwc_quant",
+      "N": 16384,
+      "pattern": "tiled",
+      "r_native": 0.25,
+      "src_bytes": 1073741824,
+      "split": "test",
+      "t_a_ms": 127.42728715179003,
+      "t_b_serial_ms": 46.67858665061631,
+      "t_b_overlapped_ms": 40.48134546592413,
+      "threshold_bytes_serial": 1231248.6729290998,
+      "threshold_bytes_overlapped": 1143582.495738367,
+      "winner_vs_b_fair": "b",
+      "winner_vs_b_pipelined": "b"
+    },
+    {
+      "box": "7800x3d-4070tis",
+      "family": "quant",
+      "N": 2048,
+      "pattern": "contiguous",
+      "r_native": 0.25,
+      "src_bytes": 16777216,
+      "split": "train",
+      "t_a_ms": 0.45827242506767335,
+      "t_b_serial_ms": 0.7742647475348482,
+      "t_b_overlapped_ms": 0.72087635219375,
+      "threshold_bytes_serial": -1.0,
+      "threshold_bytes_overlapped": -1.0,
+      "winner_vs_b_fair": "a",
+      "winner_vs_b_pipelined": "a"
+    },
+    {
+      "box": "7800x3d-4070tis",
+      "family": "quant",
+      "N": 4096,
+      "pattern": "contiguous",
+      "r_native": 0.25,
+      "src_bytes": 67108864,
+      "split": "test",
+      "t_a_ms": 1.8330897002706934,
+      "t_b_serial_ms": 2.818958990139393,
+      "t_b_overlapped_ms": 2.605405408775,
+      "threshold_bytes_serial": -1.0,
+      "threshold_bytes_overlapped": -1.0,
+      "winner_vs_b_fair": "a",
+      "winner_vs_b_pipelined": "a"
+    },
+    {
+      "box": "7800x3d-4070tis",
+      "family": "quant",
+      "N": 8192,
+      "pattern": "contiguous",
+      "r_native": 0.25,
+      "src_bytes": 268435456,
+      "split": "train",
+      "t_a_ms": 7.332358801082774,
+      "t_b_serial_ms": 10.997735960557572,
+      "t_b_overlapped_ms": 10.1435216351,
+      "threshold_bytes_serial": -1.0,
+      "threshold_bytes_overlapped": -1.0,
+      "winner_vs_b_fair": "a",
+      "winner_vs_b_pipelined": "a"
+    },
+    {
+      "box": "7800x3d-4070tis",
+      "family": "quant",
+      "N": 16384,
+      "pattern": "contiguous",
+      "r_native": 0.25,
+      "src_bytes": 1073741824,
+      "split": "test",
+      "t_a_ms": 29.329435204331094,
+      "t_b_serial_ms": 43.712843842230285,
+      "t_b_overlapped_ms": 40.2959865404,
+      "threshold_bytes_serial": -1.0,
+      "threshold_bytes_overlapped": -1.0,
+      "winner_vs_b_fair": "a",
+      "winner_vs_b_pipelined": "a"
+    },
+    {
+      "box": "7800x3d-4070tis",
+      "family": "transpose",
+      "N": 2048,
+      "pattern": "single_element",
+      "r_native": 1.0,
+      "src_bytes": 16777216,
+      "split": "train",
+      "t_a_ms": 3.6522307774360048,
+      "t_b_serial_ms": 0.7488616417777767,
+      "t_b_overlapped_ms": 0.719288658083933,
+      "threshold_bytes_serial": 519096.1399020976,
+      "threshold_bytes_overlapped": 514022.43287552125,
+      "winner_vs_b_fair": "b",
+      "winner_vs_b_pipelined": "b"
+    },
+    {
+      "box": "7800x3d-4070tis",
+      "family": "transpose",
+      "N": 4096,
+      "pattern": "single_element",
+      "r_native": 1.0,
+      "src_bytes": 67108864,
+      "split": "test",
+      "t_a_ms": 14.608923109744019,
+      "t_b_serial_ms": 2.7173465671111066,
+      "t_b_overlapped_ms": 2.599054632335732,
+      "threshold_bytes_serial": 519096.1399020976,
+      "threshold_bytes_overlapped": 514022.43287552125,
+      "winner_vs_b_fair": "b",
+      "winner_vs_b_pipelined": "b"
+    },
+    {
+      "box": "7800x3d-4070tis",
+      "family": "transpose",
+      "N": 8192,
+      "pattern": "single_element",
+      "r_native": 1.0,
+      "src_bytes": 268435456,
+      "split": "train",
+      "t_a_ms": 58.435692438976076,
+      "t_b_serial_ms": 10.591286268444428,
+      "t_b_overlapped_ms": 10.11811852934293,
+      "threshold_bytes_serial": 519096.1399020976,
+      "threshold_bytes_overlapped": 514022.43287552125,
+      "winner_vs_b_fair": "b",
+      "winner_vs_b_pipelined": "b"
+    },
+    {
+      "box": "7800x3d-4070tis",
+      "family": "transpose",
+      "N": 16384,
+      "pattern": "single_element",
+      "r_native": 1.0,
+      "src_bytes": 1073741824,
+      "split": "test",
+      "t_a_ms": 233.7427697559043,
+      "t_b_serial_ms": 42.08704507377771,
+      "t_b_overlapped_ms": 40.194374117371716,
+      "threshold_bytes_serial": 519096.1399020976,
+      "threshold_bytes_overlapped": 514022.43287552125,
+      "winner_vs_b_fair": "b",
+      "winner_vs_b_pipelined": "b"
+    },
+    {
+      "box": "7800x3d-4070tis",
+      "family": "transpose_quant",
+      "N": 2048,
+      "pattern": "single_element",
+      "r_native": 0.25,
+      "src_bytes": 16777216,
+      "split": "train",
+      "t_a_ms": 4.297398592227538,
+      "t_b_serial_ms": 0.7778937626430013,
+      "t_b_overlapped_ms": 0.7211031656380096,
+      "threshold_bytes_serial": 430553.6359572608,
+      "threshold_bytes_overlapped": 423889.3054837254,
+      "winner_vs_b_fair": "b",
+      "winner_vs_b_pipelined": "b"
+    },
+    {
+      "box": "7800x3d-4070tis",
+      "family": "transpose_quant",
+      "N": 4096,
+      "pattern": "single_element",
+      "r_native": 0.25,
+      "src_bytes": 67108864,
+      "split": "test",
+      "t_a_ms": 17.189594368910154,
+      "t_b_serial_ms": 2.833475050572005,
+      "t_b_overlapped_ms": 2.606312662552038,
+      "threshold_bytes_serial": 430553.6359572608,
+      "threshold_bytes_overlapped": 423889.3054837254,
+      "winner_vs_b_fair": "b",
+      "winner_vs_b_pipelined": "b"
+    },
+    {
+      "box": "7800x3d-4070tis",
+      "family": "transpose_quant",
+      "N": 8192,
+      "pattern": "single_element",
+      "r_native": 0.25,
+      "src_bytes": 268435456,
+      "split": "train",
+      "t_a_ms": 68.75837747564061,
+      "t_b_serial_ms": 11.05580020228802,
+      "t_b_overlapped_ms": 10.147150650208154,
+      "threshold_bytes_serial": 430553.6359572608,
+      "threshold_bytes_overlapped": 423889.3054837254,
+      "winner_vs_b_fair": "b",
+      "winner_vs_b_pipelined": "b"
+    },
+    {
+      "box": "7800x3d-4070tis",
+      "family": "transpose_quant",
+      "N": 16384,
+      "pattern": "single_element",
+      "r_native": 0.25,
+      "src_bytes": 1073741824,
+      "split": "test",
+      "t_a_ms": 275.03350990256246,
+      "t_b_serial_ms": 43.94510080915208,
+      "t_b_overlapped_ms": 40.31050260083261,
+      "threshold_bytes_serial": 430553.6359572608,
+      "threshold_bytes_overlapped": 423889.3054837254,
+      "winner_vs_b_fair": "b",
+      "winner_vs_b_pipelined": "b"
+    },
+    {
+      "box": "epyc7351-2080ti",
+      "family": "blocked_transpose",
+      "N": 2048,
+      "pattern": "blocked",
+      "r_native": 1.0,
+      "src_bytes": 16777216,
+      "split": "train",
+      "t_a_ms": 1.5340016427535346,
+      "t_b_serial_ms": 1.399439349904136,
+      "t_b_overlapped_ms": 1.3135679146100185,
+      "threshold_bytes_serial": -1.0,
+      "threshold_bytes_overlapped": -1.0,
+      "winner_vs_b_fair": "b",
+      "winner_vs_b_pipelined": "b"
+    },
+    {
+      "box": "epyc7351-2080ti",
+      "family": "blocked_transpose",
+      "N": 4096,
+      "pattern": "blocked",
+      "r_native": 1.0,
+      "src_bytes": 67108864,
+      "split": "test",
+      "t_a_ms": 5.932006571014138,
+      "t_b_serial_ms": 5.525157399616544,
+      "t_b_overlapped_ms": 5.181671658440074,
+      "threshold_bytes_serial": -1.0,
+      "threshold_bytes_overlapped": -1.0,
+      "winner_vs_b_fair": "b",
+      "winner_vs_b_pipelined": "b"
+    },
+    {
+      "box": "epyc7351-2080ti",
+      "family": "blocked_transpose",
+      "N": 8192,
+      "pattern": "blocked",
+      "r_native": 1.0,
+      "src_bytes": 268435456,
+      "split": "train",
+      "t_a_ms": 23.524026284056553,
+      "t_b_serial_ms": 22.028029598466176,
+      "t_b_overlapped_ms": 20.654086633760297,
+      "threshold_bytes_serial": -1.0,
+      "threshold_bytes_overlapped": -1.0,
+      "winner_vs_b_fair": "b",
+      "winner_vs_b_pipelined": "b"
+    },
+    {
+      "box": "epyc7351-2080ti",
+      "family": "blocked_transpose",
+      "N": 16384,
+      "pattern": "blocked",
+      "r_native": 1.0,
+      "src_bytes": 1073741824,
+      "split": "test",
+      "t_a_ms": 93.8921051362262,
+      "t_b_serial_ms": 88.0395183938647,
+      "t_b_overlapped_ms": 82.54374653504118,
+      "threshold_bytes_serial": -1.0,
+      "threshold_bytes_overlapped": -1.0,
+      "winner_vs_b_fair": "b",
+      "winner_vs_b_pipelined": "b"
+    },
+    {
+      "box": "epyc7351-2080ti",
+      "family": "convert_f16",
+      "N": 2048,
+      "pattern": "contiguous",
+      "r_native": 0.5,
+      "src_bytes": 16777216,
+      "split": "train",
+      "t_a_ms": 1.2266475138121546,
+      "t_b_serial_ms": 1.371374521668842,
+      "t_b_overlapped_ms": 1.3118138628453127,
+      "threshold_bytes_serial": 3897807.9011289724,
+      "threshold_bytes_overlapped": 5697936.448608524,
+      "winner_vs_b_fair": "a",
+      "winner_vs_b_pipelined": "a"
+    },
+    {
+      "box": "epyc7351-2080ti",
+      "family": "convert_f16",
+      "N": 4096,
+      "pattern": "contiguous",
+      "r_native": 0.5,
+      "src_bytes": 67108864,
+      "split": "test",
+      "t_a_ms": 4.702590055248618,
+      "t_b_serial_ms": 5.4128980866753675,
+      "t_b_overlapped_ms": 5.17465545138125,
+      "threshold_bytes_serial": 3897807.9011289724,
+      "threshold_bytes_overlapped": 5697936.448608524,
+      "winner_vs_b_fair": "a",
+      "winner_vs_b_pipelined": "a"
+    },
+    {
+      "box": "epyc7351-2080ti",
+      "family": "convert_f16",
+      "N": 8192,
+      "pattern": "contiguous",
+      "r_native": 0.5,
+      "src_bytes": 268435456,
+      "split": "train",
+      "t_a_ms": 18.606360220994475,
+      "t_b_serial_ms": 21.578992346701472,
+      "t_b_overlapped_ms": 20.626021805525003,
+      "threshold_bytes_serial": 3897807.9011289724,
+      "threshold_bytes_overlapped": 5697936.448608524,
+      "winner_vs_b_fair": "a",
+      "winner_vs_b_pipelined": "a"
+    },
+    {
+      "box": "epyc7351-2080ti",
+      "family": "convert_f16",
+      "N": 16384,
+      "pattern": "contiguous",
+      "r_native": 0.5,
+      "src_bytes": 1073741824,
+      "split": "test",
+      "t_a_ms": 74.22144088397789,
+      "t_b_serial_ms": 86.24336938680588,
+      "t_b_overlapped_ms": 82.4314872221,
+      "threshold_bytes_serial": 3897807.9011289724,
+      "threshold_bytes_overlapped": 5697936.448608524,
+      "winner_vs_b_fair": "a",
+      "winner_vs_b_pipelined": "a"
+    },
+    {
+      "box": "epyc7351-2080ti",
+      "family": "nchw_nhwc_quant",
+      "N": 2048,
+      "pattern": "tiled",
+      "r_native": 0.25,
+      "src_bytes": 16777216,
+      "split": "train",
+      "t_a_ms": 7.914530444258407,
+      "t_b_serial_ms": 1.4389151522570773,
+      "t_b_overlapped_ms": 1.3160351522570772,
+      "threshold_bytes_serial": -1.0,
+      "threshold_bytes_overlapped": -1.0,
+      "winner_vs_b_fair": "b",
+      "winner_vs_b_pipelined": "b"
+    },
+    {
+      "box": "epyc7351-2080ti",
+      "family": "nchw_nhwc_quant",
+      "N": 4096,
+      "pattern": "tiled",
+      "r_native": 0.25,
+      "src_bytes": 67108864,
+      "split": "test",
+      "t_a_ms": 31.45412177703363,
+      "t_b_serial_ms": 5.68306060902831,
+      "t_b_overlapped_ms": 5.1915406090283085,
+      "threshold_bytes_serial": -1.0,
+      "threshold_bytes_overlapped": -1.0,
+      "winner_vs_b_fair": "b",
+      "winner_vs_b_pipelined": "b"
+    },
+    {
+      "box": "epyc7351-2080ti",
+      "family": "nchw_nhwc_quant",
+      "N": 8192,
+      "pattern": "tiled",
+      "r_native": 0.25,
+      "src_bytes": 268435456,
+      "split": "train",
+      "t_a_ms": 125.61248710813452,
+      "t_b_serial_ms": 22.659642436113238,
+      "t_b_overlapped_ms": 20.693562436113236,
+      "threshold_bytes_serial": -1.0,
+      "threshold_bytes_overlapped": -1.0,
+      "winner_vs_b_fair": "b",
+      "winner_vs_b_pipelined": "b"
+    },
+    {
+      "box": "epyc7351-2080ti",
+      "family": "nchw_nhwc_quant",
+      "N": 16384,
+      "pattern": "tiled",
+      "r_native": 0.25,
+      "src_bytes": 1073741824,
+      "split": "test",
+      "t_a_ms": 502.24594843253806,
+      "t_b_serial_ms": 90.56596974445294,
+      "t_b_overlapped_ms": 82.70164974445294,
+      "threshold_bytes_serial": -1.0,
+      "threshold_bytes_overlapped": -1.0,
+      "winner_vs_b_fair": "b",
+      "winner_vs_b_pipelined": "b"
+    },
+    {
+      "box": "epyc7351-2080ti",
+      "family": "quant",
+      "N": 2048,
+      "pattern": "contiguous",
+      "r_native": 0.25,
+      "src_bytes": 16777216,
+      "split": "train",
+      "t_a_ms": 0.7970226086654237,
+      "t_b_serial_ms": 1.3781594251982536,
+      "t_b_overlapped_ms": 1.3122379193159008,
+      "threshold_bytes_serial": 1175866.169762454,
+      "threshold_bytes_overlapped": 1314529.399820783,
+      "winner_vs_b_fair": "a",
+      "winner_vs_b_pipelined": "a"
+    },
+    {
+      "box": "epyc7351-2080ti",
+      "family": "quant",
+      "N": 4096,
+      "pattern": "contiguous",
+      "r_native": 0.25,
+      "src_bytes": 67108864,
+      "split": "test",
+      "t_a_ms": 2.984090434661695,
+      "t_b_serial_ms": 5.440037700793015,
+      "t_b_overlapped_ms": 5.176351677263604,
+      "threshold_bytes_serial": 1175866.169762454,
+      "threshold_bytes_overlapped": 1314529.399820783,
+      "winner_vs_b_fair": "a",
+      "winner_vs_b_pipelined": "a"
+    },
+    {
+      "box": "epyc7351-2080ti",
+      "family": "quant",
+      "N": 8192,
+      "pattern": "contiguous",
+      "r_native": 0.25,
+      "src_bytes": 268435456,
+      "split": "train",
+      "t_a_ms": 11.73236173864678,
+      "t_b_serial_ms": 21.68755080317206,
+      "t_b_overlapped_ms": 20.632806709054414,
+      "threshold_bytes_serial": 1175866.169762454,
+      "threshold_bytes_overlapped": 1314529.399820783,
+      "winner_vs_b_fair": "a",
+      "winner_vs_b_pipelined": "a"
+    },
+    {
+      "box": "epyc7351-2080ti",
+      "family": "quant",
+      "N": 16384,
+      "pattern": "contiguous",
+      "r_native": 0.25,
+      "src_bytes": 1073741824,
+      "split": "test",
+      "t_a_ms": 46.72544695458712,
+      "t_b_serial_ms": 86.67760321268823,
+      "t_b_overlapped_ms": 82.45862683621765,
+      "threshold_bytes_serial": 1175866.169762454,
+      "threshold_bytes_overlapped": 1314529.399820783,
+      "winner_vs_b_fair": "a",
+      "winner_vs_b_pipelined": "a"
+    },
+    {
+      "box": "epyc7351-2080ti",
+      "family": "transpose",
+      "N": 2048,
+      "pattern": "single_element",
+      "r_native": 1.0,
+      "src_bytes": 16777216,
+      "split": "train",
+      "t_a_ms": 31.8097255379772,
+      "t_b_serial_ms": 1.3519450251982537,
+      "t_b_overlapped_ms": 1.3105995193159008,
+      "threshold_bytes_serial": -1.0,
+      "threshold_bytes_overlapped": -1.0,
+      "winner_vs_b_fair": "b",
+      "winner_vs_b_pipelined": "b"
+    },
+    {
+      "box": "epyc7351-2080ti",
+      "family": "transpose",
+      "N": 4096,
+      "pattern": "single_element",
+      "r_native": 1.0,
+      "src_bytes": 67108864,
+      "split": "test",
+      "t_a_ms": 127.0349021519088,
+      "t_b_serial_ms": 5.335180100793014,
+      "t_b_overlapped_ms": 5.169798077263604,
+      "threshold_bytes_serial": -1.0,
+      "threshold_bytes_overlapped": -1.0,
+      "winner_vs_b_fair": "b",
+      "winner_vs_b_pipelined": "b"
+    },
+    {
+      "box": "epyc7351-2080ti",
+      "family": "transpose",
+      "N": 8192,
+      "pattern": "single_element",
+      "r_native": 1.0,
+      "src_bytes": 268435456,
+      "split": "train",
+      "t_a_ms": 507.9356086076352,
+      "t_b_serial_ms": 21.26812040317206,
+      "t_b_overlapped_ms": 20.606592309054413,
+      "threshold_bytes_serial": -1.0,
+      "threshold_bytes_overlapped": -1.0,
+      "winner_vs_b_fair": "b",
+      "winner_vs_b_pipelined": "b"
+    },
+    {
+      "box": "epyc7351-2080ti",
+      "family": "transpose",
+      "N": 16384,
+      "pattern": "single_element",
+      "r_native": 1.0,
+      "src_bytes": 1073741824,
+      "split": "test",
+      "t_a_ms": 2031.5384344305407,
+      "t_b_serial_ms": 84.99988161268823,
+      "t_b_overlapped_ms": 82.35376923621764,
+      "threshold_bytes_serial": -1.0,
+      "threshold_bytes_overlapped": -1.0,
+      "winner_vs_b_fair": "b",
+      "winner_vs_b_pipelined": "b"
+    },
+    {
+      "box": "epyc7351-2080ti",
+      "family": "transpose_quant",
+      "N": 2048,
+      "pattern": "single_element",
+      "r_native": 0.25,
+      "src_bytes": 16777216,
+      "split": "train",
+      "t_a_ms": 34.56914337418771,
+      "t_b_serial_ms": 1.3914208275511948,
+      "t_b_overlapped_ms": 1.3130667569629597,
+      "threshold_bytes_serial": -1.0,
+      "threshold_bytes_overlapped": -1.0,
+      "winner_vs_b_fair": "b",
+      "winner_vs_b_pipelined": "b"
+    },
+    {
+      "box": "epyc7351-2080ti",
+      "family": "transpose_quant",
+      "N": 4096,
+      "pattern": "single_element",
+      "r_native": 0.25,
+      "src_bytes": 67108864,
+      "split": "test",
+      "t_a_ms": 138.07257349675086,
+      "t_b_serial_ms": 5.49308331020478,
+      "t_b_overlapped_ms": 5.179667027851838,
+      "threshold_bytes_serial": -1.0,
+      "threshold_bytes_overlapped": -1.0,
+      "winner_vs_b_fair": "b",
+      "winner_vs_b_pipelined": "b"
+    },
+    {
+      "box": "epyc7351-2080ti",
+      "family": "transpose_quant",
+      "N": 8192,
+      "pattern": "single_element",
+      "r_native": 0.25,
+      "src_bytes": 268435456,
+      "split": "train",
+      "t_a_ms": 552.0862939870034,
+      "t_b_serial_ms": 21.899733240819117,
+      "t_b_overlapped_ms": 20.646068111407356,
+      "threshold_bytes_serial": -1.0,
+      "threshold_bytes_overlapped": -1.0,
+      "winner_vs_b_fair": "b",
+      "winner_vs_b_pipelined": "b"
+    },
+    {
+      "box": "epyc7351-2080ti",
+      "family": "transpose_quant",
+      "N": 16384,
+      "pattern": "single_element",
+      "r_native": 0.25,
+      "src_bytes": 1073741824,
+      "split": "test",
+      "t_a_ms": 2208.141175948014,
+      "t_b_serial_ms": 87.52633296327646,
+      "t_b_overlapped_ms": 82.51167244562942,
+      "threshold_bytes_serial": -1.0,
+      "threshold_bytes_overlapped": -1.0,
+      "winner_vs_b_fair": "b",
+      "winner_vs_b_pipelined": "b"
+    }
+  ],
+  "rstar": [
+    {
+      "box": "7800x3d-4070tis",
+      "family": "blocked_transpose",
+      "placement": "serial",
+      "n": 16384,
+      "speedup_predicted": {
+        "1.0": 0.6457127562983683,
+        "0.5": 0.40602905509570714,
+        "0.25": 1.32069108977954,
+        "0.125": 1.1686412238932165
+      },
+      "t_a_ms": {
+        "1.0": 69.41249104660935,
+        "0.5": 110.38749654178581,
+        "0.25": 33.9371797554292,
+        "0.125": 38.35268686306189
+      },
+      "t_b_r1_ms": 44.82053091524193,
+      "grid_used": [
+        0.125,
+        0.25,
+        0.5,
+        1.0
+      ],
+      "rstar_predicted": 0.31877525904534526,
+      "pattern_degenerate_with": []
+    },
+    {
+      "box": "7800x3d-4070tis",
+      "family": "blocked_transpose",
+      "placement": "overlapped",
+      "n": 16384,
+      "speedup_predicted": {
+        "1.0": 0.5815267018058559,
+        "0.5": 0.36566837954499204,
+        "0.25": 1.1894098824168113,
+        "0.125": 1.0524742927812873
+      },
+      "t_a_ms": {
+        "1.0": 69.41249104660935,
+        "0.5": 110.38749654178581,
+        "0.25": 33.9371797554292,
+        "0.125": 38.35268686306189
+      },
+      "t_b_r1_ms": 40.36521698246323,
+      "grid_used": [
+        0.125,
+        0.25,
+        0.5,
+        1.0
+      ],
+      "rstar_predicted": 0.2931962377355889,
+      "pattern_degenerate_with": []
+    },
+    {
+      "box": "7800x3d-4070tis",
+      "family": "convert_f16",
+      "placement": "serial",
+      "n": 16384,
+      "speedup_predicted": {
+        "1.0": 1.0470111002681308,
+        "0.5": 1.2481494948095888,
+        "0.25": 1.4270574191171328,
+        "0.125": 1.2403277421522483
+      },
+      "t_a_ms": {
+        "1.0": 39.975496053611316,
+        "0.5": 33.53347357901311,
+        "0.25": 29.329435204331094,
+        "0.125": 33.74494231196378
+      },
+      "t_b_r1_ms": 41.85478810685591,
+      "grid_used": [
+        0.125,
+        0.25,
+        0.5,
+        1.0
+      ],
+      "rstar_predicted": null,
+      "pattern_degenerate_with": [
+        "quant"
+      ]
+    },
+    {
+      "box": "7800x3d-4070tis",
+      "family": "convert_f16",
+      "placement": "overlapped",
+      "n": 16384,
+      "speedup_predicted": {
+        "1.0": 1.005112181798913,
+        "0.5": 1.1982014914818018,
+        "0.25": 1.3699499419956687,
+        "0.125": 1.1906927469451893
+      },
+      "t_a_ms": {
+        "1.0": 39.975496053611316,
+        "0.5": 33.53347357901311,
+        "0.25": 29.329435204331094,
+        "0.125": 33.74494231196378
+      },
+      "t_b_r1_ms": 40.1798580569391,
+      "grid_used": [
+        0.125,
+        0.25,
+        0.5,
+        1.0
+      ],
+      "rstar_predicted": null,
+      "pattern_degenerate_with": [
+        "quant"
+      ]
+    },
+    {
+      "box": "7800x3d-4070tis",
+      "family": "nchw_nhwc_quant",
+      "placement": "serial",
+      "n": 16384,
+      "speedup_predicted": {
+        "1.0": 0.34799321729297594,
+        "0.5": 0.2640040328462662,
+        "0.25": 0.35173416869380725,
+        "0.125": 0.33995434613627845
+      },
+      "t_a_ms": {
+        "1.0": 128.79713939225277,
+        "0.5": 169.77214488742922,
+        "0.25": 127.42728715179003,
+        "0.125": 131.8427942594227
+      },
+      "t_b_r1_ms": 44.82053091524193,
+      "grid_used": [
+        0.125,
+        0.25,
+        0.5,
+        1.0
+      ],
+      "rstar_predicted": null,
+      "pattern_degenerate_with": []
+    },
+    {
+      "box": "7800x3d-4070tis",
+      "family": "nchw_nhwc_quant",
+      "placement": "overlapped",
+      "n": 16384,
+      "speedup_predicted": {
+        "1.0": 0.31340150233873304,
+        "0.5": 0.23776112983215347,
+        "0.25": 0.31677059038681893,
+        "0.125": 0.30616172244527773
+      },
+      "t_a_ms": {
+        "1.0": 128.79713939225277,
+        "0.5": 169.77214488742922,
+        "0.25": 127.42728715179003,
+        "0.125": 131.8427942594227
+      },
+      "t_b_r1_ms": 40.36521698246323,
+      "grid_used": [
+        0.125,
+        0.25,
+        0.5,
+        1.0
+      ],
+      "rstar_predicted": null,
+      "pattern_degenerate_with": []
+    },
+    {
+      "box": "7800x3d-4070tis",
+      "family": "quant",
+      "placement": "serial",
+      "n": 16384,
+      "speedup_predicted": {
+        "1.0": 1.0470111002681308,
+        "0.5": 1.2481494948095888,
+        "0.25": 1.4270574191171328,
+        "0.125": 1.2403277421522483
+      },
+      "t_a_ms": {
+        "1.0": 39.975496053611316,
+        "0.5": 33.53347357901311,
+        "0.25": 29.329435204331094,
+        "0.125": 33.74494231196378
+      },
+      "t_b_r1_ms": 41.85478810685591,
+      "grid_used": [
+        0.125,
+        0.25,
+        0.5,
+        1.0
+      ],
+      "rstar_predicted": null,
+      "pattern_degenerate_with": [
+        "convert_f16"
+      ]
+    },
+    {
+      "box": "7800x3d-4070tis",
+      "family": "quant",
+      "placement": "overlapped",
+      "n": 16384,
+      "speedup_predicted": {
+        "1.0": 1.005112181798913,
+        "0.5": 1.1982014914818018,
+        "0.25": 1.3699499419956687,
+        "0.125": 1.1906927469451893
+      },
+      "t_a_ms": {
+        "1.0": 39.975496053611316,
+        "0.5": 33.53347357901311,
+        "0.25": 29.329435204331094,
+        "0.125": 33.74494231196378
+      },
+      "t_b_r1_ms": 40.1798580569391,
+      "grid_used": [
+        0.125,
+        0.25,
+        0.5,
+        1.0
+      ],
+      "rstar_predicted": null,
+      "pattern_degenerate_with": [
+        "convert_f16"
+      ]
+    },
+    {
+      "box": "7800x3d-4070tis",
+      "family": "transpose",
+      "placement": "serial",
+      "n": 16384,
+      "speedup_predicted": {
+        "1.0": 0.1800570991681534,
+        "0.5": 0.15320102616334846,
+        "0.25": 0.15302515351197787,
+        "0.125": 0.15060723964630102
+      },
+      "t_a_ms": {
+        "1.0": 233.7427697559043,
+        "0.5": 274.71777525108075,
+        "0.25": 275.03350990256246,
+        "0.125": 279.4490170101951
+      },
+      "t_b_r1_ms": 42.08704507377771,
+      "grid_used": [
+        0.125,
+        0.25,
+        0.5,
+        1.0
+      ],
+      "rstar_predicted": null,
+      "pattern_degenerate_with": [
+        "transpose_quant"
+      ]
+    },
+    {
+      "box": "7800x3d-4070tis",
+      "family": "transpose",
+      "placement": "overlapped",
+      "n": 16384,
+      "speedup_predicted": {
+        "1.0": 0.17195986065941796,
+        "0.5": 0.14631151581158414,
+        "0.25": 0.1461435522224604,
+        "0.125": 0.1438343728935189
+      },
+      "t_a_ms": {
+        "1.0": 233.7427697559043,
+        "0.5": 274.71777525108075,
+        "0.25": 275.03350990256246,
+        "0.125": 279.4490170101951
+      },
+      "t_b_r1_ms": 40.194374117371716,
+      "grid_used": [
+        0.125,
+        0.25,
+        0.5,
+        1.0
+      ],
+      "rstar_predicted": null,
+      "pattern_degenerate_with": [
+        "transpose_quant"
+      ]
+    },
+    {
+      "box": "7800x3d-4070tis",
+      "family": "transpose_quant",
+      "placement": "serial",
+      "n": 16384,
+      "speedup_predicted": {
+        "1.0": 0.1800570991681534,
+        "0.5": 0.15320102616334846,
+        "0.25": 0.15302515351197787,
+        "0.125": 0.15060723964630102
+      },
+      "t_a_ms": {
+        "1.0": 233.7427697559043,
+        "0.5": 274.71777525108075,
+        "0.25": 275.03350990256246,
+        "0.125": 279.4490170101951
+      },
+      "t_b_r1_ms": 42.08704507377771,
+      "grid_used": [
+        0.125,
+        0.25,
+        0.5,
+        1.0
+      ],
+      "rstar_predicted": null,
+      "pattern_degenerate_with": [
+        "transpose"
+      ]
+    },
+    {
+      "box": "7800x3d-4070tis",
+      "family": "transpose_quant",
+      "placement": "overlapped",
+      "n": 16384,
+      "speedup_predicted": {
+        "1.0": 0.17195986065941796,
+        "0.5": 0.14631151581158414,
+        "0.25": 0.1461435522224604,
+        "0.125": 0.1438343728935189
+      },
+      "t_a_ms": {
+        "1.0": 233.7427697559043,
+        "0.5": 274.71777525108075,
+        "0.25": 275.03350990256246,
+        "0.125": 279.4490170101951
+      },
+      "t_b_r1_ms": 40.194374117371716,
+      "grid_used": [
+        0.125,
+        0.25,
+        0.5,
+        1.0
+      ],
+      "rstar_predicted": null,
+      "pattern_degenerate_with": [
+        "transpose"
+      ]
+    },
+    {
+      "box": "epyc7351-2080ti",
+      "family": "blocked_transpose",
+      "placement": "serial",
+      "n": 16384,
+      "speedup_predicted": {
+        "1.0": 0.9376668918662532,
+        "0.5": 0.5660477120543961,
+        "0.25": 0.2873076046624545,
+        "0.125": null
+      },
+      "t_a_ms": {
+        "1.0": 93.8921051362262,
+        "0.5": 155.53374127127339,
+        "0.25": 306.4294747690323,
+        "0.125": null
+      },
+      "t_b_r1_ms": 88.0395183938647,
+      "grid_used": [
+        0.25,
+        0.5,
+        1.0
+      ],
+      "rstar_predicted": null,
+      "pattern_degenerate_with": []
+    },
+    {
+      "box": "epyc7351-2080ti",
+      "family": "blocked_transpose",
+      "placement": "overlapped",
+      "n": 16384,
+      "speedup_predicted": {
+        "1.0": 0.8791340487603306,
+        "0.5": 0.5307127949238547,
+        "0.25": 0.2693727377147958,
+        "0.125": null
+      },
+      "t_a_ms": {
+        "1.0": 93.8921051362262,
+        "0.5": 155.53374127127339,
+        "0.25": 306.4294747690323,
+        "0.125": null
+      },
+      "t_b_r1_ms": 82.54374653504118,
+      "grid_used": [
+        0.25,
+        0.5,
+        1.0
+      ],
+      "rstar_predicted": null,
+      "pattern_degenerate_with": []
+    },
+    {
+      "box": "epyc7351-2080ti",
+      "family": "convert_f16",
+      "placement": "serial",
+      "n": 16384,
+      "speedup_predicted": {
+        "1.0": 1.023473155531973,
+        "0.5": 1.133784939498064,
+        "0.25": 1.8009705063685586,
+        "0.125": null
+      },
+      "t_a_ms": {
+        "1.0": 82.22116174445294,
+        "0.5": 74.22144088397789,
+        "0.25": 46.72544695458712,
+        "0.125": null
+      },
+      "t_b_r1_ms": 84.1511518621,
+      "grid_used": [
+        0.25,
+        0.5,
+        1.0
+      ],
+      "rstar_predicted": null,
+      "pattern_degenerate_with": [
+        "quant"
+      ]
+    },
+    {
+      "box": "epyc7351-2080ti",
+      "family": "convert_f16",
+      "placement": "overlapped",
+      "n": 16384,
+      "speedup_predicted": {
+        "1.0": 1.0009676569956554,
+        "0.5": 1.1088537577094122,
+        "0.25": 1.7613683547381513,
+        "0.125": null
+      },
+      "t_a_ms": {
+        "1.0": 82.22116174445294,
+        "0.5": 74.22144088397789,
+        "0.25": 46.72544695458712,
+        "0.125": null
+      },
+      "t_b_r1_ms": 82.30072362680588,
+      "grid_used": [
+        0.25,
+        0.5,
+        1.0
+      ],
+      "rstar_predicted": null,
+      "pattern_degenerate_with": [
+        "quant"
+      ]
+    },
+    {
+      "box": "epyc7351-2080ti",
+      "family": "nchw_nhwc_quant",
+      "placement": "serial",
+      "n": 16384,
+      "speedup_predicted": {
+        "1.0": 0.2232978141966326,
+        "0.5": 0.19310674973690695,
+        "0.25": 0.17529164479798728,
+        "0.125": null
+      },
+      "t_a_ms": {
+        "1.0": 394.26950375939845,
+        "0.5": 455.9111398944457,
+        "0.25": 502.24594843253806,
+        "0.125": null
+      },
+      "t_b_r1_ms": 88.0395183938647,
+      "grid_used": [
+        0.25,
+        0.5,
+        1.0
+      ],
+      "rstar_predicted": null,
+      "pattern_degenerate_with": []
+    },
+    {
+      "box": "epyc7351-2080ti",
+      "family": "nchw_nhwc_quant",
+      "placement": "overlapped",
+      "n": 16384,
+      "speedup_predicted": {
+        "1.0": 0.20935868929242168,
+        "0.5": 0.18105226942722222,
+        "0.25": 0.16434925317496812,
+        "0.125": null
+      },
+      "t_a_ms": {
+        "1.0": 394.26950375939845,
+        "0.5": 455.9111398944457,
+        "0.25": 502.24594843253806,
+        "0.125": null
+      },
+      "t_b_r1_ms": 82.54374653504118,
+      "grid_used": [
+        0.25,
+        0.5,
+        1.0
+      ],
+      "rstar_predicted": null,
+      "pattern_degenerate_with": []
+    },
+    {
+      "box": "epyc7351-2080ti",
+      "family": "quant",
+      "placement": "serial",
+      "n": 16384,
+      "speedup_predicted": {
+        "1.0": 1.023473155531973,
+        "0.5": 1.133784939498064,
+        "0.25": 1.8009705063685586,
+        "0.125": null
+      },
+      "t_a_ms": {
+        "1.0": 82.22116174445294,
+        "0.5": 74.22144088397789,
+        "0.25": 46.72544695458712,
+        "0.125": null
+      },
+      "t_b_r1_ms": 84.1511518621,
+      "grid_used": [
+        0.25,
+        0.5,
+        1.0
+      ],
+      "rstar_predicted": null,
+      "pattern_degenerate_with": [
+        "convert_f16"
+      ]
+    },
+    {
+      "box": "epyc7351-2080ti",
+      "family": "quant",
+      "placement": "overlapped",
+      "n": 16384,
+      "speedup_predicted": {
+        "1.0": 1.0009676569956554,
+        "0.5": 1.1088537577094122,
+        "0.25": 1.7613683547381513,
+        "0.125": null
+      },
+      "t_a_ms": {
+        "1.0": 82.22116174445294,
+        "0.5": 74.22144088397789,
+        "0.25": 46.72544695458712,
+        "0.125": null
+      },
+      "t_b_r1_ms": 82.30072362680588,
+      "grid_used": [
+        0.25,
+        0.5,
+        1.0
+      ],
+      "rstar_predicted": null,
+      "pattern_degenerate_with": [
+        "convert_f16"
+      ]
+    },
+    {
+      "box": "epyc7351-2080ti",
+      "family": "transpose",
+      "placement": "serial",
+      "n": 16384,
+      "speedup_predicted": {
+        "1.0": 0.04184015432448094,
+        "0.5": 0.04060801209029322,
+        "0.25": 0.03849386195889197,
+        "0.125": null
+      },
+      "t_a_ms": {
+        "1.0": 2031.5384344305407,
+        "0.5": 2093.1800705655883,
+        "0.25": 2208.141175948014,
+        "0.125": null
+      },
+      "t_b_r1_ms": 84.99988161268823,
+      "grid_used": [
+        0.25,
+        0.5,
+        1.0
+      ],
+      "rstar_predicted": null,
+      "pattern_degenerate_with": [
+        "transpose_quant"
+      ]
+    },
+    {
+      "box": "epyc7351-2080ti",
+      "family": "transpose",
+      "placement": "overlapped",
+      "n": 16384,
+      "speedup_predicted": {
+        "1.0": 0.04053763780221179,
+        "0.5": 0.039343853113394694,
+        "0.25": 0.03729551811870044,
+        "0.125": null
+      },
+      "t_a_ms": {
+        "1.0": 2031.5384344305407,
+        "0.5": 2093.1800705655883,
+        "0.25": 2208.141175948014,
+        "0.125": null
+      },
+      "t_b_r1_ms": 82.35376923621764,
+      "grid_used": [
+        0.25,
+        0.5,
+        1.0
+      ],
+      "rstar_predicted": null,
+      "pattern_degenerate_with": [
+        "transpose_quant"
+      ]
+    },
+    {
+      "box": "epyc7351-2080ti",
+      "family": "transpose_quant",
+      "placement": "serial",
+      "n": 16384,
+      "speedup_predicted": {
+        "1.0": 0.04184015432448094,
+        "0.5": 0.04060801209029322,
+        "0.25": 0.03849386195889197,
+        "0.125": null
+      },
+      "t_a_ms": {
+        "1.0": 2031.5384344305407,
+        "0.5": 2093.1800705655883,
+        "0.25": 2208.141175948014,
+        "0.125": null
+      },
+      "t_b_r1_ms": 84.99988161268823,
+      "grid_used": [
+        0.25,
+        0.5,
+        1.0
+      ],
+      "rstar_predicted": null,
+      "pattern_degenerate_with": [
+        "transpose"
+      ]
+    },
+    {
+      "box": "epyc7351-2080ti",
+      "family": "transpose_quant",
+      "placement": "overlapped",
+      "n": 16384,
+      "speedup_predicted": {
+        "1.0": 0.04053763780221179,
+        "0.5": 0.039343853113394694,
+        "0.25": 0.03729551811870044,
+        "0.125": null
+      },
+      "t_a_ms": {
+        "1.0": 2031.5384344305407,
+        "0.5": 2093.1800705655883,
+        "0.25": 2208.141175948014,
+        "0.125": null
+      },
+      "t_b_r1_ms": 82.35376923621764,
+      "grid_used": [
+        0.25,
+        0.5,
+        1.0
+      ],
+      "rstar_predicted": null,
+      "pattern_degenerate_with": [
+        "transpose"
+      ]
+    }
+  ]
+}

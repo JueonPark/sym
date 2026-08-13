@@ -36,17 +36,16 @@ SOURCES per machine (frozen provenance -- see task-6 brief / design doc
     - prefold.alloc_ms_per_gib     <- bench/results/v4_scatter_n8192_epyc_2080ti.json
     - overhead.{a,b}_ms            <- bench/results/v1_gen3_nsweep_epyc_2080ti.csv
     - strategy.*                   <- P2 defaults (no small-size sweep yet)
-    - pipeline.chunks_per_buffer: NOT emitted in CM1 -- activating the
-      Overlapped fill/drain term re-scores the frozen V3 prediction
-      report (#97-pre-registered verdicts, shipped in #106, which stand
-      as measured per #107); the key lands in CM5 together with the CM4
-      re-registered gate rule.
-    - recv.m.{convert_f16_f32,dequant_s8_f32}
-                                     <- bench/results/v2_isa_gen3_rsweep_avx2_epyc7351-2080ti.csv
-      (gpu_recv_ms, method=a transform=quant, min over chunk sweep, vs
-      the R4 copy_f32 ceiling at the m-table N)
-    - recv.m.unpack_dequant_s4       <- bench/results/cm1_recv_kernel_bw_epyc_2080ti.json
-      (CM1 targeted isolated run; same-run copy_f32 ceiling)
+    - pipeline.chunks_per_buffer    <- libreloc/include/reloc/ChunkSchedule.h
+      (CM6, issue #125): kChunksPerBuffer (8) x 2 pipeline buffers, a code
+      constant, not a measured file -- activates the CM1 Overlapped
+      fill/drain term.
+    - recv.m.{convert_f16_f32,dequant_s8_f32,unpack_dequant_s4}
+                                     <- bench/results/cm1_recv_kernel_bw_epyc_2080ti.json
+      (CM6, issue #125: single cold-isolated basis for all three recv
+      keys, user decision 2026-08-12 -- the CM1 targeted run, same-run
+      copy_f32 ceiling at the largest measured N; supersedes the former
+      Gen3 rsweep-derived f16/s8 figures)
     - cpu_pipe.t8.contiguous.convert_f32_f16_gbps
                                    <- bench/results/v2_isa_gen3_rsweep_avx2_epyc7351-2080ti.csv
       (cpu_stage_ms of the best-chunk a/quant/r=0.5/N=16384 row -- the
@@ -61,17 +60,17 @@ SOURCES per machine (frozen provenance -- see task-6 brief / design doc
     bench/results/v1_gen4_matrix_nsweep_7800x3d_4070tis.csv (224-row
     original) MERGED with its
     bench/results/v1_gen4_matrix_nsweep_rerun_7800x3d_4070tis.csv
-    companion for overheads. No multigpu or HBM sweep exists on this box:
-    hbm.bw_gbps and hbm.m.* are PROXIED from the 2080 Ti computation with
-    an explicit note; multigpu.*, hiding.ratio and prefold.* are omitted
-    outright.
-    - pipeline.chunks_per_buffer: NOT emitted in CM1 -- activating the
-      Overlapped fill/drain term re-scores the frozen V3 prediction
-      report (#97-pre-registered verdicts, shipped in #106, which stand
-      as measured per #107); the key lands in CM5 together with the CM4
-      re-registered gate rule.
+    companion for overheads. No multigpu sweep exists on this box:
+    hbm.bw_gbps and hbm.m.* now come from the CM1 targeted run (issue
+    #109), same by_n schema as R4 -- CM6 (issue #125) retires the former
+    2080 Ti proxy; multigpu.*, hiding.ratio and prefold.* remain omitted
+    outright (no equivalent measurement exists for those).
+    - pipeline.chunks_per_buffer    <- libreloc/include/reloc/ChunkSchedule.h
+      (CM6, issue #125): kChunksPerBuffer (8) x 2 pipeline buffers, a code
+      constant, not a measured file -- activates the CM1 Overlapped
+      fill/drain term.
     - recv.m.*                       <- bench/results/cm1_recv_kernel_bw_7800x3d_4070tis.json
-      when it exists (issue #109 runbook); omitted until then. The
+      (CM1 targeted run, issue #109; same-run copy_f32 ceiling). The
       "relocate/transpose recv" m values from the issue's list are the
       existing hbm.m.{pattern} keys -- not duplicated under recv.m.*.
     - cpu_pipe.t8.contiguous.convert_f32_f16_gbps
@@ -293,35 +292,18 @@ def build_epyc(e):
     e.emit("hiding.ratio", round(copy_head / h2d, 1), r4_path,
            note=f"copy_f32(N={n_head}) / pcie.h2d_gbps")
 
-    # pipeline.chunks_per_buffer deliberately NOT emitted here (see
-    # SOURCES docstring / module-level note): activating the Overlapped
-    # fill/drain term would re-score the frozen V3 prediction report.
+    # CM6 (issue #125): activates the CM1 Overlapped fill/drain term.
+    # Value is a code constant: kChunksPerBuffer (8, ChunkSchedule.h) x 2
+    # pipeline buffers = TOTAL chunk count (the CM1 divisor semantics).
+    e.emit("pipeline.chunks_per_buffer", 16,
+           "libreloc/include/reloc/ChunkSchedule.h",
+           note="kChunksPerBuffer 8 x 2 pipeline buffers; CM6 (#125)")
 
-    # Recv-kernel multipliers (issue #109/CM1): Method A's post-DMA GPU
-    # decompress kernels. f16/s8 derive from the committed V2 rsweep's
-    # per-chunk gpu_recv_ms ("from committed artifacts where possible"):
-    # traffic = r*S read + S written; min gpu_recv_ms over the chunk
-    # sweep (largest chunk = least launch-diluted, closest to isolated);
-    # divided into copy_f32 at the m-table N (same rule as hbm.m.*).
-    rsweep_path = f"{RESULTS}/v2_isa_gen3_rsweep_avx2_epyc7351-2080ti.csv"
-    rrows = [row for row in load_csv_rows(rsweep_path, e.machine)
-             if row["method"] == "a" and row["transform"] == "quant"]
-    for key, r_wire in (("recv.m.convert_f16_f32", 0.5),
-                        ("recv.m.dequant_s8_f32", 0.25)):
-        cells = [row for row in rrows if float(row["r"]) == r_wire]
-        if not cells:
-            sys.exit(f"error: no method=a quant r={r_wire} rows in "
-                     f"{rsweep_path}")
-        best = min(cells, key=lambda row: float(row["gpu_recv_ms"]))
-        s = source_bytes(int(best["N"]))
-        bw = (1.0 + r_wire) * s / (float(best["gpu_recv_ms"]) * 1e-3) / 1e9
-        e.emit(key, round(copy_m / bw, 2), rsweep_path,
-               note=f"copy_f32(N={n_m})/recv BW; traffic=(1+{r_wire})*S, "
-                    f"min gpu_recv_ms over chunks, N={best['N']} (issue #109)")
-    # s4 has no committed Gen3 measurement -> the CM1 targeted run.
+    # CM6 (issue #125): single cold-isolated basis for all recv keys
+    # (user decision 2026-08-12) -- the CM1 targeted run, same-run ceiling.
     emit_recv_from_cm1_run(
         e, f"{RESULTS}/cm1_recv_kernel_bw_epyc_2080ti.json",
-        ["unpack_dequant_s4"])
+        ["convert_f16_f32", "dequant_s8_f32", "unpack_dequant_s4"])
     emit_cpu_pipe_convert(
         e, f"{RESULTS}/v2_isa_gen3_rsweep_avx2_epyc7351-2080ti.csv")
 
@@ -430,9 +412,12 @@ def build_gen4(e):
                    contig_val[t]["pack_s8_s4"], src_path,
                    note="second pass is contiguous by construction")
 
-    # No Gen4 HBM/hiding sweep exists (R4 ran on the 2080 Ti only): proxy
-    # the 2080 Ti's computed values through, honestly labelled.
-    r4_path = f"{RESULTS}/r4_hiding_ratio_epyc_2080ti.json"
+    # No Gen4 HBM sweep exists (R4 ran on the 2080 Ti only): CM6 (issue
+    # #125) sources hbm.bw_gbps/hbm.m.* from the CM1 targeted run for
+    # THIS box instead -- same by_n schema as R4 (N in {8192, 16384}),
+    # so the derivation below is unchanged, only the source moved from a
+    # cross-box proxy to a same-box measurement.
+    r4_path = f"{RESULTS}/cm1_recv_kernel_bw_7800x3d_4070tis.json"
     r4 = must_read_json(r4_path)
     by_n = r4["by_n"]
     ns = sorted(int(k) for k in by_n)
@@ -441,28 +426,30 @@ def build_gen4(e):
     copy_m = by_n[str(n_m)]["copy_f32"]["gb_per_s"]
     relocate_m = by_n[str(n_m)]["relocate_naive_f32"]["gb_per_s"]
     transpose_m = by_n[str(n_m)]["transpose_smem_padded"]["gb_per_s"]
-    proxy_note = ("proxy: no Gen4 HBM sweep exists (R4 ran on 2080 Ti); B "
-                  "is link-bound whenever m < ratio, so this only matters "
-                  "if m/BW_hbm exceeds 1/BW_link")
-    e.emit("hbm.bw_gbps", int(copy_head), r4_path, note=proxy_note)
-    e.emit("hbm.m.contiguous", 1.0, r4_path, note=proxy_note)
+    hbm_note = ("CM1 targeted run (issue #109), locked clocks; replaces "
+                "the 2080 Ti proxy -- CM6 (#125)")
+    e.emit("hbm.bw_gbps", int(copy_head), r4_path, note=hbm_note)
+    e.emit("hbm.m.contiguous", 1.0, r4_path, note=hbm_note)
     e.emit("hbm.m.blocked", round(copy_m / relocate_m, 2), r4_path,
-           note=proxy_note)
+           note=hbm_note)
     e.emit("hbm.m.single_element", round(copy_m / transpose_m, 2), r4_path,
-           note=proxy_note)
+           note=hbm_note)
     e.emit("hbm.m.tiled", round(copy_m / relocate_m, 2), r4_path,
-           note=proxy_note)
+           note=hbm_note)
     # multigpu.*, hiding.ratio, prefold.*: no Gen4 data -- omitted.
 
-    # pipeline.chunks_per_buffer deliberately NOT emitted here (see
-    # SOURCES docstring / module-level note): activating the Overlapped
-    # fill/drain term would re-score the frozen V3 prediction report.
+    # CM6 (issue #125): activates the CM1 Overlapped fill/drain term.
+    # Value is a code constant: kChunksPerBuffer (8, ChunkSchedule.h) x 2
+    # pipeline buffers = TOTAL chunk count (the CM1 divisor semantics).
+    e.emit("pipeline.chunks_per_buffer", 16,
+           "libreloc/include/reloc/ChunkSchedule.h",
+           note="kChunksPerBuffer 8 x 2 pipeline buffers; CM6 (#125)")
 
     # Recv-kernel multipliers (issue #109/CM1): the committed Gen4
     # pipeline CSVs are too noisy for an R4-style derivation (in-pipeline
     # event timings collapse to 23-52 GB/s on some cells) and no Gen4
-    # copy_f32 ceiling exists at all -- ALL THREE keys wait for the
-    # targeted run (runbook: bench/rtrack/README.md, issue #109).
+    # copy_f32 ceiling exists at all -- ALL THREE keys use the targeted
+    # CM1 run (runbook: bench/rtrack/README.md, issue #109).
     emit_recv_from_cm1_run(
         e, f"{RESULTS}/cm1_recv_kernel_bw_7800x3d_4070tis.json",
         ["convert_f16_f32", "dequant_s8_f32", "unpack_dequant_s4"])
