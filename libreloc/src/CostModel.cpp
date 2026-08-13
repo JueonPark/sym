@@ -167,6 +167,21 @@ std::optional<double> cpuBw(const CostModel &m, Pattern p, double r,
   return std::nullopt; // only the measured r grid is modelled in v0
 }
 
+namespace {
+// CM6 (issue #125): wire-dtype map shared by the matrix natives and the
+// r-sweep (bench/rtrack/README.md workload tables). r=1 ships f32 -- no
+// receive pass; off-grid r behaves the same (defensive).
+const char *recvKernelForR(double r) {
+  if (r == 0.5)
+    return "convert_f16_f32";
+  if (r == 0.25)
+    return "dequant_s8_f32";
+  if (r == 0.125)
+    return "unpack_dequant_s4";
+  return nullptr;
+}
+} // namespace
+
 static std::optional<double> deliveryGbps(const CostModel &m, int K) {
   if (K <= 1)
     return m.has("pcie.h2d_gbps") ? std::optional<double>(m.at("pcie.h2d_gbps"))
@@ -196,6 +211,16 @@ std::optional<PathCosts> pathCosts(const CostModel &m, Pattern p,
   if (bwHbm <= 0 || mm <= 0)
     return std::nullopt;
 
+  // CM6 (issue #125): B's kernel multiplier composes the wire-dtype
+  // receive pass when the calibration carries it. Absent key or off-grid
+  // r -> exactly the CM1 multiplier.
+  double mEff = mm;
+  if (const char *recvKernel = recvKernelForR(r)) {
+    const std::string recvKey = std::string("recv.m.") + recvKernel;
+    if (m.has(recvKey))
+      mEff += m.at(recvKey);
+  }
+
   // Bytes on the wire per method (whole delivery, all K receivers).
   const double kMult = broadcast ? static_cast<double>(K) : 1.0;
   // ms per byte at BW gbps: 1e3 / (BW * 1e9) = 1e-6 / BW.
@@ -209,7 +234,7 @@ std::optional<PathCosts> pathCosts(const CostModel &m, Pattern p,
   pc.aInterceptMs = m.get("overhead.a_ms", 0.0);
   // B: DMA of kMult*S vs GPU transform m*kMult*S over HBM (issue #109).
   const double bDmaSlope = kMult * msPerByteAt(*bwDel);
-  const double bHbmSlope = kMult * mm * msPerByteAt(bwHbm);
+  const double bHbmSlope = kMult * mEff * msPerByteAt(bwHbm);
   if (bPlace == BPlacement::Serial) {
     // b_fair: the kernel starts only after the whole transfer landed --
     // the stages ADD, so B's slope strictly exceeds the bare DMA slope

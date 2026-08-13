@@ -34,11 +34,12 @@ cpu.t8.tiled.convert_f32_f16_gbps 26.2048  # bench/results/r2_rooflines/identity
 cpu.t8.tiled.pack_s8_s4_gbps 60.7938  # bench/results/r2_rooflines/identity_n8192_t8.json -- second pass is contiguous by construction
 cpu.t1.tiled.convert_f32_f16_gbps 20.8947  # bench/results/r2_rooflines/identity_n8192_t1.json -- second pass is contiguous by construction
 cpu.t1.tiled.pack_s8_s4_gbps 35.036  # bench/results/r2_rooflines/identity_n8192_t1.json -- second pass is contiguous by construction
-hbm.bw_gbps 544  # bench/results/r4_hiding_ratio_epyc_2080ti.json -- proxy: no Gen4 HBM sweep exists (R4 ran on 2080 Ti); B is link-bound whenever m < ratio, so this only matters if m/BW_hbm exceeds 1/BW_link
-hbm.m.contiguous 1  # bench/results/r4_hiding_ratio_epyc_2080ti.json -- proxy: no Gen4 HBM sweep exists (R4 ran on 2080 Ti); B is link-bound whenever m < ratio, so this only matters if m/BW_hbm exceeds 1/BW_link
-hbm.m.blocked 2.97  # bench/results/r4_hiding_ratio_epyc_2080ti.json -- proxy: no Gen4 HBM sweep exists (R4 ran on 2080 Ti); B is link-bound whenever m < ratio, so this only matters if m/BW_hbm exceeds 1/BW_link
-hbm.m.single_element 1.43  # bench/results/r4_hiding_ratio_epyc_2080ti.json -- proxy: no Gen4 HBM sweep exists (R4 ran on 2080 Ti); B is link-bound whenever m < ratio, so this only matters if m/BW_hbm exceeds 1/BW_link
-hbm.m.tiled 2.97  # bench/results/r4_hiding_ratio_epyc_2080ti.json -- proxy: no Gen4 HBM sweep exists (R4 ran on 2080 Ti); B is link-bound whenever m < ratio, so this only matters if m/BW_hbm exceeds 1/BW_link
+hbm.bw_gbps 601  # bench/results/cm1_recv_kernel_bw_7800x3d_4070tis.json -- CM1 targeted run (issue #109), locked clocks; replaces the 2080 Ti proxy -- CM6 (#125)
+hbm.m.contiguous 1  # bench/results/cm1_recv_kernel_bw_7800x3d_4070tis.json -- CM1 targeted run (issue #109), locked clocks; replaces the 2080 Ti proxy -- CM6 (#125)
+hbm.m.blocked 2.66  # bench/results/cm1_recv_kernel_bw_7800x3d_4070tis.json -- CM1 targeted run (issue #109), locked clocks; replaces the 2080 Ti proxy -- CM6 (#125)
+hbm.m.single_element 1.13  # bench/results/cm1_recv_kernel_bw_7800x3d_4070tis.json -- CM1 targeted run (issue #109), locked clocks; replaces the 2080 Ti proxy -- CM6 (#125)
+hbm.m.tiled 2.66  # bench/results/cm1_recv_kernel_bw_7800x3d_4070tis.json -- CM1 targeted run (issue #109), locked clocks; replaces the 2080 Ti proxy -- CM6 (#125)
+pipeline.chunks_per_buffer 16  # libreloc/include/reloc/ChunkSchedule.h -- kChunksPerBuffer 8 x 2 pipeline buffers; CM6 (#125)
 recv.m.convert_f16_f32 1.01  # bench/results/cm1_recv_kernel_bw_7800x3d_4070tis.json -- copy_f32/convert_f16_f32 at N=16384, same-run ceiling
 recv.m.dequant_s8_f32 1.04  # bench/results/cm1_recv_kernel_bw_7800x3d_4070tis.json -- copy_f32/dequant_s8_f32 at N=16384, same-run ceiling
 recv.m.unpack_dequant_s4 1.07  # bench/results/cm1_recv_kernel_bw_7800x3d_4070tis.json -- copy_f32/unpack_dequant_s4 at N=16384, same-run ceiling

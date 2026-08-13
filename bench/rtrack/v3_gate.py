@@ -200,33 +200,40 @@ def calibration_regen_check():
                       f"{first_diff + 1})")
 
 
-def cm4_regen_check():
-    """CM4-REGEN (issue #112): the registered predictions must stay
-    byte-reproducible from the committed model + calibrations. Re-runs
-    cm4_register.py to a temp path and compares against the committed
-    file. Skips loudly (not silently) when the committed file is
-    absent (a pre-CM4 checkout); a missing pyreloc surfaces as a loud
-    regen FAIL, by design."""
-    print("\n=== CM4-REGEN ===")
-    committed = REPO_ROOT / "bench" / "results" / "cm4_registered_predictions.json"
+def cm4_frozen_check():
+    """CM4-FROZEN (issue #125): the CM4 registration is superseded frozen
+    history (CM6 is the live generation) -- it must never change. A live
+    regen comparison is no longer meaningful: the calibrations have
+    legitimately moved past it."""
+    print("\n=== CM4-FROZEN ===")
+    rel = "bench/results/cm4_registered_predictions.json"
+    proc = subprocess.run(["git", "diff", "--exit-code", "--", rel],
+                          cwd=REPO_ROOT, capture_output=True, text=True)
+    print(f"CM4-FROZEN: {'PASS (committed file unchanged)' if proc.returncode == 0 else 'FAIL (frozen registration modified)'}")
+
+
+def cm6_regen_check():
+    """CM6-REGEN (issue #125): the live registration must stay
+    byte-reproducible from the committed model + calibrations. Loud SKIP
+    on pre-CM6 checkouts; missing pyreloc is a loud FAIL, by design."""
+    print("\n=== CM6-REGEN ===")
+    committed = REPO_ROOT / "bench" / "results" / "cm6_registered_predictions.json"
     if not committed.exists():
-        print("CM4-REGEN: SKIP (no committed registration file)")
+        print("CM6-REGEN: SKIP (no committed cm6_registered_predictions.json)")
         return
     with tempfile.TemporaryDirectory() as td:
-        out = Path(td) / "cm4.json"
+        out = Path(td) / "cm6.json"
         proc = subprocess.run(
-            [sys.executable, "bench/rtrack/cm4_register.py",
-             "--out", str(out)],
+            [sys.executable, "bench/rtrack/cm6_register.py", "--out", str(out)],
             cwd=REPO_ROOT, capture_output=True, text=True)
         if proc.returncode != 0:
-            print(f"CM4-REGEN: FAIL (regen errored)\n{proc.stderr.strip()}")
+            print(f"CM6-REGEN: FAIL (regen errored)\n{proc.stderr.strip()}")
             return
         if out.read_text() == committed.read_text():
-            print("CM4-REGEN: PASS (matches committed "
-                  "bench/results/cm4_registered_predictions.json)")
+            print("CM6-REGEN: PASS (matches committed "
+                  "bench/results/cm6_registered_predictions.json)")
         else:
-            print("CM4-REGEN: FAIL (registration no longer reproduces from "
-                  "the committed model + calibrations)")
+            print("CM6-REGEN: FAIL (registration no longer reproduces)")
 
 
 def cm5_regen_check():
@@ -252,6 +259,34 @@ def cm5_regen_check():
                   "bench/results/cm5_eval_report.json)")
         else:
             print("CM5-REPORT-REGEN: FAIL (report no longer reproduces "
+                  "from committed inputs)")
+
+
+def cm6_report_regen_check():
+    """CM6-REPORT-REGEN (issue #125): the committed CM6 evaluation report
+    must stay byte-reproducible from the committed measurement + CM6
+    registration. Loud SKIP on pre-CM6 checkouts."""
+    print("\n=== CM6-REPORT-REGEN ===")
+    committed = REPO_ROOT / "bench" / "results" / "cm6_eval_report.json"
+    if not committed.exists():
+        print("CM6-REPORT-REGEN: SKIP (no committed cm6_eval_report.json)")
+        return
+    with tempfile.TemporaryDirectory() as td:
+        out = Path(td) / "cm6.json"
+        proc = subprocess.run(
+            [sys.executable, "bench/rtrack/cm5_eval.py",
+             "--registration", "bench/results/cm6_registered_predictions.json",
+             "--out", str(out)],
+            cwd=REPO_ROOT, capture_output=True, text=True)
+        if proc.returncode != 0:
+            print(f"CM6-REPORT-REGEN: FAIL (regen errored)\n"
+                  f"{proc.stderr.strip()}")
+            return
+        if out.read_text() == committed.read_text():
+            print("CM6-REPORT-REGEN: PASS (matches committed "
+                  "bench/results/cm6_eval_report.json)")
+        else:
+            print("CM6-REPORT-REGEN: FAIL (report no longer reproduces "
                   "from committed inputs)")
 
 
@@ -289,8 +324,10 @@ def main():
     print_ablation(report)
     print_unmodelable(report)
     calibration_regen_check()
-    cm4_regen_check()
+    cm4_frozen_check()
+    cm6_regen_check()
     cm5_regen_check()
+    cm6_report_regen_check()
     report_regen_check(args.report)
     return 0
 

@@ -216,13 +216,15 @@ def sha256(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def build_report():
-    registration = json.loads(REGISTRATION.read_text())
+def build_report(registration_path=None):
+    registration_path = (Path(registration_path).resolve()
+                         if registration_path else REGISTRATION)
+    registration = json.loads(registration_path.read_text())
     heldout = registration["heldout_split"]
     ho_mis_bar = heldout["heldout_bars"]["misclass"]
     ho_reg_bar = heldout["heldout_bars"]["regret_p90"]
 
-    inputs = [REGISTRATION]
+    inputs = [registration_path]
     merged_matrix, merged_rsweep, audit = {}, {}, []
     for box in sorted(BOXES):
         pairs = {"matrix": (RESULTS / f"bp_matrix_nsweep_{box}.csv",
@@ -289,10 +291,17 @@ def build_report():
              if cell_regret(c, "model") > REGRET_P90_BAR),
             key=lambda c: (c["pairing"], c["box"], c["family"], c["N"]))}
 
+    if registration_path == REGISTRATION:
+        issue = ("#113 (CM5): BP measurement (#116/#124) vs CM4-registered "
+                 "predictions (#112/#121); evaluation only")
+    else:
+        issue = ("#125 (CM6): BP measurement (#116/#124) vs CM6-registered "
+                 "predictions (#125); post-hoc refinement, not a "
+                 "pre-registration")
+
     return {
         "generated_by": "bench/rtrack/cm5_eval.py",
-        "issue": ("#113 (CM5): BP measurement (#116/#124) vs CM4-registered "
-                  "predictions (#112/#121); evaluation only"),
+        "issue": issue,
         "provenance": {str(p.relative_to(REPO_ROOT)): sha256(p)
                        for p in inputs},
         "merge_audit": audit,
@@ -311,8 +320,9 @@ def render(report):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--registration", default=str(REGISTRATION))
     args = ap.parse_args()
-    report = build_report()
+    report = build_report(registration_path=args.registration)
     Path(args.out).write_text(render(report))
     g = report["gates"]
     for pairing, _, placement in PAIRINGS:
