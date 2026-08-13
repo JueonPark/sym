@@ -64,3 +64,9 @@ between them can tune the residual.
 
 Status: **survives** — both-box consistency in the pre-registered form;
 the track's closing claim, in contrast to the narrowed G2 rows above.
+
+## Machinery
+
+| claim | boxes | result | status | authoritative source |
+|---|---|---|---|---|
+| Same folded plan, runtime symbol-bind, bind-time auto-placement — correct choice on both boxes, no recompilation | Gen3 + Gen4 | 23/24 decisions match measured winners (1 small-N miss disclosed); r=0.25 row flips correctly (Gen3 `b` ×4, Gen4 `a` ×4); artifacts byte-equal CI regeneration | survives | `docs/r6-crossbox-bind.md`; `bench/results/r6_bind_demo_*.json` (#87) |
