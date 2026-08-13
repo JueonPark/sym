@@ -9,7 +9,7 @@
     "n_reuse": -1,
     "pattern": "blocked",
     "t_a_ms": 4.85489804326613,
-    "t_b_ms": 1.3078431522570773,
+    "t_b_ms": 1.3160351522570772,
     "threshold_bytes": -1.0
    },
    "bound": {
@@ -37,7 +37,7 @@
     "method": "b",
     "pattern": "blocked",
     "t_a_ms": 4.85489804326613,
-    "t_b_ms": 1.399439349904136,
+    "t_b_ms": 1.4389151522570773,
     "threshold_bytes": -1.0
    }
   },
@@ -50,7 +50,7 @@
     "n_reuse": -1,
     "pattern": "blocked",
     "t_a_ms": 19.215592173064522,
-    "t_b_ms": 5.1587726090283095,
+    "t_b_ms": 5.1915406090283085,
     "threshold_bytes": -1.0
    },
    "bound": {
@@ -78,7 +78,7 @@
     "method": "b",
     "pattern": "blocked",
     "t_a_ms": 19.215592173064522,
-    "t_b_ms": 5.525157399616544,
+    "t_b_ms": 5.68306060902831,
     "threshold_bytes": -1.0
    }
   },
@@ -91,7 +91,7 @@
     "n_reuse": -1,
     "pattern": "blocked",
     "t_a_ms": 76.65836869225808,
-    "t_b_ms": 20.562490436113237,
+    "t_b_ms": 20.693562436113236,
     "threshold_bytes": -1.0
    },
    "bound": {
@@ -119,7 +119,7 @@
     "method": "b",
     "pattern": "blocked",
     "t_a_ms": 76.65836869225808,
-    "t_b_ms": 22.028029598466176,
+    "t_b_ms": 22.659642436113238,
     "threshold_bytes": -1.0
    }
   },
@@ -132,7 +132,7 @@
     "n_reuse": -1,
     "pattern": "blocked",
     "t_a_ms": 306.4294747690323,
-    "t_b_ms": 82.17736174445294,
+    "t_b_ms": 82.70164974445294,
     "threshold_bytes": -1.0
    },
    "bound": {
@@ -160,7 +160,7 @@
     "method": "b",
     "pattern": "blocked",
     "t_a_ms": 306.4294747690323,
-    "t_b_ms": 88.0395183938647,
+    "t_b_ms": 90.56596974445294,
     "threshold_bytes": -1.0
    }
   },
@@ -173,7 +173,7 @@
     "n_reuse": -1,
     "pattern": "blocked",
     "t_a_ms": 2.4971522073636465,
-    "t_b_ms": 1.3078431522570773,
+    "t_b_ms": 1.315611095786489,
     "threshold_bytes": -1.0
    },
    "bound": {
@@ -201,7 +201,7 @@
     "method": "b",
     "pattern": "blocked",
     "t_a_ms": 2.4971522073636465,
-    "t_b_ms": 1.399439349904136,
+    "t_b_ms": 1.4321302487276655,
     "threshold_bytes": -1.0
    }
   },
@@ -214,7 +214,7 @@
     "n_reuse": -1,
     "pattern": "blocked",
     "t_a_ms": 9.784608829454585,
-    "t_b_ms": 5.1587726090283095,
+    "t_b_ms": 5.189844383145957,
     "threshold_bytes": -1.0
    },
    "bound": {
@@ -242,7 +242,7 @@
     "method": "b",
     "pattern": "blocked",
     "t_a_ms": 9.784608829454585,
-    "t_b_ms": 5.525157399616544,
+    "t_b_ms": 5.655920994910662,
     "threshold_bytes": -1.0
    }
   },
@@ -255,7 +255,7 @@
     "n_reuse": -1,
     "pattern": "blocked",
     "t_a_ms": 38.93443531781834,
-    "t_b_ms": 20.562490436113237,
+    "t_b_ms": 20.686777532583825,
     "threshold_bytes": -1.0
    },
    "bound": {
@@ -283,7 +283,7 @@
     "method": "b",
     "pattern": "blocked",
     "t_a_ms": 38.93443531781834,
-    "t_b_ms": 22.028029598466176,
+    "t_b_ms": 22.551083979642648,
     "threshold_bytes": -1.0
    }
   },
@@ -296,7 +296,7 @@
     "n_reuse": -1,
     "pattern": "blocked",
     "t_a_ms": 155.53374127127339,
-    "t_b_ms": 82.17736174445294,
+    "t_b_ms": 82.67451013033529,
     "threshold_bytes": -1.0
    },
    "bound": {
@@ -324,7 +324,7 @@
     "method": "b",
     "pattern": "blocked",
     "t_a_ms": 155.53374127127339,
-    "t_b_ms": 88.0395183938647,
+    "t_b_ms": 90.13173591857058,
     "threshold_bytes": -1.0
    }
   },
@@ -337,7 +337,7 @@
     "n_reuse": -1,
     "pattern": "blocked",
     "t_a_ms": 1.5340016427535346,
-    "t_b_ms": 1.3078431522570773,
+    "t_b_ms": 1.3135679146100185,
     "threshold_bytes": -1.0
    },
    "bound": {
@@ -378,7 +378,7 @@
     "n_reuse": -1,
     "pattern": "blocked",
     "t_a_ms": 5.932006571014138,
-    "t_b_ms": 5.1587726090283095,
+    "t_b_ms": 5.181671658440074,
     "threshold_bytes": -1.0
    },
    "bound": {
@@ -419,7 +419,7 @@
     "n_reuse": -1,
     "pattern": "blocked",
     "t_a_ms": 23.524026284056553,
-    "t_b_ms": 20.562490436113237,
+    "t_b_ms": 20.654086633760297,
     "threshold_bytes": -1.0
    },
    "bound": {
@@ -460,7 +460,7 @@
     "n_reuse": -1,
     "pattern": "blocked",
     "t_a_ms": 93.8921051362262,
-    "t_b_ms": 82.17736174445294,
+    "t_b_ms": 82.54374653504118,
     "threshold_bytes": -1.0
    },
    "bound": {
@@ -495,7 +495,7 @@
  ],
  "generated_by": "bench/rtrack/r6_bind_demo.py",
  "inputs": {
-  "calibration/epyc7351-2080ti.cal": "bc0721404c74f14fdb43e67fa071cacf6db4c43caaaab3e565dc88e1a926d610",
+  "calibration/epyc7351-2080ti.cal": "d8614162850d2187c5d6ca7b8ee634cb0ef556d71e0c269a01746d1d33a905ab",
   "libreloc/test/corpus/blocked_transpose_sym.bin": "ca69b39a5d72bbaf48e62365174319e7c979aaef259ba33b1042a110404ed25c"
  },
  "issue": "#87 (R6): cross-box no-recompile bind demo",
