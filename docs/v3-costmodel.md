@@ -533,3 +533,150 @@ emitting any of them mid-evaluation would re-score the model against its own
 pre-registered predictions and break CM4-REGEN. CM1's "the key lands in CM5"
 is superseded; all three land in the CM6 follow-up issue (filed with this
 PR), motivated by the miss table above.
+
+## v2 — CM6 post-hoc refinement re-run (issue #125)
+
+**Post-hoc refinement, not a pre-registration** — the BP dataset (#124)
+pre-existed this model revision. Defense: zero tuning freedom (the
+chunks key is a code constant; recv keys follow CM1's pre-declared cold
+derivations; Gen4 hbm values are CM1-measurement re-derivations). Bars
+unchanged from v0/v1.
+
+**Verdicts (v2 vs v1, same bars, same universes, same rule v1):**
+
+| gate | universe | v1 (CM5, pre-registered) | v2 (CM6, post-hoc) |
+|---|---|---|---|
+| MISCLASS ≤ 0.15 (b_fair) | 48 / held-out 24 | 2/48 PASS / 1/24 PASS | 2/48 PASS / 1/24 PASS |
+| MISCLASS ≤ 0.15 (b_pipelined) | 40 / held-out 20 | 2/40 PASS / 1/20 PASS | 2/40 PASS / 1/20 PASS |
+| REGRET-p90 ≤ 0.20 (both pairings) | all + held-out | 0.0000 PASS ×4 | 0.0000 PASS ×4 |
+| RSTAR ≤ 0.15 rule v1 (serial) | 8 rows | FAIL (2 one-sided) | FAIL (2 one-sided) |
+| RSTAR ≤ 0.15 rule v1 (overlapped) | 8 rows | FAIL (1 one-sided, Δ 0.294) | FAIL (2 one-sided, Δ 0.0673) |
+
+MISCLASS and REGRET are byte-identical to v1 at every field (`ablation`
+and the misclass/regret halves of `gates` are unchanged between
+`cm5_eval_report.json` and `cm6_eval_report.json`); only `rstar_rows` and
+the `rstar` half of `gates` differ.
+
+### What moved and why
+
+**Registration** (`cm6_registered_predictions.json` vs the frozen
+`cm4_registered_predictions.json`): 4 of the 24 registered `rstar` rows
+moved.
+
+- **Gen4 `blocked_transpose`** (the only family with a measured Gen4
+  r-sweep): `rstar_predicted` shifts serial 0.32467 → 0.31878 (`|Δ|` 0.0709
+  → 0.0768) and overlapped 0.29137 → 0.29320 (`|Δ|` 0.0691 → 0.0673). Both
+  rows stay `both_exist`, comfortably under the 0.15 bar on their own
+  before and after — the m_eff/fill-drain corrections move this family's
+  prediction a few percent without changing its classification or its
+  (non-gating) status.
+- **epyc `quant` overlapped and `convert_f16` overlapped move together**,
+  both `0.9965781747732104 → None` — a genuine pattern-degenerate pair:
+  `cm6_register.py`'s new `pattern_degenerate_with` field records that
+  `quant` and `convert_f16` share `pattern="contiguous"` in `FAMILY_MAP`,
+  so the two families get numerically identical curves by construction,
+  not two independent corrections landing on the same number by
+  coincidence. `convert_f16` carries no measured r-sweep counterpart
+  (excluded from `rstar_rows`, per `excluded_cells`), so only `quant`'s
+  move is gate-visible.
+
+**Evaluation** (`rstar_rows` / `gates.rstar`): exactly one `rstar_rows`
+classification changed — epyc `quant` overlapped, `both_exist`
+(`rstar_pred=0.9965781747732104`, `rstar_meas=0.7023924608166998`,
+`|Δ|=0.2941857139565106`) → `mismatch_one_sided` (`rstar_pred=None`,
+`rstar_meas` unchanged at 0.7023924608166998 — the measured crossing
+still exists; only the predicted one vanished). The Gen4
+`blocked_transpose` deltas move inside `gates.rstar`: overlapped
+`max_abs_delta` 0.0691 → 0.0673, serial 0.0709 → 0.0768. RSTAR verdicts
+stay FAIL/FAIL under rule v1: serial keeps its 2 one-sided mismatches
+unchanged; overlapped goes from 1 one-sided mismatch (with the epyc
+`quant` `both_exist` row driving `max_abs_delta`=0.2942) to 2 one-sided
+mismatches (with the surviving `both_exist` row — Gen4
+`blocked_transpose` — now driving the much smaller `max_abs_delta`=0.0673).
+Rule v1 fails on any one-sided mismatch regardless of the numeric delta,
+so both placements were already FAIL and remain FAIL; the composition
+changed which row is failing, not the verdict.
+
+**Misclass misses are identical to v1**: the same 4 epyc `convert_f16`
+cells (`N=2048` train + `N=4096` test, both pairings), byte-identical
+`t_a_meas_ms`/`t_b_meas_ms` values to the v1 report — model calls `a`, B
+measures faster in every one. MISCLASS, REGRET, and both held-out splits
+stay PASS/PASS, unchanged.
+
+**The interpretive frame — holds on the FAIL persisting, with one
+correction on direction.** The corrections do move the `quant`/
+`convert_f16` contiguous-family curve off the r=1.0 grid edge, and rule
+v1 does convert the near-edge case into a one-sided mismatch, so the FAIL
+persists exactly as expected going in. But checking the actual grid shows
+the shift is the opposite of "downward, below 1.0 everywhere": epyc
+`quant` overlapped's predicted speedup at r=1.0 moves from
+0.9994672904265676 (v1 — just *below* 1.0, which is what let the v1 curve
+cross and land a `both_exist` r* of 0.9966 right at the edge) to
+1.0009676569956554 (v2 — just *above* 1.0). The full grid confirms the
+shift is uniform, not a one-point wobble: v2's predicted speedup is above
+1.0 at all three measurable r (0.25: 1.7614, 0.5: 1.1089, 1.0: 1.0010) —
+the curve now sits **above 1.0 everywhere** (A predicted to win at every
+measured r), not below. Either way `crossing()` finds no sign change and
+returns `None`, so rule v1's effect is the same — but the direction of the
+bias is now toward *over-crediting* A (host), not under-crediting it.
+That direction matches the boundary-law finding already on record in
+`docs/claim-ledger.md` ("Boundary law — the headline": Gen3's `BW_cpu`
+roofline term overstating the pipelined CPU's effective bandwidth): the
+residual here looks like the same A-side calibration gap, applied to the
+r*-crossing search instead of the boundary-law ratio — not a B-placement/
+wire gap, which is exactly what this revision's m_eff/fill-drain
+corrections targeted and, on this evidence, did not need to touch to
+explain what's left.
+
+### Model changes in this revision
+
+**m_eff composition.** `recv.m.<kernel(r)>` composes into B's kernel
+multiplier: `m_eff = m_pattern + m_recv` when the calibration carries the
+key for that r's wire-dtype receive kernel (`recvKernelForR`: r=0.5 →
+`convert_f16_f32`, r=0.25 → `dequant_s8_f32`, r=0.125 →
+`unpack_dequant_s4`; r=1.0 ships f32, no receive pass, `nullptr`). Absent
+key, or an r off that map, reduces `m_eff` exactly to `m_pattern` — the
+CM1 multiplier, bit for bit (`libreloc/src/CostModel.cpp`, commit
+`e744a1a`).
+
+**Fill/drain activation.** `pipeline.chunks_per_buffer` (value `16` in
+both calibration files) activates the Overlapped-placement fill/drain
+term (`max(a, m_eff·h) + min(a, m_eff·h)/n`, `n` = the key's value) that
+previously sat dormant without the key. `16` is a code constant, not a
+fit: `libreloc/include/reloc/ChunkSchedule.h`'s `kChunksPerBuffer = 8`,
+doubled for the pipeline's two buffers.
+
+**Cold recv basis.** Gen3 (`epyc7351-2080ti.cal`) `recv.m.convert_f16_f32`
+and `recv.m.dequant_s8_f32` move from 1.05/1.07 to 1.06/1.28. v1's values
+were ratios read off `v2_isa_gen3_rsweep_avx2_epyc7351-2080ti.csv`'s
+r-sweep; v2 re-derives them from
+`bench/results/cm1_recv_kernel_bw_epyc_2080ti.json`'s CM1 targeted run
+(issue #109) — `copy_f32`/kernel same-run ceiling at N=16384 — the
+pre-declared cold basis CM1 committed to, not a new fit against the BP
+dataset.
+
+**Gen4 hbm re-baseline.** Gen4 (`7800x3d-4070tis.cal`) `hbm.bw_gbps` moves
+from the R4-era `544` (a 2080 Ti proxy — no Gen4 HBM sweep existed at R4)
+to `601`; `hbm.m.blocked`/`hbm.m.tiled` from 2.97 to 2.66,
+`hbm.m.single_element` from 1.43 to 1.13 (`hbm.m.contiguous` stays 1). All
+four re-derive from `bench/results/cm1_recv_kernel_bw_7800x3d_4070tis.json`'s
+CM1 targeted run on the 4070 Ti SUPER itself (locked clocks, `copy_f32`
+ceiling 601.873 GB/s at N=8192, truncated to 601 in the calibration file)
+— a same-GPU measurement replacing the cross-GPU proxy, per CM1's
+pre-declared plan. `pipeline.chunks_per_buffer` lands in this same
+calibration commit (`d3808d7`).
+
+**FAMILY_MAP degeneracy now recorded on rstar rows.**
+`cm6_register.py` adds `pattern_degenerate_with` to every `rstar` row:
+families sharing a `pattern` in `FAMILY_MAP` (`quant` and `convert_f16`
+both `"contiguous"`) get numerically identical `rstar`-prediction curves
+by construction, since the model keys the r*-search on pattern, not
+family. The field surfaces the CM5-review finding that this degeneracy
+exists, so a future measured family sharing a pattern with an
+already-measured one won't silently inherit its twin's prediction without
+the relationship being visible on the row itself.
+
+### Registration generations
+
+cm4_registered_predictions.json is frozen history (CM4-FROZEN check);
+cm6_registered_predictions.json is the live generation (CM6-REGEN).
