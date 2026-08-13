@@ -212,6 +212,30 @@ def cm4_frozen_check():
     print(f"CM4-FROZEN: {'PASS (committed file unchanged)' if proc.returncode == 0 else 'FAIL (frozen registration modified)'}")
 
 
+def cm6_regen_check():
+    """CM6-REGEN (issue #125): the live registration must stay
+    byte-reproducible from the committed model + calibrations. Loud SKIP
+    on pre-CM6 checkouts; missing pyreloc is a loud FAIL, by design."""
+    print("\n=== CM6-REGEN ===")
+    committed = REPO_ROOT / "bench" / "results" / "cm6_registered_predictions.json"
+    if not committed.exists():
+        print("CM6-REGEN: SKIP (no committed cm6_registered_predictions.json)")
+        return
+    with tempfile.TemporaryDirectory() as td:
+        out = Path(td) / "cm6.json"
+        proc = subprocess.run(
+            [sys.executable, "bench/rtrack/cm6_register.py", "--out", str(out)],
+            cwd=REPO_ROOT, capture_output=True, text=True)
+        if proc.returncode != 0:
+            print(f"CM6-REGEN: FAIL (regen errored)\n{proc.stderr.strip()}")
+            return
+        if out.read_text() == committed.read_text():
+            print("CM6-REGEN: PASS (matches committed "
+                  "bench/results/cm6_registered_predictions.json)")
+        else:
+            print("CM6-REGEN: FAIL (registration no longer reproduces)")
+
+
 def cm5_regen_check():
     """CM5-REPORT-REGEN (issue #113): the committed evaluation report must
     stay byte-reproducible from the committed measurement + registration.
@@ -273,6 +297,7 @@ def main():
     print_unmodelable(report)
     calibration_regen_check()
     cm4_frozen_check()
+    cm6_regen_check()
     cm5_regen_check()
     report_regen_check(args.report)
     return 0
