@@ -6,72 +6,13 @@ from contextlib import contextmanager
 import weakref
 
 from . import compat
-from .records import TensorMetadata, TransferRecord
+from .records import TransferRecord
 
 
 _HISTORY_LIMIT = 16
 
 
-def _dimension(value):
-    return value if type(value) is int else str(value)
-
-
-def _metadata(tensor):
-    try:
-        device = tensor.device
-        device_type, device_index = device.type, device.index
-    except Exception:
-        device_type, device_index = "unknown", None
-    try:
-        layout = str(tensor.layout).removeprefix("torch.")
-    except Exception:
-        layout = "unknown"
-    capacity = None
-    if layout == "strided":
-        try:
-            value = tensor.untyped_storage().nbytes()
-            capacity = value if type(value) is int else None
-        except Exception:
-            pass
-    pinned = False
-    if device_type == "cpu" and layout == "strided":
-        try:
-            pinned = bool(tensor.is_pinned())
-        except Exception:
-            pass
-    try:
-        shape = tuple(_dimension(value) for value in tensor.shape)
-    except Exception:
-        shape = ()
-    try:
-        strides = tuple(_dimension(value) for value in tensor.stride())
-    except Exception:
-        strides = ()
-    try:
-        storage_offset = _dimension(tensor.storage_offset())
-    except Exception:
-        storage_offset = 0
-    try:
-        dtype = str(tensor.dtype).removeprefix("torch.")
-    except Exception:
-        dtype = "unknown"
-    try:
-        requires_grad = bool(tensor.requires_grad)
-    except Exception:
-        requires_grad = True
-    return TensorMetadata(
-        shape=shape,
-        strides=strides,
-        storage_offset=storage_offset,
-        dtype=dtype,
-        device_type=device_type,
-        device_index=device_index,
-        requires_grad=requires_grad,
-        layout=layout,
-        pinned=pinned,
-        is_subclass=not compat.is_plain_tensor_or_parameter(tensor),
-        storage_capacity_bytes=capacity,
-    )
+_metadata = compat.tensor_metadata
 
 
 def _first_tensor(value):

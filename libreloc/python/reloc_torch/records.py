@@ -44,6 +44,8 @@ class GraphRecord:
     user_nodes: tuple[str, ...]
     tensor_metadata: TensorMetadata | None
     metadata_reason: str | None = None
+    transfer: TransferRecord | None = None
+    alias_semantics: str = "unknown"
 
 
 @dataclass(frozen=True)

@@ -18,10 +18,15 @@ __all__ = (
     "classify",
     "observe_transfers",
     "TransferObserver",
+    "graph_inventory",
 )
 
 
 def __getattr__(name):
+    if name == "graph_inventory":
+        from .graph_inventory import graph_inventory
+        globals()[name] = graph_inventory
+        return graph_inventory
     if name in {"observe_transfers", "TransferObserver"}:
         from .observer import TransferObserver, observe_transfers
 

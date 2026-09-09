@@ -1,6 +1,6 @@
 """Pure, reason-coded eligibility for observed transfer records."""
 
-from .records import Eligibility, TensorMetadata, TransferRecord
+from .records import Eligibility, GraphRecord, TensorMetadata, TransferRecord
 
 
 _TRANSFER_OPERATORS = frozenset({"aten._to_copy.default"})
@@ -82,6 +82,10 @@ def _is_dense_contiguous(metadata: TensorMetadata) -> bool:
 
 def classify(record: TransferRecord) -> Eligibility:
     """Classify one observation without importing or consulting Torch."""
+    if isinstance(record, GraphRecord):
+        if record.transfer is None:
+            return Eligibility("other", False, record.metadata_reason or "unsupported_operator")
+        return classify(record.transfer)
     category = _category(record)
     if record.failure_type is not None:
         return Eligibility(category, False, "operator_failed")
