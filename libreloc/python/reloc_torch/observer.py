@@ -29,7 +29,8 @@ def _metadata(tensor):
     capacity = None
     if layout == "strided":
         try:
-            capacity = tensor.untyped_storage().nbytes()
+            value = tensor.untyped_storage().nbytes()
+            capacity = value if type(value) is int else None
         except Exception:
             pass
     pinned = False
@@ -86,6 +87,16 @@ def _first_tensor(value):
     return None
 
 
+def _tensor_leaves(value):
+    if compat.is_tensor(value):
+        return [value]
+    if isinstance(value, (tuple, list)):
+        return [tensor for item in value for tensor in _tensor_leaves(item)]
+    if isinstance(value, dict):
+        return _tensor_leaves(tuple(value.values()))
+    return []
+
+
 class TransferObserver:
     def __init__(self):
         compat.check_version()
@@ -137,21 +148,51 @@ class TransferObserver:
         name = compat.operator_name(func)
         bound = compat.bound_schema_arguments(func, args, kwargs)
         mutable_tensors = [
-            value for _, value, write in bound if write and compat.is_tensor(value)
+            tensor
+            for _, value, write in bound
+            if write
+            for tensor in _tensor_leaves(value)
         ]
         input_tensors = [
-            value for _, value, write in bound if not write and compat.is_tensor(value)
+            tensor
+            for _, value, write in bound
+            if not write
+            for tensor in _tensor_leaves(value)
         ]
-        all_tensors = [value for _, value, _ in bound if compat.is_tensor(value)]
-        source = (input_tensors or all_tensors or [_first_tensor(kwargs)])[0]
+        all_tensors = [
+            tensor for _, value, _ in bound for tensor in _tensor_leaves(value)
+        ]
         mutates = bool(mutable_tensors)
         options = dict((key, value) for key, value, _ in bound)
-        source_metadata = _metadata(source) if source is not None else None
-        history = self._history(source) if source is not None else ()
+        if mutates:
+            if compat.is_foreach_copy_operator(func):
+                pairs = [
+                    (
+                        input_tensors[index]
+                        if index < len(input_tensors)
+                        else destination,
+                        destination,
+                    )
+                    for index, destination in enumerate(mutable_tensors)
+                ]
+            else:
+                fallback = input_tensors[0] if input_tensors else None
+                pairs = [
+                    (
+                        input_tensors[index]
+                        if len(input_tensors) == len(mutable_tensors)
+                        else (fallback if fallback is not None else destination),
+                        destination,
+                    )
+                    for index, destination in enumerate(mutable_tensors)
+                ]
+        else:
+            pairs = [(source, None) for source in (input_tensors or all_tensors)[:1]]
+        before = [(_metadata(source), self._history(source)) for source, _ in pairs]
         try:
             result = func(*args, **kwargs)
         except Exception as error:
-            if source_metadata is not None:
+            for (source_metadata, history), _ in zip(before, pairs):
                 self.records.append(
                     TransferRecord(
                         name,
@@ -167,33 +208,52 @@ class TransferObserver:
                     )
                 )
             raise
-        destination = mutable_tensors[0] if mutable_tensors else _first_tensor(result)
-        if source is None or destination is None:
+        if not mutates:
+            outputs = _tensor_leaves(result)
+            if not outputs:
+                return result
+            sources = input_tensors or all_tensors
+            if not sources:
+                return result
+            fallback = sources[0] if sources else None
+            pairs = [
+                (
+                    sources[index] if len(sources) == len(outputs) else fallback,
+                    destination,
+                )
+                for index, destination in enumerate(outputs)
+                if sources or fallback is not None
+            ]
+            initial = before[0]
+            before = [initial for _ in pairs]
+        if not pairs:
             return result
-        destination_metadata = _metadata(destination)
-        aliases = compat.tensors_alias(source, destination)
         if mutates:
-            new_history = ()
             self._provenance.clear()
-        elif compat.is_layout_operator(func):
-            new_history = history + (name,)
-        elif name == "aten._to_copy.default":
-            new_history = history
-        else:
-            new_history = ()
-        self._set_history(destination, new_history)
-        self.records.append(
-            TransferRecord(
-                name,
-                self._phases[-1],
-                source_metadata,
-                destination_metadata,
-                bool(options.get("non_blocking", False)),
-                mutates,
-                aliases,
-                tuple(new_history[-_HISTORY_LIMIT:]),
+        for (source_metadata, history), (source, destination) in zip(before, pairs):
+            destination_metadata = _metadata(destination)
+            aliases = compat.tensors_alias(source, destination)
+            if mutates:
+                new_history = ()
+            elif compat.is_layout_operator(func):
+                new_history = history + (name,)
+            elif name == "aten._to_copy.default":
+                new_history = history
+            else:
+                new_history = ()
+            self._set_history(destination, new_history)
+            self.records.append(
+                TransferRecord(
+                    name,
+                    self._phases[-1],
+                    source_metadata,
+                    destination_metadata,
+                    bool(options.get("non_blocking", False)),
+                    mutates,
+                    aliases,
+                    tuple(new_history[-_HISTORY_LIMIT:]),
+                )
             )
-        )
         return result
 
 

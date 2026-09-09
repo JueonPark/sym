@@ -119,6 +119,12 @@ def is_layout_operator(func) -> bool:
     }
 
 
+def is_foreach_copy_operator(func) -> bool:
+    import torch
+
+    return func is torch.ops.aten._foreach_copy_.default
+
+
 def tensors_alias(left, right) -> bool:
     import torch
 

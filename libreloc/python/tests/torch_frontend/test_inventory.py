@@ -1,5 +1,6 @@
 import dataclasses
 import gc
+import json
 import weakref
 
 import pytest
@@ -85,6 +86,32 @@ def test_schema_binding_handles_out_and_positional_copy_options():
     assert copy_record.destination.shape == tuple(copied.shape)
 
 
+def test_foreach_copy_records_each_source_destination_pair():
+    sources = [torch.arange(2.0), torch.arange(6.0).view(2, 3)]
+    destinations = [torch.empty(2), torch.empty(2, 3)]
+    identities = [id(tensor) for tensor in destinations]
+    with observe_transfers() as inventory:
+        result = torch._foreach_copy_(destinations, sources)
+    assert result == destinations
+    assert [id(tensor) for tensor in destinations] == identities
+    assert all(torch.equal(dst, src) for dst, src in zip(destinations, sources))
+    records = _records(inventory, "aten._foreach_copy_.default")
+    assert len(records) == 2
+    assert [record.source.shape for record in records] == [(2,), (2, 3)]
+    assert [record.destination.shape for record in records] == [(2,), (2, 3)]
+    assert all(record.mutates for record in records)
+
+
+def test_other_tensor_list_mutation_accounts_destinations_and_clears_history():
+    tensors = [torch.arange(2.0), torch.arange(6.0).view(2, 3)]
+    with observe_transfers() as inventory:
+        torch._foreach_add_(tensors, 1.0)
+    records = _records(inventory, "aten._foreach_add_.Scalar")
+    assert len(records) == 2
+    assert [record.destination.shape for record in records] == [(2,), (2, 3)]
+    assert all(record.mutates and record.layout_history == () for record in records)
+
+
 def test_records_do_not_keep_tensors_alive_and_history_is_bounded():
     with observe_transfers() as inventory:
         tensor = torch.arange(16)
@@ -110,7 +137,10 @@ def test_unrelated_arithmetic_does_not_inherit_layout_provenance():
 
 def test_parameter_grad_sparse_and_subclass_metadata_are_safe():
     parameter = torch.nn.Parameter(torch.ones(3))
-    sparse = torch.sparse_coo_tensor(torch.tensor([[0]]), torch.tensor([1.0]), (3,))
+    frozen_parameter = torch.nn.Parameter(torch.ones(3), requires_grad=False)
+    sparse = torch.sparse_coo_tensor(
+        torch.tensor([[0]]), torch.tensor([1.0]), (3,), check_invariants=True
+    )
 
     class ChildTensor(torch.Tensor):
         pass
@@ -120,8 +150,7 @@ def test_parameter_grad_sparse_and_subclass_metadata_are_safe():
         converted = parameter.to(torch.float16)
         sparse_copy = sparse.to("cpu", copy=True)
         child_copy = child.to("cpu", copy=True)
-        with torch.no_grad():
-            frozen_copy = parameter.to(torch.float64)
+        frozen_copy = frozen_parameter.to(torch.float64)
     assert sparse_copy.layout == sparse.layout
     assert sparse_copy.dtype == sparse.dtype
     assert type(child_copy) is ChildTensor
@@ -134,6 +163,21 @@ def test_parameter_grad_sparse_and_subclass_metadata_are_safe():
     assert copies[1].source.layout == "sparse_coo"
     assert copies[1].source.storage_capacity_bytes is None
     assert copies[2].source.is_subclass is True
+    assert copies[3].source.requires_grad is False
+
+
+def test_symbolic_metadata_stays_unspecialized_and_json_safe():
+    from torch._subclasses.fake_tensor import FakeTensorMode
+    from torch.fx.experimental.symbolic_shapes import ShapeEnv
+
+    mode = FakeTensorMode(shape_env=ShapeEnv())
+    fake = mode.from_tensor(torch.ones(4, 6), static_shapes=False)
+    with mode, observe_transfers() as inventory:
+        fake.to("cpu", copy=True)
+    record = _records(inventory, "aten._to_copy.default")[0]
+    assert all(isinstance(dimension, str) for dimension in record.source.shape)
+    assert record.source.storage_capacity_bytes is None
+    json.dumps(dataclasses.asdict(record))
 
 
 def test_operator_exception_is_unchanged_and_recorded():

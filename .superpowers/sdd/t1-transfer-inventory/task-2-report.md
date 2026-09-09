@@ -77,3 +77,34 @@ PYTHONPATH=$PWD/build/torch-cpu/python:$PWD/libreloc/python /tmp/sym-torch-cpu/b
 ```
 
 Both completed with exit code 0.
+
+## Review fix round 1
+
+Two focused real-operation regressions were added. This RED command:
+
+```text
+PYTHONPATH=$PWD/build/torch-cpu/python:$PWD/libreloc/python /tmp/sym-torch-cpu/bin/python -m pytest -q libreloc/python/tests/torch_frontend/test_inventory.py::test_foreach_copy_records_each_source_destination_pair libreloc/python/tests/torch_frontend/test_inventory.py::test_symbolic_metadata_stays_unspecialized_and_json_safe
+```
+
+failed `2 failed in 1.52s`: real `torch._foreach_copy_` produced zero records,
+and the FakeTensor record retained symbolic `4*s49*(s26 - 1) + 4*s49` as its
+storage capacity. Schema tensor-list flattening plus pinned
+`aten._foreach_copy_.default` pair semantics made one record per source and
+mutable destination. Other tensor-list mutations account for every destination
+and clear provenance. Storage capacity is now retained only when its exact type
+is built-in `int`; symbolic shape and stride dimensions remain strings.
+
+The focused GREEN command, also including sparse/subclass/frozen-parameter
+metadata, reported `3 passed in 2.15s`. Sparse construction now enables
+invariant checking, and the frozen case uses a real
+`Parameter(requires_grad=False)`.
+
+Complete verification after the fixes:
+
+```text
+PYTHONPATH=$PWD/build/torch-cpu/python:$PWD/libreloc/python /tmp/sym-torch-cpu/bin/python -m pytest -q libreloc/python/tests/torch_frontend
+PYTHONPATH=$PWD/build/torch-cuda/python:$PWD/libreloc/python /tmp/sym-torch-cuda/bin/python -m pytest -q libreloc/python/tests/torch_frontend
+```
+
+Final results were `48 passed, 2 skipped in 1.74s` on CPU and `50 passed in
+2.30s` on actual CUDA 12.6, with no warnings.
