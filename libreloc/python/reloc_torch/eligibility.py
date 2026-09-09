@@ -83,6 +83,8 @@ def _is_dense_contiguous(metadata: TensorMetadata) -> bool:
 def classify(record: TransferRecord) -> Eligibility:
     """Classify one observation without importing or consulting Torch."""
     category = _category(record)
+    if record.failure_type is not None:
+        return Eligibility(category, False, "operator_failed")
     if category == "mutation":
         return Eligibility(category, False, "mutation")
     if category == "cast":

@@ -31,6 +31,8 @@ class TransferRecord:
     mutates: bool
     aliases_source: bool
     layout_history: tuple[str, ...]
+    failure_type: str | None = None
+    failure_message: str | None = None
 
 
 @dataclass(frozen=True)

@@ -6,6 +6,15 @@ from reloc_torch.records import TensorMetadata, TransferRecord
 
 
 @pytest.fixture
+def cuda_device():
+    import torch
+
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA is unavailable")
+    return torch.device("cuda", torch.cuda.current_device())
+
+
+@pytest.fixture
 def h2d_record():
     source = TensorMetadata(
         shape=(4, 6),

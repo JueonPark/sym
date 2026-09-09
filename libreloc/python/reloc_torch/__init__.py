@@ -16,4 +16,14 @@ __all__ = (
     "TransferRecord",
     "check_version",
     "classify",
+    "observe_transfers",
+    "TransferObserver",
 )
+
+
+def __getattr__(name):
+    if name in {"observe_transfers", "TransferObserver"}:
+        from .observer import TransferObserver, observe_transfers
+
+        return {"observe_transfers": observe_transfers, "TransferObserver": TransferObserver}[name]
+    raise AttributeError(name)
