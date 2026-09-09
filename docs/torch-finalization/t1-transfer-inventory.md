@@ -284,13 +284,13 @@ export TORCH_PYTHON=/tmp/sym-torch-cpu/bin/python
 export TORCH_BUILD="$PWD/build/torch-cpu"
 export PYTHONPATH="$TORCH_BUILD/python:$PWD/libreloc/python"
 export SYM_OPT="$TORCH_BUILD/sym/tools/sym-opt"
-"$TORCH_PYTHON" -m pytest libreloc/python/tests/torch_frontend/test_inventory.py -m 'not gpu' -q
+"$TORCH_PYTHON" -m pytest libreloc/python/tests/torch_frontend -m 'not gpu' -q
 "$TORCH_PYTHON" libreloc/python/examples/torch_transfer_inventory.py --device cpu --output /tmp/torch-inventory-cpu.json
 # On the pinned CUDA environment:
 export TORCH_PYTHON=/tmp/sym-torch-cuda/bin/python
 export TORCH_BUILD="$PWD/build/torch-cuda"
 export PYTHONPATH="$TORCH_BUILD/python:$PWD/libreloc/python"
 export SYM_OPT="$TORCH_BUILD/sym/tools/sym-opt"
-"$TORCH_PYTHON" -m pytest libreloc/python/tests/torch_frontend/test_inventory.py -m gpu -q
+"$TORCH_PYTHON" -m pytest libreloc/python/tests/torch_frontend -m gpu -q
 "$TORCH_PYTHON" libreloc/python/examples/torch_transfer_inventory.py --device cuda --output /tmp/torch-inventory-cuda.json
 ```

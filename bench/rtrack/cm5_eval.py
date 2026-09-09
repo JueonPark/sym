@@ -19,6 +19,8 @@ this and byte-compare.
 import argparse
 import csv
 import hashlib
+from functools import reduce
+from operator import add
 import json
 import sys
 from collections import defaultdict
@@ -206,7 +208,8 @@ def ablation(cells):
     out = {}
     for policy in ("model", "always_a", "always_b"):
         vals = [cell_regret(c, policy) for c in cells]
-        out[policy] = {"mean": sum(vals) / len(vals) if vals else None,
+        # Preserve historical left-to-right rounding: Python 3.12 changed sum(float).
+        out[policy] = {"mean": reduce(add, vals, 0) / len(vals) if vals else None,
                        "p90": percentile(vals, 0.9)}
     out["oracle"] = {"mean": 0.0, "p90": 0.0}
     return out

@@ -228,5 +228,51 @@ jobs:
               pip install -q lit pytest numpy && \
               lit -sv build/sym/test && \
               PYTHONPATH=/workspace/build/sym/python python3 -c "import pyreloc" && \
-              PYTHONPATH=/workspace/build/sym/python python3 -m pytest libreloc/python/tests -q
+              PYTHONPATH=/workspace/build/sym/python python3 -m pytest libreloc/python/tests --ignore=libreloc/python/tests/torch_frontend -q
             '
+
+  torch-cpu-cp314:
+    name: Torch inventory CPU cp314
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Select LLVM image
+        id: image
+        run: |
+          echo "name=${GITHUB_REPOSITORY_OWNER,,}/sym" >> "$GITHUB_OUTPUT"
+          LLVM_COMMIT=$(tr -d '[:space:]' < build_tools/llvm_version.txt)
+          echo "tag=${LLVM_COMMIT:0:12}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and qualify independent cp314 CPU extension
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/workspace" -w /workspace \
+            "${{ env.REGISTRY }}/${{ steps.image.outputs.name }}:${{ steps.image.outputs.tag }}" bash -eu -o pipefail -c '
+              pip3 install uv==0.12.11
+              uv python install 3.14.7
+              uv venv --python 3.14.7 /tmp/sym-torch-cpu
+              uv pip install --python /tmp/sym-torch-cpu/bin/python torch==2.14.0 --index-url https://download.pytorch.org/whl/cpu
+              uv pip install --python /tmp/sym-torch-cpu/bin/python -r libreloc/python/requirements-torch-test.txt
+              cmake -G Ninja -S . -B build/torch-cpu-cp314 \
+                -DCMAKE_BUILD_TYPE=Release -DMLIR_DIR=/opt/llvm/lib/cmake/mlir \
+                -DLLVM_DIR=/opt/llvm/lib/cmake/llvm -DLLVM_EXTERNAL_LIT=$(which lit) \
+                -DPython_EXECUTABLE=/tmp/sym-torch-cpu/bin/python -DPYBIND11_FINDPYTHON=ON \
+                -Dpybind11_DIR=$(/tmp/sym-torch-cpu/bin/python -m pybind11 --cmakedir)
+              cmake --build build/torch-cpu-cp314 -j2
+              export PYTHONPATH=/workspace/build/torch-cpu-cp314/python
+              export SYM_OPT=/workspace/build/torch-cpu-cp314/sym/tools/sym-opt
+              /tmp/sym-torch-cpu/bin/python -c "import torch, reloc_torch, pyreloc, pyreloc._pyreloc as ext; reloc_torch.check_version(); assert \"cpython-314\" in ext.__file__"
+              /tmp/sym-torch-cpu/bin/python -m pytest libreloc/python/tests -m "not gpu" -q
+              /tmp/sym-torch-cpu/bin/python libreloc/python/examples/torch_transfer_inventory.py --device cpu --output build/torch-cpu-cp314/inventory-cpu.json
+            '
+      - uses: actions/upload-artifact@v4
+        with:
+          name: torch-inventory-cp314-cpu
+          path: |
+            build/torch-cpu-cp314/python/pyreloc/
+            build/torch-cpu-cp314/python/reloc_torch/
+            build/torch-cpu-cp314/libreloc/libreloc_runtime.so
+            build/torch-cpu-cp314/inventory-cpu.json

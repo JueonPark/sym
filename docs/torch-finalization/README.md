@@ -1,11 +1,16 @@
 # Torch finalization subissue plans
 
-Date: 2026-09-09. Status: implementation proposals for
-[#131](https://github.com/JueonPark/sym/issues/131); no child issues filed or
-implementation completed by these documents.
+Date: 2026-09-09. T1 inventory implementation and observed qualification are
+documented in [Torch support](../torch-support.md). Child issues
+[#134](https://github.com/JueonPark/sym/issues/134) (T1),
+[#135](https://github.com/JueonPark/sym/issues/135) (T2),
+[#136](https://github.com/JueonPark/sym/issues/136) (T3), and
+[#137](https://github.com/JueonPark/sym/issues/137) (T4) are open.
+T2–T4 execution integration remains planned under
+[#131](https://github.com/JueonPark/sym/issues/131).
 
 These plans expand section 1 of [the project finalization plan](../project-finalization-plan.md).
-T1–T4 remain work identifiers, not GitHub issue numbers. Each linked document
+T1–T4 are work identifiers corresponding to those child issues. Each linked document
 contains the proposed issue title, scope, file map, implementation tasks, and
 acceptance evidence. Keep these plans together as project documentation.
 
@@ -23,8 +28,7 @@ The earlier local audit used Python `3.10.12` and PyTorch `2.5.1+cu121`;
 those versions are historical observations, **not the integration target**.
 The existing `build/sym` has `RELOC_ENABLE_CUDA=OFF` and a Python 3.10
 extension. T1 must create fresh environments and rebuild the extension for
-the selected baseline below. No execution on that new baseline is claimed
-by this documentation update.
+the selected baseline below. T1 now qualifies observation on fresh CPU/cu126 builds; see the support evidence.
 
 ## Selected version baseline
 
@@ -168,7 +172,7 @@ test requirements using [T4's environment setup](t4-dynamic-inputs-and-weights.m
 Use `/tmp/sym-torch-cpu` with `build/torch-cpu` for CPU tests and
 `/tmp/sym-torch-cuda` with `build/torch-cuda` for GPU tests. New files, APIs,
 and tests named in those commands are
-planned deliverables and do not exist at the time of writing.
+T1 deliverables now exist; later T2–T4 deliverables remain planned.
 
 ```bash
 export TORCH_PYTHON=/tmp/sym-torch-cpu/bin/python
