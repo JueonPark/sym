@@ -1,10 +1,12 @@
 import dataclasses
 import json
 import os
+import pathlib
 import subprocess
 import sys
 
 import pytest
+import pyreloc
 
 from reloc_torch import check_version
 from reloc_torch.compat import CompatibilityError, _validate_version
@@ -49,24 +51,28 @@ def test_version_rejects_unqualified_runtime_metadata(change, reason):
 
 
 def test_reloc_torch_records_import_without_importing_torch():
-    env = os.environ.copy()
-    env["PYTHONPATH"] = str(
-        __file__.rsplit("/tests/", 1)[0]
+    source = __file__.rsplit("/tests/", 1)[0]
+    code = (
+        f"import sys;sys.path.insert(0,{source!r});"
+        "import reloc_torch;import json;"
+        "print(json.dumps('torch' in sys.modules))"
     )
-    code = "import reloc_torch; import json,sys; print(json.dumps('torch' in sys.modules))"
     result = subprocess.run(
-        [sys.executable, "-I", "-c", code],
-        env=env,
-        text=True,
-        capture_output=True,
+        [sys.executable, "-I", "-c", code], text=True, capture_output=True
     )
-    # Isolated mode ignores PYTHONPATH, so use the source path explicitly.
-    if result.returncode:
-        source = __file__.rsplit("/tests/", 1)[0]
-        code = f"import sys;sys.path.insert(0,{source!r});" + code
-        result = subprocess.run(
-            [sys.executable, "-I", "-c", code], text=True, capture_output=True
-        )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) is False
+
+
+def test_core_pyreloc_import_does_not_import_torch():
+    build_python = pathlib.Path(pyreloc.__file__).resolve().parents[1]
+    source_python = pathlib.Path(__file__).resolve().parents[2]
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join((str(build_python), str(source_python)))
+    code = "import pyreloc,json,sys;print(json.dumps('torch' in sys.modules))"
+    result = subprocess.run(
+        [sys.executable, "-c", code], env=env, text=True, capture_output=True
+    )
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout) is False
 

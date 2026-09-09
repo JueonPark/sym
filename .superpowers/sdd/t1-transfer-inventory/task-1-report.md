@@ -48,6 +48,33 @@ Direct activation checks passed under both actual installed variants:
 `import reloc_torch` left `torch` absent from `sys.modules` until explicit
 `check_version()` activation.
 
+Review follow-up added a fresh subprocess check that imports the compiled core
+`pyreloc` package and asserts that Torch is absent from `sys.modules`. It also
+removed the `reloc_torch` test's retry path: the isolated subprocess now inserts
+the source path once and any import error fails directly. This new regression
+test passed against the existing Torch-free core implementation; no production
+change was needed to make it green.
+
+Exact post-review CPU command and output:
+
+```text
+PYTHONPATH="$PWD/build/torch-cpu/python:$PWD/libreloc/python" /tmp/sym-torch-cpu/bin/python -m pytest libreloc/python/tests/torch_frontend/test_contract.py -q
+.....................................                                    [100%]
+37 passed in 0.84s
+```
+
+Exact post-review CUDA command and output:
+
+```text
+PYTHONPATH="$PWD/build/torch-cuda/python:$PWD/libreloc/python" /tmp/sym-torch-cuda/bin/python -m pytest libreloc/python/tests/torch_frontend/test_contract.py -q
+.....................................                                    [100%]
+37 passed in 1.06s
+```
+
+The focused Task 1 tests remain in `test_contract.py` rather than the planned
+`test_inventory.py`. The controller explicitly authorized this split so later
+observer and graph inventory work can own `test_inventory.py`.
+
 ## Probe and environment handoff
 
 The controller's fresh 2.14 CPU probes confirmed no dispatch event for no-op
