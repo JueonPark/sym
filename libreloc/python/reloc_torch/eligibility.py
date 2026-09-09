@@ -85,6 +85,11 @@ def classify(record: TransferRecord) -> Eligibility:
     if isinstance(record, GraphRecord):
         if record.transfer is None:
             return Eligibility("other", False, record.metadata_reason or "unsupported_operator")
+        if (record.node_kind == "call_method"
+                and record.target in {"to", "cpu", "cuda"}
+                and record.alias_semantics == "aliases"
+                and record.transfer.source == record.transfer.destination):
+            return Eligibility("other", False, "same_device_noop")
         return classify(record.transfer)
     category = _category(record)
     if record.failure_type is not None:

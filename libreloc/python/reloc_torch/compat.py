@@ -262,10 +262,13 @@ def graph_alias_semantics(node, source, destination):
         return "aliases"
     if tensors_alias(source, destination):
         return "aliases"
-    if node.op == "call_method" and target in {"reshape", "view", "transpose", "permute", "contiguous", "to", "cpu", "cuda"}:
-        if source.device != destination.device or source.dtype != destination.dtype:
-            return "distinct"
-        return "unknown"
-    if target == "aten.reshape.default":
-        return "unknown"
-    return "distinct"
+    if source.device != destination.device or source.dtype != destination.dtype:
+        return "distinct"
+    schema = getattr(node.target, "_schema", None)
+    if schema is not None:
+        # An alias annotation permits aliasing; independently snapshotted fake
+        # storage cannot disprove it. Unannotated tensor returns are fresh.
+        return "unknown" if any(r.alias_info is not None for r in schema.returns) else "distinct"
+    if node.op == "call_method" and target == "to" and node.kwargs.get("copy") is True:
+        return "distinct"
+    return "unknown"

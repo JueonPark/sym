@@ -26,7 +26,7 @@ kernel execution. Turing qualification remains pending hardware.
 | `copy_` | `copy_` | `aten.copy_.default` | H2D/D2H mutation | No; `mutation` |
 | Frozen module parameters and buffers `.to()` | Not captured by this raw recipe | `aten._to_copy.default` | H2D, phase `module_to` | Candidate under same restrictions; `needs_compile_and_runtime_check` |
 | `load_state_dict` | Not captured by this raw recipe | `aten.copy_.default` | H2D mutation into resident weights/buffers | No; `mutation` |
-| Same-device `.to()` | `to` (when retained) | No eager dispatch for no-op | Identity/alias; no transfer | No execution path to replace |
+| Same-device `.to()` | `to` (when retained) | No eager dispatch for no-op | Identity/alias; no transfer | No; proven identity is `same_device_noop` |
 | `.to(copy=True)` | Not captured by this raw recipe | `aten._to_copy.default` | Same-device allocation | No; `same_device_copy` |
 | `.to(float16)` | `to` | `aten._to_copy.default` | Same-device cast | No; `typed_transform_unavailable` |
 | `reshape`, `transpose` | `reshape`, `transpose` | `aten.view.default`, `aten.transpose.int` | Metadata-only views in tested recipe | No; `layout_only` |
