@@ -254,11 +254,32 @@ def graph_nonblocking(node):
     return False
 
 
+# Pinned view semantics remain authoritative when schemas omit alias metadata
+# or real-mode make_fx stores independently allocated fake tensor snapshots.
+# In particular, aten._unsafe_view shares storage despite an unannotated return.
+_KNOWN_VIEW_TARGETS = frozenset({
+    "aten.view.default", "aten._unsafe_view.default", "aten.transpose.int",
+    "aten.permute.default", "aten.as_strided.default",
+})
+
+
+def graph_may_alias_inputs(node):
+    """Conservative alias edges using pinned exceptions plus schema contracts."""
+    if graph_target(node.target) in _KNOWN_VIEW_TARGETS:
+        return True
+    schema = getattr(node.target, "_schema", None)
+    if schema is not None and any(result.alias_info for result in schema.returns):
+        return True
+    return node.op == "call_method" and node.target in {
+        "view", "reshape", "transpose", "permute", "detach", "contiguous", "to"
+    }
+
+
 def graph_alias_semantics(node, source, destination):
     # Real-mode make_fx snapshots can have independently allocated fake metadata;
     # schema view guarantees remain authoritative when metadata loses storage IDs.
     target = graph_target(node.target)
-    if target in {"aten.view.default", "aten.transpose.int", "aten.permute.default", "aten.as_strided.default"}:
+    if target in _KNOWN_VIEW_TARGETS:
         return "aliases"
     if tensors_alias(source, destination):
         return "aliases"

@@ -411,3 +411,31 @@ def test_quantized_root_excludes_before_unsupported_fake_conversion():
     report = api.import_graph(gm, (value,))
     assert not report.candidates
     assert 'unsupported_layout' in {e.reason for e in report.exclusions}
+
+
+@pytest.mark.parametrize('write_before_transfer', [False, True])
+@pytest.mark.parametrize('transfer_from_alias', [False, True])
+def test_unsafe_view_alias_write_rejects_region(write_before_transfer, transfer_from_alias):
+    api = importer()
+    def fn(x):
+        alias = torch.ops.aten._unsafe_view.default(x, [12])
+        if write_before_transfer:
+            alias.add_(1)
+        result = transfer(alias if transfer_from_alias else x)
+        if not write_before_transfer:
+            alias.add_(1)
+        return result
+    gm = capture(fn)
+    before = snapshot(gm)
+    report = api.import_graph(gm)
+    assert not report.candidates
+    assert 'mutation' in {e.reason for e in report.exclusions}
+    assert snapshot(gm) == before
+
+
+def test_unsafe_view_inventory_preserves_alias_when_fake_snapshots_differ():
+    from reloc_torch import graph_inventory
+    from torch.fx.experimental.proxy_tensor import make_fx
+    gm = make_fx(lambda x: torch.ops.aten._unsafe_view.default(x, [12]))(torch.ones(3, 4))
+    record = next(r for r in graph_inventory(gm) if r.target == 'aten._unsafe_view.default')
+    assert record.alias_semantics == 'aliases'

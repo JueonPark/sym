@@ -137,16 +137,12 @@ def _require(condition, reason):
 
 
 def _safety(nodes, root, members):
-    """Schema aliases form a conservative closure, including external views."""
+    """Known aliases form a conservative closure, including external views."""
     involved = {root, *members}
     aliases = set(involved)
     edges = []
     for node in nodes:
-        schema = getattr(node.target, '_schema', None)
-        may_alias = schema is not None and any(r.alias_info for r in schema.returns)
-        if node.op == 'call_method' and node.target in {'view', 'reshape', 'transpose', 'permute', 'detach', 'contiguous', 'to'}:
-            may_alias = True
-        if may_alias:
+        if compat.graph_may_alias_inputs(node):
             edges.append({node, *node.all_input_nodes})
     changed = True
     while changed:
