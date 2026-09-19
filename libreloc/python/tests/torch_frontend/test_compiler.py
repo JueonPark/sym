@@ -382,6 +382,41 @@ def test_manifest_symbols_must_match_exact_wire_order(compiler, tmp_path):
         client.compile(recipe)
 
 
+def test_constant_floordiv_mod_recipe_compiles_and_round_trips(compiler):
+    from reloc_torch import CompiledRecipe
+    from reloc_torch.recipe import Fill, Pad, Recipe, Reshape, TensorSpec
+    from reloc_torch.symbolic import Add, Const, FloorDiv, Mod, dense_strides
+
+    source_shape = (Const(6),)
+    rows = FloorDiv(Const(6), 3)
+    pad_lo = Mod(Const(5), 2)
+    destination_shape = (Add(rows, pad_lo), Const(3))
+    recipe = Recipe(
+        TensorSpec(source_shape, dense_strides(source_shape), Const(0), "float32"),
+        (
+            Reshape((rows, Const(3))),
+            Pad(0, pad_lo, Const(0), Fill("float32", 0)),
+        ),
+        TensorSpec(
+            destination_shape,
+            dense_strides(destination_shape),
+            Const(0),
+            "float32",
+        ),
+        "h2d",
+    )
+
+    compiled = compiler.compile(recipe)
+    restored = CompiledRecipe.from_bytes(compiled.to_bytes())
+    assert restored.recipe == recipe
+    assert restored.constraints == ()
+    assert restored.logical_destination.shape == (Const(3), Const(3))
+    source = torch.arange(6, dtype=torch.float32)
+    actual, _ = _relocate(restored, source, (3, 3))
+    expected = np.pad(source.reshape(2, 3).numpy(), ((1, 0), (0, 0)))
+    np.testing.assert_array_equal(actual, expected)
+
+
 def test_portable_artifact_reloads_and_executes_in_fresh_process(
     compiler, split_transpose_recipe, tmp_path
 ):

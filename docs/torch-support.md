@@ -22,6 +22,23 @@ shapes. Unsupported nodes, noncontiguous roots, mutation, escaping users,
 training inputs, and nonblocking transfers retain their reason-coded original
 PyTorch path.
 
+Compile and persist a verified artifact explicitly, then bind its symbols from
+the concrete source tensor before calling the standalone runtime:
+
+```python
+import pyreloc
+from reloc_torch import CompilerClient, CompiledRecipe
+
+compiled = CompilerClient("/path/to/sym-reloc-export").compile(recipe)
+compiled.save("recipe.reloc.json")
+compiled = CompiledRecipe.load("recipe.reloc.json")
+plan = pyreloc.load_plan(compiled.plan_bytes)
+bound = pyreloc.bind(plan, compiled.bind_values(source_tensor))
+```
+
+This surface prepares and binds a host relocation plan only. Device allocation,
+transfer launch, graph replacement, and fallback orchestration remain T3/R2 work.
+
 Observed on 2026-09-09: regular-GIL CPython 3.14.7,
 `cpython-314-x86_64-linux-gnu`, PyTorch 2.14.0+cpu and 2.14.0+cu126
 (CUDA 12.6), NumPy 2.5.3, pytest 9.1.1, pybind11 3.0.4. Each environment

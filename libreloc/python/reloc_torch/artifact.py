@@ -205,15 +205,29 @@ def _parse_expr(value, where):
 
 
 def _normalize_expr(value):
+    def fold_constant(candidate):
+        try:
+            return Const(candidate.evaluate({}, checked=True))
+        except KeyError:
+            return candidate
+        except GuardError:
+            # Keep overflowing arithmetic structural so admission cannot
+            # equate it with an unchecked host-language fold.
+            return candidate
+
     match expression(value):
         case Add(lhs, rhs):
-            return add(_normalize_expr(lhs), _normalize_expr(rhs))
+            lhs, rhs = _normalize_expr(lhs), _normalize_expr(rhs)
+            candidate = fold_constant(Add(lhs, rhs))
+            return candidate if isinstance(candidate, Const) else add(lhs, rhs)
         case Mul(lhs, rhs):
-            return mul(_normalize_expr(lhs), _normalize_expr(rhs))
+            lhs, rhs = _normalize_expr(lhs), _normalize_expr(rhs)
+            candidate = fold_constant(Mul(lhs, rhs))
+            return candidate if isinstance(candidate, Const) else mul(lhs, rhs)
         case FloorDiv(lhs, divisor):
-            return FloorDiv(_normalize_expr(lhs), divisor)
+            return fold_constant(FloorDiv(_normalize_expr(lhs), divisor))
         case Mod(lhs, divisor):
-            return Mod(_normalize_expr(lhs), divisor)
+            return fold_constant(Mod(_normalize_expr(lhs), divisor))
         case atom:
             return atom
 
@@ -319,9 +333,13 @@ def _expected_constraints(recipe):
         value = expression(value)
         match value:
             case FloorDiv(lhs, divisor):
-                item = DivisibilityConstraint(_normalize_expr(lhs), divisor)
-                if item not in constraints:
-                    constraints.append(item)
+                normalized = _normalize_expr(lhs)
+                # Fully constant reshape arithmetic is settled by the
+                # compiler and bind_recipe; it is not a runtime constraint.
+                if not isinstance(normalized, Const):
+                    item = DivisibilityConstraint(normalized, divisor)
+                    if item not in constraints:
+                        constraints.append(item)
                 visit(lhs)
             case Add(lhs, rhs) | Mul(lhs, rhs):
                 visit(lhs)
