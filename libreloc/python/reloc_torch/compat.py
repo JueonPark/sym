@@ -272,3 +272,90 @@ def graph_alias_semantics(node, source, destination):
     if node.op == "call_method" and target == "to" and node.kwargs.get("copy") is True:
         return "distinct"
     return "unknown"
+
+
+class SymbolicContext:
+    """Pinned SymInt conversion; environment identity is part of provenance.
+
+    Only atomic, backed source dimensions introduce symbols. Reading expressions
+    and membership of backed_var_to_val never reads a concrete hint or asks Torch
+    to install a guard. Other dimensions may reference those source symbols.
+    """
+    def __init__(self):
+        self._symbols = {}
+        self.sources = ()
+
+    @classmethod
+    def from_tensor(cls, tensor):
+        import sympy
+        import torch
+        from .symbolic import SymbolSource, UnsupportedSymbolicExpr
+        context = cls()
+        sources = []
+        for axis, value in enumerate(tensor.shape):
+            if type(value) is int:
+                continue
+            if not isinstance(value, torch.SymInt):
+                raise UnsupportedSymbolicExpr('noninteger source dimension')
+            node = value.node
+            expr, env = node.expr, node.shape_env
+            if not isinstance(expr, sympy.Symbol) or env is None or expr not in env.backed_var_to_val:
+                raise UnsupportedSymbolicExpr('source dimension is not an independent backed symbol')
+            key = (env, expr)
+            if key in context._symbols:
+                index = context._symbols[key]
+                source = sources[index]
+                sources[index] = SymbolSource(source.name, source.axis, source.equal_axes + (axis,))
+            else:
+                index = len(sources)
+                context._symbols[key] = index
+                sources.append(SymbolSource(f's{index}', axis))
+        context.sources = tuple(sources)
+        return context
+
+    def expression(self, value):
+        import sympy
+        import torch
+        from torch.utils._sympy.functions import FloorDiv as TorchFloorDiv, PythonMod, Mod as TorchMod
+        from .symbolic import Const, Symbol, FloorDiv, Mod, UnsupportedSymbolicExpr, add, mul
+        from functools import reduce
+        if type(value) is int:
+            return Const(value)
+        if not isinstance(value, torch.SymInt):
+            raise UnsupportedSymbolicExpr('expected integer or backed SymInt')
+        env = value.node.shape_env
+
+        def convert(expr):
+            if isinstance(expr, sympy.Integer):
+                return Const(int(expr))
+            if isinstance(expr, sympy.Symbol):
+                index = self._symbols.get((env, expr))
+                if index is None or env is None or expr not in env.backed_var_to_val:
+                    raise UnsupportedSymbolicExpr('unbacked or non-source symbol')
+                return Symbol(self.sources[index].name)
+            if expr.func is sympy.Add:
+                return reduce(add, (convert(a) for a in expr.args))
+            if expr.func is sympy.Mul:
+                return reduce(mul, (convert(a) for a in expr.args))
+            if expr.func in (TorchFloorDiv, PythonMod, TorchMod, sympy.Mod):
+                lhs, divisor = expr.args
+                if not isinstance(divisor, sympy.Integer) or divisor <= 0:
+                    raise UnsupportedSymbolicExpr('symbolic or nonpositive divisor')
+                kind = FloorDiv if expr.func is TorchFloorDiv else Mod
+                return kind(convert(lhs), int(divisor))
+            # SymPy combines repeated source dimensions (N*N) into an integer
+            # power. Expand that structural abbreviation into the Mul vocabulary.
+            if expr.func is sympy.Pow and isinstance(expr.args[1], sympy.Integer) and expr.args[1] >= 0:
+                return reduce(mul, (convert(expr.args[0]) for _ in range(int(expr.args[1]))), Const(1))
+            raise UnsupportedSymbolicExpr(f'unknown expression function {expr.func}')
+        return convert(value.node.expr)
+
+    def tensor_spec(self, tensor, *, require_dense=True):
+        from .recipe import TensorSpec
+        from .symbolic import Const, dense_strides, UnsupportedSymbolicExpr
+        shape = tuple(self.expression(d) for d in tensor.shape)
+        strides = tuple(self.expression(d) for d in tensor.stride())
+        offset = self.expression(tensor.storage_offset())
+        if require_dense and (not shape or strides != dense_strides(shape) or offset != Const(0)):
+            raise UnsupportedSymbolicExpr('source_layout: expected dense zero-offset tensor')
+        return TensorSpec(shape, strides, offset, str(tensor.dtype).removeprefix('torch.'))
