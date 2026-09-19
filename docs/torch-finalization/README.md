@@ -6,8 +6,8 @@ documented in [Torch support](../torch-support.md). Child issues
 [#135](https://github.com/JueonPark/sym/issues/135) (T2),
 [#136](https://github.com/JueonPark/sym/issues/136) (T3), and
 [#137](https://github.com/JueonPark/sym/issues/137) (T4) are open.
-T2–T4 execution integration remains planned under
-[#131](https://github.com/JueonPark/sym/issues/131).
+T2 and its R1 compiler-artifact prerequisite are implemented. R2 and the T3–T4
+execution integration remain planned under [#131](https://github.com/JueonPark/sym/issues/131).
 
 These plans expand section 1 of [the project finalization plan](../project-finalization-plan.md).
 T1–T4 are work identifiers corresponding to those child issues. Each linked document
@@ -17,7 +17,7 @@ acceptance evidence. Keep these plans together as project documentation.
 | Child / proposed issue title | Plan | Depends on | Completion evidence |
 | --- | --- | --- | --- |
 | [Finalize][Torch][T1] Inventory transfers and define eligibility | [T1](t1-transfer-inventory.md) | None | Versioned eager/FX inventory, reason-coded eligibility matrix, CPU tests and CUDA observations |
-| [Finalize][Torch][T2] Import FX relocation recipes with symbolic guards | [T2](t2-fx-import-and-guards.md) | T1 contracts; R1 for artifact acceptance | Verified static/symbolic plans, exact compiler/runtime reference comparisons, compiler-bail and guard tests |
+| [Finalize][Torch][T2] Import FX relocation recipes with symbolic guards | [T2](t2-fx-import-and-guards.md) | T1 contracts; R1 artifact acceptance (implemented) | Implemented: verified static/symbolic plans, strict portable artifacts, exact compiler/runtime reference comparisons, compiler-bail and guard tests |
 | [Finalize][Torch][T3] Replace eligible transfers with a guarded custom op | [T3](t3-custom-op-and-replacement.md) | T1/T2 and R1/R2 | Real H2D/D2H, fake metadata and opcheck, graph/eager fallback, stream and lifetime tests |
 | [Finalize][Torch][T4] Validate dynamic reuse and manage weight lifecycle | [T4](t4-dynamic-inputs-and-weights.md) | T3; C3/C4/R3 for typed prefolding | Rebinding counters, fresh weight results after updates, lifecycle tests, runnable examples and installation guide |
 
@@ -111,9 +111,9 @@ The following requirements apply to every task in all four plans:
 
 ## Interfaces and ownership
 
-All names below are **proposed new interfaces**, except the existing
-`pyreloc.load_plan`, `pyreloc.bind`, and execution functions listed above.
-Their implementations live in the task that owns them. Keep compiler
+T1 and T2 names below are implemented interfaces; T3 and T4 names remain
+proposed. `pyreloc.load_plan`, `pyreloc.bind`, and the execution functions are
+existing runtime interfaces. Keep compiler
 artifacts independent of Python object identities and process-local caches.
 
 | Owner | Interface | Required contract |
@@ -172,13 +172,15 @@ test requirements using [T4's environment setup](t4-dynamic-inputs-and-weights.m
 Use `/tmp/sym-torch-cpu` with `build/torch-cpu` for CPU tests and
 `/tmp/sym-torch-cuda` with `build/torch-cuda` for GPU tests. New files, APIs,
 and tests named in those commands are
-T1 deliverables now exist; later T2–T4 deliverables remain planned.
+T1/T2 and the R1 exporter deliverables now exist. R2–R4 and T3–T4 remain
+unimplemented.
 
 ```bash
 export TORCH_PYTHON=/tmp/sym-torch-cpu/bin/python
 export TORCH_BUILD="$PWD/build/torch-cpu"
 export PYTHONPATH="$TORCH_BUILD/python:$PWD/libreloc/python"
 export SYM_OPT="$TORCH_BUILD/sym/tools/sym-opt"
+export SYM_RELOC_EXPORT="$TORCH_BUILD/sym/tools/sym-reloc-export"
 "$TORCH_PYTHON" -m pytest libreloc/python/tests/torch_frontend -m 'not gpu' -q
 ```
 
@@ -188,7 +190,8 @@ configured qualification build can use only `$TORCH_BUILD/python`;
 never load the existing Python 3.10 extension from `build/sym/python` into 3.14.
 
 `TORCH_PYTHON` and `TORCH_BUILD` in inline task commands refer to the selected
-environment above. Switch both together, reset `PYTHONPATH`/`SYM_OPT`, and
+environment above. Switch both together, reset `PYTHONPATH`/`SYM_OPT`/
+`SYM_RELOC_EXPORT`, and
 rebuild `pyreloc_ext` before changing from CPU to CUDA qualification.
 
 The dedicated Torch CI job must provision CPython 3.14.7 inside its build/test

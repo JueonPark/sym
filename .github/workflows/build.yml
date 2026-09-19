@@ -266,6 +266,8 @@ jobs:
               cmake --build build/torch-cpu-cp314 -j2
               export PYTHONPATH=/workspace/build/torch-cpu-cp314/python
               export SYM_OPT=/workspace/build/torch-cpu-cp314/sym/tools/sym-opt
+              export SYM_RELOC_EXPORT=/workspace/build/torch-cpu-cp314/sym/tools/sym-reloc-export
+              test -x "$SYM_RELOC_EXPORT"
               /tmp/sym-torch-cpu/bin/python -c "import torch, reloc_torch, pyreloc, pyreloc._pyreloc as ext; reloc_torch.check_version(); assert \"cpython-314\" in ext.__file__"
               /tmp/sym-torch-cpu/bin/python -m pytest libreloc/python/tests -m "not gpu" -q
               /tmp/sym-torch-cpu/bin/python libreloc/python/examples/torch_transfer_inventory.py --device cpu --output build/torch-cpu-cp314/inventory-cpu.json
@@ -276,5 +278,6 @@ jobs:
           path: |
             build/torch-cpu-cp314/python/pyreloc/
             build/torch-cpu-cp314/python/reloc_torch/
+            build/torch-cpu-cp314/sym/tools/sym-reloc-export
             build/torch-cpu-cp314/libreloc/libreloc_runtime.so
             build/torch-cpu-cp314/inventory-cpu.json

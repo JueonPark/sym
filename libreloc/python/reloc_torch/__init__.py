@@ -21,10 +21,22 @@ __all__ = (
     "graph_inventory",
     "normalize_graph",
     "import_graph",
+    "CompilerClient",
+    "CompiledRecipe",
+    "UnsupportedRecipe",
 )
 
 
 def __getattr__(name):
+    if name in {"CompilerClient", "CompiledRecipe", "UnsupportedRecipe"}:
+        from .compiler import CompilerClient, CompiledRecipe, UnsupportedRecipe
+
+        globals().update(
+            CompilerClient=CompilerClient,
+            CompiledRecipe=CompiledRecipe,
+            UnsupportedRecipe=UnsupportedRecipe,
+        )
+        return globals()[name]
     if name in {"normalize_graph", "import_graph"}:
         from .fx_import import import_graph, normalize_graph
 

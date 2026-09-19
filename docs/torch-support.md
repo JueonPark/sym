@@ -1,10 +1,26 @@
-# Torch transfer inventory (T1, issue #134)
+# Torch transfer inventory and compiler artifacts (T1/T2, issues #134/#135)
 
-T1 observes eager dispatch and inventories FX graphs. **No transfer replacement
-is enabled.** A candidate remains excluded with `needs_compile_and_runtime_check`
-until the [T2 importer](torch-finalization/t2-fx-import-and-guards.md) and
-[T3 runtime replacement](torch-finalization/t3-custom-op-and-replacement.md)
-prove that particular path. These are future execution tests, not current passes.
+T1 observes eager dispatch and inventories FX graphs. T2 now imports conservative
+layout/transfer regions, preserves symbolic guards, emits reloc IR, and accepts
+only artifacts verified through the public `sym-reloc-export` interface. The
+accepted artifact is portable: it includes the canonical recipe, plan bytes,
+compiler identity, ordered symbols and provenance, constraints, and logical
+source/destination rank. It can be rebound from concrete source metadata without
+retaining the FX capture or its original callable.
+
+**No transfer replacement is enabled.** Successful T2 folding proves compiler
+and host relocation agreement; it does not allocate a device result, launch a
+transfer, or rewrite an FX graph. The original callable remains in the imported
+candidate for fallback. T3 still depends on the unimplemented R2 storage/stream
+adapter before any H2D/D2H execution row can become supported.
+
+T2's real CPU tests cover identity, transpose, static merge/split, symbolic
+split, constant pad, transpose+pad, float32/float16/int8 exact bytes, compiler
+bail, invalid guards, stale/malformed manifests, and fresh-process artifact
+reload. An actual captured symbolic FX candidate reuses one artifact at multiple
+shapes. Unsupported nodes, noncontiguous roots, mutation, escaping users,
+training inputs, and nonblocking transfers retain their reason-coded original
+PyTorch path.
 
 Observed on 2026-09-09: regular-GIL CPython 3.14.7,
 `cpython-314-x86_64-linux-gnu`, PyTorch 2.14.0+cpu and 2.14.0+cu126
@@ -71,12 +87,14 @@ export TORCH_PYTHON=/tmp/sym-torch-cpu/bin/python
 export TORCH_BUILD="$PWD/build/torch-cpu"
 export PYTHONPATH="$TORCH_BUILD/python"
 export SYM_OPT="$TORCH_BUILD/sym/tools/sym-opt"
+export SYM_RELOC_EXPORT="$TORCH_BUILD/sym/tools/sym-reloc-export"
 "$TORCH_PYTHON" -m pytest libreloc/python/tests/torch_frontend -m 'not gpu' -q
 "$TORCH_PYTHON" libreloc/python/examples/torch_transfer_inventory.py --device cpu --output /tmp/inventory-cpu.json
 export TORCH_PYTHON=/tmp/sym-torch-cuda/bin/python
 export TORCH_BUILD="$PWD/build/torch-cuda"
 export PYTHONPATH="$TORCH_BUILD/python"
 export SYM_OPT="$TORCH_BUILD/sym/tools/sym-opt"
+export SYM_RELOC_EXPORT="$TORCH_BUILD/sym/tools/sym-reloc-export"
 "$TORCH_PYTHON" -m pytest libreloc/python/tests/torch_frontend -m gpu -q
 PATH=/tmp/sym-cuda-toolkit-12.6.3/bin:$PATH "$TORCH_PYTHON" libreloc/python/examples/torch_transfer_inventory.py --device cuda --output /tmp/inventory-cuda.json
 ```
