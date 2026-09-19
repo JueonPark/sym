@@ -3,6 +3,7 @@ get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
 
 add_llvm_executable(sym-opt
   SymOptMain.cpp
+  PARTIAL_SOURCES_INTENDED
 )
 
 llvm_update_compile_flags(sym-opt)
@@ -34,3 +35,21 @@ target_link_libraries(sym-opt PRIVATE
 )
 
 mlir_check_all_link_libraries(sym-opt)
+
+add_llvm_executable(sym-reloc-export RelocExportMain.cpp PARTIAL_SOURCES_INTENDED)
+llvm_update_compile_flags(sym-reloc-export)
+get_target_property(sym_tool_includes sym-opt INCLUDE_DIRECTORIES)
+target_include_directories(sym-reloc-export PRIVATE ${sym_tool_includes})
+execute_process(COMMAND git rev-parse HEAD
+  WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+  OUTPUT_VARIABLE SYM_EXPORT_REVISION OUTPUT_STRIP_TRAILING_WHITESPACE
+  ERROR_QUIET)
+if(NOT SYM_EXPORT_REVISION)
+  set(SYM_EXPORT_REVISION "source-archive")
+endif()
+target_compile_definitions(sym-reloc-export PRIVATE
+  SYM_EXPORT_BUILD_ID="${SYM_EXPORT_REVISION}/${CMAKE_BUILD_TYPE}")
+target_link_libraries(sym-reloc-export PRIVATE
+  MLIRSymDialect MLIRRelocDialect MLIRRelocTransforms
+  MLIRFuncDialect MLIRArithDialect MLIRParser MLIRPass MLIRIR MLIRSupport)
+mlir_check_all_link_libraries(sym-reloc-export)

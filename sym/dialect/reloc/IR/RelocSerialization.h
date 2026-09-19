@@ -13,6 +13,7 @@
 #include "mlir/IR/Location.h"
 #include "mlir/Support/LogicalResult.h"
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace mlir {
@@ -23,7 +24,11 @@ namespace reloc {
 /// cannot represent (complex element types, pad values wider than 64 bits,
 /// affine ceildiv or symbols in the inverse map) produce an error emitted at
 /// `loc` and a failure result.
-FailureOr<std::vector<uint8_t>> encodePlan(PlanAttr plan, Location loc);
+/// If supplied, symbolNames receives the exact wire symbol-table order on
+/// success.
+FailureOr<std::vector<uint8_t>>
+encodePlan(PlanAttr plan, Location loc,
+           std::vector<std::string> *symbolNames = nullptr);
 
 } // namespace reloc
 } // namespace mlir

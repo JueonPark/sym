@@ -117,6 +117,7 @@ jobs:
             build/sym/sym/dialect/reloc/IR/*.inc
             build/sym/sym/dialect/reloc/Transforms/*.inc
             build/sym/sym/tools/sym-opt
+            build/sym/sym/tools/sym-reloc-export
             build/sym/unittest/reloc/reloc-plan-builder-test
             build/sym/libreloc/libreloc_runtime.so
             build/sym/libreloc/test/libreloc-test
@@ -213,6 +214,7 @@ jobs:
       - name: Make test binaries executable
         run: |
           chmod +x build/sym/sym/tools/sym-opt
+          chmod +x build/sym/sym/tools/sym-reloc-export
           chmod +x build/sym/unittest/reloc/reloc-plan-builder-test
           chmod +x build/sym/libreloc/libreloc_runtime.so
           chmod +x build/sym/libreloc/test/libreloc-test
