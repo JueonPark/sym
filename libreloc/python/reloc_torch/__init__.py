@@ -19,10 +19,17 @@ __all__ = (
     "observe_transfers",
     "TransferObserver",
     "graph_inventory",
+    "normalize_graph",
+    "import_graph",
 )
 
 
 def __getattr__(name):
+    if name in {"normalize_graph", "import_graph"}:
+        from .fx_import import import_graph, normalize_graph
+
+        globals().update(import_graph=import_graph, normalize_graph=normalize_graph)
+        return globals()[name]
     if name == "graph_inventory":
         from .graph_inventory import graph_inventory
         globals()[name] = graph_inventory
