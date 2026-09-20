@@ -43,7 +43,8 @@ class PlanEncoder {
 public:
   explicit PlanEncoder(Location loc) : loc(loc) {}
 
-  FailureOr<std::vector<uint8_t>> encode(PlanAttr plan);
+  FailureOr<std::vector<uint8_t>> encode(PlanAttr plan,
+                                         std::vector<std::string> *symbolNames);
 
 private:
   // --- primitive emitters (into `body`) ---
@@ -295,7 +296,8 @@ LogicalResult PlanEncoder::emitTypedValue(TypedAttr value) {
   return success();
 }
 
-FailureOr<std::vector<uint8_t>> PlanEncoder::encode(PlanAttr plan) {
+FailureOr<std::vector<uint8_t>>
+PlanEncoder::encode(PlanAttr plan, std::vector<std::string> *symbolNames) {
   // Sections 3..12 into `body`; the symbol table fills up as a side effect.
   if (failed(emitDesc(plan.getSrc())) || failed(emitDesc(plan.getDst())))
     return failure();
@@ -367,16 +369,22 @@ FailureOr<std::vector<uint8_t>> PlanEncoder::encode(PlanAttr plan) {
     out.insert(out.end(), name.begin(), name.end());
   }
   out.insert(out.end(), body.begin(), body.end());
+  if (symbolNames) {
+    symbolNames->clear();
+    for (StringRef name : symbols)
+      symbolNames->push_back(name.str());
+  }
   return out;
 }
 
 } // namespace
 
-FailureOr<std::vector<uint8_t>> mlir::reloc::encodePlan(PlanAttr plan,
-                                                        Location loc) {
+FailureOr<std::vector<uint8_t>>
+mlir::reloc::encodePlan(PlanAttr plan, Location loc,
+                        std::vector<std::string> *symbolNames) {
   if (!plan) {
     emitError(loc) << "cannot encode a null plan";
     return failure();
   }
-  return PlanEncoder(loc).encode(plan);
+  return PlanEncoder(loc).encode(plan, symbolNames);
 }

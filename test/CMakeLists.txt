@@ -7,6 +7,7 @@ configure_lit_site_cfg(
 
 set(SYM_TEST_DEPENDS
   sym-opt
+  sym-reloc-export
   reloc-plan-builder-test
   libreloc-test
 )

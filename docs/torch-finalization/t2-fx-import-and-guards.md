@@ -256,6 +256,7 @@ export TORCH_PYTHON=/tmp/sym-torch-cpu/bin/python
 export TORCH_BUILD="$PWD/build/torch-cpu"
 export PYTHONPATH="$TORCH_BUILD/python:$PWD/libreloc/python"
 export SYM_OPT="$TORCH_BUILD/sym/tools/sym-opt"
+export SYM_RELOC_EXPORT="$TORCH_BUILD/sym/tools/sym-reloc-export"
 "$TORCH_PYTHON" -m pytest libreloc/python/tests/torch_frontend/test_fx_import.py libreloc/python/tests/torch_frontend/test_symbolic.py libreloc/python/tests/torch_frontend/test_compiler.py -m 'not gpu' -q
 ninja -C "$TORCH_BUILD" check-sym
 ```

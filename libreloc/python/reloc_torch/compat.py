@@ -254,11 +254,32 @@ def graph_nonblocking(node):
     return False
 
 
+# Pinned view semantics remain authoritative when schemas omit alias metadata
+# or real-mode make_fx stores independently allocated fake tensor snapshots.
+# In particular, aten._unsafe_view shares storage despite an unannotated return.
+_KNOWN_VIEW_TARGETS = frozenset({
+    "aten.view.default", "aten._unsafe_view.default", "aten.transpose.int",
+    "aten.permute.default", "aten.as_strided.default",
+})
+
+
+def graph_may_alias_inputs(node):
+    """Conservative alias edges using pinned exceptions plus schema contracts."""
+    if graph_target(node.target) in _KNOWN_VIEW_TARGETS:
+        return True
+    schema = getattr(node.target, "_schema", None)
+    if schema is not None and any(result.alias_info for result in schema.returns):
+        return True
+    return node.op == "call_method" and node.target in {
+        "view", "reshape", "transpose", "permute", "detach", "contiguous", "to"
+    }
+
+
 def graph_alias_semantics(node, source, destination):
     # Real-mode make_fx snapshots can have independently allocated fake metadata;
     # schema view guarantees remain authoritative when metadata loses storage IDs.
     target = graph_target(node.target)
-    if target in {"aten.view.default", "aten.transpose.int", "aten.permute.default", "aten.as_strided.default"}:
+    if target in _KNOWN_VIEW_TARGETS:
         return "aliases"
     if tensors_alias(source, destination):
         return "aliases"
@@ -272,3 +293,254 @@ def graph_alias_semantics(node, source, destination):
     if node.op == "call_method" and target == "to" and node.kwargs.get("copy") is True:
         return "distinct"
     return "unknown"
+
+
+class SymbolicContext:
+    """Pinned SymInt conversion; environment identity is part of provenance.
+
+    Only atomic, backed source dimensions introduce symbols. Reading expressions
+    and membership of backed_var_to_val never reads a concrete hint or asks Torch
+    to install a guard. Other dimensions may reference those source symbols.
+    """
+    def __init__(self):
+        self._symbols = {}
+        self.sources = ()
+
+    @classmethod
+    def from_tensor(cls, tensor):
+        import sympy
+        import torch
+        from .symbolic import SymbolSource, UnsupportedSymbolicExpr
+        context = cls()
+        sources = []
+        for axis, value in enumerate(tensor.shape):
+            if type(value) is int:
+                continue
+            if not isinstance(value, torch.SymInt):
+                raise UnsupportedSymbolicExpr('noninteger source dimension')
+            node = value.node
+            expr, env = node.expr, node.shape_env
+            if not isinstance(expr, sympy.Symbol) or env is None or expr not in env.backed_var_to_val:
+                raise UnsupportedSymbolicExpr('source dimension is not an independent backed symbol')
+            key = (env, expr)
+            if key in context._symbols:
+                index = context._symbols[key]
+                source = sources[index]
+                sources[index] = SymbolSource(source.name, source.axis, source.equal_axes + (axis,))
+            else:
+                index = len(sources)
+                context._symbols[key] = index
+                sources.append(SymbolSource(f's{index}', axis))
+        context.sources = tuple(sources)
+        return context
+
+    def expression(self, value, *, positive=()):
+        import sympy
+        import torch
+        from torch.utils._sympy.functions import FloorDiv as TorchFloorDiv, PythonMod, Mod as TorchMod, Max as TorchMax
+        from .symbolic import Const, Symbol, FloorDiv, Mod, UnsupportedSymbolicExpr, add, mul
+        from functools import reduce
+        if type(value) is int:
+            return Const(value)
+        if not isinstance(value, torch.SymInt):
+            raise UnsupportedSymbolicExpr('expected integer or backed SymInt')
+        env = value.node.shape_env
+
+        def convert(expr):
+            if isinstance(expr, sympy.Integer):
+                return Const(int(expr))
+            if isinstance(expr, sympy.Symbol):
+                index = self._symbols.get((env, expr))
+                if index is None or env is None or expr not in env.backed_var_to_val:
+                    raise UnsupportedSymbolicExpr('unbacked or non-source symbol')
+                return Symbol(self.sources[index].name)
+            if expr.func in (sympy.Max, TorchMax) and len(expr.args) == 2 and sympy.Integer(1) in expr.args:
+                other = next(a for a in expr.args if a != sympy.Integer(1))
+                converted = convert(other)
+                if converted in positive:
+                    return converted
+                raise UnsupportedSymbolicExpr('Max extent lacks a positive guard')
+            if expr.func is sympy.Add:
+                return reduce(add, (convert(a) for a in expr.args))
+            if expr.func is sympy.Mul:
+                return reduce(mul, (convert(a) for a in expr.args))
+            if expr.func in (TorchFloorDiv, PythonMod, TorchMod, sympy.Mod):
+                lhs, divisor = expr.args
+                if not isinstance(divisor, sympy.Integer) or divisor <= 0:
+                    raise UnsupportedSymbolicExpr('symbolic or nonpositive divisor')
+                kind = FloorDiv if expr.func is TorchFloorDiv else Mod
+                return kind(convert(lhs), int(divisor))
+            # SymPy combines repeated source dimensions (N*N) into an integer
+            # power. Expand that structural abbreviation into the Mul vocabulary.
+            if expr.func is sympy.Pow and isinstance(expr.args[1], sympy.Integer) and expr.args[1] >= 0:
+                return reduce(mul, (convert(expr.args[0]) for _ in range(int(expr.args[1]))), Const(1))
+            raise UnsupportedSymbolicExpr(f'unknown expression function {expr.func}')
+        return convert(value.node.expr)
+
+    def tensor_spec(self, tensor, *, require_dense=True, positive_shape=()):
+        from .recipe import TensorSpec
+        from .symbolic import Const, dense_strides, UnsupportedSymbolicExpr
+        shape = tuple(self.expression(d) for d in tensor.shape)
+        strides = tuple(self.expression(d, positive=positive_shape) for d in tensor.stride())
+        offset = self.expression(tensor.storage_offset())
+        if require_dense and (not shape or strides != dense_strides(shape) or offset != Const(0)):
+            raise UnsupportedSymbolicExpr('source_layout: expected dense zero-offset tensor')
+        return TensorSpec(shape, strides, offset, str(tensor.dtype).removeprefix('torch.'))
+
+
+def symbolic_capture(function, *inputs):
+    """Capture canonical ATen code without real transfers on the pinned wheel."""
+    check_version()
+    from torch.fx.experimental.proxy_tensor import make_fx
+    return make_fx(function, tracing_mode='symbolic')(*inputs)
+
+
+def fx_kind(node):
+    """Closed normalization vocabulary, from the T1 pinned capture inventory."""
+    import operator
+    import torch
+    aten = torch.ops.aten
+    kinds = {
+        aten._to_copy.default: 'transfer', aten.to.device: 'transfer',
+        aten.to.dtype: 'transfer', aten.to.other: 'transfer',
+        aten.permute.default: 'permute', aten.transpose.int: 'transpose',
+        aten.view.default: 'reshape', aten.reshape.default: 'reshape',
+        aten._unsafe_view.default: 'reshape',
+        aten.clone.default: 'materialize', aten.contiguous.default: 'materialize',
+        aten.constant_pad_nd.default: 'pad', aten.sym_size.int: 'scalar',
+        torch.transpose: 'transpose', torch.permute: 'permute',
+        torch.reshape: 'reshape', torch.clone: 'materialize',
+        torch.nn.functional.pad: 'pad', torch._C._nn.pad: 'pad',
+        operator.floordiv: 'scalar', operator.mul: 'scalar',
+        operator.add: 'scalar', operator.sub: 'scalar', operator.mod: 'scalar',
+        operator.getitem: 'scalar', getattr: 'scalar',
+    }
+    if node.op == 'call_function':
+        return kinds.get(node.target)
+    if node.op == 'call_method':
+        return {'to': 'transfer', 'cpu': 'transfer', 'cuda': 'transfer',
+                'permute': 'permute', 'transpose': 'transpose', 'view': 'reshape',
+                'reshape': 'reshape', 'contiguous': 'materialize',
+                'size': 'scalar'}.get(node.target)
+    return None
+
+
+def fx_canonical_call(node, source_value):
+    """Return a 1:1 canonical call; constants and explicit options are retained.
+
+    Tensor.to's Python overload parser is used only to bind arguments, never to
+    execute a tensor operation. The original node remains the fallback authority.
+    """
+    import torch
+    aten = torch.ops.aten
+    kind = fx_kind(node)
+    if kind is None:
+        raise ValueError('unrecognized_fx_target')
+    if node.op == 'call_function' and hasattr(node.target, '_schema'):
+        return node.target, node.args, dict(node.kwargs)
+    args, kwargs = node.args, dict(node.kwargs)
+    if not args and 'input' in kwargs:
+        args = (kwargs.pop('input'),)
+    if not args:
+        raise ValueError('unrecognized_fx_target')
+    source = args[0]
+    if kind == 'transfer':
+        if source_value is None:
+            raise ValueError('metadata_unavailable')
+        if node.target == 'to':
+            to_args = args[1:]
+            copy = kwargs.get('copy', False)
+            copy_index = 3 if to_args and isinstance(to_args[0], (str, torch.device)) else 2
+            if len(to_args) > copy_index:
+                if len(to_args) != copy_index + 1 or 'copy' in kwargs:
+                    raise ValueError('unrecognized_fx_target')
+                copy = to_args[-1]
+                to_args = to_args[:-1]
+            if type(copy) is not bool:
+                raise ValueError('unrecognized_fx_target')
+            device, dtype, nonblocking, memory_format = torch._C._nn._parse_to(*to_args, **{k: v for k, v in kwargs.items() if k != 'copy'})
+            device = source_value.device if device is None else device
+            dtype = source_value.dtype if dtype is None else dtype
+            return aten.to.device, (source, device, dtype), {
+                'non_blocking': nonblocking, 'copy': copy,
+                'memory_format': memory_format}
+        if node.target == 'cpu':
+            if args[1:]:
+                kwargs['memory_format'] = args[1]
+            return aten.to.device, (source, torch.device('cpu'), source_value.dtype), kwargs
+        device = args[1] if len(args) > 1 else kwargs.pop('device', None)
+        if device is None:
+            device = torch.device('cuda')
+        elif type(device) is int:
+            device = torch.device('cuda', device)
+        else:
+            device = torch.device(device)
+        if len(args) > 2:
+            kwargs['non_blocking'] = args[2]
+        if len(args) > 3:
+            kwargs['memory_format'] = args[3]
+        return aten.to.device, (source, device, source_value.dtype), kwargs
+    if kind in ('permute', 'reshape'):
+        key = 'dims' if kind == 'permute' else ('size' if node.target == 'view' else 'shape')
+        values = args[1:]
+        if not values:
+            values = kwargs.pop(key)
+        elif len(values) == 1 and isinstance(values[0], (tuple, list)):
+            values = values[0]
+        target = aten.permute.default if kind == 'permute' else (
+            aten.view.default if node.target == 'view' else aten.reshape.default)
+        return target, (source, values), kwargs
+    if kind == 'transpose':
+        return aten.transpose.int, args, kwargs
+    if kind == 'materialize':
+        target = aten.contiguous.default if node.target == 'contiguous' else aten.clone.default
+        if len(args) > 1:
+            kwargs['memory_format'] = args[1]
+        return target, (source,), kwargs
+    if kind == 'pad':
+        pad = args[1] if len(args) > 1 else kwargs.pop('pad')
+        mode = args[2] if len(args) > 2 else kwargs.pop('mode', 'constant')
+        value = args[3] if len(args) > 3 else kwargs.pop('value', None)
+        if mode != 'constant':
+            raise ValueError('unsupported_padding')
+        return aten.constant_pad_nd.default, (source, pad, 0 if value is None else value), kwargs
+    if node.op == 'call_method' and node.target == 'size' and len(args) == 2:
+        return aten.sym_size.int, args, kwargs
+    if node.op == 'call_method':
+        raise ValueError('unrecognized_fx_target')
+    return node.target, args, kwargs
+
+
+def fx_validate_scalar(target, args):
+    """Reject Python numeric overloads without evaluating symbolic arithmetic."""
+    import operator
+    import torch
+    if target is getattr:
+        if len(args) != 2 or args[1] != 'shape' or not is_fake_tensor(args[0]):
+            raise ValueError('unrecognized_fx_target')
+    if target is operator.getitem:
+        if type(args[0]) not in (tuple, list, torch.Size) or type(args[1]) is not int:
+            raise ValueError('unrecognized_fx_target')
+    if target in (operator.add, operator.sub, operator.mul, operator.floordiv, operator.mod):
+        if any(type(value) not in (int, torch.SymInt) for value in args):
+            raise ValueError('unrecognized_fx_target')
+
+
+def fx_fake_call(target, args, kwargs):
+    """Evaluate only audited pure calls; bypass CPU-wheel Tensor.to CUDA checks."""
+    import torch
+    aten = torch.ops.aten
+    fx_validate_scalar(target, args)
+    if target in (aten.to.device, aten.to.dtype, aten.to.other):
+        options = {k: v for k, v, _ in bound_schema_arguments(target, args, kwargs)}
+        source = args[0]
+        other = options.get('other')
+        dtype = other.dtype if other is not None else options.get('dtype', source.dtype)
+        device = other.device if other is not None else options.get('device', source.device)
+        memory_format = options.get('memory_format')
+        if device == source.device and dtype == source.dtype and not options.get('copy', False) and memory_format in (None, torch.preserve_format):
+            return source
+        return aten._to_copy.default(source, device=device, dtype=dtype,
+                                     non_blocking=options.get('non_blocking', False),
+                                     memory_format=memory_format)
+    return target(*args, **kwargs)

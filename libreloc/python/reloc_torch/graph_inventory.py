@@ -10,7 +10,8 @@ _RAW = {"to": "aten._to_copy.default", "cpu": "aten._to_copy.default",
         "permute": "aten.permute.default", "contiguous": "aten.clone.default",
         "copy_": "aten.copy_.default", "add_": "aten.add_.Tensor"}
 _VIEWS = {"aten.view.default", "aten.reshape.default", "aten.transpose.int",
-          "aten.permute.default", "aten.as_strided.default"}
+          "aten.permute.default", "aten.as_strided.default",
+          "aten._unsafe_view.default"}
 
 
 def graph_inventory(gm):
