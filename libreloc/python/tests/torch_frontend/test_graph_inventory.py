@@ -131,3 +131,24 @@ def test_aten_alias_and_slice_are_not_claimed_distinct():
     assert aliases
     assert all(r.alias_semantics in {"aliases", "unknown"} for r in aliases)
     assert all(r.transfer.aliases_source for r in aliases)
+
+
+def test_unsafe_view_preserves_layout_history_for_following_transfer():
+    from reloc_torch import graph_inventory
+    from torch.fx.experimental.proxy_tensor import make_fx
+
+    def recipe(x):
+        viewed = x.view(3, 4)
+        unsafe = torch.ops.aten._unsafe_view.default(viewed, [12])
+        return torch.ops.aten._to_copy.default(unsafe, dtype=torch.float16)
+
+    gm = make_fx(recipe)(torch.arange(12, dtype=torch.float32))
+    transfer = next(
+        record.transfer
+        for record in graph_inventory(gm)
+        if record.target == "aten._to_copy.default"
+    )
+    assert transfer.layout_history == (
+        "aten.view.default",
+        "aten._unsafe_view.default",
+    )

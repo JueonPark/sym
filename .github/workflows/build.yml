@@ -166,10 +166,10 @@ jobs:
             -w /workspace \
             ${{ env.REGISTRY }}/${{ steps.image.outputs.name }}:${{ steps.llvm-version.outputs.short_commit }} \
             bash -c '
-              apt-get update && apt-get install -y wget lsb-release software-properties-common gnupg && \
-              wget https://apt.llvm.org/llvm.sh && chmod +x llvm.sh && ./llvm.sh 21 && \
-              apt-get install -y clang-tidy-21 && \
-              clang-tidy-21 -p build/sym --warnings-as-errors="*" \
+              apt-get update && apt-get install -y g++ && \
+              python3 -m pip install --no-cache-dir --only-binary=:all: clang-tidy==21.1.6 && \
+              clang-tidy --version && \
+              clang-tidy -p build/sym --warnings-as-errors="*" \
                 --extra-arg=-std=c++17 \
                 --extra-arg=-isystem/opt/llvm/include \
                 -checks="-clang-analyzer-core.StackAddressEscape" \

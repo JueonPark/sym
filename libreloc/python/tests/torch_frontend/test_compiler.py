@@ -417,6 +417,67 @@ def test_constant_floordiv_mod_recipe_compiles_and_round_trips(compiler):
     np.testing.assert_array_equal(actual, expected)
 
 
+def test_symbolic_divisor_one_recipe_compiles_round_trips_and_rebinds(compiler):
+    from reloc_torch import CompiledRecipe
+    from reloc_torch.recipe import Recipe, Reshape, TensorSpec
+    from reloc_torch.symbolic import Const, FloorDiv, Symbol
+
+    extent = Symbol("s0")
+    source = TensorSpec((extent,), (Const(1),), Const(0), "float32")
+    destination = TensorSpec(
+        (FloorDiv(extent, 1),),
+        (Const(1),),
+        Const(0),
+        "float32",
+    )
+    recipe = Recipe(source, (Reshape(destination.shape),), destination, "h2d")
+
+    restored = CompiledRecipe.from_bytes(compiler.compile(recipe).to_bytes())
+    assert restored.recipe == recipe
+    assert restored.logical_destination.shape == (extent,)
+    assert restored.constraints == ()
+    for size in (3, 11):
+        actual, bound = _relocate(
+            restored,
+            torch.arange(size, dtype=torch.float32),
+            (size,),
+        )
+        np.testing.assert_array_equal(actual, np.arange(size, dtype=np.float32))
+        assert bound.extents == [size]
+
+
+def test_symbolic_modulo_one_recipe_matches_compiler_normalization(compiler):
+    from reloc_torch import CompiledRecipe
+    from reloc_torch.recipe import Fill, Pad, Recipe, TensorSpec
+    from reloc_torch.symbolic import Add, Const, Mod, Symbol
+
+    extent = Symbol("s0")
+    padding = Mod(extent, 1)
+    source = TensorSpec((extent,), (Const(1),), Const(0), "float32")
+    destination = TensorSpec(
+        (Add(extent, padding),),
+        (Const(1),),
+        Const(0),
+        "float32",
+    )
+    recipe = Recipe(
+        source,
+        (Pad(0, padding, Const(0), Fill("float32", 0)),),
+        destination,
+        "h2d",
+    )
+
+    restored = CompiledRecipe.from_bytes(compiler.compile(recipe).to_bytes())
+    assert restored.recipe == recipe
+    assert restored.logical_destination.shape == (extent,)
+    actual, _ = _relocate(
+        restored,
+        torch.arange(7, dtype=torch.float32),
+        (7,),
+    )
+    np.testing.assert_array_equal(actual, np.arange(7, dtype=np.float32))
+
+
 def test_portable_artifact_reloads_and_executes_in_fresh_process(
     compiler, split_transpose_recipe, tmp_path
 ):

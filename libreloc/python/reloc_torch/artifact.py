@@ -225,9 +225,11 @@ def _normalize_expr(value):
             candidate = fold_constant(Mul(lhs, rhs))
             return candidate if isinstance(candidate, Const) else mul(lhs, rhs)
         case FloorDiv(lhs, divisor):
-            return fold_constant(FloorDiv(_normalize_expr(lhs), divisor))
+            lhs = _normalize_expr(lhs)
+            return lhs if divisor == 1 else fold_constant(FloorDiv(lhs, divisor))
         case Mod(lhs, divisor):
-            return fold_constant(Mod(_normalize_expr(lhs), divisor))
+            lhs = _normalize_expr(lhs)
+            return Const(0) if divisor == 1 else fold_constant(Mod(lhs, divisor))
         case atom:
             return atom
 
@@ -335,8 +337,9 @@ def _expected_constraints(recipe):
             case FloorDiv(lhs, divisor):
                 normalized = _normalize_expr(lhs)
                 # Fully constant reshape arithmetic is settled by the
-                # compiler and bind_recipe; it is not a runtime constraint.
-                if not isinstance(normalized, Const):
+                # compiler and bind_recipe; divisor one is an identity and
+                # therefore also has no runtime constraint.
+                if divisor != 1 and not isinstance(normalized, Const):
                     item = DivisibilityConstraint(normalized, divisor)
                     if item not in constraints:
                         constraints.append(item)
