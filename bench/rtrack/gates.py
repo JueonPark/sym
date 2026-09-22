@@ -6,6 +6,7 @@ read. Select the experiment with --exp:
   --exp r2             R2 / EXP-2 Gen4 gates (issue #83)
   --exp v1             V1 baseline-admissibility bar (issue #95)
   --exp bp             BP / two-stream overlap-fair gates (issue #115)
+  --exp r7             R7 / Regime-5 e2e-overlap gates (issue #88)
 
 R1 / EXP-1 (issue #82):
 
@@ -55,7 +56,16 @@ N >= 8192; G3 measures A/B_pipelined ratio vs 24 registered predictions
 (fair baseline / 1.06 or 1.09 per machine, see issue #108#issuecomment-5215567565)
 within ±0.10 tolerance. Always exits 0 (reports, never gates CI).
 
-  python3 bench/rtrack/gates.py [--exp r1|r2|v1|bp] --csv run.csv [more.csv ...]
+R7 / Regime-5 gates (issue #88), registered pre-data (post-freeze addendum):
+G1 wall(overlapped) <= 0.75x wall(serial) at measured C in [0.5, 2.0], both
+families, methods a and b_pipelined; G2 (direction-only) delta_b > delta_a
+per (family, repeats) best-chunk pair where both cells' measured C >= 1;
+G3a compute_only within 5% of bare cuBLAS loop; G3b per-layer load_only
+within +10% of the frozen-BP single-shot best-chunk median (a, b_pipelined)
+or the calibration pcie.h2d_gbps floor (a_prefold). See r7_selftest /
+--selftest-r7 for the pinned bar constants.
+
+  python3 bench/rtrack/gates.py [--exp r1|r2|v1|bp|r7] --csv run.csv [more.csv ...]
 """
 
 import argparse
@@ -499,6 +509,230 @@ def bp_selftest():
     return 1 if failures else 0
 
 
+# ---- R7 / Regime-5 gates (issue #88; post-freeze addendum) -------------
+# Bars fixed before any R7 measurement exists (commit order verifiable):
+#   G1 wall(overlapped) <= 0.75 x wall(serial), cells with measured_C in
+#      [0.5, 2.0], per (family, repeats, chunk-best).
+#   G2 delta_b > delta_a per (family, repeats) best-chunk pair where BOTH
+#      cells' measured_C >= 1.0 (direction-only by design, spec §gates).
+#   G3a |compute_only - compute_bare| / compute_bare <= 5% per (family,
+#       repeats).
+#   G3b per-layer load_only within +10% of the BP single-shot best-chunk
+#       median (a: family tier r; b_pipelined: r=1) from the FROZEN BP
+#       CSVs via cm5_eval's stabler merge; a_prefold: within +10% of
+#       wire_bytes / pcie.h2d_gbps from calibration/<machine>.cal.
+R7_G1_RATIO = 0.75
+R7_G1_C_BAND = (0.5, 2.0)
+R7_G2_C_MIN = 1.0
+R7_G3A_TOL = 0.05
+R7_G3B_TOL = 0.10
+R7_BP_FAMILY_R = {"quant": "0.25", "blocked_transpose": "1"}
+
+
+def _r7_best(rows, method, fam):
+    """Best-chunk row per (repeats): min median across chunk_req_mib."""
+    best = {}
+    for r in rows:
+        if r["method"] != method or r["transform"] != fam:
+            continue
+        key = r["repeats"]
+        if key not in best or float(r["median_ms"]) < float(
+                best[key]["median_ms"]):
+            best[key] = r
+    return best
+
+
+def _r7_fams(rows):
+    return sorted({r["transform"] for r in rows
+                   if r["method"] in ("a", "b_pipelined")})
+
+
+def r7_g1(rows):
+    cells, fails = 0, []
+    for fam in _r7_fams(rows):
+        for ov, se in (("a", "a_serial"), ("b_pipelined", "b_serial")):
+            o, s = _r7_best(rows, ov, fam), _r7_best(rows, se, fam)
+            for rep, orow in sorted(o.items()):
+                c = float(orow["measured_C"])
+                if not (R7_G1_C_BAND[0] <= c <= R7_G1_C_BAND[1]):
+                    continue
+                if rep not in s:
+                    continue
+                cells += 1
+                lhs = float(orow["median_ms"])
+                rhs = R7_G1_RATIO * float(s[rep]["median_ms"])
+                if lhs > rhs:
+                    fails.append((fam, ov, rep, lhs, rhs))
+    return {"gate": "R7-G1", "n_cells": cells, "fails": fails,
+            "verdict": "FAIL" if fails else ("PASS" if cells else "N/A")}
+
+
+def r7_g2(rows):
+    pairs, fails = 0, []
+    for fam in _r7_fams(rows):
+        a, b = _r7_best(rows, "a", fam), _r7_best(rows, "b_pipelined", fam)
+        for rep in sorted(set(a) & set(b)):
+            ca, cb = float(a[rep]["measured_C"]), float(b[rep]["measured_C"])
+            if min(ca, cb) < R7_G2_C_MIN:
+                continue
+            pairs += 1
+            da = float(a[rep]["median_ms"]) - max(
+                float(a[rep]["load_only_ms"]),
+                float(a[rep]["compute_only_ms"]))
+            db = float(b[rep]["median_ms"]) - max(
+                float(b[rep]["load_only_ms"]),
+                float(b[rep]["compute_only_ms"]))
+            if not db > da:
+                fails.append((fam, rep, da, db))
+    return {"gate": "R7-G2", "n_pairs": pairs, "fails": fails,
+            "verdict": "FAIL" if fails else ("PASS" if pairs else "N/A")}
+
+
+def r7_g3a(rows):
+    fails, n = [], 0
+    fams = sorted({r["transform"] for r in rows
+                   if r["method"] == "compute_only"})
+    for fam in fams:
+        only = _r7_best(rows, "compute_only", fam)
+        bare = _r7_best(rows, "compute_bare", fam)
+        for rep in sorted(set(only) & set(bare)):
+            n += 1
+            o, b = float(only[rep]["median_ms"]), float(
+                bare[rep]["median_ms"])
+            if abs(o - b) / b > R7_G3A_TOL:
+                fails.append((fam, rep, o, b))
+    return {"gate": "R7-G3a", "n": n, "fails": fails,
+            "verdict": "FAIL" if fails else ("PASS" if n else "N/A")}
+
+
+def r7_g3b(rows, machine):
+    """Per-layer load_only vs BP frozen single-shot (a, b_pipelined) or
+    calibration pcie floor (a_prefold)."""
+    import sys as _sys
+    from pathlib import Path as _P
+    _sys.path.insert(0, str(_P(__file__).resolve().parent))
+    from cm5_eval import fmt_r, load_rows as _lr, merge_points  # noqa
+    root = _P(__file__).resolve().parents[2]
+    # Unknown machines (e.g. smoke/dev boxes) have no frozen BP CSVs --
+    # that is expected, not a crash: report N/A with the reason instead
+    # of letting FileNotFoundError propagate out of a reporting gate.
+    try:
+        merged, _ = merge_points(
+            _lr(root / "bench" / "results" / f"bp_rsweep_{machine}.csv"),
+            _lr(root / "bench" / "results" /
+                f"bp_rsweep_rerun_{machine}.csv"))
+    except FileNotFoundError:
+        return {"gate": "R7-G3b", "n": 0, "fails": [],
+                "verdict": "N/A (no BP csv for machine)"}
+    cal = {}
+    for line in open(root / "calibration" / f"{machine}.cal"):
+        parts = line.split()
+        if len(parts) >= 2 and not line.startswith("#"):
+            try:
+                cal[parts[0]] = float(parts[1])
+            except ValueError:
+                pass
+    fails, n = [], 0
+    for r in rows:
+        if not r["method"].endswith("_load_only"):
+            continue
+        base = r["method"][: -len("_load_only")]
+        fam, nn = r["transform"], int(r["N"])
+        layers = int(r["layers"])
+        per_layer = float(r["median_ms"]) / layers
+        if base in ("a", "b_pipelined"):
+            tier = R7_BP_FAMILY_R[fam] if base == "a" else "1"
+            cands = [v for k, v in merged.items()
+                     if k[0] == fam and k[1] == nn and k[2] == base
+                     and k[4] == tier]
+            if not cands:
+                fails.append((base, fam, "no BP row"))
+                continue
+            ref = min(float(c["median_ms"]) for c in cands)
+        elif base == "a_prefold":
+            wire_bytes = nn * nn * (1 if fam == "quant" else 4)
+            ref = wire_bytes / (cal["pcie.h2d_gbps"] * 1e9) * 1e3
+        else:
+            continue
+        n += 1
+        if per_layer > ref * (1 + R7_G3B_TOL):
+            fails.append((base, fam, per_layer, ref))
+    return {"gate": "R7-G3b", "n": n, "fails": fails,
+            "verdict": "FAIL" if fails else ("PASS" if n else "N/A")}
+
+
+def _r7_load_rows(paths):
+    """Plain string-typed row loader for R7 CSVs. The R7 (Task 2, #88)
+    schema has no effective_input_GBps/h2d_ms/r columns that the module's
+    load_rows() enforces for R1/R2/BP -- mirrors cm5_eval.load_rows
+    (raw strings, comment lines stripped) but accepts multiple paths."""
+    rows = []
+    for path in paths:
+        with open(path) as f:
+            reader = csv.DictReader(l for l in f if not l.startswith("#"))
+            rows.extend(reader)
+    return rows
+
+
+def exp_r7(rows):
+    machine = rows[0]["machine"]
+    results = [r7_g1(rows), r7_g2(rows), r7_g3a(rows),
+               r7_g3b(rows, machine)]
+    worst = 0
+    for g in results:
+        print(f"{g['gate']}: {g['verdict']}  "
+              f"({ {k: v for k, v in g.items() if k not in ('gate','verdict')} })")
+        if g["verdict"] == "FAIL":
+            worst = 1
+    print("R7 OVERALL:", "FAIL" if worst else "PASS")
+    return worst
+
+
+def r7_selftest():
+    """Synthetic rows through every R7 gate branch (issue #88)."""
+    def row(method, repeats, C, med, load, comp, chunk="4", fam="quant"):
+        return {"machine": "gen3", "method": method, "transform": fam,
+                "N": "8192", "chunk_req_mib": chunk, "repeats": str(repeats),
+                "measured_C": str(C), "median_ms": str(med),
+                "load_only_ms": str(load), "compute_only_ms": str(comp),
+                "layers": "16", "unstable": "0", "verified": "1",
+                "post_freeze": "1"}
+    ok = True
+    def check(name, got, want):
+        nonlocal ok
+        if got != want:
+            print(f"SELFTEST FAIL {name}: got {got} want {want}")
+            ok = False
+    # G1: overlapped 60 <= 0.75 * serial 100 -> PASS
+    rows = [row("a", 10, 1.0, 60, 50, 55), row("a_serial", 10, 1.0, 100, 50, 55),
+            row("b_pipelined", 10, 1.0, 60, 50, 55),
+            row("b_serial", 10, 1.0, 100, 50, 55)]
+    g = r7_g1(rows)
+    check("g1-pass", g["verdict"], "PASS")
+    rows2 = [row("a", 10, 1.0, 90, 50, 55), row("a_serial", 10, 1.0, 100, 50, 55)]
+    check("g1-fail", r7_g1(rows2)["verdict"], "FAIL")
+    # C outside [0.5, 2] is out of G1's universe
+    rows3 = [row("a", 40, 4.0, 90, 50, 200), row("a_serial", 40, 4.0, 100, 50, 200)]
+    check("g1-skip-c4", r7_g1(rows3)["n_cells"], 0)
+    # G2: delta_b (70-55=15) > delta_a (60-55=5) at C>=1 -> PASS
+    rows4 = [row("a", 10, 1.2, 60, 50, 55), row("b_pipelined", 10, 1.1, 70, 52, 55)]
+    check("g2-pass", r7_g2(rows4)["verdict"], "PASS")
+    rows5 = [row("a", 10, 1.2, 72, 50, 55), row("b_pipelined", 10, 1.1, 70, 52, 55)]
+    check("g2-fail", r7_g2(rows5)["verdict"], "FAIL")
+    # pairs where min(C) < 1 are out of G2's universe
+    rows6 = [row("a", 5, 0.6, 60, 50, 30), row("b_pipelined", 5, 0.8, 70, 52, 30)]
+    check("g2-skip", r7_g2(rows6)["n_pairs"], 0)
+    # G3a: |only-bare|/bare <= 5%
+    rows7 = [row("compute_only", 10, 0, 100, 0, 100),
+             row("compute_bare", 10, 0, 96, 0, 96)]
+    check("g3a-pass", r7_g3a(rows7)["verdict"], "PASS")
+    rows8 = [row("compute_only", 10, 0, 110, 0, 110),
+             row("compute_bare", 10, 0, 96, 0, 96)]
+    check("g3a-fail", r7_g3a(rows8)["verdict"], "FAIL")
+    print("R7 SELFTEST", "PASS" if ok else "FAIL")
+    return 0 if ok else 1
+
+
 def exp_gates(rows, exp, rstar_path=None):
     """R1/R2 pre-registered gate tables (A/B ratio bars per transform)."""
     # Only variant=matrix rows feed the R1/R2 gates.
@@ -586,17 +820,26 @@ def main():
     ap = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--exp", choices=("r1", "r2", "v1", "bp"), default="r1")
+    ap.add_argument("--exp", choices=("r1", "r2", "v1", "bp", "r7"),
+                     default="r1")
     ap.add_argument("--csv", nargs="+", required=False)
     ap.add_argument("--rstar")
     ap.add_argument("--bimodal", default=BP_BIMODAL_PATH)
     ap.add_argument("--cm4", default=BP_CM4_PATH)
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--selftest-r7", action="store_true")
     args = ap.parse_args()
+    if args.selftest_r7:
+        return r7_selftest()
     if args.selftest:
         return bp_selftest()
     if not args.csv:
-        sys.exit("error: --csv is required (or use --selftest)")
+        sys.exit("error: --csv is required (or use --selftest/--selftest-r7)")
+    if args.exp == "r7":
+        rows = _r7_load_rows(args.csv)
+        if not rows:
+            sys.exit("error: no data rows")
+        return exp_r7(rows)
     rows = load_rows(args.csv)
     if not rows:
         sys.exit("error: no data rows")

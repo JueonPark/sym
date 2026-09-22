@@ -70,3 +70,9 @@ the track's closing claim, in contrast to the narrowed G2 rows above.
 | claim | boxes | result | status | authoritative source |
 |---|---|---|---|---|
 | Same folded plan, runtime symbol-bind, bind-time auto-placement — correct choice on both boxes, no recompilation | Gen3 + Gen4 | 23/24 decisions match measured winners (1 small-N miss disclosed); r=0.25 row flips correctly (Gen3 `b` ×4, Gen4 `a` ×4); artifacts byte-equal CI regeneration | survives | `docs/r6-crossbox-bind.md`; `bench/results/r6_bind_demo_*.json` (#87) |
+
+## Post-freeze addenda (measured after the 2026-09-02 freeze; never quoted in the main eval)
+
+| claim | box | result | status | authoritative source |
+|---|---|---|---|---|
+| Regime 5: concurrent GPU compute moves the A/B margin toward A (B's recv kernel contends; A's host transform does not) | Gen3 | R7-G2 FAIL overall (1/5 pairs): `quant` passes decisively at both eligible C≥1 pairs (delta_b/delta_a ≈ 1.92x at repeats=9, ≈2.26x at repeats=17); `blocked_transpose` (r=1.0, identical bytes both methods) sits at the wall-time noise floor (wall_b/wall_a = 0.999–1.002) and flips at one of three eligible pairs (repeats=7: delta_a=41.41 > delta_b=40.27) | narrowed (holds decisively for dtype-reduction families; null at the pure-relocation r=1.0 noise floor) — refuted-as-stated as a strict universal-direction gate | docs/r7-e2e-overlap.md; bench/results/r7_e2e_quant_epyc7351-2080ti.csv, bench/results/r7_e2e_blocked_transpose_epyc7351-2080ti.csv (#88) |
