@@ -20,6 +20,8 @@
 #include "reloc/CudaBackend.h"
 #endif
 
+#include "PyTransfer.h"
+
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
@@ -451,4 +453,7 @@ PYBIND11_MODULE(_pyreloc, m) {
 #else
   m.attr("cuda_enabled") = false;
 #endif
+
+  // R2 (issue #146): validated forward transfer requests; Torch-free.
+  registerTransferBindings(m);
 }

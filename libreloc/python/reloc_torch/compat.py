@@ -393,6 +393,40 @@ def dtype_name(dtype):
     return str(dtype).removeprefix("torch.")
 
 
+def storage_span(tensor):
+    """Allocation base, capacity in bytes and the logical byte offset of
+    element 0, read from the tensor's untyped storage rather than from
+    ``data_ptr()``/``numel()`` (R2, issue #146)."""
+    storage = tensor.untyped_storage()
+    return (
+        int(storage.data_ptr()),
+        int(storage.nbytes()),
+        int(tensor.storage_offset()) * tensor.element_size(),
+    )
+
+
+def storage_snapshot(tensor):
+    """Metadata plus storage identity used to detect a stale prepared request."""
+    base, capacity, offset = storage_span(tensor)
+    return (
+        tuple(tensor.shape),
+        tuple(tensor.stride()),
+        offset,
+        str(tensor.dtype),
+        str(tensor.device),
+        base,
+        capacity,
+    )
+
+
+def cuda_stream_handle(device):
+    """The caller's current CUDA stream on `device` as a raw cudaStream_t
+    handle (0 is the legacy default stream)."""
+    import torch
+
+    return int(torch.cuda.current_stream(torch.device(device)).cuda_stream)
+
+
 def existing_custom_op(qualname):
     """Return the live ``CustomOpDef`` registered under ``qualname``, or ``None``.
 
