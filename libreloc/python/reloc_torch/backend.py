@@ -97,7 +97,7 @@ class RelocBackend:
         self.diagnostics = Diagnostics()
         self._cache = ArtifactCache(cache_capacity)
         self._live = weakref.WeakKeyDictionary()
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._replaced = 0
         self._closed = False
 
@@ -161,18 +161,22 @@ class RelocBackend:
         )
         return self._cache.get_or_compile(key, lambda: self.compiler.compile(recipe), self.diagnostics)
 
-    def eager_entry(self, src, device, original):
+    def eager_entry(self, src, device, original, direction=None):
         """Identity entry for an eligible eager transfer of the current source descriptor."""
         self._require_open()
-        direction = "h2d" if src.device.type == "cpu" else "d2h"
-        dtype = str(src.dtype).removeprefix("torch.")
+        if direction is None:
+            direction = "h2d" if src.device.type == "cpu" else "d2h"
+        dtype = compat.dtype_name(src.dtype)
         compiled = self.compile_recipe(identity_recipe(src.dim(), dtype, direction))
-        return ExecutionEntry(
+        entry = ExecutionEntry(
             compiled=compiled,
             original=original,
             runtime=self.runtime,
             diagnostics=self.diagnostics,
         )
+        # Eager entries are never registered; give diagnostics a stable label.
+        entry.handle = f"eager/{direction}/{dtype}/rank{src.dim()}"
+        return entry
 
     def __call__(self, gm, example_inputs):
         self._require_open()
@@ -192,30 +196,40 @@ class RelocBackend:
 
         if not candidates:
             return gm, ()
-        graph = copy.deepcopy(gm.graph)
-        nodes = {node.name: node for node in graph.nodes}
+        originals = {node.name: node for node in gm.graph.nodes}
+        graph = None
+        nodes = None
         registrations = []
         replaced = 0
         for candidate in candidates:
+            # Cheap structural checks first, on the untouched graph; compile
+            # and copy only for a region that can actually be replaced.
+            reason = _region_reason(originals, candidate)
+            if reason is not None:
+                self.diagnostics.record_exclusion(reason)
+                continue
             try:
                 compiled = self.compile_recipe(candidate.recipe)
             except UnsupportedRecipe as error:
                 self.diagnostics.record_exclusion(error.reason)
                 continue
-            root = nodes.get(candidate.source)
-            members = [nodes.get(name) for name in candidate.members]
-            if root is None or any(member is None for member in members):
-                self.diagnostics.record_exclusion("graph_mismatch")
+            if graph is None:
+                graph = copy.deepcopy(gm.graph)
+                nodes = {node.name: node for node in graph.nodes}
+            reason = _region_reason(nodes, candidate)
+            if reason is not None:
+                self.diagnostics.record_exclusion(reason)
                 continue
+            root = nodes[candidate.source]
+            members = [nodes[name] for name in candidate.members]
             tail = members[-1]
-            member_set = set(members)
-            if any(user not in member_set for member in members[:-1] for user in member.users):
-                self.diagnostics.record_exclusion("escaping_intermediate")
-                continue
-            value = compat.graph_value(tail)
-            if not compat.is_tensor(value):
-                self.diagnostics.record_exclusion("metadata_unavailable")
-                continue
+            device = candidate.device
+            if device is None:
+                value = compat.graph_value(tail)
+                if not compat.is_tensor(value):
+                    self.diagnostics.record_exclusion("metadata_unavailable")
+                    continue
+                device = value.device
             entry = ExecutionEntry(
                 compiled=compiled,
                 original=candidate.original,
@@ -228,7 +242,7 @@ class RelocBackend:
             with self._lock:
                 self._live[registration] = entry
             with graph.inserting_before(tail):
-                op_node = _insert_transfer(graph, root, tail, compiled, registration.handle, value.device)
+                op_node = _insert_transfer(graph, root, tail, compiled, registration.handle, device)
             tail.replace_all_uses_with(op_node)
             for member in reversed(members):
                 if member.users:
@@ -243,6 +257,18 @@ class RelocBackend:
         with self._lock:
             self._replaced += replaced
         return rewritten, registrations
+
+
+def _region_reason(nodes, candidate):
+    """Structural exclusion for a candidate over `nodes`, or None when replaceable."""
+    root = nodes.get(candidate.source)
+    members = [nodes.get(name) for name in candidate.members]
+    if root is None or any(member is None for member in members):
+        return "graph_mismatch"
+    member_set = set(members)
+    if any(user not in member_set for member in members[:-1] for user in member.users):
+        return "escaping_intermediate"
+    return None
 
 
 def _insert_transfer(graph, root, tail, compiled, handle, device):

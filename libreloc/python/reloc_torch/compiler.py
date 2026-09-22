@@ -34,15 +34,24 @@ class CompilerClient:
                     "SYM_RELOC_EXPORT or SYM_OPT must select the R1 exporter"
                 )
             configured = Path(sym_opt).with_name("sym-reloc-export")
-        return cls(configured)
+        client = cls(configured)
+        if not client.executable.is_file():
+            raise RuntimeError(f"configured R1 exporter is absent: {client.executable}")
+        return client
 
     @property
     def identity(self):
-        """Pre-compilation compiler identity for cache keys: the exporter path,
-        never an object id. Resolved once."""
+        """Pre-compilation compiler identity for cache keys: the resolved
+        exporter path plus the binary's size and modification time, so a
+        rebuilt exporter never reuses artifacts or rejections produced by the
+        previous binary. Never an object id."""
         if self._identity is None:
             self._identity = f"sym-reloc-export@{self.executable.resolve()}"
-        return self._identity
+        try:
+            status = os.stat(self.executable)
+        except OSError:
+            return self._identity
+        return f"{self._identity}#{status.st_size}-{status.st_mtime_ns}"
 
     def compile(self, recipe):
         mlir = emit_mlir(recipe).encode("utf-8")

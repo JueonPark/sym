@@ -104,6 +104,15 @@ Implemented and tested on the qualified baseline (observed 2026-09-22):
   frontend/compiler identity, wire version, dtype/layout family, transfer
   semantics and runtime capability identity; rejections share that identity and
   bound; concurrent same-key requests compile once.
+- `requires_grad` excludes a source only while grad mode is enabled, when
+  execution would be gradient-requiring; under `torch.no_grad()` parameters and
+  buffers are ordinary dense inputs for both the eager and the graph path
+  (Dynamo guards the captured grad mode; the graph callable re-checks per call).
+- Dynamo does not trace a frame while the eager dispatch mode is active: a
+  `torch.compile` call first executed inside `eager_transfers` runs eagerly and
+  its transfers are offloaded there, once each. Compile outside the scope for
+  graph replacement; a compiled function run inside the scope executes its
+  custom op with interception suspended and never offloads twice.
 - Importer refinement: `Tensor.contiguous()` after a non-dense layout is accepted
   when the ShapeEnv proves every extent is at least two (Dynamo's 0/1
   specialization), which is exactly when the materialization is unconditional.
@@ -144,12 +153,12 @@ CUDA environment: the same interpreter and dependency versions with PyTorch
 
 | Command | Environment | Result |
 | --- | --- | --- |
-| `pytest libreloc/python/tests/torch_frontend -m 'not gpu' -q` | CPU | 239 passed, 72 deselected |
-| `pytest libreloc/python/tests -m 'not gpu' -q` | CPU | 449 passed, 75 deselected |
+| `pytest libreloc/python/tests/torch_frontend -m 'not gpu' -q` | CPU | 244 passed, 72 deselected |
+| `pytest libreloc/python/tests -m 'not gpu' -q` | CPU | 454 passed, 75 deselected |
 | `ctest --test-dir build/torch-cpu -R reloc-runtime` | CPU | 2 of 2 passed |
 | `pytest libreloc/python/tests/torch_frontend/test_custom_op.py libreloc/python/tests/torch_frontend/test_transfers_gpu.py libreloc/python/tests/torch_frontend/test_backend.py -m gpu -q` | CUDA | 20 passed, 44 skipped (R2 absent), 45 deselected |
-| `pytest libreloc/python/tests/torch_frontend -q` (all marks) | CUDA | 267 passed, 44 skipped |
-| `pytest libreloc/python/tests -m 'not gpu' -q` | CUDA | 448 passed, 1 skipped, 75 deselected |
+| `pytest libreloc/python/tests/torch_frontend -q` (all marks) | CUDA | 272 passed, 44 skipped |
+| `pytest libreloc/python/tests -m 'not gpu' -q` | CUDA | 453 passed, 1 skipped, 75 deselected |
 | `ctest --test-dir build/torch-cuda -R reloc-runtime` | CUDA | 2 of 2 passed |
 
 Observed on 2026-09-09: regular-GIL CPython 3.14.7,

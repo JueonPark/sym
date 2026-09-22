@@ -162,7 +162,9 @@ class HandleRegistry:
 
     def __init__(self):
         self._entries = {}
-        self._lock = threading.Lock()
+        # Reentrant: a Registration finalizer may run inside a cyclic-GC pass
+        # triggered while this thread already holds the lock in register().
+        self._lock = threading.RLock()
 
     def __len__(self):
         with self._lock:

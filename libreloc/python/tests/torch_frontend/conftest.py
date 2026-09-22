@@ -10,12 +10,9 @@ def compiler():
     from reloc_torch import CompilerClient
 
     try:
-        client = CompilerClient.from_environment()
+        return CompilerClient.from_environment()
     except RuntimeError as error:
         pytest.fail(str(error))
-    if not client.executable.is_file():
-        pytest.fail(f"configured R1 exporter is absent: {client.executable}")
-    return client
 
 
 @pytest.fixture(autouse=True)

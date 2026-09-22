@@ -289,7 +289,12 @@ def test_default_construction_resolves_compiler_and_transport_lazily(monkeypatch
     with pytest.raises(RuntimeError, match="SYM_RELOC_EXPORT"):
         backend.compiler
     monkeypatch.setenv("SYM_RELOC_EXPORT", "/nonexistent/sym-reloc-export")
-    assert backend_module().RelocBackend().compiler.executable.name == "sym-reloc-export"
+    with pytest.raises(RuntimeError, match="absent"):
+        backend_module().RelocBackend().compiler
+    x = torch.arange(6, dtype=torch.float32)
+    with pytest.raises(RuntimeError, match="absent"):
+        with eager_module().eager_transfers(backend=backend_module().RelocBackend()):
+            x.to(copy=True)
 
 
 @pytest.mark.parametrize(
@@ -560,6 +565,10 @@ def test_eager_transfers_route_h2d_and_d2h_once_through_the_adapter(production_b
     assert stats["plan_compiles"] == 2
 
 
+def _attempts(stats):
+    return stats["runtime_executions"] + sum(stats["fallbacks"].values())
+
+
 @pytest.mark.gpu
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable")
 def test_eager_scope_around_a_compiled_function_offloads_each_transfer_once(production_backend):
@@ -568,11 +577,59 @@ def test_eager_scope_around_a_compiled_function_offloads_each_transfer_once(prod
     def fn(x):
         return x.to("cuda").transpose(0, 1).contiguous()
 
-    compiled_fn = torch.compile(fn, backend=production_backend, dynamic=True)
     x = torch.arange(24, dtype=torch.float32).reshape(4, 6)
+    # Dynamo does not trace while a dispatch mode is active: the first call
+    # inside the scope runs eagerly and the eager path offloads the transfer
+    # exactly once.
+    compiled_fn = torch.compile(fn, backend=production_backend, dynamic=True)
     with torch.no_grad(), eager.eager_transfers(backend=production_backend):
         actual = compiled_fn(x)
     torch.testing.assert_close(actual, fn(x), rtol=0, atol=0)
     stats = production_backend.stats()
-    attempts = stats["runtime_executions"] + sum(stats["fallbacks"].values())
-    assert attempts == 1
+    assert stats["dynamo_compiles"] == 0
+    assert _attempts(stats) == 1
+    # Compiled outside the scope, the graph's custom op runs with interception
+    # suspended inside it: still exactly one attempt per call, no duplicate.
+    torch._dynamo.reset()
+    with torch.no_grad():
+        compiled_fn(x)
+    before = _attempts(production_backend.stats())
+    assert production_backend.stats()["replaced_regions"] == 1
+    with torch.no_grad(), eager.eager_transfers(backend=production_backend):
+        actual = compiled_fn(x)
+    torch.testing.assert_close(actual, fn(x), rtol=0, atol=0)
+    stats = production_backend.stats()
+    assert stats["dynamo_compiles"] == 1
+    assert _attempts(stats) == before + 1
+    assert stats["redispatches"] == {}
+
+
+def test_parameters_are_eligible_only_under_no_grad(cpu_backend):
+    decide = eager_module().decide
+    weight = torch.nn.Parameter(torch.ones(3, 4))
+    options = dict(device=torch.device("cuda:0"))
+    assert decide(torch.ops.aten._to_copy.default, (weight,), options).reason == "requires_grad"
+    with torch.no_grad():
+        decision = decide(torch.ops.aten._to_copy.default, (weight,), options)
+    assert decision.reason is None and decision.direction == "h2d"
+
+    from reloc_torch import import_graph
+
+    # Raw capture with a parameter-like example input: normalization keeps
+    # requires_grad on the fake root and the importer decides by the grad mode
+    # at import time (the same path as T2's requires_grad root-contract test).
+    gm = torch.fx.symbolic_trace(lambda x: x.transpose(0, 1).contiguous().to("cuda"))
+    grad_input = torch.ones(3, 4, requires_grad=True)
+    assert "requires_grad" in {e.reason for e in import_graph(gm, [grad_input]).exclusions}
+    with torch.no_grad():
+        assert len(import_graph(gm, [grad_input]).candidates) == 1
+        compiled = cpu_backend(gm, [grad_input])
+    assert compiled.rewritten is not compiled.original
+    assert len(op_nodes(compiled.rewritten)) == 1
+    assert cpu_backend.stats()["replaced_regions"] == 1
+    with torch.no_grad():
+        source = torch.arange(12, dtype=torch.float32).reshape(3, 4).requires_grad_()
+        from reloc_torch.runtime import source_reason
+
+        assert source_reason(source) is None
+    assert source_reason(source) == "requires_grad"

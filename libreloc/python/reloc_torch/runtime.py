@@ -12,8 +12,8 @@ never re-intercepted.
 from __future__ import annotations
 
 from contextlib import contextmanager
+import dataclasses
 from dataclasses import dataclass, field
-import functools
 import importlib
 import threading
 from typing import Protocol
@@ -59,7 +59,7 @@ def _metadata_snapshot(tensor):
     )
 
 
-@dataclass
+@dataclass(eq=False)
 class PreparedCall:
     """Everything a validated invocation retains until completion.
 
@@ -123,6 +123,9 @@ class ExecutionEntry:
     def direction(self):
         return self.compiled.recipe.direction
 
+    def describe(self):
+        return self.handle if self.handle is not None else "unregistered entry"
+
     def close(self):
         self.closed = True
 
@@ -161,10 +164,20 @@ def suspend_interception():
 
 
 def source_reason(src):
-    """Frontend metadata guard shared by every adapter; ``None`` when admitted."""
+    """Frontend metadata guard shared by every adapter; ``None`` when admitted.
+
+    ``requires_grad`` excludes a source only while grad mode is enabled: that
+    is when execution would be gradient-requiring. Under ``torch.no_grad()``
+    parameters and buffers are ordinary dense inputs.
+    """
+    import torch
+
     if not compat.is_plain_tensor_or_parameter(src):
         return "tensor_subclass"
-    return _metadata_reason(compat.tensor_metadata(src))
+    metadata = compat.tensor_metadata(src)
+    if metadata.requires_grad and not torch.is_grad_enabled():
+        metadata = dataclasses.replace(metadata, requires_grad=False)
+    return _metadata_reason(metadata)
 
 
 def bind_symbols(compiled, src):
@@ -175,21 +188,39 @@ def bind_symbols(compiled, src):
         raise UnsupportedRecipe(error.reason, str(error)) from error
 
 
-@functools.lru_cache(maxsize=256)
 def load_plan(plan_bytes):
+    """Decode the artifact's plan; decoding is cheap and keeps no hidden cache."""
     import pyreloc
 
     return pyreloc.load_plan(plan_bytes)
 
 
 def bind_plan(compiled, bindings):
-    """Bind through the standalone binder; expected rejections become a reason."""
+    """Bind through the standalone binder; expected rejections become a reason.
+
+    Every call counts as one binder call on the diagnostics of the execution
+    currently in preflight (see ``execute_or_fallback``), whatever the adapter
+    decides afterwards.
+    """
     import pyreloc
 
+    diagnostics = getattr(_local, "diagnostics", None)
+    if diagnostics is not None:
+        diagnostics.increment("symbol_binds")
     try:
         return pyreloc.bind(load_plan(compiled.plan_bytes), bindings)
     except pyreloc.BindError as error:
         raise UnsupportedRecipe("bind_error", str(error)) from error
+
+
+@contextmanager
+def _counting_binds(diagnostics):
+    previous = getattr(_local, "diagnostics", None)
+    _local.diagnostics = diagnostics
+    try:
+        yield
+    finally:
+        _local.diagnostics = previous
 
 
 def destination_descriptor(compiled, bindings, device):
@@ -211,8 +242,7 @@ def destination_descriptor(compiled, bindings, device):
     return ConcreteDescriptor(shape, strides, logical.dtype, torch.device(device))
 
 
-def _dtype_name(dtype):
-    return str(dtype).removeprefix("torch.")
+_dtype_name = compat.dtype_name
 
 
 def verify_result(result, src, destination):
@@ -319,7 +349,7 @@ class TransportAdapter:
         if not isinstance(destination, ConcreteDescriptor):
             destination = ConcreteDescriptor(
                 tuple(destination.shape), tuple(destination.strides),
-                str(destination.dtype).removeprefix("torch."), torch.device(destination.device),
+                compat.dtype_name(destination.dtype), torch.device(destination.device),
             )
         return PreparedCall(
             compiled, src, dict(request.bindings), getattr(request, "bound", None),
@@ -341,15 +371,18 @@ def _derived_symbols(entry, src):
 
 
 def _fallback(entry, src, symbols, reason, promised=None):
-    entry.diagnostics.record_fallback(reason)
     if symbols is None:
-        symbols = _derived_symbols(entry, src)
-        if symbols is None and entry.symbolic_bindings:
-            raise RuntimeError(
-                "cannot evaluate the original region's scalar placeholders for a "
-                f"source of rank {src.dim()} (recipe symbols {entry.compiled.symbols})"
-            )
-        symbols = symbols or ()
+        # Symbol values only matter for the original region's scalar
+        # placeholders; eager identity entries have none.
+        symbols = ()
+        if entry.symbolic_bindings:
+            symbols = _derived_symbols(entry, src)
+            if symbols is None:
+                raise RuntimeError(
+                    "cannot evaluate the original region's scalar placeholders for a "
+                    f"source of rank {src.dim()} (recipe symbols {entry.compiled.symbols})"
+                )
+    entry.diagnostics.record_fallback(reason)
     result = entry.fallback(src, *symbols)
     return result if promised is None else verify_result(result, src, promised)
 
@@ -401,12 +434,10 @@ def execute_or_fallback(entry, src, symbols, device, *, non_blocking=False, decl
                 f"{destination.shape}/{destination.strides}"
             )
         try:
-            call = entry.runtime.preflight(entry.compiled, src, device, non_blocking=non_blocking)
+            with _counting_binds(entry.diagnostics):
+                call = entry.runtime.preflight(entry.compiled, src, device, non_blocking=non_blocking)
         except UnsupportedRecipe as error:
-            if error.reason == "bind_error":
-                entry.diagnostics.increment("symbol_binds")
             return _fallback(entry, src, symbols, error.reason, promised)
-        entry.diagnostics.increment("symbol_binds")
         if call.bindings != bindings or tuple(call.destination.shape) != destination.shape:
             raise RuntimeError("runtime adapter disagreed with the frontend binding")
         call.recheck()
@@ -416,8 +447,8 @@ def execute_or_fallback(entry, src, symbols, device, *, non_blocking=False, decl
             result = entry.runtime.execute(call)
         except Exception as error:
             raise ExecutionError(
-                f"reloc_torch {entry.direction} execution failed for handle "
-                f"{entry.handle!r}: {error}",
+                f"reloc_torch {entry.direction} execution failed for "
+                f"{entry.describe()}: {error}",
                 direction=entry.direction,
                 handle=entry.handle,
             ) from error

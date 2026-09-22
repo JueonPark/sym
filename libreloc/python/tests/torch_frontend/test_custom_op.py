@@ -179,13 +179,20 @@ def test_unknown_and_closed_handles_fail_without_fabricating_output(entry):
 def test_gradient_requiring_direct_calls_are_rejected(registered, counting_runtime):
     handle, entry = registered
     x = torch.arange(6, dtype=torch.float32, requires_grad=True)
-    with pytest.raises(RuntimeError):
+    # Autograd runs the kernel below autograd before setup_context can refuse,
+    # and the kernel cannot distinguish that redispatch from a no_grad scope
+    # (where parameters are eligible): the call fails, nothing escapes, and at
+    # most the one discarded execution happened. Entry points never get here.
+    with pytest.raises(RuntimeError, match="autograd"):
         transfer()(x, handle, [6], [6], [1], torch.device("cpu"))
-    assert counting_runtime.executions == 0
+    assert counting_runtime.executions <= 1
+    assert entry.fallback_calls == 0
+    executed = counting_runtime.executions
     with torch.no_grad():
         result = transfer()(x, handle, [6], [6], [1], torch.device("cpu"))
     assert torch.equal(result, x.detach())
     assert result.requires_grad is False
+    assert counting_runtime.executions == executed + 1
 
 
 class AliasingRuntime(CountingRuntime):

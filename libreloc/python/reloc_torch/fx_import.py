@@ -33,6 +33,10 @@ class Candidate:
     # recipe to agree on output metadata (Dynamo's 0/1 specialization makes a
     # transposed contiguous() unconditional only inside this family).
     extent_guards: tuple = ()
+    # Destination device of the region's result, read from the normalized
+    # fake metadata so a rewrite never depends on metadata being present on
+    # the caller's original graph nodes.
+    device: object = None
 
 
 @dataclass(frozen=True)
@@ -195,7 +199,10 @@ def _recipe(root, members):
     _require(compat.is_tensor(source), root.meta.get('reloc_reason', 'metadata_unavailable'))
     _require(compat.is_fake_tensor(source) or compat.is_plain_tensor_or_parameter(source), 'tensor_subclass')
     _require(source.layout == torch.strided and not source.is_quantized, 'unsupported_layout')
-    _require(not source.requires_grad, 'requires_grad')
+    # Gradient-requiring only while autograd could record. Dynamo guards the
+    # grad mode a graph was captured under, and the returned graph callable
+    # re-checks it per call, so a no_grad capture of parameters is eligible.
+    _require(not source.requires_grad or not torch.is_grad_enabled(), 'requires_grad')
     _require(len(source.shape) > 0, 'rank_zero')
     _require(not any(type(d) is int and d == 0 for d in source.shape), 'empty_tensor')
     context = compat.SymbolicContext.from_tensor(source)
@@ -209,7 +216,7 @@ def _recipe(root, members):
         _require('reloc_reason' not in node.meta, node.meta.get('reloc_reason'))
         value = compat.graph_value(node)
         _require(compat.is_tensor(value), 'metadata_unavailable')
-        _require(not value.requires_grad, 'requires_grad')
+        _require(not value.requires_grad or not torch.is_grad_enabled(), 'requires_grad')
         _require(value.dtype == source.dtype, 'typed_transform_unavailable')
         kind = compat.fx_kind(node)
         opts = _options(node)
@@ -383,7 +390,8 @@ def import_graph(gm, example_inputs=None):
             _safety(nodes, root, members)
             recipe, context, extent_guards = _recipe(root, members)
             original, bindings = _extract(gm, originals[root.name], [originals[n.name] for n in members], context)
-            candidates.append(Candidate(root.name, members[-1].name, tuple(n.name for n in members), recipe, context.sources, bindings, original, extent_guards))
+            candidates.append(Candidate(root.name, members[-1].name, tuple(n.name for n in members), recipe, context.sources, bindings, original, extent_guards,
+                                        compat.graph_value(members[-1]).device))
         except (_Reject, UnsupportedSymbolicExpr) as error:
             exclusions.append(Exclusion(transfer.name, error.reason))
     return ImportReport(tuple(candidates), tuple(dict.fromkeys(exclusions)))

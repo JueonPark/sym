@@ -243,3 +243,35 @@ def test_diagnostics_snapshot_is_a_plain_copy_without_tensors():
     assert not contains_tensor(snapshot)
     with pytest.raises(KeyError):
         diagnostics.increment("not_a_counter")
+
+
+def test_registry_release_is_safe_while_the_lock_is_held(compiler, identity_recipe, counting_runtime):
+    # A Registration finalizer can run inside a cyclic-GC pass triggered while
+    # this thread already holds the registry lock in register(); the lock must
+    # be reentrant or the process deadlocks.
+    registry = api().HandleRegistry()
+    entry = make_entry(compiler.compile(identity_recipe), counting_runtime, lambda src, *s: src.clone())
+    registration = registry.register(entry)
+    with registry._lock:
+        registration.release()
+    assert len(registry) == 0
+
+
+def test_compiler_identity_tracks_the_exporter_binary(compiler, identity_recipe, tmp_path, monkeypatch):
+    import os
+    import shutil
+    from reloc_torch import CompilerClient
+
+    copy = tmp_path / "sym-reloc-export"
+    shutil.copy2(compiler.executable, copy)
+    client = CompilerClient(copy)
+    before = client.identity
+    assert str(copy.resolve()) in before
+    status = os.stat(copy)
+    os.utime(copy, ns=(status.st_atime_ns, status.st_mtime_ns + 10_000_000))
+    after = client.identity
+    assert after != before
+    assert _key(identity_recipe, compiler_identity=before) != _key(identity_recipe, compiler_identity=after)
+    monkeypatch.setenv("SYM_RELOC_EXPORT", str(tmp_path / "missing"))
+    with pytest.raises(RuntimeError, match="absent"):
+        CompilerClient.from_environment()

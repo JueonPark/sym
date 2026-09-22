@@ -22,10 +22,6 @@ SCHEMA = (
 )
 
 
-def _dtype_name(dtype):
-    return str(dtype).removeprefix("torch.")
-
-
 _AUTOGRAD_MESSAGE = (
     "reloc_torch::transfer does not implement autograd; T3 entry points fall "
     "back to the original region before reaching the op for gradient-requiring inputs"
@@ -34,10 +30,12 @@ _AUTOGRAD_MESSAGE = (
 
 def _reject_autograd(ctx, inputs, output):
     # Runs only when autograd is recording (grad mode on, an input requires
-    # grad), after the real kernel has already redispatched with grad disabled.
-    # The shared preflight refuses to launch for a source that requires grad,
-    # so by this point only the original region's fallback result exists; it is
-    # discarded and the call fails here instead of in a deferred backward.
+    # grad), after the kernel already ran below autograd with grad disabled;
+    # the kernel cannot tell that redispatch from a user's no_grad scope, in
+    # which requires_grad parameters are legitimately eligible. The produced
+    # result is discarded and the call fails here instead of in a deferred
+    # backward. T3's entry points never reach the op with autograd live: the
+    # graph callable runs the original graph and the eager mode redispatches.
     raise RuntimeError(_AUTOGRAD_MESSAGE)
 
 
@@ -51,7 +49,7 @@ def _execute(src, handle, symbols, out_shape, out_strides, device):
     declared = ConcreteDescriptor(
         tuple(int(dim) for dim in out_shape),
         tuple(int(dim) for dim in out_strides),
-        _dtype_name(src.dtype),
+        compat.dtype_name(src.dtype),
         device,
     )
     return execute_or_fallback(entry, src, list(symbols), device, declared=declared)

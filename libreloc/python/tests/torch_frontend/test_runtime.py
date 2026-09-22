@@ -369,3 +369,42 @@ def test_transport_adapter_distinguishes_a_missing_module_from_a_broken_one(monk
     adapter = TransportAdapter()
     if not adapter.available:
         assert "has not been delivered" in adapter.unavailable_reason
+
+
+def test_requires_grad_source_executes_under_no_grad(entry, counting_runtime):
+    from reloc_torch.runtime import execute_or_fallback
+
+    x = torch.arange(6, dtype=torch.float32).requires_grad_()
+    with torch.no_grad():
+        actual = execute_or_fallback(entry, x, None, torch.device("cpu"))
+    assert torch.equal(actual, x.detach())
+    assert actual.requires_grad is False
+    assert counting_runtime.executions == 1
+    assert entry.diagnostics.fallbacks == {}
+    actual = execute_or_fallback(entry, x, None, torch.device("cpu"))
+    assert torch.equal(actual, x.detach())
+    assert counting_runtime.executions == 1
+    assert entry.diagnostics.fallbacks["requires_grad"] == 1
+
+
+def test_binder_calls_are_counted_even_when_the_adapter_rejects_afterwards(compiler, identity_recipe):
+    from reloc_torch.artifact import UnsupportedRecipe
+    from reloc_torch.runtime import execute_or_fallback, prepare_host_call
+
+    class RejectAfterBind:
+        capability_identity = "reject-after-bind/1"
+
+        def preflight(self, compiled, src, device, *, non_blocking=False):
+            prepare_host_call(compiled, src, device, non_blocking=non_blocking)
+            raise UnsupportedRecipe("device_mismatch", "rejected after binding")
+
+        def execute(self, call):
+            raise AssertionError("unreachable")
+
+    entry = make_entry(compiler.compile(identity_recipe), RejectAfterBind(), lambda src, *s: src.clone())
+    x = torch.arange(6, dtype=torch.float32)
+    assert torch.equal(execute_or_fallback(entry, x, [6], torch.device("cpu")), x)
+    snapshot = entry.diagnostics.snapshot()
+    assert snapshot["symbol_binds"] == 1
+    assert snapshot["fallbacks"] == {"device_mismatch": 1}
+    assert snapshot["runtime_executions"] == 0

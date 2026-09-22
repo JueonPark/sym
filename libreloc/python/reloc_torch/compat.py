@@ -388,6 +388,11 @@ class SymbolicContext:
         return TensorSpec(shape, strides, offset, str(tensor.dtype).removeprefix('torch.'))
 
 
+def dtype_name(dtype):
+    """Canonical frontend dtype name ('float32') for a torch.dtype or its str."""
+    return str(dtype).removeprefix("torch.")
+
+
 def existing_custom_op(qualname):
     """Return the live ``CustomOpDef`` registered under ``qualname``, or ``None``.
 

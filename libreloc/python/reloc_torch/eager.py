@@ -8,10 +8,17 @@ execution and fallback are never re-intercepted; the dispatch mode itself is
 thread-local, so concurrent threads outside the scope are untouched.
 
 Activation qualifies the interpreter/Torch baseline and resolves the backend's
-compiler and runtime bridge up front, so a misconfiguration fails at the
-``with`` statement rather than inside a user's ``tensor.to()`` call. Compiler
-crashes (as opposed to explicit ``UnsupportedRecipe`` rejections) still
-propagate: they are errors, not exclusions.
+compiler (including that the exporter binary exists) and runtime bridge up
+front, so a misconfiguration fails at the ``with`` statement rather than inside
+a user's ``tensor.to()`` call. Compiler crashes (as opposed to explicit
+``UnsupportedRecipe`` rejections) still propagate: they are errors, not
+exclusions.
+
+Dynamo does not trace a frame while a dispatch mode is active, so a
+``torch.compile`` call first executed inside this scope runs eagerly and its
+transfers are offloaded here, once each. Compile outside the scope for graph
+replacement; a compiled function run inside the scope executes its custom op
+with interception suspended, so nothing is offloaded twice.
 """
 
 from __future__ import annotations
@@ -61,16 +68,24 @@ def decide(func, args, kwargs):
     device = src.device if device is None else torch.device(device)
     dtype = options.get("dtype")
     dtype = src.dtype if dtype is None else dtype
-    source = compat.tensor_metadata(src)
     index = device.index
     if device.type == "cuda" and index is None:
         index = torch.cuda.current_device() if torch.cuda.is_available() else 0
         device = torch.device("cuda", index)
+    if device == src.device:
+        # Same-device casts and copies are the common ineligible case; decide
+        # them before any storage query.
+        return Decision("typed_transform_unavailable" if dtype != src.dtype else "same_device_copy")
+    source = compat.tensor_metadata(src)
+    if source.requires_grad and not torch.is_grad_enabled():
+        # Gradient-requiring only while autograd could record; under no_grad a
+        # parameter is an ordinary dense source (see runtime.source_reason).
+        source = replace(source, requires_grad=False)
     destination = replace(
         source,
         strides=_dense_strides(source.shape),
         storage_offset=0,
-        dtype=str(dtype).removeprefix("torch."),
+        dtype=compat.dtype_name(dtype),
         device_type=device.type,
         device_index=index if device.type != "cpu" else None,
         pinned=False,
@@ -125,7 +140,7 @@ def mode_type():
                 return func(*args, **kwargs)
 
             try:
-                entry = self.backend.eager_entry(src, decision.device, original)
+                entry = self.backend.eager_entry(src, decision.device, original, decision.direction)
             except UnsupportedRecipe as error:
                 self.backend.diagnostics.record_exclusion(error.reason)
                 with suspend_interception():
