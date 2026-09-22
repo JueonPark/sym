@@ -438,8 +438,11 @@ void issueHostLoad(Fixture &f, PipeCtx &px, const PassCfg &cfg, int slot,
              std::max<int64_t>(1, rowSrcBytes));
   for (int64_t c = 0; c < ck.nChunks; ++c) {
     const int buf = (int)(c & 1);
-    if (c >= 2)
-      CUDA_CHECK(cudaEventSynchronize(chunkEvents[(size_t)(c & 1)]));
+    // Unconditional: chunkEvents/staging persist across layers within a
+    // pass, so staging[buf]'s prior DMA (this layer's earlier chunk OR the
+    // previous layer's tail chunk) must be observed complete before the
+    // host overwrites it, not just chunks c>=2 within this layer.
+    CUDA_CHECK(cudaEventSynchronize(chunkEvents[(size_t)(c & 1)]));
     const int64_t rb = c * ck.rowsPerChunk;
     const int64_t re = std::min(rows, rb + ck.rowsPerChunk);
     char *stage = (char *)f.staging[buf];
@@ -496,6 +499,11 @@ double runPass(Fixture &f, PipeCtx &px, GemmEngine &g, const PassCfg &cfg,
   std::vector<cudaEvent_t> chunkEvents(2);
   CUDA_CHECK(cudaEventCreateWithFlags(&chunkEvents[0], cudaEventDisableTiming));
   CUDA_CHECK(cudaEventCreateWithFlags(&chunkEvents[1], cudaEventDisableTiming));
+  // Pre-record both on copyStream (empty stream -> instantly complete) so
+  // issueHostLoad's unconditional per-chunk sync has something valid to
+  // wait on even for the very first chunk written into each staging slot.
+  CUDA_CHECK(cudaEventRecord(chunkEvents[0], px.copyStream));
+  CUDA_CHECK(cudaEventRecord(chunkEvents[1], px.copyStream));
   const double t0 = nowMs();
   for (int64_t k = 0; k < f.layers; ++k) {
     const int slot = (int)(k & 1);
@@ -503,6 +511,13 @@ double runPass(Fixture &f, PipeCtx &px, GemmEngine &g, const PassCfg &cfg,
     if (cfg.loader != Loader::None && cfg.compute && k >= 2)
       CUDA_CHECK(cudaStreamWaitEvent(px.copyStream,
                                      px.bufFree[(size_t)(k - 2)], 0));
+    // Load-only anchors skip the bufFree chain (no compute), but
+    // b_pipelined's dRaw[slot] is still reused every 2 layers: order the
+    // H2D overwrite behind layer k-2's recv kernel (loadDone, recorded on
+    // recvStream) so it doesn't race the reader.
+    if (cfg.loader == Loader::BPipelined && !cfg.compute && k >= 2)
+      CUDA_CHECK(cudaStreamWaitEvent(px.copyStream,
+                                     px.loadDone[(size_t)(k - 2)], 0));
     // Issue the load.
     cudaStream_t loadTail = px.copyStream;
     if (cfg.loader == Loader::A || cfg.loader == Loader::APrefold) {
