@@ -145,15 +145,13 @@ TEST(Transfer, LargeCheckedProductsReportOverflowNotWraparound) {
   EXPECT_EQ(codeOf(reloc::validateTransfer(b, src, dstView,
                                            TransferDirection::HostToDevice)),
             "integer_overflow");
-  BufferView wideStride =
-      hostView(&byte, std::numeric_limits<size_t>::max(), 0, {3, 3},
-               {huge, 1}, 4);
+  BufferView wideStride = hostView(&byte, std::numeric_limits<size_t>::max(), 0,
+                                   {3, 3}, {huge, 1}, 4);
   EXPECT_EQ(codeOf(reloc::validateTransfer(b, wideStride, dstView,
                                            TransferDirection::HostToDevice)),
             "integer_overflow");
-  BufferView equalStrides =
-      hostView(&byte, std::numeric_limits<size_t>::max(), 0, {2, 3},
-               {huge, huge}, 4);
+  BufferView equalStrides = hostView(&byte, std::numeric_limits<size_t>::max(),
+                                     0, {2, 3}, {huge, huge}, 4);
   EXPECT_EQ(codeOf(reloc::validateTransfer(b, equalStrides, dstView,
                                            TransferDirection::HostToDevice)),
             "unsupported_layout");
@@ -192,7 +190,8 @@ TEST(Transfer, UnsupportedViewsAreRejectedWithStableCodes) {
             "plan_mismatch");
   EXPECT_EQ(run(hostView(src.data(), src.size(), 0, {2, 6}, {6, 1}, 4)),
             "plan_mismatch");
-  BufferView cudaSource = hostView(src.data(), src.size(), 0, {4, 6}, {6, 1}, 4);
+  BufferView cudaSource =
+      hostView(src.data(), src.size(), 0, {4, 6}, {6, 1}, 4);
   cudaSource.kind = MemoryKind::Cuda;
   cudaSource.device = 0;
   EXPECT_EQ(run(cudaSource), "direction_mismatch");
@@ -324,7 +323,8 @@ TEST(Transfer, IdentityPlanStillMovesBytes) {
   ASSERT_EQ(codeOf(validated), "ok");
   auto request = std::get<TransferRequest>(validated);
   CountingHostBackend backend(1);
-  ASSERT_FALSE(reloc::executeTransfer(request, backend, TransferOptions{}).has_value());
+  ASSERT_FALSE(
+      reloc::executeTransfer(request, backend, TransferOptions{}).has_value());
   EXPECT_EQ(dst, src);
   EXPECT_GE(backend.copies.load(), 1);
 }

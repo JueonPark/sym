@@ -109,7 +109,8 @@ EventHandle CudaBackend::recordEvent(int queue) {
   if (!check(cudaEventCreateWithFlags(&e, cudaEventDisableTiming),
              "cudaEventCreateWithFlags"))
     return 0;
-  if (!check(cudaEventRecord(e, asStream(streams_[queue])), "cudaEventRecord")) {
+  if (!check(cudaEventRecord(e, asStream(streams_[queue])),
+             "cudaEventRecord")) {
     (void)cudaEventDestroy(e);
     return 0;
   }
@@ -170,8 +171,8 @@ bool cudaPointerDevice(const void *pointer, int &device, std::string &error) {
   cudaError_t status = cudaPointerGetAttributes(&attributes, pointer);
   if (status != cudaSuccess) {
     (void)cudaGetLastError(); // clear the sticky error for the caller
-    error = std::string("cudaPointerGetAttributes: ") +
-            cudaGetErrorString(status);
+    error =
+        std::string("cudaPointerGetAttributes: ") + cudaGetErrorString(status);
     return false;
   }
   if (attributes.type != cudaMemoryTypeDevice &&

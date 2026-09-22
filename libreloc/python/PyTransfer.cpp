@@ -155,8 +155,8 @@ int cudaPointerDevicePy(uintptr_t pointer) {
 #ifdef RELOC_ENABLE_CUDA
   int device = -1;
   std::string error;
-  if (!reloc::cudaPointerDevice(reinterpret_cast<const void *>(pointer),
-                                device, error))
+  if (!reloc::cudaPointerDevice(reinterpret_cast<const void *>(pointer), device,
+                                error))
     throw TransferException("invalid_view: " + error);
   return device;
 #else
@@ -200,8 +200,10 @@ void registerTransferBindings(py::module_ &m) {
                              [](const reloc::TransferRequest &r) {
                                return directionName(r.direction);
                              })
-      .def_readonly("source_span_bytes", &reloc::TransferRequest::sourceSpanBytes)
-      .def_readonly("destination_bytes", &reloc::TransferRequest::destinationBytes)
+      .def_readonly("source_span_bytes",
+                    &reloc::TransferRequest::sourceSpanBytes)
+      .def_readonly("destination_bytes",
+                    &reloc::TransferRequest::destinationBytes)
       .def_readonly("consumed", &reloc::TransferRequest::consumed)
       .def_readonly("source", &reloc::TransferRequest::source)
       .def_readonly("destination", &reloc::TransferRequest::destination);

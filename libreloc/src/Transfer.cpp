@@ -67,9 +67,11 @@ std::variant<size_t, TransferError> viewSpanBytes(const BufferView &view,
   if (view.extents.size() != view.strides.size())
     return fail("invalid_view", role(what) + " extents/strides rank mismatch");
   if (view.kind == MemoryKind::Cuda && view.device < 0)
-    return fail("invalid_view", role(what) + " CUDA view lacks a device ordinal");
+    return fail("invalid_view",
+                role(what) + " CUDA view lacks a device ordinal");
   if (view.kind == MemoryKind::Host && view.device >= 0)
-    return fail("invalid_view", role(what) + " host view declares a CUDA device");
+    return fail("invalid_view",
+                role(what) + " host view declares a CUDA device");
 
   // Admitted subset: nonempty, non-negative strides, injective addressing.
   std::vector<std::pair<int64_t, int64_t>> axes; // (stride, extent), extent>1
@@ -81,14 +83,16 @@ std::variant<size_t, TransferError> viewSpanBytes(const BufferView &view,
     if (view.extents[k] == 1)
       continue;
     if (view.strides[k] == 0)
-      return fail("unsupported_layout", role(what) + " broadcasts a stride of zero");
+      return fail("unsupported_layout",
+                  role(what) + " broadcasts a stride of zero");
     axes.emplace_back(view.strides[k], view.extents[k]);
   }
   std::sort(axes.begin(), axes.end());
   int64_t span = 0; // largest element offset reachable so far
   for (const auto &[stride, extent] : axes) {
     if (stride <= span)
-      return fail("unsupported_layout", role(what) + " has overlapping strides");
+      return fail("unsupported_layout",
+                  role(what) + " has overlapping strides");
     int64_t reach = 0;
     if (!mulOk(extent - 1, stride, reach) || !addOk(span, reach, span))
       return fail("integer_overflow", role(what) + " span overflows");
@@ -115,10 +119,12 @@ std::optional<TransferError> checkKinds(const BufferView &source,
   // forward path; a CUDA view must sit on the device end of its direction.
   if (direction == TransferDirection::HostToDevice &&
       source.kind == MemoryKind::Cuda)
-    return fail("direction_mismatch", "host-to-device source must be host memory");
+    return fail("direction_mismatch",
+                "host-to-device source must be host memory");
   if (direction == TransferDirection::DeviceToHost &&
       destination.kind == MemoryKind::Cuda)
-    return fail("direction_mismatch", "device-to-host destination must be host memory");
+    return fail("direction_mismatch",
+                "device-to-host destination must be host memory");
   return std::nullopt;
 }
 
@@ -126,7 +132,8 @@ std::optional<TransferError> checkSourceKind(const BufferView &source,
                                              TransferDirection direction) {
   if (direction == TransferDirection::HostToDevice &&
       source.kind == MemoryKind::Cuda)
-    return fail("direction_mismatch", "host-to-device source must be host memory");
+    return fail("direction_mismatch",
+                "host-to-device source must be host memory");
   return std::nullopt;
 }
 
@@ -135,21 +142,23 @@ std::optional<TransferError> checkSourceKind(const BufferView &source,
 std::optional<TransferError> checkPlanAgainstSource(const BoundPlan &bound,
                                                     const BufferView &source,
                                                     size_t sourceSpanBytes) {
-  if (bound.extents.empty() || bound.extents.size() != bound.srcStrides.size() ||
+  if (bound.extents.empty() ||
+      bound.extents.size() != bound.srcStrides.size() ||
       bound.extents.size() != bound.dstStrides.size())
     return fail("plan_mismatch", "bound plan has inconsistent axes");
   if (bound.elementSize == 0 || bound.elementSize != source.elementSize)
-    return fail("plan_mismatch", "plan element size differs from the source view");
+    return fail("plan_mismatch",
+                "plan element size differs from the source view");
   int64_t planElements = 0, viewElements = 0;
   if (!elementCount(bound.extents, planElements))
     return fail("integer_overflow", "plan element count overflows");
   if (!elementCount(source.extents, viewElements))
     return fail("integer_overflow", "source element count overflows");
   if (planElements != viewElements)
-    return fail("plan_mismatch",
-                "plan relocates " + std::to_string(planElements) +
-                    " elements but the source view holds " +
-                    std::to_string(viewElements));
+    return fail("plan_mismatch", "plan relocates " +
+                                     std::to_string(planElements) +
+                                     " elements but the source view holds " +
+                                     std::to_string(viewElements));
   int64_t maxRead = 0;
   for (size_t k = 0; k < bound.extents.size(); ++k) {
     if (bound.srcStrides[k] < 0)
@@ -170,19 +179,22 @@ std::optional<TransferError> checkPlanAgainstSource(const BoundPlan &bound,
   return std::nullopt;
 }
 
-std::optional<TransferError> checkPlanAgainstDestination(
-    const BoundPlan &bound, const BufferView &destination, size_t spanBytes) {
+std::optional<TransferError>
+checkPlanAgainstDestination(const BoundPlan &bound,
+                            const BufferView &destination, size_t spanBytes) {
   if (bound.elementSize != destination.elementSize)
-    return fail("plan_mismatch", "plan element size differs from the destination view");
+    return fail("plan_mismatch",
+                "plan element size differs from the destination view");
   if (!isDense(destination))
-    return fail("unsupported_layout", "destination view must be dense row-major");
+    return fail("unsupported_layout",
+                "destination view must be dense row-major");
   if (bound.totalBytes <= 0)
     return fail("plan_mismatch", "bound plan has no destination footprint");
   if (spanBytes != static_cast<size_t>(bound.totalBytes))
-    return fail("plan_mismatch",
-                "destination view spans " + std::to_string(spanBytes) +
-                    " bytes but the plan writes " +
-                    std::to_string(bound.totalBytes));
+    return fail("plan_mismatch", "destination view spans " +
+                                     std::to_string(spanBytes) +
+                                     " bytes but the plan writes " +
+                                     std::to_string(bound.totalBytes));
   // Plan writes: max padded offset across coalesced axes stays inside.
   std::vector<int64_t> padded = bound.extents;
   for (const PadRegion &p : bound.padRegions) {
@@ -206,7 +218,8 @@ std::optional<TransferError> checkPlanAgainstDestination(
              static_cast<size_t>(bound.elementSize), needed))
     return fail("integer_overflow", "plan destination footprint overflows");
   if (needed > static_cast<size_t>(bound.totalBytes))
-    return fail("plan_mismatch", "plan writes beyond its declared destination footprint");
+    return fail("plan_mismatch",
+                "plan writes beyond its declared destination footprint");
   return std::nullopt;
 }
 
@@ -273,9 +286,8 @@ void forwardHostGather(const BoundPlan &bound, const void *src, void *dst,
     gatherChunk(bound, src, dst, 0, bound.extents[0]);
     return;
   }
-  const int64_t rowBytes =
-      std::max<int64_t>(1, bound.dstStrides[0] *
-                               static_cast<int64_t>(bound.elementSize));
+  const int64_t rowBytes = std::max<int64_t>(
+      1, bound.dstStrides[0] * static_cast<int64_t>(bound.elementSize));
   const int64_t minRows = std::max<int64_t>(
       1, static_cast<int64_t>(kMinGatherBytesPerWorker) / rowBytes);
   options.gather->parallelFor(0, bound.extents[0], minRows,
@@ -295,8 +307,7 @@ struct StagingGuard {
 
 std::optional<TransferError> backendFailure(const CopyBackend &backend,
                                             const char *phase) {
-  return fail("backend_failure",
-              std::string(phase) + ": " + backend.error());
+  return fail("backend_failure", std::string(phase) + ": " + backend.error());
 }
 
 } // namespace

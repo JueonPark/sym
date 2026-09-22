@@ -41,14 +41,14 @@ enum class TransferDirection : uint8_t { HostToDevice, DeviceToHost };
 /// for truthful allocation declarations and for keeping owners alive through
 /// the blocking call.
 struct BufferView {
-  uintptr_t base = 0;          // allocation base address
-  size_t capacityBytes = 0;    // bytes owned from `base`
-  size_t offsetBytes = 0;      // byte offset of logical element 0 from `base`
+  uintptr_t base = 0;           // allocation base address
+  size_t capacityBytes = 0;     // bytes owned from `base`
+  size_t offsetBytes = 0;       // byte offset of logical element 0 from `base`
   std::vector<int64_t> extents; // logical extents (all >= 1)
   std::vector<int64_t> strides; // element strides per extent
   uint32_t elementSize = 0;
   MemoryKind kind = MemoryKind::Host;
-  int device = -1;             // CUDA ordinal for Cuda views, -1 for Host
+  int device = -1; // CUDA ordinal for Cuda views, -1 for Host
 };
 
 /// A stable reason code plus a human-readable detail. Codes:
@@ -67,8 +67,8 @@ struct TransferRequest {
   BufferView source;
   BufferView destination;
   TransferDirection direction = TransferDirection::HostToDevice;
-  size_t sourceSpanBytes = 0;      // bytes the plan may read from src offset
-  size_t destinationBytes = 0;     // == bound.totalBytes
+  size_t sourceSpanBytes = 0;  // bytes the plan may read from src offset
+  size_t destinationBytes = 0; // == bound.totalBytes
   bool consumed = false;
 };
 
@@ -92,12 +92,12 @@ validateTransfer(const BoundPlan &bound, const BufferView &source,
                  const BufferView &destination, TransferDirection direction);
 
 struct TransferOptions {
-  int nBuffers = 4;                 // pinned staging ring size (H2D)
-  size_t chunkSizeOverride = 0;     // 0 = heuristic
-  unsigned gatherThreads = 1;       // per-call gather parallelism when no pool
-  GatherPool *gather = nullptr;     // caller-owned pool (wins over threads)
-  bool hasCallerStream = false;     // order after callerStream (may be 0 ==
-                                    // the legacy default stream)
+  int nBuffers = 4;             // pinned staging ring size (H2D)
+  size_t chunkSizeOverride = 0; // 0 = heuristic
+  unsigned gatherThreads = 1;   // per-call gather parallelism when no pool
+  GatherPool *gather = nullptr; // caller-owned pool (wins over threads)
+  bool hasCallerStream = false; // order after callerStream (may be 0 ==
+                                // the legacy default stream)
   const void *callerStream = nullptr;
 };
 
