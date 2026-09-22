@@ -94,6 +94,13 @@ if(RELOC_ENABLE_CUDA)
   target_compile_features(bench-rtrack PRIVATE cxx_std_17)
   target_link_libraries(bench-rtrack PRIVATE reloc_runtime CUDA::cudart)
 
+  # R7 / EXP-7 (issue #88): e2e-overlap multi-layer pipeline. GPU-only, never
+  # in CI. Measures overlapping GEMM compute with H2D weight loads across layers.
+  add_executable(bench-e2e-overlap rtrack/e2e_overlap.cu)
+  target_include_directories(bench-e2e-overlap PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_compile_features(bench-e2e-overlap PRIVATE cxx_std_17)
+  target_link_libraries(bench-e2e-overlap PRIVATE reloc_runtime CUDA::cudart CUDA::cublas)
+
   # M0 bring-up / EXP-3 seed (issue #73): per-GPU and concurrent pinned
   # copy bandwidth. GPU-only, never in CI.
   add_executable(bench-multigpu-h2d rtrack/multigpu_h2d.cu)
