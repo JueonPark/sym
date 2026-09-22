@@ -454,6 +454,23 @@ is fine.
 CI's byte-equality check (previously skipping with "not committed yet")
 goes live on push; when it is green, undraft the PR.
 
+## R7 e2e overlap (issue #88)
+
+`e2e_overlap.cu` — Regime-5 end-to-end: L-layer weight-loading loop with
+per-layer cuBLAS GEMMs concurrent to the load. Methods: `a` (host
+transform, zero GPU kernels), `b_pipelined` (raw H2D + per-LAYER receive
+kernel — see the file header for why per-layer), `a_prefold` (DMA-only,
+V4), `a_serial`/`b_serial` (no-overlap anchors), `compute_only` /
+`compute_bare` (G3 anchors). POST-FREEZE ADDENDUM: rows carry
+post_freeze=1; gates in `gates.py --exp r7`.
+
+Standalone build: the bench-rtrack recipe above with
+`bench/rtrack/e2e_overlap.cu` as the source and `-lcublas` appended
+(CMake target: `bench-e2e-overlap`).
+
+    ./bench-e2e-overlap --machine epyc7351-2080ti --family quant \
+      --csv bench/results/r7_e2e_quant_epyc7351-2080ti.csv --verify
+
 ## V3 cost-model tools (issue #97)
 
 - **`make_calibration.py`** — assembles a `calibration/<machine>.cal` flat
