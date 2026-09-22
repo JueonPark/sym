@@ -26,26 +26,6 @@ def _dtype_name(dtype):
     return str(dtype).removeprefix("torch.")
 
 
-def _verify(result, src, declared):
-    if not isinstance(result, torch.Tensor):
-        raise RuntimeError("reloc_torch::transfer produced a non-tensor result")
-    if compat.tensors_alias(result, src):
-        raise RuntimeError("reloc_torch::transfer result must not alias its input")
-    actual = (tuple(result.shape), tuple(result.stride()), result.dtype, result.storage_offset())
-    expected = (declared.shape, declared.strides, src.dtype, 0)
-    if actual != expected:
-        raise RuntimeError(
-            f"reloc_torch::transfer output metadata mismatch: got {actual}, declared {expected}"
-        )
-    device = declared.device
-    if result.device.type != device.type or (
-        device.index is not None and result.device.index != device.index
-    ):
-        raise RuntimeError(
-            f"reloc_torch::transfer output device {result.device} does not match declared {device}"
-        )
-
-
 _AUTOGRAD_MESSAGE = (
     "reloc_torch::transfer does not implement autograd; T3 entry points fall "
     "back to the original region before reaching the op for gradient-requiring inputs"
@@ -54,9 +34,10 @@ _AUTOGRAD_MESSAGE = (
 
 def _reject_autograd(ctx, inputs, output):
     # Runs only when autograd is recording (grad mode on, an input requires
-    # grad). The shared preflight has already refused to launch for a source
-    # that requires grad, so this turns a direct gradient-requiring call into
-    # a clear call-time error instead of a deferred backward failure.
+    # grad), after the real kernel has already redispatched with grad disabled.
+    # The shared preflight refuses to launch for a source that requires grad,
+    # so by this point only the original region's fallback result exists; it is
+    # discarded and the call fails here instead of in a deferred backward.
     raise RuntimeError(_AUTOGRAD_MESSAGE)
 
 
@@ -73,12 +54,18 @@ def _execute(src, handle, symbols, out_shape, out_strides, device):
         _dtype_name(src.dtype),
         device,
     )
-    result = execute_or_fallback(entry, src, list(symbols), device, declared=declared)
-    _verify(result, src, declared)
-    return result
+    return execute_or_fallback(entry, src, list(symbols), device, declared=declared)
 
 
 def _define():
+    # Registration is process-global and happens once: a reload or duplicate
+    # import reuses the live definition, because re-registering would replace
+    # the dispatcher entry and invalidate OpOverload objects already captured
+    # in FX graphs.
+    existing = compat.existing_custom_op(QUALIFIED_NAME)
+    if existing is not None:
+        return existing
+
     @library.custom_op(QUALIFIED_NAME, mutates_args=(), schema=SCHEMA)
     def transfer(src, handle, symbols, out_shape, out_strides, device):
         return _execute(src, handle, symbols, out_shape, out_strides, device)

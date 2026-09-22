@@ -6,6 +6,12 @@ with a recorded reason. Interception is suspended while the common executor
 runs so allocation, producer ordering, runtime-internal Torch calls, custom-op
 execution and fallback are never re-intercepted; the dispatch mode itself is
 thread-local, so concurrent threads outside the scope are untouched.
+
+Activation qualifies the interpreter/Torch baseline and resolves the backend's
+compiler and runtime bridge up front, so a misconfiguration fails at the
+``with`` statement rather than inside a user's ``tensor.to()`` call. Compiler
+crashes (as opposed to explicit ``UnsupportedRecipe`` rejections) still
+propagate: they are errors, not exclusions.
 """
 
 from __future__ import annotations
@@ -135,6 +141,9 @@ def eager_transfers(*, backend):
     """Intercept eligible eager transfers within the scope and route them to ``backend``."""
     if backend.closed:
         raise RuntimeError("RelocBackend is closed")
+    compat.check_version()
+    backend.compiler
+    backend.runtime
     mode = mode_type()(backend)
     with mode:
         yield mode

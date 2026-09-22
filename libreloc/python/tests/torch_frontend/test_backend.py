@@ -394,6 +394,18 @@ def test_eager_scope_is_thread_local_and_suspension_blocks_interception(cpu_back
     assert cpu_backend.stats()["redispatches"] == {"same_device_copy": 1}
 
 
+def test_eager_activation_fails_early_on_unresolvable_configuration(monkeypatch, counting_runtime):
+    monkeypatch.delenv("SYM_RELOC_EXPORT", raising=False)
+    monkeypatch.delenv("SYM_OPT", raising=False)
+    backend = backend_module().RelocBackend(runtime=counting_runtime)
+    x = torch.arange(6, dtype=torch.float32)
+    with pytest.raises(RuntimeError, match="SYM_RELOC_EXPORT"):
+        with eager_module().eager_transfers(backend=backend):
+            x.to(copy=True)
+    assert torch._C._len_torch_dispatch_stack() == 0
+    assert backend.stats()["redispatches"] == {}
+
+
 def test_closed_backend_rejects_eager_activation(compiler, counting_runtime):
     backend = backend_module().RelocBackend(compiler=compiler, runtime=counting_runtime)
     backend.close()

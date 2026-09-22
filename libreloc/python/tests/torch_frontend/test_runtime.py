@@ -307,3 +307,65 @@ def test_extent_guards_fall_back_for_singleton_bindings_before_the_adapter(compi
     wide = torch.arange(12, dtype=torch.float32).reshape(2, 6)
     assert torch.equal(execute_or_fallback(entry, wide, None, torch.device("cpu")), wide.t().contiguous())
     assert counting_runtime.executions == 1
+
+
+def test_transport_adapter_pins_the_r2_request_contract(monkeypatch, compiler, identity_recipe):
+    import sys
+    import types
+    from reloc_torch.runtime import ConcreteDescriptor, PreparedCall, TransportAdapter, execute_or_fallback
+
+    module = types.ModuleType("reloc_torch.transport")
+    module.CAPABILITY_IDENTITY = "stub"
+    requests = []
+
+    class Loose:
+        pass
+
+    class Request:
+        def __init__(self, compiled, src, device):
+            self.bindings = compiled.bind_values(src)
+            self.destination = ConcreteDescriptor(tuple(src.shape), tuple(src.stride()), "float32", torch.device(device))
+            self.bound = None
+
+    module.prepare_transfer = lambda compiled, src, device, *, non_blocking=False: (
+        Loose() if getattr(module, "loose", False) else Request(compiled, src, device))
+
+    def execute_transfer(request):
+        requests.append(request)
+        return torch.empty(request.destination.shape).copy_(current_source[0])
+
+    module.execute_transfer = execute_transfer
+    monkeypatch.setitem(sys.modules, "reloc_torch.transport", module)
+    adapter = TransportAdapter()
+    assert adapter.available
+    assert adapter.capability_identity == "reloc_torch.transport/stub"
+    entry = make_entry(compiler.compile(identity_recipe), adapter, lambda src, *s: src.clone())
+    current_source = [torch.arange(6, dtype=torch.float32)]
+    actual = execute_or_fallback(entry, current_source[0], [6], torch.device("cpu"))
+    assert torch.equal(actual, current_source[0])
+    assert isinstance(requests[0], Request)
+    assert entry.diagnostics.snapshot()["runtime_executions"] == 1
+    module.loose = True
+    with pytest.raises(RuntimeError, match="documented attributes"):
+        execute_or_fallback(entry, current_source[0], [6], torch.device("cpu"))
+    assert entry.fallback_calls == 0
+
+
+def test_transport_adapter_distinguishes_a_missing_module_from_a_broken_one(monkeypatch):
+    import importlib
+    from reloc_torch.runtime import TransportAdapter
+
+    real_import_module = importlib.import_module
+
+    def broken_import(name, package=None):
+        if name == TransportAdapter.MODULE:
+            raise ModuleNotFoundError("No module named 'pyreloc._cuda'", name="pyreloc._cuda")
+        return real_import_module(name, package)
+
+    monkeypatch.setattr(importlib, "import_module", broken_import)
+    with pytest.raises(ModuleNotFoundError, match="pyreloc._cuda"):
+        TransportAdapter()
+    monkeypatch.undo()
+    adapter = TransportAdapter()
+    if not adapter.available:
+        assert "has not been delivered" in adapter.unavailable_reason

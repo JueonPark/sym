@@ -285,19 +285,28 @@ def test_missing_compiler_capability_keeps_the_original_graph(compiler):
     backend.close()
 
 
+def _region(src):
+    # The split-transpose region's own PyTorch computation.
+    return src.cpu().reshape(-1, 64).t().contiguous()
+
+
 @pytest.mark.parametrize(
-    ("make", "symbols", "reason"),
+    ("make", "symbols", "reason", "expected"),
     [
-        (lambda: torch.arange(130, dtype=torch.float32, device="cuda"), [130], "divisibility"),
-        (lambda: torch.arange(128, dtype=torch.float32, device="cuda"), [64], "symbol_mismatch"),
-        (lambda: torch.empty(0, dtype=torch.float32, device="cuda"), [0], "empty_tensor"),
-        (lambda: torch.ones((), dtype=torch.float32, device="cuda"), [], "unsupported_rank"),
-        (lambda: torch.arange(128, dtype=torch.float64, device="cuda"), [128], "unsupported_dtype"),
-        (lambda: torch.arange(256, dtype=torch.float32, device="cuda")[::2], [128], "unsupported_layout"),
-        (lambda: torch.arange(130, dtype=torch.float32, device="cuda")[2:], [128], "storage_offset"),
+        # Guard failures before the destination is known fall back to whatever
+        # the original region does for that input (here PyTorch's own copy).
+        (lambda: torch.arange(130, dtype=torch.float32, device="cuda"), [130], "divisibility", lambda x: x.cpu()),
+        # Once the destination is known, the fallback's metadata is verified
+        # against it, so the original must compute the real region.
+        (lambda: torch.arange(128, dtype=torch.float32, device="cuda"), [64], "symbol_mismatch", _region),
+        (lambda: torch.empty(0, dtype=torch.float32, device="cuda"), [0], "empty_tensor", lambda x: x.cpu()),
+        (lambda: torch.ones((), dtype=torch.float32, device="cuda"), [], "unsupported_rank", lambda x: x.cpu()),
+        (lambda: torch.arange(128, dtype=torch.float64, device="cuda"), [128], "unsupported_dtype", lambda x: x.cpu()),
+        (lambda: torch.arange(256, dtype=torch.float32, device="cuda")[::2], [128], "unsupported_layout", lambda x: x.cpu()),
+        (lambda: torch.arange(130, dtype=torch.float32, device="cuda")[2:], [128], "storage_offset", lambda x: x.cpu()),
     ],
 )
-def test_invalid_bindings_and_unsupported_sources_fall_back_with_zero_launches(compiler, split_transpose_recipe, make, symbols, reason):
+def test_invalid_bindings_and_unsupported_sources_fall_back_with_zero_launches(compiler, split_transpose_recipe, make, symbols, reason, expected):
     import dataclasses
     from reloc_torch.runtime import execute_or_fallback
 
@@ -307,12 +316,12 @@ def test_invalid_bindings_and_unsupported_sources_fall_back_with_zero_launches(c
 
     def original(src, *scalars):
         calls.append(src)
-        return src.cpu()
+        return expected(src)
 
     entry = make_entry(compiler.compile(recipe), runtime, original)
     x = make()
     actual = execute_or_fallback(entry, x, symbols, torch.device("cpu"))
-    assert torch.equal(actual, x.cpu())
+    assert torch.equal(actual, expected(x))
     assert entry.diagnostics.fallbacks[reason] == 1
     assert runtime.preflights == 0 and runtime.executions == 0
     assert calls == [x]

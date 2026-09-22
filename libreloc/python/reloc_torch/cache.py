@@ -66,7 +66,9 @@ class ArtifactCache:
 
     Concurrent requests for one key compile once; the others wait and count as
     cache hits. Rejections are keyed identically, so a new compiler or runtime
-    capability can never reuse a stale rejection.
+    capability can never reuse a stale rejection. Unexpected compiler errors
+    (crashes, missing exporter) are not cached: the failing caller sees the
+    error and each waiter retries on its own.
     """
 
     def __init__(self, capacity=DEFAULT_CAPACITY):

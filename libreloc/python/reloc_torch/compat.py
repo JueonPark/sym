@@ -388,6 +388,18 @@ class SymbolicContext:
         return TensorSpec(shape, strides, offset, str(tensor.dtype).removeprefix('torch.'))
 
 
+def existing_custom_op(qualname):
+    """Return the live ``CustomOpDef`` registered under ``qualname``, or ``None``.
+
+    Pinned internal access: re-registering a custom op replaces its dispatcher
+    entry and invalidates ``OpOverload`` objects captured earlier (including FX
+    node targets), so module reloads must reuse the existing definition.
+    """
+    from torch._library.custom_ops import _maybe_get_opdef
+
+    return _maybe_get_opdef(qualname)
+
+
 def statically_at_least(value, bound):
     """True when ``value >= bound`` is provable from the pinned ShapeEnv without
     installing a guard or reading a hint; False for anything unprovable."""

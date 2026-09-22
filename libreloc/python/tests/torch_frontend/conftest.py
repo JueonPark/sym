@@ -1,6 +1,4 @@
 import dataclasses
-import os
-from pathlib import Path
 
 import pytest
 
@@ -11,16 +9,24 @@ from reloc_torch.records import TensorMetadata, TransferRecord
 def compiler():
     from reloc_torch import CompilerClient
 
-    configured = os.environ.get("SYM_RELOC_EXPORT")
-    if configured is None:
-        sym_opt = os.environ.get("SYM_OPT")
-        if sym_opt is None:
-            pytest.fail("SYM_RELOC_EXPORT or SYM_OPT must select the R1 exporter")
-        configured = str(Path(sym_opt).with_name("sym-reloc-export"))
-    exporter = Path(configured)
-    if not exporter.is_file():
-        pytest.fail(f"configured R1 exporter is absent: {exporter}")
-    return CompilerClient(exporter)
+    try:
+        client = CompilerClient.from_environment()
+    except RuntimeError as error:
+        pytest.fail(str(error))
+    if not client.executable.is_file():
+        pytest.fail(f"configured R1 exporter is absent: {client.executable}")
+    return client
+
+
+@pytest.fixture(autouse=True)
+def isolate_handle_registry():
+    """Release handles a failing test left in the process-global registry."""
+    from reloc_torch.cache import REGISTRY
+
+    before = set(REGISTRY._entries)
+    yield
+    for handle in set(REGISTRY._entries) - before:
+        REGISTRY._release(handle)
 
 
 @pytest.fixture

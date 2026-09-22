@@ -221,11 +221,17 @@ def test_reload_and_duplicate_import_keep_the_op_and_live_handles_working(regist
     handle, entry = registered
     x = torch.arange(6, dtype=torch.float32)
     before = transfer()
+    definition = module.transfer
     reloaded = importlib.reload(module)
     import reloc_torch.ops as again
 
     assert again is reloaded
     overload = torch.ops.reloc_torch.transfer.default
+    # Re-registration would replace the dispatcher entry and invalidate every
+    # OpOverload captured earlier (FX node targets included); the module reuses
+    # the live definition instead, so previously captured objects stay valid.
+    assert overload is before
+    assert reloaded.transfer is definition
     assert str(overload._schema) == SCHEMA
     assert reloaded.OP is overload
     assert torch.equal(overload(x, handle, [6], [6], [1], torch.device("cpu")), x)
@@ -315,4 +321,37 @@ def test_real_and_fake_transpose_metadata_agree_on_cuda(compiler, real_runtime, 
     assert real.device.index == fake.device.index == cuda_device.index
     assert torch.equal(real.cpu(), x.t().contiguous())
     assert torch.library.opcheck(torch.ops.reloc_torch.transfer.default, args) == {name: "SUCCESS" for name in DEFAULT_OPCHECK_UTILS}
+    registration.release()
+
+
+def test_singleton_extent_fallback_through_the_op_accepts_equivalent_strides(compiler, counting_runtime):
+    from reloc_torch.cache import REGISTRY
+    from reloc_torch.diagnostics import Diagnostics
+    from reloc_torch.recipe import Recipe, TensorSpec, Transpose
+    from reloc_torch.runtime import ExecutionEntry
+    from reloc_torch.symbolic import Const, Symbol
+
+    rows, columns = Symbol("s0"), Symbol("s1")
+    recipe = Recipe(
+        TensorSpec((rows, columns), (columns, Const(1)), Const(0), "float32"),
+        (Transpose((1, 0)),),
+        TensorSpec((columns, rows), (rows, Const(1)), Const(0), "float32"),
+        "h2d",
+    )
+    # A transfer region's original never aliases its CPU input; model it with a
+    # fresh copy whose singleton-axis stride differs from the dense promise.
+    entry = ExecutionEntry(
+        compiled=compiler.compile(recipe),
+        original=lambda src, *s: src.transpose(0, 1).clone(),
+        runtime=counting_runtime,
+        diagnostics=Diagnostics(),
+        extent_guards=(rows, columns),
+    )
+    registration = REGISTRY.register(entry)
+    x = torch.arange(6, dtype=torch.float32).reshape(1, 6)
+    actual = transfer()(x, registration.handle, [1, 6], [6, 1], [1, 1], torch.device("cpu"))
+    assert torch.equal(actual, x.t())
+    assert actual.stride() == (1, 6)
+    assert counting_runtime.executions == 0
+    assert entry.diagnostics.fallbacks["singleton_extent"] == 1
     registration.release()

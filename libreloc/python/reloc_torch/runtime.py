@@ -14,6 +14,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 import functools
+import importlib
 import threading
 from typing import Protocol
 
@@ -210,6 +211,39 @@ def destination_descriptor(compiled, bindings, device):
     return ConcreteDescriptor(shape, strides, logical.dtype, torch.device(device))
 
 
+def _dtype_name(dtype):
+    return str(dtype).removeprefix("torch.")
+
+
+def verify_result(result, src, destination):
+    """Enforce the functional promise on any result handed back to a caller.
+
+    The result must be a fresh tensor (never aliasing the source) with the
+    destination's shape, dtype, zero offset and device. Strides are compared
+    only on extents larger than one: a size-one axis addresses no elements, so
+    PyTorch's own fallback may legitimately report a different stride there.
+    """
+    import torch
+
+    if not isinstance(result, torch.Tensor):
+        raise RuntimeError("reloc_torch produced a non-tensor result")
+    if compat.tensors_alias(result, src):
+        raise RuntimeError("reloc_torch result must not alias its input")
+    actual = (tuple(result.shape), tuple(result.stride()), _dtype_name(result.dtype), result.storage_offset())
+    expected = (tuple(destination.shape), tuple(destination.strides), destination.dtype, 0)
+    if actual[0] != expected[0] or actual[2] != expected[2] or actual[3] != 0:
+        raise RuntimeError(f"reloc_torch output metadata mismatch: got {actual}, expected {expected}")
+    for size, stride, promised in zip(actual[0], actual[1], expected[1]):
+        if size != 1 and stride != promised:
+            raise RuntimeError(f"reloc_torch output metadata mismatch: got {actual}, expected {expected}")
+    device = destination.device
+    if result.device.type != device.type or (
+        device.index is not None and result.device.index != device.index
+    ):
+        raise RuntimeError(f"reloc_torch output device {result.device} does not match declared {device}")
+    return result
+
+
 def prepare_host_call(compiled, src, device, *, non_blocking=False):
     """Frontend preflight: metadata guards, exact binding, standalone bind, destination.
 
@@ -238,14 +272,22 @@ class TransportAdapter:
     ``runtime_unavailable``: the original region runs and nothing launches.
     """
 
+    REQUEST_ATTRIBUTES = ("bindings", "destination")
+
+    MODULE = f"{__package__}.transport"
+
     def __init__(self):
         self._module = None
         self.unavailable_reason = None
         try:
-            from . import transport as module
-        except ImportError as error:
+            module = importlib.import_module(self.MODULE)
+        except ModuleNotFoundError as error:
+            # Only the bridge module itself may be absent; a present module
+            # that fails to import its own dependencies is a real error.
+            if error.name != self.MODULE:
+                raise
             self.unavailable_reason = (
-                f"reloc_torch.transport is not available ({error}); "
+                f"{self.MODULE} is not available ({error}); "
                 "R2 (#146) has not been delivered"
             )
         else:
@@ -267,14 +309,20 @@ class TransportAdapter:
         if not self.available:
             raise UnsupportedRecipe("runtime_unavailable", self.unavailable_reason)
         request = self._module.prepare_transfer(compiled, src, device, non_blocking=non_blocking)
-        bindings = getattr(request, "bindings", None)
-        if bindings is None:
-            bindings = bind_symbols(compiled, src)
-        destination = getattr(request, "destination", None)
+        missing = [name for name in self.REQUEST_ATTRIBUTES if not hasattr(request, name)]
+        if missing:
+            raise RuntimeError(
+                "R2 prepare_transfer result lacks the documented attributes "
+                f"{missing}; reconcile TransportAdapter with reloc_torch.transport"
+            )
+        destination = request.destination
         if not isinstance(destination, ConcreteDescriptor):
-            destination = destination_descriptor(compiled, bindings, torch.device(device))
+            destination = ConcreteDescriptor(
+                tuple(destination.shape), tuple(destination.strides),
+                str(destination.dtype).removeprefix("torch."), torch.device(destination.device),
+            )
         return PreparedCall(
-            compiled, src, dict(bindings), getattr(request, "bound", None),
+            compiled, src, dict(request.bindings), getattr(request, "bound", None),
             destination, non_blocking, request=request,
         )
 
@@ -292,11 +340,18 @@ def _derived_symbols(entry, src):
     return values
 
 
-def _fallback(entry, src, symbols, reason):
+def _fallback(entry, src, symbols, reason, promised=None):
     entry.diagnostics.record_fallback(reason)
     if symbols is None:
-        symbols = _derived_symbols(entry, src) or ()
-    return entry.fallback(src, *symbols)
+        symbols = _derived_symbols(entry, src)
+        if symbols is None and entry.symbolic_bindings:
+            raise RuntimeError(
+                "cannot evaluate the original region's scalar placeholders for a "
+                f"source of rank {src.dim()} (recipe symbols {entry.compiled.symbols})"
+            )
+        symbols = symbols or ()
+    result = entry.fallback(src, *symbols)
+    return result if promised is None else verify_result(result, src, promised)
 
 
 def execute_or_fallback(entry, src, symbols, device, *, non_blocking=False, declared=None):
@@ -308,7 +363,8 @@ def execute_or_fallback(entry, src, symbols, device, *, non_blocking=False, decl
     supplied symbols, so every expected exclusion has a stable reason before the
     adapter is consulted. ``declared`` optionally carries the output metadata
     promised to the graph; a mismatch with the compiled descriptor is an error,
-    never a fallback.
+    never a fallback. Every result handed back, from the adapter or from the
+    original region once the promised metadata is known, passes ``verify_result``.
     """
     import torch
 
@@ -317,10 +373,10 @@ def execute_or_fallback(entry, src, symbols, device, *, non_blocking=False, decl
     device = torch.device(device)
     with suspend_interception():
         if non_blocking:
-            return _fallback(entry, src, symbols, "nonblocking_unavailable")
+            return _fallback(entry, src, symbols, "nonblocking_unavailable", declared)
         reason = source_reason(src)
         if reason is not None:
-            return _fallback(entry, src, symbols, reason)
+            return _fallback(entry, src, symbols, reason, declared)
         try:
             bindings = bind_symbols(entry.compiled, src)
             destination = destination_descriptor(entry.compiled, bindings, device)
@@ -328,13 +384,14 @@ def execute_or_fallback(entry, src, symbols, device, *, non_blocking=False, decl
                 if expression(guard).evaluate(bindings, checked=True) < 2:
                     raise UnsupportedRecipe("singleton_extent", f"{guard} binds below two")
         except UnsupportedRecipe as error:
-            return _fallback(entry, src, symbols, error.reason)
+            return _fallback(entry, src, symbols, error.reason, declared)
         except (KeyError, GuardError) as error:
-            return _fallback(entry, src, symbols, getattr(error, "reason", "missing_symbol"))
+            return _fallback(entry, src, symbols, getattr(error, "reason", "missing_symbol"), declared)
+        promised = destination if declared is None else declared
         if symbols is not None:
             expected = [bindings[name] for name in entry.compiled.symbols]
             if [int(value) for value in symbols] != expected:
-                return _fallback(entry, src, symbols, "symbol_mismatch")
+                return _fallback(entry, src, symbols, "symbol_mismatch", promised)
         if declared is not None and (
             tuple(declared.shape) != destination.shape or tuple(declared.strides) != destination.strides
         ):
@@ -348,7 +405,7 @@ def execute_or_fallback(entry, src, symbols, device, *, non_blocking=False, decl
         except UnsupportedRecipe as error:
             if error.reason == "bind_error":
                 entry.diagnostics.increment("symbol_binds")
-            return _fallback(entry, src, symbols, error.reason)
+            return _fallback(entry, src, symbols, error.reason, promised)
         entry.diagnostics.increment("symbol_binds")
         if call.bindings != bindings or tuple(call.destination.shape) != destination.shape:
             raise RuntimeError("runtime adapter disagreed with the frontend binding")
@@ -356,7 +413,7 @@ def execute_or_fallback(entry, src, symbols, device, *, non_blocking=False, decl
         call.consume()
         entry.diagnostics.increment("runtime_executions")
         try:
-            return entry.runtime.execute(call)
+            result = entry.runtime.execute(call)
         except Exception as error:
             raise ExecutionError(
                 f"reloc_torch {entry.direction} execution failed for handle "
@@ -364,6 +421,7 @@ def execute_or_fallback(entry, src, symbols, device, *, non_blocking=False, decl
                 direction=entry.direction,
                 handle=entry.handle,
             ) from error
+        return verify_result(result, src, promised)
 
 
 __all__ = (
@@ -382,4 +440,5 @@ __all__ = (
     "prepare_host_call",
     "source_reason",
     "suspend_interception",
+    "verify_result",
 )

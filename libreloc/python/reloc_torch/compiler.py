@@ -19,6 +19,7 @@ class CompilerClient:
 
     def __init__(self, executable):
         self.executable = Path(executable)
+        self._identity = None
 
     @classmethod
     def from_environment(cls, environ=None):
@@ -38,8 +39,10 @@ class CompilerClient:
     @property
     def identity(self):
         """Pre-compilation compiler identity for cache keys: the exporter path,
-        never an object id."""
-        return f"sym-reloc-export@{self.executable.resolve()}"
+        never an object id. Resolved once."""
+        if self._identity is None:
+            self._identity = f"sym-reloc-export@{self.executable.resolve()}"
+        return self._identity
 
     def compile(self, recipe):
         mlir = emit_mlir(recipe).encode("utf-8")

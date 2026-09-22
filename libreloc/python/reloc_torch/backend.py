@@ -59,7 +59,11 @@ class GraphCallable:
         return tuple(registration.handle for registration in self._registrations)
 
     def __call__(self, *args, **kwargs):
-        if self.rewritten is None or _needs_autograd((args, kwargs)):
+        if (
+            self.rewritten is None
+            or self.rewritten is self.original
+            or _needs_autograd((args, kwargs))
+        ):
             return self.original(*args, **kwargs)
         return self.rewritten(*args, **kwargs)
 
@@ -172,6 +176,7 @@ class RelocBackend:
 
     def __call__(self, gm, example_inputs):
         self._require_open()
+        compat.check_version()
         self.diagnostics.increment("dynamo_compiles")
         if _needs_autograd(tuple(example_inputs or ())):
             self.diagnostics.record_exclusion("requires_grad")
@@ -204,9 +209,7 @@ class RelocBackend:
                 continue
             tail = members[-1]
             member_set = set(members)
-            if root in member_set or any(
-                user not in member_set for member in members[:-1] for user in member.users
-            ):
+            if any(user not in member_set for member in members[:-1] for user in member.users):
                 self.diagnostics.record_exclusion("escaping_intermediate")
                 continue
             value = compat.graph_value(tail)
@@ -219,7 +222,7 @@ class RelocBackend:
                 runtime=self.runtime,
                 diagnostics=self.diagnostics,
                 symbolic_bindings=candidate.symbolic_bindings,
-                extent_guards=getattr(candidate, "extent_guards", ()),
+                extent_guards=candidate.extent_guards,
             )
             registration = self._registry.register(entry)
             with self._lock:
@@ -237,7 +240,6 @@ class RelocBackend:
             return gm, ()
         graph.lint()
         rewritten = GraphModule(gm, graph)
-        rewritten.recompile()
         with self._lock:
             self._replaced += replaced
         return rewritten, registrations
