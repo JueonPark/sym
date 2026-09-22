@@ -471,6 +471,26 @@ Standalone build: the bench-rtrack recipe above with
     ./bench-e2e-overlap --machine epyc7351-2080ti --family quant \
       --csv bench/results/r7_e2e_quant_epyc7351-2080ti.csv --verify
 
+See `docs/r7-e2e-overlap.md` for the Gen3 (`epyc7351-2080ti`) results and
+verdicts: R7-G1/G3a/G3b PASS, R7-G2 FAIL overall (1/5 pairs — narrowed to
+"holds decisively for `quant`, null at the `blocked_transpose` r=1.0 noise
+floor"; root-cause in that doc's Interpretation section).
+
+### R7 Gen4 runbook (optional; home box; post-freeze addendum labeling required)
+
+Build: R7 standalone recipe with `-arch=sm_89` and CUDA 13.2's nvcc.
+No sudo ritual on WSL2 (record clock state instead — standard caveat).
+
+    for fam in quant blocked_transpose; do
+      OUT=bench/results/r7_e2e_${fam}_7800x3d-4070tis.csv
+      printf '# r7 e2e Gen4 session (WSL2 caveat)\n# post_freeze: true\n' > $OUT
+      ./bench-e2e-overlap --machine 7800x3d-4070tis --family $fam \
+        --csv $OUT --verify
+    done
+    python3 bench/rtrack/gates.py --exp r7 --csv bench/results/r7_e2e_*_7800x3d-4070tis.csv
+
+Commit CSVs + updated gate report; the doc's Gen4-pending note flips.
+
 ## V3 cost-model tools (issue #97)
 
 - **`make_calibration.py`** — assembles a `calibration/<machine>.cal` flat
