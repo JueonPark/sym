@@ -159,21 +159,53 @@ shows up as `delta`.
 
 **a_prefold vs compute_only.** `a_prefold`'s `delta` (a DMA-only load
 racing pure compute, V4 semantics) stays small relative to
-`compute_only` at every repeats value — 6.6–13.0 ms of exposure out of
-89–2420 ms of compute (0.3–14.7%), and its `load_only` floor
-(82.1 ms `quant`, 328.5 ms `blocked_transpose`) is the lowest of any
-method in its family, consistent with R4's hiding-ratio result carried
-into a loaded-GPU setting.
+`compute_only` at every repeats value. Per family (ms ranges are not
+comparable across families, so kept separate): `quant`'s delta ranges
+6.6–13.0 ms out of 89.4–803.1 ms of compute; `blocked_transpose`'s delta
+ranges 23.9–39.8 ms out of 347.3–2419.6 ms of compute. Expressed as a
+percentage of `compute_only` **per row** (not the min/min-vs-max/max of
+two different rows used previously), the true range across all 8 rows
+is 0.83–11.45%: the low end is `quant` `repeats=17` (6.647/803.131 =
+0.83%) and the high end is `blocked_transpose` `repeats=2` (39.770/
+347.266 = 11.45%) — both ends of the range sit within a single family,
+not stitched together from different families' extremes. Its
+`load_only` floor (82.1 ms `quant`, 328.5 ms `blocked_transpose`) is the
+lowest of any method in its family, consistent with R4's hiding-ratio
+result carried into a loaded-GPU setting.
 
-**A/B e2e ratio vs. the isolated BP ratio.** `quant` `wall_a`/`wall_b` at
-`repeats=9,17` (the two G2-eligible pairs) is 434.115/449.865 = 0.965 and
-815.928/831.998 = 0.981 — both < 1, i.e. Method A finishes faster
-end-to-end, consistent in direction with the isolated BP-pipelined ratio
-already on record in `docs/claim-ledger.md` (Gen3 `quant`,
-`b_pipelined`: 1.40–1.48x, "below bar at every N" row) — that number is
-an isolated, no-compute measurement from a different track and is
-**not** recomputed here; it is cited only as the pre-stated expected
-direction.
+**A/B e2e ratio vs. the isolated BP ratio.** `quant` `wall_b`/`wall_a` at
+`repeats=9,17` (the two G2-eligible pairs) is 449.865/434.115 = 1.036 and
+831.998/815.928 = 1.020 (equivalently `wall_a`/`wall_b` = 0.965 and
+0.981) — Method A finishes faster end-to-end in both cells, the same
+*direction* as the isolated BP-pipelined ratio already on record in
+`docs/claim-ledger.md` (Gen3 `quant`, `b_pipelined`: 1.40–1.48x, "below
+bar at every N" row).
+
+**The pre-registered magnitude expectation was NOT met.** The spec
+pre-registered that "the e2e A/B wall ratio at r=0.25, C≥1 should be ≥
+the isolated BP A/B ratio (1.40–1.48)". The measured values — 1.036
+(`repeats=9`) and 1.020 (`repeats=17`) — fall far below that band: the
+direction is right, the magnitude is not, and this pre-registered bar
+was **not met**. The comparison was ill-posed from the start: once
+`measured_C >= 1`, `wall` for both methods converges toward
+`compute_only` as the GEMM comes to dominate the critical path (at
+`repeats=17`, `wall_a`=815.928 ms and `wall_b`=831.998 ms sit only 1.6%
+and 3.6% above `compute_only`=803.131 ms respectively), so the *wall*
+ratio is compressed toward 1 by construction — it cannot reflect the
+isolated transfer-leg advantage measured off the critical path in the
+BP track. The *load-leg* ratio, which isolates the transfer cost that
+the wall ratio buries under compute, does reproduce the isolated band:
+at the same best-chunk configuration used in the Results table for
+these two pairs (`b_pipelined` `chunk_req_mib`=256, `a`
+`chunk_req_mib`=4), `b_pipelined_load_only`/`a_load_only` =
+329.167/224.221 = **1.468** — squarely inside the isolated 1.40–1.48x
+band. (Pairing each method's globally-lowest `load_only` instead —
+`a` at `chunk_req_mib`=16, 218.77 ms, vs. `b_pipelined`'s
+`chunk_req_mib`=256, 329.167 ms, its minimum either way — gives
+329.167/218.766 = 1.505, just above the band; both readings put the
+load-leg ratio at ~1.5x, well clear of the wall ratio's ~1.02.) The
+transfer-leg advantage is intact; it is the e2e wall metric, saturated
+by concurrent compute at C≥1, that cannot see it.
 
 ## Interpretation
 

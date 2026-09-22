@@ -487,9 +487,13 @@ No sudo ritual on WSL2 (record clock state instead — standard caveat).
       ./bench-e2e-overlap --machine 7800x3d-4070tis --family $fam \
         --csv $OUT --verify
     done
-    python3 bench/rtrack/gates.py --exp r7 --csv bench/results/r7_e2e_*_7800x3d-4070tis.csv
+    python3 bench/rtrack/gates.py --exp r7 --csv bench/results/r7_e2e_*_7800x3d-4070tis.csv \
+      | tee bench/results/r7_gate_report_7800x3d-4070tis.txt
 
-Commit CSVs + updated gate report; the doc's Gen4-pending note flips.
+Commit CSVs + the per-machine gate report
+(`bench/results/r7_gate_report_7800x3d-4070tis.txt`) — write to a
+Gen4-named file, not `bench/results/r7_gate_report.txt`, which is Gen3's
+report and must not be overwritten. The doc's Gen4-pending note flips.
 
 ## V3 cost-model tools (issue #97)
 
