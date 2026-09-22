@@ -16,6 +16,17 @@ def compiler():
 
 
 @pytest.fixture(autouse=True)
+def reset_dynamo():
+    """Each test compiles with its own backend; Dynamo caches per code object
+    and stops recompiling after its cache-size limit, so shared test lambdas
+    would silently run eager after a few backends."""
+    import torch
+
+    torch._dynamo.reset()
+    yield
+
+
+@pytest.fixture(autouse=True)
 def isolate_handle_registry():
     """Release handles a failing test left in the process-global registry."""
     from reloc_torch.cache import REGISTRY
