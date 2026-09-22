@@ -106,12 +106,13 @@ class RuntimeAdapter(Protocol):
 class ExecutionEntry:
     """A compiled recipe, its saved original region, adapter and diagnostics."""
 
-    def __init__(self, *, compiled, original, runtime, diagnostics, symbolic_bindings=()):
+    def __init__(self, *, compiled, original, runtime, diagnostics, symbolic_bindings=(), extent_guards=()):
         self.compiled = compiled
         self.original = original
         self.runtime = runtime
         self.diagnostics = diagnostics
         self.symbolic_bindings = tuple(symbolic_bindings)
+        self.extent_guards = tuple(extent_guards)
         self.handle = None
         self.closed = False
         self.fallback_calls = 0
@@ -302,10 +303,12 @@ def execute_or_fallback(entry, src, symbols, device, *, non_blocking=False, decl
     """Preflight, then either dispatch once or run the original region once.
 
     ``symbols`` is the ordered list of concrete values supplied by the op (or
-    ``None`` when the caller supplies none); preflight reconciles it with the
-    values bound from real source metadata. ``declared`` optionally carries the
-    output metadata promised to the graph; a mismatch with the compiled
-    descriptor is an error, never a fallback.
+    ``None`` when the caller supplies none); the frontend guards bind the exact
+    name-to-value map from real source metadata first and reconcile it with the
+    supplied symbols, so every expected exclusion has a stable reason before the
+    adapter is consulted. ``declared`` optionally carries the output metadata
+    promised to the graph; a mismatch with the compiled descriptor is an error,
+    never a fallback.
     """
     import torch
 
@@ -315,6 +318,31 @@ def execute_or_fallback(entry, src, symbols, device, *, non_blocking=False, decl
     with suspend_interception():
         if non_blocking:
             return _fallback(entry, src, symbols, "nonblocking_unavailable")
+        reason = source_reason(src)
+        if reason is not None:
+            return _fallback(entry, src, symbols, reason)
+        try:
+            bindings = bind_symbols(entry.compiled, src)
+            destination = destination_descriptor(entry.compiled, bindings, device)
+            for guard in entry.extent_guards:
+                if expression(guard).evaluate(bindings, checked=True) < 2:
+                    raise UnsupportedRecipe("singleton_extent", f"{guard} binds below two")
+        except UnsupportedRecipe as error:
+            return _fallback(entry, src, symbols, error.reason)
+        except (KeyError, GuardError) as error:
+            return _fallback(entry, src, symbols, getattr(error, "reason", "missing_symbol"))
+        if symbols is not None:
+            expected = [bindings[name] for name in entry.compiled.symbols]
+            if [int(value) for value in symbols] != expected:
+                return _fallback(entry, src, symbols, "symbol_mismatch")
+        if declared is not None and (
+            tuple(declared.shape) != destination.shape or tuple(declared.strides) != destination.strides
+        ):
+            raise RuntimeError(
+                f"declared output metadata {tuple(declared.shape)}/{tuple(declared.strides)} "
+                f"does not match the compiled {entry.direction} descriptor "
+                f"{destination.shape}/{destination.strides}"
+            )
         try:
             call = entry.runtime.preflight(entry.compiled, src, device, non_blocking=non_blocking)
         except UnsupportedRecipe as error:
@@ -322,20 +350,8 @@ def execute_or_fallback(entry, src, symbols, device, *, non_blocking=False, decl
                 entry.diagnostics.increment("symbol_binds")
             return _fallback(entry, src, symbols, error.reason)
         entry.diagnostics.increment("symbol_binds")
-        if symbols is not None:
-            expected = [call.bindings[name] for name in entry.compiled.symbols]
-            supplied = [int(value) for value in symbols]
-            if supplied != expected:
-                return _fallback(entry, src, symbols, "symbol_mismatch")
-        if declared is not None and (
-            tuple(declared.shape) != tuple(call.destination.shape)
-            or tuple(declared.strides) != tuple(call.destination.strides)
-        ):
-            raise RuntimeError(
-                f"declared output metadata {tuple(declared.shape)}/{tuple(declared.strides)} "
-                f"does not match the compiled {entry.direction} descriptor "
-                f"{call.destination.shape}/{call.destination.strides}"
-            )
+        if call.bindings != bindings or tuple(call.destination.shape) != destination.shape:
+            raise RuntimeError("runtime adapter disagreed with the frontend binding")
         call.recheck()
         call.consume()
         entry.diagnostics.increment("runtime_executions")

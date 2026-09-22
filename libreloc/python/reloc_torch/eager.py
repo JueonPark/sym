@@ -1,0 +1,143 @@
+"""Scoped eager transfer replacement around T1's overload inventory.
+
+Only real, blocking, dtype-preserving CPU<->CUDA ``aten._to_copy`` calls on
+plain dense tensors are intercepted. Everything else redispatches to PyTorch
+with a recorded reason. Interception is suspended while the common executor
+runs so allocation, producer ordering, runtime-internal Torch calls, custom-op
+execution and fallback are never re-intercepted; the dispatch mode itself is
+thread-local, so concurrent threads outside the scope are untouched.
+"""
+
+from __future__ import annotations
+
+from contextlib import contextmanager
+from dataclasses import dataclass, replace
+
+from . import compat
+from .artifact import UnsupportedRecipe
+from .eligibility import classify
+from .records import TransferRecord
+from .runtime import execute_or_fallback, interception_suspended, suspend_interception
+
+
+@dataclass(frozen=True)
+class Decision:
+    reason: str | None
+    direction: str | None = None
+    device: object = None
+
+
+def _dense_strides(shape):
+    strides, running = [], 1
+    for dim in reversed(shape):
+        strides.append(running)
+        running *= dim if isinstance(dim, int) else 1
+    return tuple(reversed(strides))
+
+
+def decide(func, args, kwargs):
+    """Pure eligibility decision for one dispatched call; never executes it."""
+    import torch
+
+    if func is not torch.ops.aten._to_copy.default or not args:
+        return Decision("unsupported_operator")
+    src = args[0]
+    if not compat.is_plain_tensor_or_parameter(src):
+        return Decision("tensor_subclass")
+    options = {name: value for name, value, _ in compat.bound_schema_arguments(func, args, kwargs)}
+    if options.get("layout") not in (None, torch.strided):
+        return Decision("unsupported_layout")
+    if options.get("pin_memory"):
+        return Decision("pinned_transfer_unavailable")
+    if options.get("memory_format") not in (None, torch.preserve_format, torch.contiguous_format):
+        return Decision("unsupported_memory_format")
+    device = options.get("device")
+    device = src.device if device is None else torch.device(device)
+    dtype = options.get("dtype")
+    dtype = src.dtype if dtype is None else dtype
+    source = compat.tensor_metadata(src)
+    index = device.index
+    if device.type == "cuda" and index is None:
+        index = torch.cuda.current_device() if torch.cuda.is_available() else 0
+        device = torch.device("cuda", index)
+    destination = replace(
+        source,
+        strides=_dense_strides(source.shape),
+        storage_offset=0,
+        dtype=str(dtype).removeprefix("torch."),
+        device_type=device.type,
+        device_index=index if device.type != "cpu" else None,
+        pinned=False,
+    )
+    record = TransferRecord(
+        operator="aten._to_copy.default",
+        phase="eager",
+        source=source,
+        destination=destination,
+        non_blocking=bool(options.get("non_blocking", False)),
+        mutates=False,
+        aliases_source=False,
+        layout_history=(),
+    )
+    eligibility = classify(record)
+    if not eligibility.candidate:
+        return Decision(eligibility.reason)
+    return Decision(None, "h2d" if src.device.type == "cpu" else "d2h", device)
+
+
+_MODE_TYPE = None
+
+
+def mode_type():
+    """Version-pinned dispatch-mode subclass, built on first use so importing
+    this module stays Torch-free."""
+    global _MODE_TYPE
+    if _MODE_TYPE is not None:
+        return _MODE_TYPE
+
+    class EagerTransferMode(compat.torch_dispatch_mode_type()):
+        def __init__(self, backend):
+            super().__init__()
+            self.backend = backend
+
+        def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+            import torch
+
+            kwargs = {} if kwargs is None else kwargs
+            if func is not torch.ops.aten._to_copy.default or interception_suspended():
+                return func(*args, **kwargs)
+            decision = decide(func, args, kwargs)
+            if decision.reason is not None:
+                self.backend.diagnostics.record_redispatch(decision.reason)
+                # Suspend so an enclosing scope neither re-records nor re-decides.
+                with suspend_interception():
+                    return func(*args, **kwargs)
+            src = args[0]
+
+            def original(source, *scalars):
+                # The exact original operator and arguments are the fallback.
+                return func(*args, **kwargs)
+
+            try:
+                entry = self.backend.eager_entry(src, decision.device, original)
+            except UnsupportedRecipe as error:
+                self.backend.diagnostics.record_exclusion(error.reason)
+                with suspend_interception():
+                    return func(*args, **kwargs)
+            return execute_or_fallback(entry, src, None, decision.device)
+
+    _MODE_TYPE = EagerTransferMode
+    return _MODE_TYPE
+
+
+@contextmanager
+def eager_transfers(*, backend):
+    """Intercept eligible eager transfers within the scope and route them to ``backend``."""
+    if backend.closed:
+        raise RuntimeError("RelocBackend is closed")
+    mode = mode_type()(backend)
+    with mode:
+        yield mode
+
+
+__all__ = ("Decision", "decide", "eager_transfers", "mode_type")

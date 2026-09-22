@@ -388,6 +388,23 @@ class SymbolicContext:
         return TensorSpec(shape, strides, offset, str(tensor.dtype).removeprefix('torch.'))
 
 
+def statically_at_least(value, bound):
+    """True when ``value >= bound`` is provable from the pinned ShapeEnv without
+    installing a guard or reading a hint; False for anything unprovable."""
+    import torch
+
+    if type(value) is int:
+        return value >= bound
+    if isinstance(value, torch.SymInt):
+        from torch.fx.experimental.symbolic_shapes import statically_known_true
+
+        try:
+            return bool(statically_known_true(value >= bound))
+        except Exception:
+            return False
+    return False
+
+
 def symbolic_capture(function, *inputs):
     """Capture canonical ATen code without real transfers on the pinned wheel."""
     check_version()

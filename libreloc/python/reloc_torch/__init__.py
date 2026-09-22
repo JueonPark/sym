@@ -1,7 +1,9 @@
 """Optional Torch frontend contracts.
 
 Importing this package is intentionally Torch-free. Torch is loaded only when
-``check_version`` or a later explicit observer/inventory entry point is used.
+``check_version`` or a later explicit observer/inventory/backend entry point is
+used. ``RelocBackend`` (a ``torch.compile`` backend) and ``eager_transfers``
+(a scoped dispatch mode) are the opt-in execution entry points.
 """
 
 from .compat import CompatibilityError, check_version
@@ -24,6 +26,8 @@ __all__ = (
     "CompilerClient",
     "CompiledRecipe",
     "UnsupportedRecipe",
+    "RelocBackend",
+    "eager_transfers",
 )
 
 
@@ -37,6 +41,16 @@ def __getattr__(name):
             UnsupportedRecipe=UnsupportedRecipe,
         )
         return globals()[name]
+    if name == "RelocBackend":
+        from .backend import RelocBackend
+
+        globals()[name] = RelocBackend
+        return RelocBackend
+    if name == "eager_transfers":
+        from .eager import eager_transfers
+
+        globals()[name] = eager_transfers
+        return eager_transfers
     if name in {"normalize_graph", "import_graph"}:
         from .fx_import import import_graph, normalize_graph
 

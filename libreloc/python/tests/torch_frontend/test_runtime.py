@@ -276,3 +276,34 @@ def test_transport_adapter_reports_unavailable_r2_as_a_reason(compiler, identity
         pytest.skip("R2 transport is present; this test covers its absence")
     assert entry.diagnostics.fallbacks["runtime_unavailable"] == 1
     assert "transport" in adapter.unavailable_reason
+
+
+def test_extent_guards_fall_back_for_singleton_bindings_before_the_adapter(compiler, counting_runtime):
+    from reloc_torch.recipe import Recipe, TensorSpec, Transpose
+    from reloc_torch.runtime import ExecutionEntry, execute_or_fallback
+    from reloc_torch.diagnostics import Diagnostics
+    from reloc_torch.symbolic import Const, Symbol
+
+    rows, columns = Symbol("s0"), Symbol("s1")
+    recipe = Recipe(
+        TensorSpec((rows, columns), (columns, Const(1)), Const(0), "float32"),
+        (Transpose((1, 0)),),
+        TensorSpec((columns, rows), (rows, Const(1)), Const(0), "float32"),
+        "h2d",
+    )
+    entry = ExecutionEntry(
+        compiled=compiler.compile(recipe),
+        original=lambda src, *s: src.transpose(0, 1).contiguous(),
+        runtime=counting_runtime,
+        diagnostics=Diagnostics(),
+        extent_guards=(rows, columns),
+    )
+    singleton = torch.arange(6, dtype=torch.float32).reshape(1, 6)
+    actual = execute_or_fallback(entry, singleton, None, torch.device("cpu"))
+    assert torch.equal(actual, singleton.t())
+    assert actual.stride() == singleton.t().contiguous().stride()
+    assert counting_runtime.preflights == 0 and counting_runtime.executions == 0
+    assert entry.diagnostics.fallbacks["singleton_extent"] == 1
+    wide = torch.arange(12, dtype=torch.float32).reshape(2, 6)
+    assert torch.equal(execute_or_fallback(entry, wide, None, torch.device("cpu")), wide.t().contiguous())
+    assert counting_runtime.executions == 1

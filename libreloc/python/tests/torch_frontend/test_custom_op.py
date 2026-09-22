@@ -249,6 +249,7 @@ def test_opcheck_passes_with_cuda_inference_source_through_the_production_adapte
 
     descriptor = TensorSpec((Symbol("s0"),), (Const(1),), Const(0), "float32")
     recipe = Recipe(descriptor, (), descriptor, "d2h")
+    ops()
     adapter = TransportAdapter()
     entry = make_entry(compiler.compile(recipe), adapter, lambda src, *s: src.to("cpu"))
     registration = REGISTRY.register(entry)

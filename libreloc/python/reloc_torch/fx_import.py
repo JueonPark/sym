@@ -9,7 +9,7 @@ import struct
 from . import compat
 from .recipe import Fill, Pad, Recipe, Reshape, TensorSpec, Transpose
 from .symbolic import (Const, SymbolSource, UnsupportedSymbolicExpr, dense_strides,
-                       infer_reshape, operation_shape)
+                       expression, infer_reshape, operation_shape)
 
 
 @dataclass(frozen=True)
@@ -29,6 +29,10 @@ class Candidate:
     # Each (FX node name, Expr) is evaluable from symbol_sources.
     symbolic_bindings: tuple
     original: object
+    # Extents that must bind to at least two for the original region and the
+    # recipe to agree on output metadata (Dynamo's 0/1 specialization makes a
+    # transposed contiguous() unconditional only inside this family).
+    extent_guards: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -200,6 +204,7 @@ def _recipe(root, members):
     _require(src.dtype in {'float32', 'float16', 'int8'}, 'unsupported_dtype')
     operations, shape, direction = [], src.shape, None
     strides, offset = src.strides, src.offset
+    extent_guards = []
     for node in members:
         _require('reloc_reason' not in node.meta, node.meta.get('reloc_reason'))
         value = compat.graph_value(node)
@@ -273,7 +278,16 @@ def _recipe(root, members):
             # clone(None) preserves format, unlike contiguous's default.
             if node.target == torch.ops.aten.contiguous.default:
                 if strides != dense_strides(shape):
-                    _require(not context.sources, 'conditional_materialization')
+                    before = compat.graph_value(_tensor_input(node))
+                    unconditional = (compat.is_tensor(before) and len(before.shape) == len(shape)
+                                     and all(compat.statically_at_least(d, 2) for d in before.shape))
+                    if unconditional:
+                        # Every extent is provably >= 2, so a non-dense layout
+                        # is never contiguous and contiguous() materializes
+                        # densely. The >= 2 family becomes a runtime guard.
+                        extent_guards.extend(d for d in shape if not isinstance(expression(d), Const))
+                    else:
+                        _require(not context.sources, 'conditional_materialization')
                 actual = context.tensor_spec(value, require_dense=False, positive_shape=shape)
                 strides, offset = actual.strides, actual.offset
             elif opts.get('memory_format') == torch.contiguous_format:
@@ -286,7 +300,7 @@ def _recipe(root, members):
     _require(actual.shape == shape, 'unsupported_symbolic_expr')
     _require(actual.strides == strides and actual.offset == offset, 'destination_layout')
     destination = TensorSpec(shape, strides, offset, src.dtype)
-    return Recipe(src, tuple(operations), destination, direction), context
+    return Recipe(src, tuple(operations), destination, direction), context, tuple(dict.fromkeys(extent_guards))
 
 
 def _extract(gm, root, members, context):
@@ -367,9 +381,9 @@ def import_graph(gm, example_inputs=None):
             _require(root is not None, 'metadata_unavailable')
             _require(sum(_transfer(n) for n in members) == 1, 'multiple_transfers')
             _safety(nodes, root, members)
-            recipe, context = _recipe(root, members)
+            recipe, context, extent_guards = _recipe(root, members)
             original, bindings = _extract(gm, originals[root.name], [originals[n.name] for n in members], context)
-            candidates.append(Candidate(root.name, members[-1].name, tuple(n.name for n in members), recipe, context.sources, bindings, original))
+            candidates.append(Candidate(root.name, members[-1].name, tuple(n.name for n in members), recipe, context.sources, bindings, original, extent_guards))
         except (_Reject, UnsupportedSymbolicExpr) as error:
             exclusions.append(Exclusion(transfer.name, error.reason))
     return ImportReport(tuple(candidates), tuple(dict.fromkeys(exclusions)))

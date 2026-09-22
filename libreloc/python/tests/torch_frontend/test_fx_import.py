@@ -220,6 +220,33 @@ def test_raw_dynamo_conditional_materialization_is_not_assumed_dense_for_singlet
     assert snapshot(gm) == before
 
 
+def test_raw_dynamo_transposed_contiguous_is_unconditional_inside_the_specialized_family():
+    api = importer()
+    from reloc_torch.recipe import Transpose
+    from reloc_torch.symbolic import Symbol
+    graphs = []
+    def backend(gm, inputs):
+        graphs.append((gm, inputs))
+        return gm.forward
+    def fn(x):
+        return x.transpose(0, 1).contiguous()
+    torch.compile(fn, backend=backend, dynamic=True, fullgraph=True)(torch.ones(4, 6))
+    gm, inputs = graphs[0]
+    graph = gm.graph
+    output = next(n for n in graph.nodes if n.op == 'output')
+    old_tail = output.args[0][0]
+    with graph.inserting_before(output):
+        tail = graph.call_method('to', (old_tail, 'cuda'))
+    output.args = ((tail,),)
+    gm.recompile()
+    report = api.import_graph(gm, inputs)
+    candidate, = report.candidates
+    assert candidate.recipe.operations == (Transpose((1, 0)),)
+    # Dynamo specializes sizes 0/1 away, so both extents are provably >= 2 and
+    # contiguous() is a real dense materialization; the family is recorded.
+    assert set(candidate.extent_guards) == {Symbol('s0'), Symbol('s1')}
+
+
 def test_explicit_clone_symbolic_split_has_dense_singleton_guarded_descriptor():
     api = importer()
     from reloc_torch.recipe import TensorSpec
