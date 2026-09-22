@@ -55,6 +55,25 @@ them; it is the runtime half of the compiler → runtime handoff.
   cuts the outermost coalesced axis with a fixed byte heuristic plus an
   override (design decision 4). Output is bit-identical to `executeH2D` /
   `executeD2H` (`libreloc/test/PipelineTest.cpp`, `CudaPipelineTest.cpp`).
+- `reloc::validateTransferSource` / `validateTransfer` / `executeTransfer`
+  (`reloc/Transfer.h`) — R2's validated forward transfer requests (issue
+  #146). A `BufferView` declares a framework buffer as its allocation (base,
+  capacity) plus the logical view (byte offset, extents, element strides,
+  element size, host/CUDA kind, device ordinal). Validation proves, with
+  overflow-checked arithmetic, that the view is nonempty, non-negative-stride
+  and injective (mixed-radix test), that the plan's maximal source read and
+  destination write fit the declared capacities, that the destination is dense
+  row-major of exactly `totalBytes`, and that kinds match the direction.
+  `executeTransfer` runs the plan's *forward* relocation through any
+  `CopyBackend` and blocks until that request's events complete: H2D reuses
+  the pinned/stream pipeline; D2H copies the dense device source into owned
+  pinned staging, waits for exactly that copy, then applies the forward host
+  gather into the destination. Requests are single-use; failures are reported
+  by value (`TransferError{code, message}`), never thrown
+  (`libreloc/test/TransferTest.cpp`). The `CopyBackend` contract gained
+  `waitStream(externalStream)` (order every private queue after a caller's
+  producer stream), a sticky `failed()`/`error()` state, and `device()`;
+  `CudaBackend` checks every CUDA status and works under its own device.
 - `reloc::GatherPool` (`reloc/GatherPool.h`) — D1's persistent worker pool
   (issue #65): the pipeline partitions each chunk's valid outer rows across
   the pool's threads (`gatherThreads` argument or a caller-owned pool), with
@@ -109,11 +128,56 @@ Buffers are passed as
 `pyreloc.torch_interop.as_ptr` maps torch tensors / numpy arrays without
 any C++ torch dependency. Decode/bind failures raise
 `pyreloc.DecodeError` / `pyreloc.BindError` carrying the C++ diagnostic.
-Note the CUDA stream-interop contract: `h2d`/`d2h` write through libreloc's
-own non-blocking streams and host-block on completion before returning, but
-they are NOT ordered against work the caller has queued on other streams —
-synchronize first (e.g. `torch.cuda.synchronize()`) when the device buffer
-was just produced by an async fill or kernel.
+Note the CUDA stream-interop contract of the legacy `h2d`/`d2h` entry
+points: they write through libreloc's own non-blocking streams and host-block
+on completion before returning, but they are NOT ordered against work the
+caller has queued on other streams — synchronize first (e.g.
+`torch.cuda.synchronize()`) when the device buffer was just produced by an
+async fill or kernel. The validated transfer API below carries that ordering
+itself.
+
+### Validated forward transfers (R2, issue #146)
+
+`pyreloc.BufferView(base, capacity_bytes, offset_bytes, extents, strides,
+element_size, kind, device=-1)` describes a buffer by its allocation and
+logical view (`kind` is `"host"` or `"cuda"`). Torch callers read `base`,
+`capacity_bytes` and the offset from `tensor.untyped_storage()`, never from
+`data_ptr()`/`numel()`, and prove a CUDA view's device with
+`pyreloc.cuda_pointer_device(base)`.
+
+- `validate_transfer_source(bound, view, direction) -> int` is the
+  allocation-free preflight: it returns the source span in bytes or raises
+  `pyreloc.TransferError("<code>: <detail>")`.
+- `make_transfer(bound, src_view, dst_view, direction) -> TransferRequest`
+  adds the dense destination and returns the single-use request (properties
+  `direction`, `source_span_bytes`, `destination_bytes`, `consumed`).
+- `execute_transfer(request, *, caller_stream=None, n_buffers=4, n_streams=2,
+  gather_threads=1, gather_pool=None)` runs the forward relocation and
+  returns only after this request's work completed (no device-wide
+  synchronization). `caller_stream` is the raw `cudaStream_t` handle of the
+  caller's current stream on the transfer device (`0` is the legacy default
+  stream; `None` means nothing to order after): every private stream waits on
+  an event recorded there before touching the source or destination, which
+  also covers destinations the caller's allocator may still be recycling.
+  Dependencies on *other* producer streams are the caller's obligation, as in
+  PyTorch's own stream contract; unrecorded producers cannot be inferred from
+  a tensor. A consumed request raises `already_executed`; a backend failure
+  raises `backend_failure` and is never retried by the runtime.
+- Direction `"d2h"` is the plan's forward relocation applied to a device
+  source. The existing `d2h`/`relocate_inverse` functions remain the separate
+  inverse-scatter contract.
+- Admitted descriptors: rank >= 1, every extent >= 1, non-negative strides
+  that address each element once (broadcast, negative and overlapping views
+  are `unsupported_layout`), element size equal to the plan's, capacities
+  covering the checked spans (`insufficient_capacity`), no arithmetic
+  overflow (`integer_overflow`), plan/view agreement (`plan_mismatch`,
+  `direction_mismatch`). A host view is admitted on either end so the whole
+  path runs under `HostBackend` in CI.
+- Blocking only: `non_blocking=True` is not offered by this API; the Torch
+  adapter (`reloc_torch.transport`) reports it as `nonblocking_unavailable`.
+
+The Python caller retains every owner (source, destination, request) for the
+duration of the blocking call; only the GIL is released around native work.
 
 Wheel-less install (packaging is out of scope for v0): build with
 pybind11 discoverable, then point `PYTHONPATH` at the build tree —

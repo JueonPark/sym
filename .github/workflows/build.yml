@@ -229,7 +229,7 @@ jobs:
             bash -c '
               pip install -q lit pytest numpy && \
               lit -sv build/sym/test && \
-              PYTHONPATH=/workspace/build/sym/python python3 -c "import pyreloc" && \
+              PYTHONPATH=/workspace/build/sym/python python3 -c "import sys, pyreloc; pyreloc.make_transfer; pyreloc.BufferView; assert \"torch\" not in sys.modules" && \
               PYTHONPATH=/workspace/build/sym/python python3 -m pytest libreloc/python/tests --ignore=libreloc/python/tests/torch_frontend -q
             '
 
@@ -268,7 +268,7 @@ jobs:
               export SYM_OPT=/workspace/build/torch-cpu-cp314/sym/tools/sym-opt
               export SYM_RELOC_EXPORT=/workspace/build/torch-cpu-cp314/sym/tools/sym-reloc-export
               test -x "$SYM_RELOC_EXPORT"
-              /tmp/sym-torch-cpu/bin/python -c "import torch, reloc_torch, pyreloc, pyreloc._pyreloc as ext; reloc_torch.check_version(); assert \"cpython-314\" in ext.__file__"
+              /tmp/sym-torch-cpu/bin/python -c "import torch, reloc_torch, pyreloc, pyreloc._pyreloc as ext; import reloc_torch.transport, reloc_torch.backend; reloc_torch.check_version(); assert \"cpython-314\" in ext.__file__"
               /tmp/sym-torch-cpu/bin/python -m pytest libreloc/python/tests -m "not gpu" -q
               /tmp/sym-torch-cpu/bin/python libreloc/python/examples/torch_transfer_inventory.py --device cpu --output build/torch-cpu-cp314/inventory-cpu.json
             '

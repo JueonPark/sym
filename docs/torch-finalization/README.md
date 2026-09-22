@@ -7,10 +7,11 @@ documented in [Torch support](../torch-support.md). Child issues
 [#136](https://github.com/JueonPark/sym/issues/136) (T3), and
 [#137](https://github.com/JueonPark/sym/issues/137) (T4) are open.
 T2 and its R1 compiler-artifact prerequisite are implemented. T3's custom op,
-graph replacement, eager routing, cache and fallback are implemented and
-validated on CPU and on real CUDA through the fallback path; its real-transfer
-and stream acceptance stays open until R2 delivers `reloc_torch.transport`.
-R2 and T4 remain planned under [#131](https://github.com/JueonPark/sym/issues/131).
+graph replacement, eager routing, cache and fallback are implemented, and R2's
+`reloc_torch.transport` adapter now executes real blocking H2D and forward D2H
+transfers behind them; the T3 CUDA acceptance suite passes on real hardware
+(see [Torch support](../torch-support.md)). T4 remains planned under
+[#131](https://github.com/JueonPark/sym/issues/131).
 
 These plans expand section 1 of [the project finalization plan](../project-finalization-plan.md).
 T1–T4 are work identifiers corresponding to those child issues. Each linked document
@@ -76,12 +77,12 @@ standalone runtime's existing support surface.
 | Existing surface | Consequence for this work |
 | --- | --- |
 | `libreloc/python/pyreloc/__init__.py` exposes load/bind/relocate/h2d/d2h | Add a sibling optional `reloc_torch` package; ordinary `pyreloc` imports must remain torch-free. |
-| `libreloc/python/pyreloc/torch_interop.py::as_ptr` accepts contiguous tensors | Do not generalize tensor storage binding by passing `data_ptr()` and `numel()` for arbitrary views. |
+| `libreloc/python/pyreloc/torch_interop.py::as_ptr` accepts contiguous tensors | Do not generalize tensor storage binding by passing `data_ptr()` and `numel()` for arbitrary views. R2's `pyreloc.BufferView` describes the whole allocation plus the logical view instead. |
 | `sym/dialect/reloc/Transforms/PlanBuilder.h` seeds dense row-major input with zero offset | First imported recipes require a contiguous, zero-offset root; views inside a captured recipe are distinct from a strided external input. |
 | `RelocFold.cpp` marks complete failed chains `reloc.fallback` | A successful compiler process is insufficient: export must report whether the whole requested chain folded. |
 | `libreloc/test/corpus/generate_corpus.py` extracts test-pass diagnostics | This is test infrastructure; T2 consumes R1's supported exporter instead of shipping that extraction in the frontend. |
 | `BoundPlan.extents` is coalesced iteration space | Preserve logical output shape/strides separately; do not reconstruct a Torch tensor's rank from bound iteration axes. |
-| `PyReloc.cpp::d2hCuda` calls inverse scatter | R2 must provide requested forward D2H semantics. Merely selecting `pyreloc.d2h` by device direction is incorrect. |
+| `PyReloc.cpp::d2hCuda` calls inverse scatter | R2 provides forward D2H through `pyreloc.make_transfer(..., "d2h")` (staging copy plus forward host gather); `pyreloc.d2h` remains the inverse-scatter API. |
 | `Prefold.h::OutputSpec` has only `S8GatherQuant` and `S8QuantPack`; Python exposes neither | Plain f32 weight relocation cannot call this prefolder. T4 uses normal layout preparation first and wraps existing quantized prefolding only after typed capability validation. |
 
 ## Shared constraints
@@ -178,8 +179,8 @@ test requirements using [T4's environment setup](t4-dynamic-inputs-and-weights.m
 Use `/tmp/sym-torch-cpu` with `build/torch-cpu` for CPU tests and
 `/tmp/sym-torch-cuda` with `build/torch-cuda` for GPU tests. New files, APIs,
 and tests named in those commands are
-T1/T2/T3 and the R1 exporter deliverables now exist. R2–R4 and T4 remain
-unimplemented; T3's CUDA acceptance tests skip with an explicit reason until R2.
+T1/T2/T3, the R1 exporter and the R2 transport adapter now exist. R3–R4 and
+T4 remain unimplemented.
 
 ```bash
 export TORCH_PYTHON=/tmp/sym-torch-cpu/bin/python
