@@ -1,0 +1,5 @@
+R7-G1: PASS  ({'n_cells': 8, 'fails': []})
+R7-G2: FAIL  ({'n_pairs': 5, 'fails': [('blocked_transpose', '7', 41.41000000000008, 40.26999999999998)]})
+R7-G3a: PASS  ({'n': 8, 'fails': []})
+R7-G3b: PASS  ({'n': 10, 'fails': []})
+R7 OVERALL: FAIL
