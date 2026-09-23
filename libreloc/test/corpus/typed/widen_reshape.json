@@ -1,0 +1,299 @@
+{
+  "bindings": [
+    {
+      "capability": {
+        "cuda": {
+          "d2h": [
+            "cpu_reference",
+            "cuda_stages_then_cpu@1"
+          ],
+          "h2d": [
+            "cpu_reference",
+            "cpu_stages_cuda_stages@0"
+          ]
+        },
+        "host": {
+          "d2h": [
+            "cpu_reference"
+          ],
+          "h2d": [
+            "cpu_reference"
+          ]
+        }
+      },
+      "expected": {
+        "bits": [
+          "33800000",
+          "38800000",
+          "477fe000",
+          "7f800000",
+          "ff800000",
+          "80000000",
+          "3f800000",
+          "3f802000",
+          "39ed4000",
+          "c561c000",
+          "b89ca000",
+          "c764a000",
+          "c3476000",
+          "c2426000",
+          "3eea0000",
+          "b9c8a000",
+          "419c4000",
+          "43ab2000",
+          "c6aca000",
+          "39528000",
+          "c414a000",
+          "3c22e000",
+          "40f62000",
+          "4092a000"
+        ],
+        "dtype": "float32",
+        "sha256": "b5e40cc8ca00b5ad8463930455d98b5bc1e7d1cefa134e602343594f94e0b898",
+        "shape": [
+          6,
+          4
+        ]
+      },
+      "footprints": {
+        "d2h": {
+          "destination_bytes": 96,
+          "parameter_bytes": 0,
+          "source_bytes": 48,
+          "wire_boundary": 0,
+          "wire_bytes": 48
+        },
+        "h2d": {
+          "destination_bytes": 96,
+          "parameter_bytes": 0,
+          "source_bytes": 48,
+          "wire_boundary": 1,
+          "wire_bytes": 96
+        }
+      },
+      "source": {
+        "bits": [
+          "1",
+          "400",
+          "7bff",
+          "7c00",
+          "fc00",
+          "8000",
+          "3c00",
+          "3c01",
+          "f6a",
+          "eb0e",
+          "84e5",
+          "fb25",
+          "da3b",
+          "d213",
+          "3750",
+          "8e45",
+          "4ce2",
+          "5d59",
+          "f565",
+          "a94",
+          "e0a5",
+          "2117",
+          "47b1",
+          "4495"
+        ],
+        "dtype": "float16",
+        "shape": [
+          2,
+          12
+        ]
+      },
+      "symbols": {}
+    }
+  ],
+  "description": "cast + layout: f16 [2, 12] widened exactly then reshaped to [6, 4], C1's binary16 -> binary32 witness bits first",
+  "generator_seed": 20260923,
+  "manifest": {
+    "compiler": {
+      "build_identity": "40040d04ba7d81d3238210ea3396a35ce4a7a00e/Release",
+      "interface_version": 1,
+      "llvm_version": "21.1.8",
+      "name": "sym-reloc-export"
+    },
+    "constraints": {
+      "divisibility": []
+    },
+    "fills": [],
+    "input_sha256": "1f556aff3e74b14b43e800b079e3ec33540dba356c486922d5ee96380d9b0f92",
+    "logical_destination": {
+      "dtype": "float32",
+      "offset": [
+        "const",
+        0
+      ],
+      "shape": [
+        [
+          "const",
+          6
+        ],
+        [
+          "const",
+          4
+        ]
+      ],
+      "strides": [
+        [
+          "const",
+          4
+        ],
+        [
+          "const",
+          1
+        ]
+      ]
+    },
+    "logical_source": {
+      "dtype": "float16",
+      "offset": [
+        "const",
+        0
+      ],
+      "shape": [
+        [
+          "const",
+          2
+        ],
+        [
+          "const",
+          12
+        ]
+      ],
+      "strides": [
+        [
+          "const",
+          12
+        ],
+        [
+          "const",
+          1
+        ]
+      ]
+    },
+    "parameters": [],
+    "plan_count": 1,
+    "plan_sha256": "5b26644da341faffffd55f11a1194e438402f668d0f1989ea00a41a44a5bfe18",
+    "schema_version": 2,
+    "stages": [
+      {
+        "axis": -1,
+        "channel": null,
+        "input_dtype": "float16",
+        "output_dtype": "float32",
+        "policy": "exact",
+        "scale": null,
+        "shape": [
+          [
+            "const",
+            2
+          ],
+          [
+            "const",
+            12
+          ]
+        ],
+        "transform": "cast",
+        "zero_point": null
+      }
+    ],
+    "status": "ok",
+    "symbols": [],
+    "wire_version": 1
+  },
+  "mlir": "func.func @torch_relocation(%x: !sym.tensor<[2, 12], f16>) -> !sym.tensor<[6, 4], f32> {\n  %v0 = reloc.cast %x policy exact : !sym.tensor<[2, 12], f16> -> !sym.tensor<[2, 12], f32>\n  %v1 = reloc.reshape %v0 to [6, 4] : !sym.tensor<[2, 12], f32> -> !sym.tensor<[6, 4], f32>\n  return %v1 : !sym.tensor<[6, 4], f32>\n}\n",
+  "name": "widen_reshape",
+  "numpy": "2.5.3",
+  "parameters": {},
+  "plan_sha256": "5b26644da341faffffd55f11a1194e438402f668d0f1989ea00a41a44a5bfe18",
+  "recipe": {
+    "destination": {
+      "dtype": "float32",
+      "offset": [
+        "const",
+        0
+      ],
+      "shape": [
+        [
+          "const",
+          6
+        ],
+        [
+          "const",
+          4
+        ]
+      ],
+      "strides": [
+        [
+          "const",
+          4
+        ],
+        [
+          "const",
+          1
+        ]
+      ]
+    },
+    "direction": "h2d",
+    "operations": [
+      {
+        "dtype": "float32",
+        "kind": "cast",
+        "policy": "exact"
+      },
+      {
+        "kind": "reshape",
+        "shape": [
+          [
+            "const",
+            6
+          ],
+          [
+            "const",
+            4
+          ]
+        ]
+      }
+    ],
+    "source": {
+      "dtype": "float16",
+      "offset": [
+        "const",
+        0
+      ],
+      "shape": [
+        [
+          "const",
+          2
+        ],
+        [
+          "const",
+          12
+        ]
+      ],
+      "strides": [
+        [
+          "const",
+          12
+        ],
+        [
+          "const",
+          1
+        ]
+      ]
+    }
+  },
+  "stages": [
+    {
+      "input_dtype": "float16",
+      "output_dtype": "float32",
+      "policy": "exact",
+      "transform": "cast"
+    }
+  ],
+  "symbols": []
+}

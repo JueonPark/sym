@@ -1,0 +1,272 @@
+{
+  "bindings": [
+    {
+      "capability": {
+        "cuda": {
+          "d2h": [
+            "cpu_reference"
+          ],
+          "h2d": [
+            "cpu_reference"
+          ]
+        },
+        "host": {
+          "d2h": [
+            "cpu_reference"
+          ],
+          "h2d": [
+            "cpu_reference"
+          ]
+        }
+      },
+      "expected": {
+        "bits": [
+          "cfd0",
+          "3800",
+          "3a00",
+          "3c00",
+          "5010",
+          "4000",
+          "0",
+          "4e70"
+        ],
+        "dtype": "float16",
+        "sha256": "1cb3d10a3bfbd341538b5d614d07d5579c005fc506c60f7029758d91eaa025bd",
+        "shape": [
+          8
+        ]
+      },
+      "footprints": {
+        "d2h": {
+          "destination_bytes": 16,
+          "parameter_bytes": 8,
+          "source_bytes": 8,
+          "wire_boundary": 0,
+          "wire_bytes": 8
+        },
+        "h2d": {
+          "destination_bytes": 16,
+          "parameter_bytes": 8,
+          "source_bytes": 8,
+          "wire_boundary": 2,
+          "wire_bytes": 16
+        }
+      },
+      "source": {
+        "bits": [
+          "80",
+          "ff",
+          "0",
+          "1",
+          "7f",
+          "5",
+          "fd",
+          "64"
+        ],
+        "dtype": "int8",
+        "shape": [
+          8
+        ]
+      },
+      "symbols": {}
+    }
+  ],
+  "description": "dequantize -> cast: s8 [8] affine with scale 0.25 and zero point -3, then narrowed to f16 (both roundings kept)",
+  "generator_seed": 20260923,
+  "manifest": {
+    "compiler": {
+      "build_identity": "40040d04ba7d81d3238210ea3396a35ce4a7a00e/Release",
+      "interface_version": 1,
+      "llvm_version": "21.1.8",
+      "name": "sym-reloc-export"
+    },
+    "constraints": {
+      "divisibility": []
+    },
+    "fills": [],
+    "input_sha256": "75447de271d8e4e3dd88f185eece5a08284102df350744a6f50abdd88892c7ef",
+    "logical_destination": {
+      "dtype": "float16",
+      "offset": [
+        "const",
+        0
+      ],
+      "shape": [
+        [
+          "const",
+          8
+        ]
+      ],
+      "strides": [
+        [
+          "const",
+          1
+        ]
+      ]
+    },
+    "logical_source": {
+      "dtype": "int8",
+      "offset": [
+        "const",
+        0
+      ],
+      "shape": [
+        [
+          "const",
+          8
+        ]
+      ],
+      "strides": [
+        [
+          "const",
+          1
+        ]
+      ]
+    },
+    "parameters": [],
+    "plan_count": 1,
+    "plan_sha256": "0098f1d2b7dc2e4046c3360fab17cb40aba2e44113afd9d4c873b51a8fe26726",
+    "schema_version": 2,
+    "stages": [
+      {
+        "axis": -1,
+        "channel": null,
+        "input_dtype": "int8",
+        "output_dtype": "float32",
+        "policy": "affine",
+        "scale": {
+          "bits": [
+            "3e800000"
+          ],
+          "dtype": "float32",
+          "kind": "inline",
+          "shape": []
+        },
+        "shape": [
+          [
+            "const",
+            8
+          ]
+        ],
+        "transform": "dequantize",
+        "zero_point": {
+          "bits": [
+            "fffffffd"
+          ],
+          "dtype": "int32",
+          "kind": "inline",
+          "shape": []
+        }
+      },
+      {
+        "axis": -1,
+        "channel": null,
+        "input_dtype": "float32",
+        "output_dtype": "float16",
+        "policy": "ieee_rne",
+        "scale": null,
+        "shape": [
+          [
+            "const",
+            8
+          ]
+        ],
+        "transform": "cast",
+        "zero_point": null
+      }
+    ],
+    "status": "ok",
+    "symbols": [],
+    "wire_version": 1
+  },
+  "mlir": "func.func @torch_relocation(%x: !sym.tensor<[8], i8>) -> !sym.tensor<[8], f16> {\n  %v0 = reloc.dequantize %x scale(dense<0x3E800000> : tensor<f32>) zero_point(dense<-3> : tensor<i32>) policy affine : !sym.tensor<[8], i8> -> !sym.tensor<[8], f32>\n  %v1 = reloc.cast %v0 policy ieee_rne : !sym.tensor<[8], f32> -> !sym.tensor<[8], f16>\n  return %v1 : !sym.tensor<[8], f16>\n}\n",
+  "name": "dequant_inline_zp_cast",
+  "numpy": "2.5.3",
+  "parameters": {},
+  "plan_sha256": "0098f1d2b7dc2e4046c3360fab17cb40aba2e44113afd9d4c873b51a8fe26726",
+  "recipe": {
+    "destination": {
+      "dtype": "float16",
+      "offset": [
+        "const",
+        0
+      ],
+      "shape": [
+        [
+          "const",
+          8
+        ]
+      ],
+      "strides": [
+        [
+          "const",
+          1
+        ]
+      ]
+    },
+    "direction": "h2d",
+    "operations": [
+      {
+        "axis": null,
+        "dtype": "float32",
+        "kind": "dequantize",
+        "policy": "affine",
+        "scale": {
+          "bits": [
+            1048576000
+          ],
+          "dtype": "float32",
+          "kind": "inline",
+          "shape": []
+        },
+        "zero_point": {
+          "bits": [
+            4294967293
+          ],
+          "dtype": "int32",
+          "kind": "inline",
+          "shape": []
+        }
+      },
+      {
+        "dtype": "float16",
+        "kind": "cast",
+        "policy": "ieee_rne"
+      }
+    ],
+    "source": {
+      "dtype": "int8",
+      "offset": [
+        "const",
+        0
+      ],
+      "shape": [
+        [
+          "const",
+          8
+        ]
+      ],
+      "strides": [
+        [
+          "const",
+          1
+        ]
+      ]
+    }
+  },
+  "stages": [
+    {
+      "input_dtype": "int8",
+      "output_dtype": "float32",
+      "policy": "affine",
+      "transform": "dequantize"
+    },
+    {
+      "input_dtype": "float32",
+      "output_dtype": "float16",
+      "policy": "ieee_rne",
+      "transform": "cast"
+    }
+  ],
+  "symbols": []
+}

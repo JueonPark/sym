@@ -1,0 +1,437 @@
+{
+  "bindings": [
+    {
+      "capability": {
+        "cuda": {
+          "d2h": [
+            "cpu_reference"
+          ],
+          "h2d": [
+            "cpu_reference"
+          ]
+        },
+        "host": {
+          "d2h": [
+            "cpu_reference"
+          ],
+          "h2d": [
+            "cpu_reference"
+          ]
+        }
+      },
+      "expected": {
+        "bits": [
+          "0",
+          "41940000",
+          "42140000",
+          "425e0000",
+          "42bc0000",
+          "42e10000",
+          "40400000",
+          "41ac0000",
+          "41a00000",
+          "42640000",
+          "42bc0000",
+          "c2fa0000",
+          "c2400000",
+          "c1300000",
+          "41d00000",
+          "427c0000",
+          "c3d70000",
+          "c3b20000",
+          "c38d0000",
+          "c3500000",
+          "c2580000",
+          "c3f60000",
+          "c3d10000",
+          "c3ac0000"
+        ],
+        "dtype": "float32",
+        "sha256": "e66d5176f151970afd838c7e508f675273cea22030970c4e785125092675ef3a",
+        "shape": [
+          3,
+          2,
+          4
+        ]
+      },
+      "footprints": {
+        "d2h": {
+          "destination_bytes": 96,
+          "parameter_bytes": 24,
+          "source_bytes": 24,
+          "wire_boundary": 0,
+          "wire_bytes": 24
+        },
+        "h2d": {
+          "destination_bytes": 96,
+          "parameter_bytes": 24,
+          "source_bytes": 24,
+          "wire_boundary": 1,
+          "wire_bytes": 96
+        }
+      },
+      "source": {
+        "bits": [
+          "80",
+          "a5",
+          "ca",
+          "ef",
+          "14",
+          "39",
+          "5e",
+          "83",
+          "a8",
+          "cd",
+          "f2",
+          "17",
+          "3c",
+          "61",
+          "86",
+          "ab",
+          "d0",
+          "f5",
+          "1a",
+          "3f",
+          "64",
+          "89",
+          "ae",
+          "d3"
+        ],
+        "dtype": "int8",
+        "shape": [
+          2,
+          3,
+          4
+        ]
+      },
+      "symbols": {}
+    }
+  ],
+  "description": "dequantize + layout: s8 [2, 3, 4] per-channel runtime scales and zero points on axis 1, then transposed to [3, 2, 4]",
+  "generator_seed": 20260923,
+  "manifest": {
+    "compiler": {
+      "build_identity": "40040d04ba7d81d3238210ea3396a35ce4a7a00e/Release",
+      "interface_version": 1,
+      "llvm_version": "21.1.8",
+      "name": "sym-reloc-export"
+    },
+    "constraints": {
+      "divisibility": []
+    },
+    "fills": [],
+    "input_sha256": "add5f4bede985d1fc1225f011f5fbd3c8d81af4d6a54267720c6c415d8ed1b0e",
+    "logical_destination": {
+      "dtype": "float32",
+      "offset": [
+        "const",
+        0
+      ],
+      "shape": [
+        [
+          "const",
+          3
+        ],
+        [
+          "const",
+          2
+        ],
+        [
+          "const",
+          4
+        ]
+      ],
+      "strides": [
+        [
+          "mul",
+          [
+            "const",
+            2
+          ],
+          [
+            "const",
+            4
+          ]
+        ],
+        [
+          "const",
+          4
+        ],
+        [
+          "const",
+          1
+        ]
+      ]
+    },
+    "logical_source": {
+      "dtype": "int8",
+      "offset": [
+        "const",
+        0
+      ],
+      "shape": [
+        [
+          "const",
+          2
+        ],
+        [
+          "const",
+          3
+        ],
+        [
+          "const",
+          4
+        ]
+      ],
+      "strides": [
+        [
+          "mul",
+          [
+            "const",
+            3
+          ],
+          [
+            "const",
+            4
+          ]
+        ],
+        [
+          "const",
+          4
+        ],
+        [
+          "const",
+          1
+        ]
+      ]
+    },
+    "parameters": [
+      {
+        "dtype": "float32",
+        "extents": [
+          [
+            "const",
+            3
+          ]
+        ],
+        "name": "scales"
+      },
+      {
+        "dtype": "int32",
+        "extents": [
+          [
+            "const",
+            3
+          ]
+        ],
+        "name": "zero_points"
+      }
+    ],
+    "plan_count": 1,
+    "plan_sha256": "d6514655f433b0628747898746931b907732dd68983cfc67e5a4cba77dd2e54a",
+    "schema_version": 2,
+    "stages": [
+      {
+        "axis": 1,
+        "channel": {
+          "dims": 3,
+          "expr": [
+            "dim",
+            0
+          ]
+        },
+        "input_dtype": "int8",
+        "output_dtype": "float32",
+        "policy": "affine",
+        "scale": {
+          "dtype": "float32",
+          "extents": [
+            [
+              "const",
+              3
+            ]
+          ],
+          "kind": "binding",
+          "name": "scales"
+        },
+        "shape": [
+          [
+            "const",
+            2
+          ],
+          [
+            "const",
+            3
+          ],
+          [
+            "const",
+            4
+          ]
+        ],
+        "transform": "dequantize",
+        "zero_point": {
+          "dtype": "int32",
+          "extents": [
+            [
+              "const",
+              3
+            ]
+          ],
+          "kind": "binding",
+          "name": "zero_points"
+        }
+      }
+    ],
+    "status": "ok",
+    "symbols": [],
+    "wire_version": 1
+  },
+  "mlir": "func.func @torch_relocation(%x: !sym.tensor<[2, 3, 4], i8>) -> !sym.tensor<[3, 2, 4], f32> {\n  %v0 = reloc.dequantize %x axis 1 scale(#reloc.binding<\"scales\" : [3], f32>) zero_point(#reloc.binding<\"zero_points\" : [3], i32>) policy affine : !sym.tensor<[2, 3, 4], i8> -> !sym.tensor<[2, 3, 4], f32>\n  %v1 = reloc.transpose %v0 perm [1, 0, 2] : !sym.tensor<[2, 3, 4], f32> -> !sym.tensor<[3, 2, 4], f32>\n  return %v1 : !sym.tensor<[3, 2, 4], f32>\n}\n",
+  "name": "dequant_channel_runtime_transpose",
+  "numpy": "2.5.3",
+  "parameters": {
+    "scales": {
+      "bits": [
+        "3f000000",
+        "3f800000",
+        "40000000"
+      ],
+      "dtype": "float32",
+      "shape": [
+        3
+      ]
+    },
+    "zero_points": {
+      "bits": [
+        "ffffff80",
+        "0",
+        "7f"
+      ],
+      "dtype": "int32",
+      "shape": [
+        3
+      ]
+    }
+  },
+  "plan_sha256": "d6514655f433b0628747898746931b907732dd68983cfc67e5a4cba77dd2e54a",
+  "recipe": {
+    "destination": {
+      "dtype": "float32",
+      "offset": [
+        "const",
+        0
+      ],
+      "shape": [
+        [
+          "const",
+          3
+        ],
+        [
+          "const",
+          2
+        ],
+        [
+          "const",
+          4
+        ]
+      ],
+      "strides": [
+        [
+          "const",
+          8
+        ],
+        [
+          "const",
+          4
+        ],
+        [
+          "const",
+          1
+        ]
+      ]
+    },
+    "direction": "h2d",
+    "operations": [
+      {
+        "axis": 1,
+        "dtype": "float32",
+        "kind": "dequantize",
+        "policy": "affine",
+        "scale": {
+          "dtype": "float32",
+          "extents": [
+            [
+              "const",
+              3
+            ]
+          ],
+          "kind": "binding",
+          "name": "scales"
+        },
+        "zero_point": {
+          "dtype": "int32",
+          "extents": [
+            [
+              "const",
+              3
+            ]
+          ],
+          "kind": "binding",
+          "name": "zero_points"
+        }
+      },
+      {
+        "kind": "transpose",
+        "perm": [
+          1,
+          0,
+          2
+        ]
+      }
+    ],
+    "source": {
+      "dtype": "int8",
+      "offset": [
+        "const",
+        0
+      ],
+      "shape": [
+        [
+          "const",
+          2
+        ],
+        [
+          "const",
+          3
+        ],
+        [
+          "const",
+          4
+        ]
+      ],
+      "strides": [
+        [
+          "const",
+          12
+        ],
+        [
+          "const",
+          4
+        ],
+        [
+          "const",
+          1
+        ]
+      ]
+    }
+  },
+  "stages": [
+    {
+      "input_dtype": "int8",
+      "output_dtype": "float32",
+      "policy": "affine",
+      "transform": "dequantize"
+    }
+  ],
+  "symbols": []
+}
