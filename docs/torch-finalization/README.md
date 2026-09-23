@@ -187,8 +187,10 @@ and C2's typed folding ([reloc-typed-folding.md](../reloc-typed-folding.md))
 are implemented in the compiler; C3's versioned typed artifact and binding
 (`sym-reloc-export --typed`, wire v1, `pyreloc.load_typed_plan` /
 `bind_typed`, typed recipes in the artifact bridge;
-[reloc-export.md](../reloc-export.md)) are implemented; C4 and R3–R4 remain
-unimplemented, so no typed plan executes yet.
+[reloc-export.md](../reloc-export.md)) are implemented; R3's plan-driven
+typed dispatch ([runtime-dispatch.md](../runtime-dispatch.md): scalar
+reference, qualified CUDA rows, `original_cpu`/`auto` policies, byte
+reports, `reloc_torch.dispatch`) is implemented; C4 and R4 remain.
 
 ```bash
 export TORCH_PYTHON=/tmp/sym-torch-cpu/bin/python

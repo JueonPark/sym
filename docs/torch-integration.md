@@ -183,9 +183,13 @@ backend.close()
   schema-2 manifest ([reloc-export.md](reloc-export.md)), portable as
   `format_version` 2, loaded with `pyreloc.load_typed_plan` and bound with
   `pyreloc.bind_typed` ([libreloc/README.md](../libreloc/README.md#typed-plans-c3-issue-143)).
-  Typed execution is R3/C4: a bound typed plan lists `requirements` and no
-  transfer path runs it, so the FX importer still emits no typed recipe and
-  float weight loading always keeps dtype and values.
+  R3 (issue #147) executes them: `reloc_torch.dispatch.prepare_typed_transfer`
+  / `execute_typed_transfer` run a typed recipe through the qualified rows of
+  [runtime-dispatch.md](runtime-dispatch.md) (`original_cpu` forces the CPU
+  reference pipeline; `auto` consults an optional calibration) and return the
+  tensor with a scalar report. C4 owns the conformance corpus and the FX
+  import gate, so the FX importer still emits no typed recipe and float
+  weight loading always keeps dtype and values.
 - **Core stays Torch-free.** `import pyreloc` and the transfer/prefold bindings
   load without Torch; the runtime library is MLIR/LLVM/Torch-free by CTest.
 
