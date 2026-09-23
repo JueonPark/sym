@@ -18,6 +18,7 @@
 #include "reloc/Quant.h"
 
 #include <cstdint>
+#include <memory>
 
 namespace reloc {
 
@@ -40,6 +41,16 @@ PrefoldArtifact prefoldArtifact(const BoundPlan &bound, const float *srcBase,
                                 CopyBackend &backend, GatherPool &pool,
                                 quant::Variant v = quant::Variant::Auto);
 
+/// R3 (issue #147): the artifact keeps `backend` alive until it releases its
+/// staging, so the supported integration never depends on the caller
+/// outliving the artifact (the reference overload above leaves that to the
+/// caller, as PyPrefold's member-order contract does).
+PrefoldArtifact prefoldArtifact(const BoundPlan &bound, const float *srcBase,
+                                OutputSpec spec, const float *invScales,
+                                std::shared_ptr<CopyBackend> backend,
+                                GatherPool &pool,
+                                quant::Variant v = quant::Variant::Auto);
+
 /// Move-only owner of the folded artifact. data() is the transfer
 /// source; the staging allocation is freed on destruction through the
 /// backend that made it. An invalid (default / moved-from / failed)
@@ -48,7 +59,8 @@ class PrefoldArtifact {
 public:
   PrefoldArtifact() = default;
   PrefoldArtifact(PrefoldArtifact &&o) noexcept
-      : data_(o.data_), bytes_(o.bytes_), backend_(o.backend_) {
+      : data_(o.data_), bytes_(o.bytes_), backend_(o.backend_),
+        owner_(std::move(o.owner_)) {
     o.data_ = nullptr;
     o.bytes_ = 0;
     o.backend_ = nullptr;
@@ -59,6 +71,7 @@ public:
       data_ = o.data_;
       bytes_ = o.bytes_;
       backend_ = o.backend_;
+      owner_ = std::move(o.owner_);
       o.data_ = nullptr;
       o.bytes_ = 0;
       o.backend_ = nullptr;
@@ -73,22 +86,30 @@ public:
   const void *data() const { return data_; }
   int64_t bytes() const { return bytes_; }
   bool valid() const { return data_ != nullptr; }
+  /// True when this artifact keeps its backend alive (shared_ptr overload).
+  bool ownsBackend() const { return owner_ != nullptr; }
 
 private:
   friend PrefoldArtifact prefoldArtifact(const BoundPlan &, const float *,
                                          OutputSpec, const float *,
                                          CopyBackend &, GatherPool &,
                                          quant::Variant);
+  friend PrefoldArtifact prefoldArtifact(const BoundPlan &, const float *,
+                                         OutputSpec, const float *,
+                                         std::shared_ptr<CopyBackend>,
+                                         GatherPool &, quant::Variant);
   void release() {
     if (data_ && backend_)
       backend_->freeStaging(data_);
     data_ = nullptr;
     bytes_ = 0;
     backend_ = nullptr;
+    owner_.reset(); // after the free: the backend must outlive its staging
   }
   void *data_ = nullptr;
   int64_t bytes_ = 0;
   CopyBackend *backend_ = nullptr;
+  std::shared_ptr<CopyBackend> owner_;
 };
 
 /// The standalone amortization rule (policy):
