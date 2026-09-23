@@ -1,0 +1,45 @@
+# C4 (issue #144) typed conformance on actual CUDA hardware
+# recorded 2026-09-23T14:53:18Z from libreloc/python/tests/torch_frontend (gpu-marked) and the example
+# device: NVIDIA GeForce RTX 2080 Ti, 595.71.05, 11264 MiB
+# device: NVIDIA GeForce RTX 2080 Ti, 595.71.05, 11264 MiB
+# device: NVIDIA GeForce RTX 2080 Ti, 595.71.05, 11264 MiB
+# device: NVIDIA GeForce RTX 2080 Ti, 595.71.05, 11264 MiB
+# python 3.14.7 torch 2.14.0+cu126 cuda 12.6 numpy 2.5.3 pyreloc cuda_enabled=True
+
+$ pytest torch_frontend/test_typed_conformance_gpu.py test_typed_import.py test_dispatch.py -m gpu -rA -q
+PASSED libreloc/python/tests/torch_frontend/test_typed_conformance_gpu.py::test_every_qualified_cuda_row_reproduces_the_fixture[cast_transpose_f16]
+PASSED libreloc/python/tests/torch_frontend/test_typed_conformance_gpu.py::test_every_qualified_cuda_row_reproduces_the_fixture[dequant_channel_runtime_transpose]
+PASSED libreloc/python/tests/torch_frontend/test_typed_conformance_gpu.py::test_every_qualified_cuda_row_reproduces_the_fixture[dequant_inline_zp_cast]
+PASSED libreloc/python/tests/torch_frontend/test_typed_conformance_gpu.py::test_every_qualified_cuda_row_reproduces_the_fixture[dequant_scale_witness]
+PASSED libreloc/python/tests/torch_frontend/test_typed_conformance_gpu.py::test_every_qualified_cuda_row_reproduces_the_fixture[dequant_zp127]
+PASSED libreloc/python/tests/torch_frontend/test_typed_conformance_gpu.py::test_every_qualified_cuda_row_reproduces_the_fixture[pad_then_quantize]
+PASSED libreloc/python/tests/torch_frontend/test_typed_conformance_gpu.py::test_every_qualified_cuda_row_reproduces_the_fixture[quant_dequant_padded]
+PASSED libreloc/python/tests/torch_frontend/test_typed_conformance_gpu.py::test_every_qualified_cuda_row_reproduces_the_fixture[quantize_channel_transpose_sym]
+PASSED libreloc/python/tests/torch_frontend/test_typed_conformance_gpu.py::test_every_qualified_cuda_row_reproduces_the_fixture[quantize_edges]
+PASSED libreloc/python/tests/torch_frontend/test_typed_conformance_gpu.py::test_every_qualified_cuda_row_reproduces_the_fixture[quantize_then_pad]
+PASSED libreloc/python/tests/torch_frontend/test_typed_conformance_gpu.py::test_every_qualified_cuda_row_reproduces_the_fixture[reciprocal_formation]
+PASSED libreloc/python/tests/torch_frontend/test_typed_conformance_gpu.py::test_every_qualified_cuda_row_reproduces_the_fixture[widen_reshape]
+PASSED libreloc/python/tests/torch_frontend/test_typed_conformance_gpu.py::test_every_qualified_cuda_row_reproduces_the_fixture[witness_channel]
+PASSED libreloc/python/tests/torch_frontend/test_typed_import.py::test_compiled_layout_plus_cast_and_dequantize_execute_on_cuda
+PASSED libreloc/python/tests/torch_frontend/test_dispatch.py::test_forced_baseline_and_every_qualified_row_match_the_oracle
+PASSED libreloc/python/tests/torch_frontend/test_dispatch.py::test_device_to_host_runs_the_forward_program
+PASSED libreloc/python/tests/torch_frontend/test_dispatch.py::test_parameter_values_are_snapshotted_and_rechecked
+17 passed, 18 deselected in 5.52s
+
+$ python libreloc/python/examples/torch_typed_relocation.py --cuda
+== layout_cast: wire v1, stages ['cast'], parameters []
+layout_cast B=4 policy=original_cpu: OK via cpu_reference (forced; wire 48 B, payload 48 B)
+layout_cast B=4 policy=auto: OK via cpu_reference (only_qualified_path; wire 48 B, payload 48 B)
+layout_cast B=9 policy=original_cpu: OK via cpu_reference (forced; wire 108 B, payload 108 B)
+layout_cast B=9 policy=auto: OK via cpu_reference (only_qualified_path; wire 108 B, payload 108 B)
+== layout_quantize: wire v1, stages ['quantize'], parameters ['scale']
+layout_quantize B=4 policy=original_cpu: OK via cpu_reference (forced; wire 12 B, payload 12 B)
+layout_quantize B=4 policy=auto: OK via cpu_reference (no_calibration; wire 12 B, payload 12 B)
+layout_quantize B=9 policy=original_cpu: OK via cpu_reference (forced; wire 27 B, payload 27 B)
+layout_quantize B=9 policy=auto: OK via cpu_reference (no_calibration; wire 27 B, payload 27 B)
+== dequantize_layout: wire v1, stages ['dequantize'], parameters ['scale', 'zero_point']
+dequantize_layout B=4 policy=original_cpu: OK via cpu_reference (forced; wire 48 B, payload 48 B)
+dequantize_layout B=4 policy=auto: OK via cpu_reference (only_qualified_path; wire 48 B, payload 48 B)
+dequantize_layout B=9 policy=original_cpu: OK via cpu_reference (forced; wire 108 B, payload 108 B)
+dequantize_layout B=9 policy=auto: OK via cpu_reference (only_qualified_path; wire 108 B, payload 108 B)
+all outputs match the independent reference

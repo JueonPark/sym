@@ -327,7 +327,12 @@ The Torch-free contract tests are `libreloc/python/tests/test_typed_bindings.py`
 (they need the real exporter through `SYM_RELOC_EXPORT` and fail without
 it); the frontend bridge (`reloc_torch` typed recipes, schema-2 admission,
 portable `format_version` 2) is exercised by
-`libreloc/python/tests/torch_frontend/test_typed_artifact.py`.
+`libreloc/python/tests/torch_frontend/test_typed_artifact.py`. C4's
+conformance corpus (`libreloc/test/corpus/typed`, generated through the
+public exporter and pinned by the independent NumPy oracle
+`libreloc/python/tests/typed_reference.py`) is replayed by
+`test_typed_conformance.py`; the support matrix is
+[docs/typed-relocation-support.md](../docs/typed-relocation-support.md).
 
 ### pytest oracle harness
 
