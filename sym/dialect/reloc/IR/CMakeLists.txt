@@ -8,6 +8,8 @@ add_public_tablegen_target(RelocDialectIncGen)
 set(LLVM_TARGET_DEFINITIONS RelocAttrs.td)
 mlir_tablegen(RelocAttributes.h.inc -gen-attrdef-decls)
 mlir_tablegen(RelocAttributes.cpp.inc -gen-attrdef-defs)
+mlir_tablegen(RelocEnums.h.inc -gen-enum-decls)
+mlir_tablegen(RelocEnums.cpp.inc -gen-enum-defs)
 add_public_tablegen_target(RelocAttributesIncGen)
 
 # TableGen for Operations

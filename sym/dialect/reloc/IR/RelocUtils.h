@@ -70,6 +70,12 @@ bool isContiguousCompatible(AxisInfoAttr outer, AxisInfoAttr inner);
 /// every axis has dst_stride == src_stride, and src/dst offsets are equal.
 bool isPureView(PlanAttr plan);
 
+/// True for the typed value transforms (reloc.cast, reloc.quantize,
+/// reloc.dequantize; C1, issue #141). They are not layout-chain members:
+/// the fold pass treats them as chain boundaries and the public exporter
+/// declares them unsupported until C2/C3 supply the typed representation.
+bool isTypedValueTransformOp(Operation *op);
+
 //===----------------------------------------------------------------------===//
 // Verification proofs
 //===----------------------------------------------------------------------===//

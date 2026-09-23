@@ -152,6 +152,10 @@ bool mlir::reloc::isPureView(PlanAttr plan) {
                                                    plan.getDst().getOffset());
 }
 
+bool mlir::reloc::isTypedValueTransformOp(Operation *op) {
+  return isa<CastOp, QuantizeOp, DequantizeOp>(op);
+}
+
 //===----------------------------------------------------------------------===//
 // Verification proofs
 //===----------------------------------------------------------------------===//

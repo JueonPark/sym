@@ -408,6 +408,401 @@ LogicalResult PlanResultOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// Typed value transforms (C1, issue #141)
+//===----------------------------------------------------------------------===//
+//
+// reloc.cast / reloc.quantize / reloc.dequantize preserve the logical shape
+// and change only the element type. The numerical meaning of each policy is
+// docs/reloc-typed-semantics.md; the verifiers below enforce static legality
+// only. Value guards on runtime parameters and undecidable symbolic channel
+// lengths are bind-time obligations (C3): a Proof::Unknown never rejects.
+
+/// Parse `policy <keyword>` into `attrName`.
+static ParseResult parsePolicy(OpAsmParser &parser, OperationState &result,
+                               StringAttr attrName) {
+  if (parser.parseKeyword("policy"))
+    return failure();
+  llvm::SMLoc loc = parser.getCurrentLocation();
+  StringRef keyword;
+  if (parser.parseKeyword(&keyword))
+    return failure();
+  std::optional<NumericPolicy> policy = symbolizeNumericPolicy(keyword);
+  if (!policy)
+    return parser.emitError(loc)
+           << "unknown numerical policy '" << keyword << "'";
+  result.addAttribute(attrName,
+                      NumericPolicyAttr::get(parser.getContext(), *policy));
+  return success();
+}
+
+/// Parse `( <attribute> )`.
+static ParseResult parseParenAttr(OpAsmParser &parser, Attribute &attr) {
+  return failure(parser.parseLParen() || parser.parseAttribute(attr) ||
+                 parser.parseRParen());
+}
+
+/// Value transforms keep the logical shape: same rank, logically equal dims.
+static LogicalResult verifyPreservedShape(Operation *op,
+                                          sym::SymbolicTensorType input,
+                                          sym::SymbolicTensorType result) {
+  size_t rank = input.getShape().size();
+  if (result.getShape().size() != rank)
+    return op->emitOpError() << "result rank (" << result.getShape().size()
+                             << ") must match operand rank (" << rank << ")";
+  for (size_t k = 0; k < rank; ++k)
+    if (!sym::UnificationSolver::areLogicallyEqual(result.getShape()[k],
+                                                   input.getShape()[k]))
+      return op->emitOpError()
+             << "result dimension " << k << " must equal operand dimension "
+             << k << " (value transforms preserve the logical shape)";
+  return success();
+}
+
+/// Constant extents print as plain integers in diagnostics; anything else
+/// prints as the attribute.
+static std::string describeExtent(Attribute extent) {
+  std::string text;
+  llvm::raw_string_ostream os(text);
+  if (auto constant = dyn_cast<sym::ConstantExprAttr>(extent))
+    os << constant.getValue();
+  else
+    os << extent;
+  return text;
+}
+
+namespace {
+enum class ParamRole { Scale, ZeroPoint };
+} // namespace
+
+static StringRef roleName(ParamRole role) {
+  return role == ParamRole::Scale ? "scale" : "zero_point";
+}
+
+/// One quantization parameter: a dense constant or a #reloc.binding, rank 0
+/// (per tensor) or rank 1 (per channel, length == the channel axis extent
+/// unless undecidable), role-specific element type, valid constant values.
+static LogicalResult verifyQuantParam(Operation *op, ParamRole role,
+                                      Attribute attr,
+                                      sym::SymbolicTensorType input,
+                                      std::optional<int64_t> axis) {
+  StringRef name = roleName(role);
+  MLIRContext *ctx = op->getContext();
+  int64_t rank = 0;
+  Attribute channels; // rank-1 length as a sym expression
+  if (auto dense = dyn_cast<DenseElementsAttr>(attr)) {
+    ShapedType type = dense.getType();
+    rank = type.getRank();
+    if (rank > 1)
+      return op->emitOpError() << "parameters must have rank 0 or 1, but "
+                               << name << " has rank " << rank;
+    Type element = type.getElementType();
+    if (role == ParamRole::Scale) {
+      if (!element.isF32())
+        return op->emitOpError()
+               << "scale constants must have element type f32, but got "
+               << element;
+      for (auto [index, value] : llvm::enumerate(dense.getValues<APFloat>()))
+        if (!value.isFinite() || value.isNegative() || value.isZero())
+          return op->emitOpError()
+                 << "scale must be finite and strictly positive, but element "
+                 << index << " is " << FloatAttr::get(element, value);
+    } else {
+      if (!element.isSignlessInteger())
+        return op->emitOpError() << "zero_point constants must have a "
+                                    "signless integer element type, but got "
+                                 << element;
+      for (auto [index, value] : llvm::enumerate(dense.getValues<APInt>())) {
+        int64_t zeroPoint = value.getSExtValue();
+        if (zeroPoint < -128 || zeroPoint > 127)
+          return op->emitOpError()
+                 << "zero point must lie in [-128, 127], but element " << index
+                 << " is " << zeroPoint;
+      }
+    }
+    if (rank == 1)
+      channels = sym::ConstantExprAttr::get(ctx, type.getDimSize(0));
+  } else if (auto binding = dyn_cast<ParamBindingAttr>(attr)) {
+    rank = static_cast<int64_t>(binding.getExtents().size());
+    Type element = binding.getElementType();
+    if (role == ParamRole::Scale && !element.isF32())
+      return op->emitOpError()
+             << "scale bindings must declare element type f32, but got "
+             << element;
+    if (role == ParamRole::ZeroPoint && !element.isSignlessInteger(32))
+      return op->emitOpError()
+             << "zero_point bindings must declare element type i32, but got "
+             << element;
+    if (rank == 1)
+      channels = binding.getExtents()[0];
+  } else {
+    return op->emitOpError()
+           << name << " must be a dense constant or a #reloc.binding, but got "
+           << attr;
+  }
+
+  if (!axis) {
+    if (rank != 0)
+      return op->emitOpError() << "per-tensor form (no axis) requires rank-0 "
+                                  "parameters, but "
+                               << name << " has rank " << rank;
+    return success();
+  }
+  if (role == ParamRole::Scale && rank != 1)
+    return op->emitOpError()
+           << "per-channel form requires a rank-1 scale, but scale has rank "
+           << rank;
+  if (rank == 1) {
+    Attribute extent = input.getShape()[*axis];
+    if (proveEqual(channels, extent) == Proof::Disproven)
+      return op->emitOpError()
+             << name << (isa<DenseElementsAttr>(attr) ? " has " : " declares ")
+             << describeExtent(channels) << " channel entries, but axis "
+             << *axis << " has extent " << describeExtent(extent);
+  }
+  return success();
+}
+
+/// Shared quantize/dequantize checks: axis range, both parameters, distinct
+/// binding names.
+static LogicalResult verifyQuantParams(Operation *op,
+                                       sym::SymbolicTensorType input,
+                                       Attribute scale, Attribute zeroPoint,
+                                       std::optional<int64_t> axis) {
+  int64_t rank = static_cast<int64_t>(input.getShape().size());
+  if (axis && (*axis < 0 || *axis >= rank))
+    return op->emitOpError() << "axis (" << *axis
+                             << ") is out of range for operand rank " << rank;
+  if (failed(verifyQuantParam(op, ParamRole::Scale, scale, input, axis)))
+    return failure();
+  if (zeroPoint && failed(verifyQuantParam(op, ParamRole::ZeroPoint, zeroPoint,
+                                           input, axis)))
+    return failure();
+  auto scaleBinding = dyn_cast<ParamBindingAttr>(scale);
+  auto zeroPointBinding = dyn_cast_or_null<ParamBindingAttr>(zeroPoint);
+  if (scaleBinding && zeroPointBinding &&
+      scaleBinding.getName() == zeroPointBinding.getName())
+    return op->emitOpError() << "runtime parameters must use distinct binding "
+                                "names, but scale and zero_point both bind \""
+                             << scaleBinding.getName() << "\"";
+  return success();
+}
+
+template <typename OpType>
+static ParseResult parseQuantLike(OpAsmParser &parser, OperationState &result) {
+  OpAsmParser::UnresolvedOperand input;
+  if (parser.parseOperand(input))
+    return failure();
+  if (succeeded(parser.parseOptionalKeyword("axis"))) {
+    int64_t axis;
+    if (parser.parseInteger(axis))
+      return failure();
+    result.addAttribute(OpType::getAxisAttrName(result.name),
+                        parser.getBuilder().getI64IntegerAttr(axis));
+  }
+  Attribute scale;
+  if (parser.parseKeyword("scale") || parseParenAttr(parser, scale))
+    return failure();
+  result.addAttribute(OpType::getScaleAttrName(result.name), scale);
+  if (succeeded(parser.parseOptionalKeyword("zero_point"))) {
+    Attribute zeroPoint;
+    if (parseParenAttr(parser, zeroPoint))
+      return failure();
+    result.addAttribute(OpType::getZeroPointAttrName(result.name), zeroPoint);
+  }
+  if (parsePolicy(parser, result, OpType::getPolicyAttrName(result.name)) ||
+      parser.parseOptionalAttrDict(result.attributes))
+    return failure();
+  Type inputType, resultType;
+  if (parseOpTypes(parser, inputType, resultType) ||
+      parser.resolveOperand(input, inputType, result.operands))
+    return failure();
+  result.addTypes(resultType);
+  return success();
+}
+
+template <typename OpType>
+static void printQuantLike(OpType op, OpAsmPrinter &printer) {
+  printer << " " << op.getInput();
+  if (std::optional<int64_t> axis = op.getAxis())
+    printer << " axis " << *axis;
+  printer << " scale(";
+  printer.printAttribute(op.getScale());
+  printer << ")";
+  if (Attribute zeroPoint = op.getZeroPointAttr()) {
+    printer << " zero_point(";
+    printer.printAttribute(zeroPoint);
+    printer << ")";
+  }
+  printer << " policy " << stringifyNumericPolicy(op.getPolicy());
+  printer.printOptionalAttrDict(
+      op->getAttrs(),
+      /*elidedAttrs=*/{op.getScaleAttrName(), op.getZeroPointAttrName(),
+                       op.getAxisAttrName(), op.getPolicyAttrName()});
+  printOpTypes(printer, op.getInput().getType(), op.getResult().getType());
+}
+
+//===----------------------------------------------------------------------===//
+// CastOp
+//===----------------------------------------------------------------------===//
+
+void CastOp::build(OpBuilder &builder, OperationState &state, Value input,
+                   Type elementType, NumericPolicy policy) {
+  auto inputType = cast<sym::SymbolicTensorType>(input.getType());
+  build(builder, state,
+        sym::SymbolicTensorType::get(builder.getContext(), inputType.getShape(),
+                                     elementType),
+        input, NumericPolicyAttr::get(builder.getContext(), policy));
+}
+
+ParseResult CastOp::parse(OpAsmParser &parser, OperationState &result) {
+  OpAsmParser::UnresolvedOperand input;
+  if (parser.parseOperand(input) ||
+      parsePolicy(parser, result, getPolicyAttrName(result.name)) ||
+      parser.parseOptionalAttrDict(result.attributes))
+    return failure();
+  Type inputType, resultType;
+  if (parseOpTypes(parser, inputType, resultType) ||
+      parser.resolveOperand(input, inputType, result.operands))
+    return failure();
+  result.addTypes(resultType);
+  return success();
+}
+
+void CastOp::print(OpAsmPrinter &printer) {
+  printer << " " << getInput() << " policy "
+          << stringifyNumericPolicy(getPolicy());
+  printer.printOptionalAttrDict((*this)->getAttrs(),
+                                /*elidedAttrs=*/{getPolicyAttrName()});
+  printOpTypes(printer, getInput().getType(), getResult().getType());
+}
+
+LogicalResult CastOp::verify() {
+  auto inputType = cast<sym::SymbolicTensorType>(getInput().getType());
+  auto resultType = cast<sym::SymbolicTensorType>(getResult().getType());
+  Type from = inputType.getElementType(), to = resultType.getElementType();
+  std::optional<NumericPolicy> required;
+  StringRef pair;
+  if (from.isF32() && to.isF16()) {
+    required = NumericPolicy::IeeeRne;
+    pair = "f32 -> f16";
+  } else if (from.isF16() && to.isF32()) {
+    required = NumericPolicy::Exact;
+    pair = "f16 -> f32";
+  }
+  if (!required)
+    return emitOpError() << "cast from " << from << " to " << to
+                         << " is not a supported typed conversion (f32 -> "
+                            "f16, f16 -> f32)";
+  if (failed(verifyPreservedShape(*this, inputType, resultType)))
+    return failure();
+  if (getPolicy() != *required)
+    return emitOpError() << "policy '" << stringifyNumericPolicy(getPolicy())
+                         << "' is not defined for the " << pair
+                         << " cast (use '" << stringifyNumericPolicy(*required)
+                         << "')";
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// QuantizeOp
+//===----------------------------------------------------------------------===//
+
+void QuantizeOp::build(OpBuilder &builder, OperationState &state, Value input,
+                       Attribute scale, Attribute zeroPoint,
+                       std::optional<int64_t> axis, NumericPolicy policy) {
+  auto inputType = cast<sym::SymbolicTensorType>(input.getType());
+  auto resultType = sym::SymbolicTensorType::get(
+      builder.getContext(), inputType.getShape(), builder.getIntegerType(8));
+  build(builder, state, resultType, input, scale, zeroPoint,
+        axis ? builder.getI64IntegerAttr(*axis) : IntegerAttr(),
+        NumericPolicyAttr::get(builder.getContext(), policy));
+}
+
+ParseResult QuantizeOp::parse(OpAsmParser &parser, OperationState &result) {
+  return parseQuantLike<QuantizeOp>(parser, result);
+}
+
+void QuantizeOp::print(OpAsmPrinter &printer) {
+  printQuantLike(*this, printer);
+}
+
+LogicalResult QuantizeOp::verify() {
+  auto inputType = cast<sym::SymbolicTensorType>(getInput().getType());
+  auto resultType = cast<sym::SymbolicTensorType>(getResult().getType());
+  Type from = inputType.getElementType(), to = resultType.getElementType();
+  if (!from.isF32() || !to.isSignlessInteger(8))
+    return emitOpError() << "quantize expects an f32 operand and a signless i8 "
+                            "result (int8 signedness is declared by the "
+                            "operation, not by the storage type), but got "
+                         << from << " -> " << to;
+  if (failed(verifyPreservedShape(*this, inputType, resultType)))
+    return failure();
+  if (getPolicy() != NumericPolicy::SymmetricRne)
+    return emitOpError() << "policy '" << stringifyNumericPolicy(getPolicy())
+                         << "' is not defined for reloc.quantize (use "
+                            "'symmetric_rne')";
+  if (failed(verifyQuantParams(*this, inputType, getScale(), getZeroPointAttr(),
+                               getAxis())))
+    return failure();
+  // symmetric_rne has no zero point: only the constant 0 is admitted, so the
+  // runtime never needs a bind-time zero-point guard for this policy.
+  if (Attribute zeroPoint = getZeroPointAttr()) {
+    if (isa<ParamBindingAttr>(zeroPoint))
+      return emitOpError() << "policy symmetric_rne admits only the constant "
+                              "zero point 0, but zero_point is a runtime "
+                              "binding";
+    for (auto [index, value] :
+         llvm::enumerate(cast<DenseElementsAttr>(zeroPoint).getValues<APInt>()))
+      if (!value.isZero())
+        return emitOpError() << "policy symmetric_rne admits only the constant "
+                                "zero point 0, but element "
+                             << index << " is " << value.getSExtValue();
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// DequantizeOp
+//===----------------------------------------------------------------------===//
+
+void DequantizeOp::build(OpBuilder &builder, OperationState &state, Value input,
+                         Attribute scale, Attribute zeroPoint,
+                         std::optional<int64_t> axis, NumericPolicy policy) {
+  auto inputType = cast<sym::SymbolicTensorType>(input.getType());
+  auto resultType = sym::SymbolicTensorType::get(
+      builder.getContext(), inputType.getShape(), builder.getF32Type());
+  build(builder, state, resultType, input, scale, zeroPoint,
+        axis ? builder.getI64IntegerAttr(*axis) : IntegerAttr(),
+        NumericPolicyAttr::get(builder.getContext(), policy));
+}
+
+ParseResult DequantizeOp::parse(OpAsmParser &parser, OperationState &result) {
+  return parseQuantLike<DequantizeOp>(parser, result);
+}
+
+void DequantizeOp::print(OpAsmPrinter &printer) {
+  printQuantLike(*this, printer);
+}
+
+LogicalResult DequantizeOp::verify() {
+  auto inputType = cast<sym::SymbolicTensorType>(getInput().getType());
+  auto resultType = cast<sym::SymbolicTensorType>(getResult().getType());
+  Type from = inputType.getElementType(), to = resultType.getElementType();
+  if (!from.isSignlessInteger(8) || !to.isF32())
+    return emitOpError() << "dequantize expects a signless i8 operand and an "
+                            "f32 result, but got "
+                         << from << " -> " << to;
+  if (failed(verifyPreservedShape(*this, inputType, resultType)))
+    return failure();
+  if (getPolicy() != NumericPolicy::Affine)
+    return emitOpError() << "policy '" << stringifyNumericPolicy(getPolicy())
+                         << "' is not defined for reloc.dequantize (use "
+                            "'affine')";
+  return verifyQuantParams(*this, inputType, getScale(), getZeroPointAttr(),
+                           getAxis());
+}
+
+//===----------------------------------------------------------------------===//
 // TableGen'd Operation Definitions
 //===----------------------------------------------------------------------===//
 

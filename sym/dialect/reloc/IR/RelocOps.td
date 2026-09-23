@@ -133,4 +133,127 @@ def Reloc_PlanResultOp : Reloc_Op<"plan_result", [Pure]> {
   let hasVerifier = 1;
 }
 
+//===----------------------------------------------------------------------===//
+// Typed value transforms (C1, issue #141)
+//===----------------------------------------------------------------------===//
+//
+// Value conversion is kept separate from address mapping: these ops preserve
+// the logical shape (every result dimension equals the operand dimension) and
+// change only the element type under a named numerical policy whose
+// normative definition is docs/reloc-typed-semantics.md. Verifiers enforce
+// static legality; value guards on runtime parameters and undecidable
+// symbolic channel lengths are bind-time obligations handed to C3. A valid
+// typed op is not yet an exportable artifact (C2/C3).
+
+// #reloc.policy referenced via a predicate (like Reloc_PlanAttrParam) so no
+// attribute TableGen files need to be included here.
+def Reloc_NumericPolicyParam : Attr<
+    CPred<"::mlir::isa<::mlir::reloc::NumericPolicyAttr>($_self)">,
+    "reloc numerical policy attribute"> {
+  let storageType = [{ ::mlir::reloc::NumericPolicyAttr }];
+  let returnType = [{ ::mlir::reloc::NumericPolicy }];
+  let convertFromStorage = "$_self.getValue()";
+  let constBuilderCall =
+      "::mlir::reloc::NumericPolicyAttr::get($_builder.getContext(), $0)";
+}
+
+def Reloc_CastOp : Reloc_Op<"cast", [Pure]> {
+  let summary = "Convert element values between floating-point types";
+  let description = [{
+    Element-wise floating-point conversion with an explicit numerical
+    policy. Supported pairs: f32 -> f16 under `ieee_rne` (round to nearest
+    even, overflow to infinity, subnormals preserved) and f16 -> f32 under
+    `exact`. Integer storage never appears in a cast: quantization and
+    dequantization are distinct operations.
+
+    Example:
+    ```mlir
+    %0 = reloc.cast %t policy ieee_rne
+        : !sym.tensor<[4, 6], f32> -> !sym.tensor<[4, 6], f16>
+    ```
+  }];
+
+  let arguments = (ins Reloc_SymTensor:$input, Reloc_NumericPolicyParam:$policy);
+  let results = (outs Reloc_SymTensor:$result);
+
+  let builders = [
+    OpBuilder<(ins "::mlir::Value":$input, "::mlir::Type":$elementType,
+                   "::mlir::reloc::NumericPolicy":$policy)>
+  ];
+
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
+}
+
+def Reloc_QuantizeOp : Reloc_Op<"quantize", [Pure]> {
+  let summary = "Quantize f32 values to signed int8 with declared parameters";
+  let description = [{
+    f32 -> signed int8 (stored as signless `i8`; the signed interpretation is
+    part of this operation). `scale` (f32, the size of one quantization
+    step; the reciprocal is formed once in binary32) and the optional
+    `zero_point` (signless integer in [-128, 127], default 0) are either
+    dense constants or `#reloc.binding` runtime declarations. Without `axis`
+    the form is per tensor (rank-0 parameters); with `axis` it is per
+    channel along that operand axis (rank-1 scale whose length equals the
+    axis extent; zero point rank 0 or 1). The only defined policy is
+    `symmetric_rne`, which admits only the constant zero point 0.
+
+    Example:
+    ```mlir
+    %0 = reloc.quantize %t axis 1 scale(dense<[0.5, 1.0, 2.0]> : tensor<3xf32>)
+        policy symmetric_rne
+        : !sym.tensor<[2, 3, 4], f32> -> !sym.tensor<[2, 3, 4], i8>
+    ```
+  }];
+
+  let arguments = (ins Reloc_SymTensor:$input, AnyAttr:$scale,
+                       OptionalAttr<AnyAttr>:$zero_point,
+                       OptionalAttr<I64Attr>:$axis,
+                       Reloc_NumericPolicyParam:$policy);
+  let results = (outs Reloc_SymTensor:$result);
+
+  let builders = [
+    OpBuilder<(ins "::mlir::Value":$input, "::mlir::Attribute":$scale,
+                   "::mlir::Attribute":$zeroPoint,
+                   "::std::optional<int64_t>":$axis,
+                   "::mlir::reloc::NumericPolicy":$policy)>
+  ];
+
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
+}
+
+def Reloc_DequantizeOp : Reloc_Op<"dequantize", [Pure]> {
+  let summary = "Dequantize signed int8 values to f32 with declared parameters";
+  let description = [{
+    signed int8 (signless `i8` storage) -> f32 under the `affine` policy:
+    fl32((q - zero_point) * scale), one binary32 rounding. Parameter forms
+    and channel-axis rules are those of reloc.quantize; zero points may take
+    any value in [-128, 127]. Dequantization is not the inverse of
+    quantization and is never cancelled against it.
+
+    Example:
+    ```mlir
+    %0 = reloc.dequantize %q scale(#reloc.binding<"s" : [], f32>) policy affine
+        : !sym.tensor<["N"], i8> -> !sym.tensor<["N"], f32>
+    ```
+  }];
+
+  let arguments = (ins Reloc_SymTensor:$input, AnyAttr:$scale,
+                       OptionalAttr<AnyAttr>:$zero_point,
+                       OptionalAttr<I64Attr>:$axis,
+                       Reloc_NumericPolicyParam:$policy);
+  let results = (outs Reloc_SymTensor:$result);
+
+  let builders = [
+    OpBuilder<(ins "::mlir::Value":$input, "::mlir::Attribute":$scale,
+                   "::mlir::Attribute":$zeroPoint,
+                   "::std::optional<int64_t>":$axis,
+                   "::mlir::reloc::NumericPolicy":$policy)>
+  ];
+
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
+}
+
 #endif // RELOC_OPS_TD
