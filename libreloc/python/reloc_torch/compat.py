@@ -450,7 +450,13 @@ def statically_at_least(value, bound):
         from torch.fx.experimental.symbolic_shapes import statically_known_true
 
         try:
-            return bool(statically_known_true(value >= bound))
+            if statically_known_true(value >= bound):
+                return True
+            # Dynamo records contiguity/reshape decisions as inequality
+            # guards (Ne(s // 64, 1), Ne(s // 64, 0)); for a non-negative
+            # integer, excluding every value below the bound proves it.
+            return bool(statically_known_true(value >= 0)) and all(
+                bool(statically_known_true(value != k)) for k in range(bound))
         except Exception:
             return False
     return False
@@ -472,6 +478,7 @@ def fx_kind(node):
         aten._to_copy.default: 'transfer', aten.to.device: 'transfer',
         aten.to.dtype: 'transfer', aten.to.other: 'transfer',
         aten.permute.default: 'permute', aten.transpose.int: 'transpose',
+        aten.t.default: 'transpose', torch.t: 'transpose',
         aten.view.default: 'reshape', aten.reshape.default: 'reshape',
         aten._unsafe_view.default: 'reshape',
         aten.clone.default: 'materialize', aten.contiguous.default: 'materialize',
@@ -487,7 +494,7 @@ def fx_kind(node):
         return kinds.get(node.target)
     if node.op == 'call_method':
         return {'to': 'transfer', 'cpu': 'transfer', 'cuda': 'transfer',
-                'permute': 'permute', 'transpose': 'transpose', 'view': 'reshape',
+                'permute': 'permute', 'transpose': 'transpose', 't': 'transpose', 'view': 'reshape',
                 'reshape': 'reshape', 'contiguous': 'materialize',
                 'size': 'scalar'}.get(node.target)
     return None
@@ -504,6 +511,13 @@ def fx_canonical_call(node, source_value):
     kind = fx_kind(node)
     if kind is None:
         raise ValueError('unrecognized_fx_target')
+    if node.target in (aten.t.default, torch.t) or (node.op == 'call_method' and node.target == 't'):
+        # Tensor.t() is transpose(0, 1) for rank 2 (and rank 0/1 identity,
+        # which the rank check in the recipe rejects conservatively).
+        args = node.args or (node.kwargs.get('self') or node.kwargs.get('input'),)
+        if not args or args[0] is None:
+            raise ValueError('unrecognized_fx_target')
+        return aten.transpose.int, (args[0], 0, 1), {}
     if node.op == 'call_function' and hasattr(node.target, '_schema'):
         return node.target, node.args, dict(node.kwargs)
     args, kwargs = node.args, dict(node.kwargs)

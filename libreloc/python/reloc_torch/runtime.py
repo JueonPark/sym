@@ -46,17 +46,7 @@ class ConcreteDescriptor:
     device: object
 
 
-def _metadata_snapshot(tensor):
-    storage = tensor.untyped_storage()
-    return (
-        tuple(tensor.shape),
-        tuple(tensor.stride()),
-        tensor.storage_offset(),
-        str(tensor.dtype),
-        str(tensor.device),
-        storage.data_ptr(),
-        storage.nbytes(),
-    )
+_metadata_snapshot = compat.storage_snapshot
 
 
 @dataclass(eq=False)

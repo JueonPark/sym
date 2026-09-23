@@ -142,7 +142,6 @@ def execute_transfer(request, *, n_buffers=4, n_streams=2, gather_threads=1, gat
     if request.consumed:
         raise RuntimeError("transfer request was already executed")
     request.recheck()
-    request.consumed = True
     destination = request.destination
     out = torch.empty_strided(
         destination.shape, destination.strides,
@@ -159,6 +158,11 @@ def execute_transfer(request, *, n_buffers=4, n_streams=2, gather_threads=1, gat
     except pyreloc.TransferError as error:
         raise RuntimeError(f"transfer request rejected at execution: {error}") from error
     request.request = native
+    # Consumed only once work can be launched: an allocation or validation
+    # failure above leaves the request reusable, the native request itself
+    # is single-use, and the source/destination owners stay referenced
+    # through the blocking call.
+    request.consumed = True
     try:
         pyreloc.execute_transfer(
             native,
@@ -170,10 +174,6 @@ def execute_transfer(request, *, n_buffers=4, n_streams=2, gather_threads=1, gat
         )
     except pyreloc.TransferError as error:
         raise RuntimeError(f"{request.direction} transfer failed: {error}") from error
-    finally:
-        # The source and destination owners stay referenced through the call
-        # above; nothing is released before this request's work completed.
-        del native
     return out
 
 

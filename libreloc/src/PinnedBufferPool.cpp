@@ -20,6 +20,13 @@ PinnedBufferPool::~PinnedBufferPool() {
     backend_.freeStaging(p);
 }
 
+bool PinnedBufferPool::valid() const {
+  for (void *p : buffers_)
+    if (p == nullptr)
+      return false;
+  return true;
+}
+
 int PinnedBufferPool::acquire() {
   next_ = (next_ + 1) % nBuffers();
   if (events_[next_] != 0) {

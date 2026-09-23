@@ -10,7 +10,9 @@ T2 and its R1 compiler-artifact prerequisite are implemented. T3's custom op,
 graph replacement, eager routing, cache and fallback are implemented, and R2's
 `reloc_torch.transport` adapter now executes real blocking H2D and forward D2H
 transfers behind them; the T3 CUDA acceptance suite passes on real hardware
-(see [Torch support](../torch-support.md)). T4 remains planned under
+(see [Torch support](../torch-support.md)). T4's dynamic-reuse evidence,
+prepared inference weights, examples and [installation guide](../torch-integration.md)
+are implemented; its quantized-prefold acceptance waits for C3/C4/R3 under
 [#131](https://github.com/JueonPark/sym/issues/131).
 
 These plans expand section 1 of [the project finalization plan](../project-finalization-plan.md).
@@ -115,8 +117,8 @@ The following requirements apply to every task in all four plans:
 
 ## Interfaces and ownership
 
-T1, T2 and T3 names below are implemented interfaces; T4 names remain
-proposed. The T3 / R2 bridge rows are implemented on the T3 side
+T1–T4 names below are implemented interfaces (T4's typed prefold
+integration is gated on C3/C4/R3). The T3 / R2 bridge rows are implemented on the T3 side
 (`reloc_torch.runtime.TransportAdapter` delegates to R2's
 `prepare_transfer`/`execute_transfer` and reports their absence as
 `runtime_unavailable`). `pyreloc.load_plan`, `pyreloc.bind`, and the execution functions are

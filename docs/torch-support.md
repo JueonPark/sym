@@ -1,4 +1,4 @@
-# Torch transfer inventory, compiler artifacts, guarded replacement and transport (T1/T2/T3/R2, issues #134/#135/#136/#146)
+# Torch transfer inventory, compiler artifacts, guarded replacement, transport and weight lifecycle (T1–T4/R2, issues #134–#137/#146)
 
 T1 observes eager dispatch and inventories FX graphs. T2 now imports conservative
 layout/transfer regions, preserves symbolic guards, emits reloc IR, and accepts
@@ -156,7 +156,7 @@ regions (`copy_`, mutation through a view, returned/shared intermediates, two
 transfers, noncontiguous results, view-only functions) show zero replacement and
 identical values, aliases and version counters.
 
-| Gate (T3 #136 and R2 #146) | Status on 2026-09-22 |
+| Gate (T3 #136, R2 #146, T4 #137) | Status on 2026-09-23 |
 | --- | --- |
 | Registration, fake metadata, opcheck (CPU and CUDA sources) | Passed |
 | Graph safety, fallback before launch, handle lifetime, close | Passed |
@@ -168,6 +168,9 @@ identical values, aliases and version counters.
 | Repeated allocate/transfer/free/reuse, exception cleanup, idempotent close, stale/consumed requests | Passed (64 iterations, prepared requests collected, < 1 MiB retained) |
 | Transfer to a non-current CUDA device (multi-GPU host) and four concurrent threads | Passed on a four-device host |
 | Native validation before any copy (one byte short, overflow, pad-only regions), host-to-host forward path, single use, backend failure | Passed (`libreloc-test` `Transfer.*`, both builds) |
+| Symbolic reuse: one artifact for sizes 128/192/256 (1 plan compile, 3 binds, 3 executions), symbolic capture verified, divisibility miss surfaces PyTorch's error with zero launches, strided input falls back, float16 is a distinct family | Passed (CUDA) plus a CPU host-adapter variant |
+| Prepared weights: live-slot resolution, in-place/`.data`/NumPy/`load_state_dict`/replacement/tie invalidation, fresh outputs, close/invalidate/GC cleanup, grad-mode replay | Passed (CPU host adapter; the issue's GPU live-slot test on CUDA) |
+| Prefold bridge conformance (declared int8 semantics through `s8_gather_quant`), validation, lifecycle | Passed; quantized weight preparation itself stays gated on C3/C4/R3 (`typed_artifacts_unavailable`) |
 
 Only the "R2 absent" regression test now skips, by design. Still excluded:
 `non_blocking=True` (falls back to PyTorch with `nonblocking_unavailable`),
@@ -185,14 +188,49 @@ CUDA environment: the same interpreter and dependency versions with PyTorch
 
 | Command | Environment | Result |
 | --- | --- | --- |
-| `pytest libreloc/python/tests -m 'not gpu' -q` | CPU | 471 passed, 1 skipped (R2 present), 117 deselected |
+| `pytest libreloc/python/tests -m 'not gpu' -q` | CPU | 493 passed, 1 skipped (R2 present), 123 deselected |
 | `ctest --test-dir build/torch-cpu -R 'libreloc-test\|reloc-runtime'` | CPU | 3 of 3 passed (`Transfer.*` included) |
-| `pytest libreloc/python/tests/torch_frontend -q` (all marks) | CUDA | 373 passed, 3 skipped (1 R2-absent regression, 2 float32-only witness variants) |
+| `pytest libreloc/python/tests/torch_frontend -q` (all marks) | CUDA | 401 passed, 3 skipped (1 R2-absent regression, 2 float32-only witness variants) |
 | `pytest libreloc/python/tests/torch_frontend/test_transport.py -m gpu -q` | CUDA | R2 acceptance, all passed (part of the row above) |
 | `ctest --test-dir build/torch-cuda -R 'libreloc-test\|reloc-runtime'` | CUDA | 3 of 3 passed (`CudaPipeline` and `Transfer.*` included) |
 
-The pre-R2 counts (244/454 CPU, 272 passed + 44 R2 skips CUDA) are recorded in
-the git history of this file.
+The pre-R2 counts (244/454 CPU, 272 passed + 44 R2 skips CUDA) and the pre-T4
+counts (471 CPU, 373 CUDA) are recorded in the git history of this file.
+
+## T4: dynamic inputs and weight lifecycle (#137)
+
+The installation, activation and boundary guide is
+[Torch integration](torch-integration.md). T4 adds:
+
+- **Symbolic reuse evidence.** `torch_dynamic_transfers.py` compiles
+  `x.reshape(x.shape[0] // 64, 64).t().contiguous()` followed by a transfer
+  once and runs sizes 128/192/256: one plan compile, three symbol binds, three
+  runtime executions, one Dynamo callback, exact results, in both directions
+  (D2H compiles the forward computation from a CUDA root). Running the test
+  first exposed two importer gaps, now fixed: `Tensor.t()` joins the
+  normalization vocabulary, and a derived extent such as `s0 // 64` is proven
+  at least two from Dynamo's own inequality guards (`Ne(s0 // 64, 1)`,
+  `Ne(s0 // 64, 0)` plus non-negativity), so the `contiguous()` region is
+  accepted with that extent as a bind-time guard. Declaring a minimum with
+  `mark_dynamic` is not an alternative: Dynamo rejects the reshape guard.
+- **Prepared inference weights.** `prepare_weights(module, recipes, *,
+  backend, stable=False)` resolves fully qualified parameter/buffer slots on
+  the live module at every `get`, returns fresh tensors, never rewrites slots
+  or `requires_grad`, replays through PyTorch when autograd is live, and with
+  `stable=True` keeps the transformed host layout only while identity,
+  descriptor, storage, mutation version and a byte snapshot all match.
+  Counters `weight_preparations` and `weight_invalidations` are separate from
+  plan compilation. `torch_weight_loading.py` on CUDA: observation classifies
+  9 events (3 `module_to` candidates, 6 `load_state_dict` mutations); eager
+  `module.to("cuda")` under `no_grad` executes 3 relocations with no fallback;
+  stable preparation reports 4 preparations and 2 invalidations across
+  repeated gets, an in-place update and a `load_state_dict`.
+- **Prefold bridge, gated.** `pyreloc.prefold_s8` (Torch-free, owned,
+  validated) reproduces the declared int8 semantics byte for byte through the
+  fused gather path; `reloc_torch.prefold` reports
+  `typed_artifacts_unavailable` until C3/C4/R3 define typed recipes, so float
+  weights are never quantized. Handoff fact: a compiled identity artifact
+  coalesces to one axis, so `s8_quant_pack` needs a channel-preserving plan.
 
 Observed on 2026-09-09: regular-GIL CPython 3.14.7,
 `cpython-314-x86_64-linux-gnu`, PyTorch 2.14.0+cpu and 2.14.0+cu126
