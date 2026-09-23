@@ -28,6 +28,8 @@ __all__ = (
     "UnsupportedRecipe",
     "RelocBackend",
     "eager_transfers",
+    "prepare_weights",
+    "PreparedWeights",
 )
 
 
@@ -51,6 +53,11 @@ def __getattr__(name):
 
         globals()[name] = eager_transfers
         return eager_transfers
+    if name in {"prepare_weights", "PreparedWeights"}:
+        from .weights import PreparedWeights, prepare_weights
+
+        globals().update(prepare_weights=prepare_weights, PreparedWeights=PreparedWeights)
+        return globals()[name]
     if name in {"normalize_graph", "import_graph"}:
         from .fx_import import import_graph, normalize_graph
 
