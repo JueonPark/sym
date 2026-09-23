@@ -12,6 +12,7 @@ add_library(reloc_runtime SHARED
   src/Version.cpp
   src/Decode.cpp
   src/TypedValue.cpp
+  src/TypedExecute.cpp
   src/Bind.cpp
   src/Execute.cpp
   src/CopyRun.cpp

@@ -41,6 +41,13 @@ using SymbolMap = std::map<std::string, int64_t>;
 bool evalExpr(const ExprStream &stream, const SymbolValues &symbols,
               int64_t &out, std::string &error);
 
+/// Evaluate a channel-context stream (C3 typed stages): PUSH_DIM reads the
+/// logical result coordinate `dims[i]`, PUSH_SYM a plan symbol. R3 calls
+/// this per element to select a per-channel parameter.
+bool evalChannel(const ExprStream &stream, const SymbolValues &symbols,
+                 const std::vector<int64_t> &dims, int64_t &out,
+                 std::string &error);
+
 /// Execution strategy (design decision 4). `Auto` means "let the
 /// heuristic choose"; the others force a specific executor.
 enum class Strategy {
@@ -171,6 +178,10 @@ struct TypedBoundPlan {
   ElementType resultType{};
   SymbolValues symbols;
   std::vector<BoundStage> stages;
+  /// The original pad fills with their entry stage (verbatim from the wire),
+  /// so an executor that stops at an intermediate boundary can fold each
+  /// fill to that boundary's type (R3 stage partitions).
+  std::vector<TypedFill> fills;
   std::vector<StageFootprint> cuts; // boundaries 0..stages.size()
   int64_t sourceBytes = 0;          // cuts.front().bytes
   int64_t destinationBytes = 0;     // cuts.back().bytes == layout.totalBytes

@@ -75,8 +75,14 @@ bool mulOk(int64_t a, int64_t b, int64_t &out) {
 
 } // namespace
 
-bool evalExpr(const ExprStream &stream, const SymbolValues &symbols,
-              int64_t &out, std::string &error) {
+namespace {
+
+/// The stack machine behind evalExpr and evalChannel. `dims` is null in the
+/// plan context (PUSH_DIM is an error there) and the logical result
+/// coordinates in the channel context (R3 evaluates channel maps per element).
+bool evalStream(const ExprStream &stream, const SymbolValues &symbols,
+                const std::vector<int64_t> *dims, int64_t &out,
+                std::string &error) {
   std::vector<int64_t> stack;
   stack.reserve(stream.size());
   for (const ExprToken &token : stream) {
@@ -91,7 +97,12 @@ bool evalExpr(const ExprStream &stream, const SymbolValues &symbols,
       stack.push_back(token.value);
       break;
     case ExprOp::PushDim:
-      return (error = "PUSH_DIM is not valid in a plan expression"), false;
+      if (dims == nullptr)
+        return (error = "PUSH_DIM is not valid in a plan expression"), false;
+      if (token.value < 0 || static_cast<size_t>(token.value) >= dims->size())
+        return (error = "dimension index out of range"), false;
+      stack.push_back((*dims)[token.value]);
+      break;
     case ExprOp::Add:
     case ExprOp::Sub:
     case ExprOp::Mul:
@@ -146,6 +157,19 @@ bool evalExpr(const ExprStream &stream, const SymbolValues &symbols,
     return (error = "expression did not evaluate to a single value"), false;
   out = stack.back();
   return true;
+}
+
+} // namespace
+
+bool evalExpr(const ExprStream &stream, const SymbolValues &symbols,
+              int64_t &out, std::string &error) {
+  return evalStream(stream, symbols, nullptr, out, error);
+}
+
+bool evalChannel(const ExprStream &stream, const SymbolValues &symbols,
+                 const std::vector<int64_t> &dims, int64_t &out,
+                 std::string &error) {
+  return evalStream(stream, symbols, &dims, out, error);
 }
 
 BindResult bind(const RelocationPlan &plan, const SymbolMap &symbolMap,
@@ -479,6 +503,7 @@ TypedBindResult bindTyped(const TypedRelocationPlan &plan,
     return BindError{"layout: " + layoutError->message};
   out.layout = std::get<BoundPlan>(std::move(layout));
   out.layout.typed = true;
+  out.fills = plan.fills;
   if (!resolveSymbols(plan.layout, symbolMap, out.symbols, error))
     return BindError{error};
 
