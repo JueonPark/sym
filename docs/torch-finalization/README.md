@@ -184,7 +184,11 @@ and tests named in those commands are
 T1–T4, the R1 exporter and the R2 transport adapter now exist. C1's typed
 operation semantics ([reloc-typed-semantics.md](../reloc-typed-semantics.md))
 and C2's typed folding ([reloc-typed-folding.md](../reloc-typed-folding.md))
-are implemented in the compiler; C3–C4 and R3–R4 remain unimplemented.
+are implemented in the compiler; C3's versioned typed artifact and binding
+(`sym-reloc-export --typed`, wire v1, `pyreloc.load_typed_plan` /
+`bind_typed`, typed recipes in the artifact bridge;
+[reloc-export.md](../reloc-export.md)) are implemented; C4 and R3–R4 remain
+unimplemented, so no typed plan executes yet.
 
 ```bash
 export TORCH_PYTHON=/tmp/sym-torch-cpu/bin/python

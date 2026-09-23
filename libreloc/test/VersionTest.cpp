@@ -18,6 +18,11 @@ TEST(LibrelocScaffolding, WireFormatVersionIsFrozenV0) {
   EXPECT_EQ(reloc::kWireFormatVersion, 0u);
 }
 
+TEST(LibrelocScaffolding, TypedWireFormatVersionIsV1) {
+  // C3 (issue #143): typed plans get their own version; v0 is untouched.
+  EXPECT_EQ(reloc::kTypedWireFormatVersion, 1u);
+}
+
 TEST(LibrelocScaffolding, VersionStringMentionsWireFormat) {
   const char *version = reloc::versionString();
   ASSERT_NE(version, nullptr);

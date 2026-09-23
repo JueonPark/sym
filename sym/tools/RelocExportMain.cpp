@@ -9,6 +9,9 @@
 #include "SymDialect.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/AffineMap.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Verifier.h"
 #include "mlir/Parser/Parser.h"
@@ -23,6 +26,8 @@
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <optional>
+
 using namespace mlir;
 namespace json = llvm::json;
 
@@ -35,6 +40,16 @@ llvm::cl::opt<std::string>
 llvm::cl::opt<std::string>
     manifest("manifest", llvm::cl::Required,
              llvm::cl::desc("JSON output (must not exist)"));
+// C3 (issue #143): typed plans are opt-in. The layout-only interface
+// (schema 1, wire v0) never encodes a typed value transform, so an old
+// consumer that does not know the flag keeps receiving exactly what it did.
+llvm::cl::opt<bool> typedPlans(
+    "typed",
+    llvm::cl::desc("Admit typed value transforms (reloc.cast, reloc.quantize, "
+                   "reloc.dequantize). A chain containing one exports as wire "
+                   "format v1 with manifest schema 2; a layout-only chain "
+                   "exports as wire format v0 with manifest schema 1 either "
+                   "way, byte for byte."));
 
 // Output paths are exclusively created, never truncated. Only files owned by
 // this invocation are cleaned up, including when writing the second file fails.
@@ -92,10 +107,14 @@ private:
   bool keepPlan = false, keepManifest = false;
 };
 
-json::Object baseManifest(StringRef status) {
+// Schema 1 / wire v0 is the layout-only manifest (R1); schema 2 / wire v1
+// describes a typed plan (C3). Unsupported manifests describe no plan and
+// always use schema 1 so that every consumer of either interface reads them.
+json::Object baseManifest(StringRef status, int64_t schemaVersion = 1,
+                          int64_t wireVersion = 0) {
   return json::Object{
-      {"schema_version", 1},
-      {"wire_version", 0},
+      {"schema_version", schemaVersion},
+      {"wire_version", wireVersion},
       {"status", status},
       {"compiler", json::Object{{"name", "sym-reloc-export"},
                                 {"interface_version", 1},
@@ -156,6 +175,15 @@ StringRef dtype(Type type) {
   return {};
 }
 
+// Stage parameters may also be i32 (zero points); tensors may not.
+StringRef parameterDtype(Type type) {
+  if (StringRef name = dtype(type); !name.empty())
+    return name;
+  if (type.isSignlessInteger(32))
+    return "int32";
+  return {};
+}
+
 json::Object descriptor(sym::SymbolicTensorType type) {
   json::Array shape, strides;
   // Build dense strides using JSON, avoiding signed overflow from multiplying
@@ -185,6 +213,147 @@ std::string digest(StringRef bytes) {
   auto hash = llvm::SHA256::hash(llvm::ArrayRef<uint8_t>(
       reinterpret_cast<const uint8_t *>(bytes.data()), bytes.size()));
   return llvm::toHex(hash, true);
+}
+
+//===----------------------------------------------------------------------===//
+// Schema 2 (typed plans, C3): stages, fills and parameter declarations.
+// Scalar bits are lowercase hex strings of the exact bit pattern (never
+// decimal text), like the pad fills of the wire format itself.
+//===----------------------------------------------------------------------===//
+
+std::string hexBits(const llvm::APInt &bits) {
+  return llvm::utohexstr(bits.getZExtValue(), /*LowerCase=*/true);
+}
+
+json::Value parameter(Attribute attr) {
+  if (!attr)
+    return nullptr;
+  if (auto dense = dyn_cast<DenseElementsAttr>(attr)) {
+    json::Array shape, bits;
+    for (int64_t extent : dense.getType().getShape())
+      shape.push_back(extent);
+    if (isa<FloatType>(dense.getElementType())) {
+      for (const llvm::APFloat &value : dense.getValues<llvm::APFloat>())
+        bits.push_back(hexBits(value.bitcastToAPInt()));
+    } else {
+      for (const llvm::APInt &value : dense.getValues<llvm::APInt>())
+        bits.push_back(hexBits(value));
+    }
+    return json::Object{{"kind", "inline"},
+                        {"dtype", parameterDtype(dense.getElementType())},
+                        {"shape", std::move(shape)},
+                        {"bits", std::move(bits)}};
+  }
+  auto binding = cast<reloc::ParamBindingAttr>(attr);
+  json::Array extents;
+  for (Attribute extent : binding.getExtents())
+    extents.push_back(expression(extent));
+  return json::Object{{"kind", "binding"},
+                      {"name", binding.getName()},
+                      {"dtype", parameterDtype(binding.getElementType())},
+                      {"extents", std::move(extents)}};
+}
+
+// Channel maps are affine over logical result coordinates (["dim", i]) and
+// plan symbols; their divisors may be symbolic, so floordiv/mod take two
+// channel expressions (a vocabulary of its own, see docs/reloc-export.md).
+std::optional<json::Value> channelExpression(AffineExpr expr,
+                                             ArrayAttr symbols) {
+  switch (expr.getKind()) {
+  case AffineExprKind::Constant:
+    return json::Array{"const", cast<AffineConstantExpr>(expr).getValue()};
+  case AffineExprKind::DimId:
+    return json::Array{
+        "dim", static_cast<int64_t>(cast<AffineDimExpr>(expr).getPosition())};
+  case AffineExprKind::SymbolId: {
+    unsigned position = cast<AffineSymbolExpr>(expr).getPosition();
+    if (position >= symbols.size())
+      return std::nullopt;
+    return json::Array{"symbol",
+                       cast<StringAttr>(symbols[position]).getValue()};
+  }
+  case AffineExprKind::Add:
+  case AffineExprKind::Mul:
+  case AffineExprKind::FloorDiv:
+  case AffineExprKind::Mod: {
+    auto binary = cast<AffineBinaryOpExpr>(expr);
+    auto lhs = channelExpression(binary.getLHS(), symbols);
+    auto rhs = channelExpression(binary.getRHS(), symbols);
+    if (!lhs || !rhs)
+      return std::nullopt;
+    const char *tag = expr.getKind() == AffineExprKind::Add        ? "add"
+                      : expr.getKind() == AffineExprKind::Mul      ? "mul"
+                      : expr.getKind() == AffineExprKind::FloorDiv ? "floordiv"
+                                                                   : "mod";
+    return json::Array{tag, std::move(*lhs), std::move(*rhs)};
+  }
+  case AffineExprKind::CeilDiv:
+    return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+std::optional<json::Value> stageJson(reloc::ValueStageAttr stage,
+                                     ArrayAttr symbols) {
+  json::Array shape;
+  for (Attribute extent : stage.getShape())
+    shape.push_back(expression(extent));
+  json::Object out{
+      {"transform", reloc::stringifyValueTransform(stage.getTransform())},
+      {"policy", reloc::stringifyNumericPolicy(stage.getPolicy())},
+      {"input_dtype", dtype(stage.getInputType())},
+      {"output_dtype", dtype(stage.getOutputType())},
+      {"shape", std::move(shape)},
+      {"scale", parameter(stage.getScale())},
+      {"zero_point", parameter(stage.getZeroPoint())},
+      {"axis", stage.getAxis()},
+      {"channel", nullptr}};
+  if (AffineMap channel = stage.getChannel()) {
+    if (channel.getNumResults() != 1)
+      return std::nullopt;
+    auto expr = channelExpression(channel.getResult(0), symbols);
+    if (!expr)
+      return std::nullopt;
+    out["channel"] =
+        json::Object{{"dims", static_cast<int64_t>(channel.getNumDims())},
+                     {"expr", std::move(*expr)}};
+  }
+  return json::Value(std::move(out));
+}
+
+json::Value fillJson(reloc::TypedFillAttr fill) {
+  llvm::APInt bits;
+  if (auto value = dyn_cast<FloatAttr>(fill.getValue()))
+    bits = value.getValue().bitcastToAPInt();
+  else
+    bits = cast<IntegerAttr>(fill.getValue()).getValue();
+  return json::Object{{"dst_axis", fill.getDstAxis()},
+                      {"stage", fill.getStage()},
+                      {"dtype", dtype(fill.getValue().getType())},
+                      {"bits", hexBits(bits)}};
+}
+
+// Runtime parameter declarations in first-declaration order, one per name
+// (the plan verifier guarantees consistent redeclarations).
+json::Array parameterDeclarations(reloc::TypedPlanAttr plan) {
+  json::Array out;
+  SmallVector<StringRef> seen;
+  for (reloc::ValueStageAttr stage : plan.getStages()) {
+    for (Attribute attr : {stage.getScale(), stage.getZeroPoint()}) {
+      auto binding = dyn_cast_or_null<reloc::ParamBindingAttr>(attr);
+      if (!binding || llvm::is_contained(seen, binding.getName()))
+        continue;
+      seen.push_back(binding.getName());
+      json::Array extents;
+      for (Attribute extent : binding.getExtents())
+        extents.push_back(expression(extent));
+      out.push_back(
+          json::Object{{"name", binding.getName()},
+                       {"dtype", parameterDtype(binding.getElementType())},
+                       {"extents", std::move(extents)}});
+    }
+  }
+  return out;
 }
 } // namespace
 
@@ -263,19 +432,32 @@ int main(int argc, char **argv) {
                                  "extents and supported dtype/expressions");
   Value previous = function.getArgument(0);
   size_t chainCount = 0;
+  bool typedChain = false;
   auto &block = function.front();
   for (Operation &op : block.without_terminator()) {
     if (isa<reloc::PlanResultOp, reloc::TypedPlanResultOp>(op))
       return unsupported("prefolded_input",
                          "input must contain original reloc chain operations");
-    // C1 defines the typed value transforms and their semantics; the wire v0
-    // artifact and this interface stay layout-only until C2/C3 supply the
-    // typed representation and encoder (docs/reloc-typed-semantics.md).
-    if (reloc::isTypedValueTransformOp(&op))
-      return unsupported("typed_unsupported",
-                         "typed value transforms (reloc.cast, reloc.quantize, "
-                         "reloc.dequantize) have no typed artifact "
-                         "representation or encoder yet");
+    // C1 defines the typed value transforms; C2 folds them into
+    // #reloc.typed_plan; C3 encodes that as wire format v1 behind --typed.
+    // The layout-only interface (schema 1, wire v0) never encodes them.
+    if (reloc::isTypedValueTransformOp(&op)) {
+      if (!typedPlans)
+        return unsupported("typed_unsupported",
+                           "typed value transforms (reloc.cast, "
+                           "reloc.quantize, reloc.dequantize) need --typed; "
+                           "the layout-only interface (schema 1, wire format "
+                           "v0) never encodes them");
+      typedChain = true;
+      // Binding extents enter the manifest and the wire: same vocabulary.
+      for (NamedAttribute attr : op.getAttrs())
+        if (auto binding = dyn_cast<reloc::ParamBindingAttr>(attr.getValue()))
+          for (Attribute extent : binding.getExtents())
+            if (!supportedExpr(extent))
+              return unsupported("unsupported_expression",
+                                 "parameter binding extents need supported "
+                                 "expressions");
+    }
     if (!reloc::isFoldableChainOp(&op))
       return unsupported(
           "unsupported_operation",
@@ -309,23 +491,33 @@ int main(int argc, char **argv) {
   if (failed(passes.run(*module)) || failed(verify(*module)))
     return 1;
   reloc::PlanResultOp result;
+  reloc::TypedPlanResultOp typedResult;
   size_t planCount = 0;
   bool residual = false;
   module->walk([&](Operation *op) {
     if (auto plan = dyn_cast<reloc::PlanResultOp>(op)) {
       result = plan;
       ++planCount;
+    } else if (auto plan = dyn_cast<reloc::TypedPlanResultOp>(op)) {
+      // A typed plan (C2) is never a v0 artifact: without --typed it is a
+      // residual, never a success.
+      if (typedPlans) {
+        typedResult = plan;
+        ++planCount;
+      } else {
+        residual = true;
+      }
     }
-    // A typed plan (C2) is not a v0 artifact: never present it as success.
-    if (op->hasAttr("reloc.fallback") || reloc::isFoldableChainOp(op) ||
-        isa<reloc::TypedPlanResultOp>(op))
+    if (op->hasAttr("reloc.fallback") || reloc::isFoldableChainOp(op))
       residual = true;
   });
-  if (residual || planCount != 1)
+  if (residual || planCount != 1 || (typedResult != nullptr) != typedChain)
     return unsupported("fold_unsupported",
                        "reloc-fold did not produce exactly one complete plan");
+  reloc::PlanAttr layout =
+      typedResult ? typedResult.getPlan().getLayout() : result.getPlan();
   json::Array divisibility;
-  for (auto constraint : result.getPlan().getDivisibility()) {
+  for (auto constraint : layout.getDivisibility()) {
     if (!supportedExpr(constraint.getExpr()) || constraint.getDivisor() <= 0)
       return unsupported("unsupported_expression",
                          "compiler constraint is outside manifest vocabulary");
@@ -333,9 +525,25 @@ int main(int argc, char **argv) {
         json::Object{{"expr", expression(constraint.getExpr())},
                      {"divisor", constraint.getDivisor()}});
   }
+  json::Array stages, fills;
+  if (typedResult) {
+    reloc::TypedPlanAttr plan = typedResult.getPlan();
+    for (reloc::ValueStageAttr stage : plan.getStages()) {
+      auto entry = stageJson(stage, plan.getSymbols());
+      if (!entry)
+        return unsupported("unsupported_expression",
+                           "channel map is outside manifest vocabulary");
+      stages.push_back(std::move(*entry));
+    }
+    for (reloc::TypedFillAttr fill : plan.getFills())
+      fills.push_back(fillJson(fill));
+  }
   std::vector<std::string> symbolNames;
-  auto encoded =
-      reloc::encodePlan(result.getPlan(), result.getLoc(), &symbolNames);
+  FailureOr<std::vector<uint8_t>> encoded =
+      typedResult
+          ? reloc::encodeTypedPlan(typedResult.getPlan(), typedResult.getLoc(),
+                                   &symbolNames)
+          : reloc::encodePlan(result.getPlan(), result.getLoc(), &symbolNames);
   if (failed(encoded))
     return 1;
   StringRef blob(reinterpret_cast<const char *>(encoded->data()),
@@ -343,12 +551,17 @@ int main(int argc, char **argv) {
   json::Array symbols;
   for (const auto &name : symbolNames)
     symbols.push_back(name);
-  auto meta = baseManifest("ok");
+  auto meta = typedResult ? baseManifest("ok", 2, 1) : baseManifest("ok");
   meta["plan_count"] = 1;
   meta["symbols"] = std::move(symbols);
   meta["logical_source"] = std::move(logicalSource);
   meta["logical_destination"] = std::move(logicalDestination);
   meta["constraints"] = json::Object{{"divisibility", std::move(divisibility)}};
+  if (typedResult) {
+    meta["stages"] = std::move(stages);
+    meta["fills"] = std::move(fills);
+    meta["parameters"] = parameterDeclarations(typedResult.getPlan());
+  }
   meta["plan_sha256"] = digest(blob);
   meta["input_sha256"] = inputHash;
   return outputs.publish(std::move(meta), blob) ? 0 : 1;

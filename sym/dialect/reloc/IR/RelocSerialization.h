@@ -30,6 +30,17 @@ FailureOr<std::vector<uint8_t>>
 encodePlan(PlanAttr plan, Location loc,
            std::vector<std::string> *symbolNames = nullptr);
 
+/// Encode a typed plan into wire format v1 (docs/reloc-plan-format.md, "Wire
+/// Format v1"; C3, issue #143): logical source/result descriptors, the v0
+/// layout body with its fused fills, the ordered stages (types with
+/// signedness, parameters as exact inline bits or named bindings, channel
+/// maps over the result coordinates through the wire symbol table) and the
+/// original fills with entry stages. Deterministic; the symbol table is
+/// first-use order over the sections. `symbolNames` receives that order.
+FailureOr<std::vector<uint8_t>>
+encodeTypedPlan(TypedPlanAttr plan, Location loc,
+                std::vector<std::string> *symbolNames = nullptr);
+
 } // namespace reloc
 } // namespace mlir
 

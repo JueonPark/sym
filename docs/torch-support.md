@@ -170,7 +170,7 @@ identical values, aliases and version counters.
 | Native validation before any copy (one byte short, overflow, pad-only regions), host-to-host forward path, single use, backend failure | Passed (`libreloc-test` `Transfer.*`, both builds) |
 | Symbolic reuse: one artifact for sizes 128/192/256 (1 plan compile, 3 binds, 3 executions), symbolic capture verified, divisibility miss surfaces PyTorch's error with zero launches, strided input falls back, float16 is a distinct family | Passed (CUDA) plus a CPU host-adapter variant |
 | Prepared weights: live-slot resolution, in-place/`.data`/NumPy/`load_state_dict`/replacement/tie invalidation, fresh outputs, close/invalidate/GC cleanup, grad-mode replay | Passed (CPU host adapter; the issue's GPU live-slot test on CUDA) |
-| Prefold bridge conformance (declared int8 semantics through `s8_gather_quant`), validation, lifecycle | Passed; quantized weight preparation itself stays gated on C3/C4/R3 (`typed_artifacts_unavailable`) |
+| Prefold bridge conformance (declared int8 semantics through `s8_gather_quant`), validation, lifecycle | Passed; quantized weight preparation itself stays gated on C4/R3 typed execution (`typed_artifacts_unavailable`): C3's typed artifact and binding exist ([reloc-export.md](reloc-export.md), `pyreloc.bind_typed`), no typed plan executes yet |
 
 Only the "R2 absent" regression test now skips, by design. Still excluded:
 `non_blocking=True` (falls back to PyTorch with `nonblocking_unavailable`),
@@ -228,8 +228,10 @@ The installation, activation and boundary guide is
 - **Prefold bridge, gated.** `pyreloc.prefold_s8` (Torch-free, owned,
   validated) reproduces the declared int8 semantics byte for byte through the
   fused gather path; `reloc_torch.prefold` reports
-  `typed_artifacts_unavailable` until C3/C4/R3 define typed recipes, so float
-  weights are never quantized. Handoff fact: a compiled identity artifact
+  `typed_artifacts_unavailable` until C4/R3 execute the typed recipes C3
+  defines (`reloc_torch.recipe.Quantize`, compiled with `--typed`; a bound
+  typed plan still lists `typed_execution_dispatch` in its requirements), so
+  float weights are never quantized. Handoff fact: a compiled identity artifact
   coalesces to one axis, so `s8_quant_pack` needs a channel-preserving plan.
 
 Observed on 2026-09-09: regular-GIL CPython 3.14.7,
@@ -254,7 +256,7 @@ kernel execution. Turing qualification remains pending hardware.
 | `load_state_dict` | Not captured by this raw recipe | `aten.copy_.default` | H2D mutation into resident weights/buffers | No; `mutation` |
 | Same-device `.to()` | `to` (when retained) | No eager dispatch for no-op | Identity/alias; no transfer | No; proven identity is `same_device_noop` |
 | `.to(copy=True)` | Not captured by this raw recipe | `aten._to_copy.default` | Same-device allocation | No; `same_device_copy` |
-| `.to(float16)` | `to` | `aten._to_copy.default` | Same-device cast | No; `typed_transform_unavailable` (the numerical contract is defined by C1 in [reloc-typed-semantics.md](reloc-typed-semantics.md); execution waits for C2–C4/R3) |
+| `.to(float16)` | `to` | `aten._to_copy.default` | Same-device cast | No; `typed_transform_unavailable` (the numerical contract is defined by C1 in [reloc-typed-semantics.md](reloc-typed-semantics.md); the artifact is C3's wire v1 typed plan; execution waits for C4/R3) |
 | `reshape`, `transpose` | `reshape`, `transpose` | `aten.view.default`, `aten.transpose.int` | Metadata-only views in tested recipe | No; `layout_only` |
 | `contiguous` | `contiguous` | `aten.clone.default` | Materializes tested transposed view | No as an eager transfer; `unsupported_operator`. Inside a captured region T3 accepts it when Dynamo proves every extent >= 2 (guarded `singleton_extent`), otherwise `conditional_materialization` |
 | Constant pad | `torch._C._nn.pad` | `aten.constant_pad_nd.default` | Padding recipe | No; compiler/runtime evidence absent |

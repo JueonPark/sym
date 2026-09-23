@@ -164,17 +164,28 @@ A typed plan whose channel map is not a single plan-axis coordinate, or whose
 layout has pads, is representable here and unsupported there until R3 adds a
 reference path.
 
-## 5. Handoff to C3
+## 5. Handoff to C3 (implemented, issue #143)
 
-The typed artifact must carry: the source and result descriptors; the symbol
-list (channel-map symbol positions, bound by name like plan symbols); the
-layout plan with its fused fills in the result dtype; the ordered stages
-with transform, policy, in/out types, operand shape, parameters (constants
-by value, bindings by name/type/extents) and channel maps (affine over
-result coordinates and symbols, encodable with the existing `PUSH_DIM` /
-`PUSH_SYM` stack vocabulary); and the original fills with entry stages, so a
-decoder can re-verify the fusion. Bind-time obligations are C1 §4.4's plus:
+The typed artifact carries exactly what this section asked for: wire format
+v1 ([reloc-plan-format.md, "Wire Format v1"](reloc-plan-format.md#wire-format-v1-typed-plans))
+holds the source and result descriptors, the symbol table (channel-map symbol
+positions, bound by name like plan symbols), the layout plan with its fused
+fills in the result dtype **verbatim in the v0 body encoding**, the ordered
+stages with transform, policy, in/out types with explicit signedness, operand
+shape, parameters (constants by exact bits, bindings by name/type/extents) and
+channel maps (affine over result coordinates and symbols, encoded with the
+existing `PUSH_DIM` / `PUSH_SYM` stack vocabulary in a channel context), and
+the original fills with entry stages. `reloc::decodeTypedPlan` re-verifies
+every fused fill against the C1 reference arithmetic before anything can bind.
+
+Bind-time obligations are C1 §4.4's plus, as implemented by
+`reloc::bindTyped` ([libreloc/README.md](../libreloc/README.md#typed-plans-c3-issue-143)):
 bound symbols must satisfy `divisible` constraints as before, channel maps
 evaluate over logical result coordinates (dense row-major, so the flat plan
 destination offset recovers them), and a runtime parameter's length is
-checked against the **stage operand** extent, not a plan axis extent.
+checked against the **stage operand** extent, not a plan axis extent. A bound
+typed plan reports the source, per-boundary and destination footprints
+separately and never certifies a kernel: `requirements` names what R3's
+dispatch still has to supply. The exporter emits the artifact behind
+`sym-reloc-export --typed` with manifest schema 2
+([reloc-export.md](reloc-export.md#manifest-schema-2-typed-plans---typed)).
