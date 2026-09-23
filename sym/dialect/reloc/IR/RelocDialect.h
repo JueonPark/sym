@@ -11,6 +11,10 @@
 // Include TableGen outputs for Dialect
 #include "RelocDialect.h.inc"
 
+// Include TableGen outputs for Enums (NumericPolicy, used by the attributes
+// and the typed value-transform ops)
+#include "RelocEnums.h.inc"
+
 // Include TableGen outputs for Attributes
 #define GET_ATTRDEF_CLASSES
 #include "RelocAttributes.h.inc"

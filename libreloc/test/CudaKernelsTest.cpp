@@ -340,6 +340,81 @@ TEST(CudaUnpack, InverseOfCpuPack) {
   ASSERT_EQ(0, std::memcmp(want.data(), got.data(), want.size()));
 }
 
+//===----------------------------------------------------------------------===//
+// C1 witness vectors on the actual GPU (docs/reloc-typed-semantics.md): the
+// CUDA kernels are held to the same declared policies as the CPU kernels.
+// Skipped GPU tests never qualify a CUDA semantic claim, so these run only
+// where a device exists (local, never CI).
+//===----------------------------------------------------------------------===//
+
+TEST(CudaTypedSemantics, SymmetricRneQuantizeWitnessVectors) {
+  const std::vector<float> src = {-2.5f, -1.5f,  -0.5f,     0.5f,       1.5f,
+                                  2.5f,  -129.f, -128.f,    -127.f,     126.f,
+                                  127.f, 128.f,  HUGE_VALF, -HUGE_VALF, NAN};
+  const std::vector<int8_t> want = {-2,   -2,  0,   0,   2,   2,    -128, -128,
+                                    -127, 126, 127, 127, 127, -128, -128};
+  const std::vector<float> inv = {1.0f};
+  DeviceBuffer dSrc(src.size() * 4), dInv(4), dDst(src.size());
+  ASSERT_TRUE(dSrc.valid());
+  ASSERT_TRUE(dInv.valid());
+  ASSERT_TRUE(dDst.valid());
+  upload(dSrc, src);
+  upload(dInv, inv);
+  reloc::cuda::quantizeF32S8(dSrc.as<float>(), dDst.as<int8_t>(), 1,
+                             static_cast<int64_t>(src.size()),
+                             dInv.as<float>());
+  ASSERT_EQ(cudaSuccess, cudaDeviceSynchronize());
+  std::vector<int8_t> got = download<int8_t>(dDst, want.size());
+  for (size_t i = 0; i < want.size(); ++i)
+    EXPECT_EQ(got[i], want[i]) << "i=" << i << " x=" << src[i];
+}
+
+TEST(CudaTypedSemantics, AffineDequantizeWitnessBits) {
+  const std::vector<int8_t> q = {-128, -1, 0, 1, 127};
+  const std::vector<float> scale = {0.3f};
+  const uint32_t want[] = {0xc219999au, 0xbe99999au, 0x00000000u, 0x3e99999au,
+                           0x42186667u};
+  DeviceBuffer dSrc(q.size()), dScale(4), dDst(q.size() * 4);
+  ASSERT_TRUE(dSrc.valid());
+  ASSERT_TRUE(dScale.valid());
+  ASSERT_TRUE(dDst.valid());
+  upload(dSrc, q);
+  upload(dScale, scale);
+  reloc::cuda::dequantS8F32(dSrc.as<int8_t>(), dDst.as<float>(), 1,
+                            static_cast<int64_t>(q.size()), dScale.as<float>());
+  ASSERT_EQ(cudaSuccess, cudaDeviceSynchronize());
+  std::vector<float> got = download<float>(dDst, q.size());
+  for (size_t i = 0; i < q.size(); ++i) {
+    uint32_t bits;
+    std::memcpy(&bits, &got[i], sizeof(bits));
+    EXPECT_EQ(bits, want[i]) << "q=" << static_cast<int>(q[i]);
+  }
+}
+
+TEST(CudaTypedSemantics, ExactWideningWitnessBits) {
+  // Smallest subnormal, smallest normal, largest finite, +-inf, -0, and a
+  // quiet NaN: widening is exact, so every finite/infinite bit pattern has
+  // one correct answer; the NaN must stay a NaN.
+  const std::vector<uint16_t> h = {0x0001, 0x0400, 0x7bff, 0x7c00,
+                                   0xfc00, 0x8000, 0x7e00};
+  const uint32_t want[] = {0x33800000u, 0x38800000u, 0x477fe000u,
+                           0x7f800000u, 0xff800000u, 0x80000000u};
+  DeviceBuffer dSrc(h.size() * 2), dDst(h.size() * 4);
+  ASSERT_TRUE(dSrc.valid());
+  ASSERT_TRUE(dDst.valid());
+  upload(dSrc, h);
+  reloc::cuda::convertF16F32(dSrc.as<uint16_t>(), dDst.as<float>(),
+                             static_cast<int64_t>(h.size()));
+  ASSERT_EQ(cudaSuccess, cudaDeviceSynchronize());
+  std::vector<float> got = download<float>(dDst, h.size());
+  for (size_t i = 0; i < 6; ++i) {
+    uint32_t bits;
+    std::memcpy(&bits, &got[i], sizeof(bits));
+    EXPECT_EQ(bits, want[i]) << "h=0x" << std::hex << h[i];
+  }
+  EXPECT_TRUE(std::isnan(got[6]));
+}
+
 TEST(CudaScatterRandom, PermutationRoundTrips) {
   const int64_t n = (1 << 20) + 7;
   std::vector<float> src =

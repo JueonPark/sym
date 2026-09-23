@@ -97,7 +97,12 @@ them; it is the runtime half of the compiler → runtime handoff.
   `*Parallel` wrapper that partitions over a caller-owned `GatherPool`
   with the pipeline's per-worker byte floor
   (`libreloc/test/QuantTest.cpp`; bandwidth: `bench/quant_bw.cpp`,
-  pinning via `taskset` documented in that driver's header).
+  pinning via `taskset` documented in that driver's header). The numerical
+  contract these kernels implement is now named: `symmetric_rne`
+  (quantize) and `ieee_rne` (f32→f16) in
+  [docs/reloc-typed-semantics.md](../docs/reloc-typed-semantics.md), pinned
+  by the `TypedSemantics.*` witness cases; the typed compiler path that
+  will dispatch to them is C2–C4/R3 and does not exist yet.
 - `reloc::cuda` (`reloc/CudaKernels.h`) — R0.2's GPU kernels (issue #75),
   compiled for sm_75 + sm_89 under `RELOC_ENABLE_CUDA`: the JustCopy
   ceiling (`copyF32`), plan-driven strided relocate in naive

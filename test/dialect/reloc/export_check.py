@@ -86,6 +86,18 @@ with tempfile.TemporaryDirectory() as tmp:
     }
     for name, (source, reason) in cases.items():
         run(root / name, source, 1 if name == "rank0" else 2, reason)
+    # C1 (#141): verifier-valid typed value transforms are a declared
+    # unsupported export until C2/C3 supply the typed representation and
+    # encoder, wherever they sit in the chain and whatever the layout prefix.
+    typed = {
+        "typed_cast": 'func.func @test(%t: !sym.tensor<[4, 4], f32>) -> !sym.tensor<[4, 4], f16> {\n%0 = reloc.transpose %t perm [1, 0] : !sym.tensor<[4, 4], f32> -> !sym.tensor<[4, 4], f32>\n%1 = reloc.cast %0 policy ieee_rne : !sym.tensor<[4, 4], f32> -> !sym.tensor<[4, 4], f16>\nreturn %1 : !sym.tensor<[4, 4], f16>\n}\n',
+        "typed_quantize_only": 'func.func @test(%t: !sym.tensor<["s0", 64], f32>) -> !sym.tensor<["s0", 64], i8> {\n%0 = reloc.quantize %t axis 0 scale(#reloc.binding<"w_scale" : [s0], f32>) policy symmetric_rne : !sym.tensor<["s0", 64], f32> -> !sym.tensor<["s0", 64], i8>\nreturn %0 : !sym.tensor<["s0", 64], i8>\n}\n',
+        "typed_dequantize_then_layout": 'func.func @test(%q: !sym.tensor<[4, 6], i8>) -> !sym.tensor<[6, 4], f32> {\n%0 = reloc.dequantize %q scale(dense<0.5> : tensor<f32>) policy affine : !sym.tensor<[4, 6], i8> -> !sym.tensor<[4, 6], f32>\n%1 = reloc.transpose %0 perm [1, 0] : !sym.tensor<[4, 6], f32> -> !sym.tensor<[6, 4], f32>\nreturn %1 : !sym.tensor<[6, 4], f32>\n}\n',
+    }
+    for name, source in typed.items():
+        run(root / name, source, 2, "typed_unsupported")
+    # A verifier-invalid typed op is an error (exit 1), like any invalid input.
+    run(root / "typed_invalid", typed["typed_cast"].replace("policy ieee_rne", "policy exact"), 1)
     folded = subprocess.run([str(Path(TOOL).with_name("sym-opt")), "--reloc-fold"], input=SOURCE, capture_output=True, text=True, check=True).stdout
     run(root / "prefolded", folded, 2, "prefolded_input")
     run(root / "malformed", "invalid MLIR", 1)

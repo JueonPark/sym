@@ -723,6 +723,62 @@ LogicalResult PlanAttr::verify(
 }
 
 //===----------------------------------------------------------------------===//
+// ParamBindingAttr
+//===----------------------------------------------------------------------===//
+//
+// Assembly: #reloc.binding<"name" : [extents], elementType>
+
+Attribute ParamBindingAttr::parse(AsmParser &parser, Type type) {
+  MLIRContext *ctx = parser.getContext();
+  std::string name;
+  SmallVector<Attribute> extents;
+  Type elementType;
+  if (parser.parseLess() || parser.parseString(&name) || parser.parseColon() ||
+      parseExprList(parser, extents) || parser.parseComma() ||
+      parser.parseType(elementType) || parser.parseGreater())
+    return {};
+  return ParamBindingAttr::getChecked(
+      [&]() { return parser.emitError(parser.getCurrentLocation()); }, ctx,
+      name, extents, elementType);
+}
+
+void ParamBindingAttr::print(AsmPrinter &printer) const {
+  printer << "<";
+  printer.printString(getName());
+  printer << " : ";
+  printExprList(printer, getExtents());
+  printer << ", " << getElementType() << ">";
+}
+
+LogicalResult
+ParamBindingAttr::verify(function_ref<InFlightDiagnostic()> emitError,
+                         StringRef name, ArrayRef<Attribute> extents,
+                         Type elementType) {
+  if (name.empty())
+    return emitError() << "binding name must not be empty";
+  if (extents.size() > 1)
+    return emitError() << "binding extents must have rank 0 or 1, but got "
+                          "rank "
+                       << extents.size();
+  for (Attribute extent : extents)
+    if (!isSymExpr(extent))
+      return emitError() << "binding extent must be a sym expression "
+                            "(symbol, constant, or binary), but got: "
+                         << extent;
+  if (!elementType.isIntOrFloat())
+    return emitError() << "binding element type must be an integer or float "
+                          "type, but got: "
+                       << elementType;
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// TableGen'd Enum Definitions
+//===----------------------------------------------------------------------===//
+
+#include "RelocEnums.cpp.inc"
+
+//===----------------------------------------------------------------------===//
 // RelocDialect attribute registration
 //===----------------------------------------------------------------------===//
 //
