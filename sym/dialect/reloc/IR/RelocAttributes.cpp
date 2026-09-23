@@ -773,6 +773,470 @@ ParamBindingAttr::verify(function_ref<InFlightDiagnostic()> emitError,
 }
 
 //===----------------------------------------------------------------------===//
+// ValueStageAttr (C2, issue #142)
+//===----------------------------------------------------------------------===//
+//
+// Assembly: #reloc.stage<transform policy : in -> out, shape = [exprs]
+//                        (, scale = attr)? (, zero_point = attr)?
+//                        (, axis = N)? (, channel = affine-map)?>
+
+Attribute ValueStageAttr::parse(AsmParser &parser, Type type) {
+  MLIRContext *ctx = parser.getContext();
+  if (parser.parseLess())
+    return {};
+  llvm::SMLoc loc = parser.getCurrentLocation();
+  StringRef keyword;
+  if (parser.parseKeyword(&keyword))
+    return {};
+  std::optional<ValueTransform> transform = symbolizeValueTransform(keyword);
+  if (!transform) {
+    parser.emitError(loc) << "unknown value transform '" << keyword << "'";
+    return {};
+  }
+  loc = parser.getCurrentLocation();
+  if (parser.parseKeyword(&keyword))
+    return {};
+  std::optional<NumericPolicy> policy = symbolizeNumericPolicy(keyword);
+  if (!policy) {
+    parser.emitError(loc) << "unknown numerical policy '" << keyword << "'";
+    return {};
+  }
+  Type inputType, outputType;
+  SmallVector<Attribute> shape;
+  if (parser.parseColon() || parser.parseType(inputType) ||
+      parser.parseArrow() || parser.parseType(outputType) ||
+      parser.parseComma() || parser.parseKeyword("shape") ||
+      parser.parseEqual() || parseExprList(parser, shape))
+    return {};
+  Attribute scale, zeroPoint;
+  int64_t axis = -1;
+  AffineMap channel;
+  while (succeeded(parser.parseOptionalComma())) {
+    if (succeeded(parser.parseOptionalKeyword("scale"))) {
+      if (parser.parseEqual() || parser.parseAttribute(scale))
+        return {};
+    } else if (succeeded(parser.parseOptionalKeyword("zero_point"))) {
+      if (parser.parseEqual() || parser.parseAttribute(zeroPoint))
+        return {};
+    } else if (succeeded(parser.parseOptionalKeyword("axis"))) {
+      if (parser.parseEqual() || parser.parseInteger(axis))
+        return {};
+    } else if (succeeded(parser.parseOptionalKeyword("channel"))) {
+      if (parser.parseEqual() || parser.parseAffineMap(channel))
+        return {};
+    } else {
+      parser.emitError(parser.getCurrentLocation(),
+                       "expected 'scale', 'zero_point', 'axis', or 'channel'");
+      return {};
+    }
+  }
+  if (parser.parseGreater())
+    return {};
+  return ValueStageAttr::getChecked(
+      [&]() { return parser.emitError(parser.getCurrentLocation()); }, ctx,
+      *transform, *policy, inputType, outputType, shape, scale, zeroPoint, axis,
+      channel);
+}
+
+void ValueStageAttr::print(AsmPrinter &printer) const {
+  printer << "<" << stringifyValueTransform(getTransform()) << " "
+          << stringifyNumericPolicy(getPolicy()) << " : " << getInputType()
+          << " -> " << getOutputType() << ", shape = ";
+  printExprList(printer, getShape());
+  if (getScale()) {
+    printer << ", scale = ";
+    printer.printAttribute(getScale());
+  }
+  if (getZeroPoint()) {
+    printer << ", zero_point = ";
+    printer.printAttribute(getZeroPoint());
+  }
+  if (getAxis() >= 0)
+    printer << ", axis = " << getAxis();
+  if (getChannel()) {
+    // Inline affine-map syntax (no #map aliasing: this is a map, not an
+    // AffineMapAttr).
+    printer << ", channel = " << getChannel();
+  }
+  printer << ">";
+}
+
+LogicalResult
+ValueStageAttr::verify(function_ref<InFlightDiagnostic()> emitError,
+                       ValueTransform transform, NumericPolicy policy,
+                       Type inputType, Type outputType,
+                       ArrayRef<Attribute> shape, Attribute scale,
+                       Attribute zeroPoint, int64_t axis, AffineMap channel) {
+  if (shape.empty())
+    return emitError() << "stage shape must have rank at least 1";
+  for (Attribute extent : shape)
+    if (!isSymExpr(extent))
+      return emitError() << "stage shape entry must be a sym expression "
+                            "(symbol, constant, or binary), but got: "
+                         << extent;
+  if (!inputType || !outputType)
+    return emitError() << "stage input and output types are required";
+  if (failed(verifyValueTransformSignature(emitError, transform, policy,
+                                           inputType, outputType)))
+    return failure();
+  if (transform == ValueTransform::Cast) {
+    if (scale || zeroPoint || axis >= 0 || channel)
+      return emitError() << "cast stages carry no parameters";
+    return success();
+  }
+  if (!scale)
+    return emitError() << stringifyValueTransform(transform)
+                       << " stages require a scale";
+  if (axis < -1)
+    return emitError() << "axis must be -1 (per tensor) or a channel axis, "
+                          "but got "
+                       << axis;
+  std::optional<int64_t> channelAxis;
+  if (axis >= 0)
+    channelAxis = axis;
+  if (failed(verifyQuantizationParameters(emitError, shape, scale, zeroPoint,
+                                          channelAxis, policy)))
+    return failure();
+  if (axis >= 0 && !channel)
+    return emitError() << "per-channel stage requires a channel map";
+  if (channel && axis < 0)
+    return emitError() << "channel map requires a channel axis";
+  if (channel && channel.getNumResults() != 1)
+    return emitError() << "channel map must have exactly one result";
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// TypedFillAttr (C2)
+//===----------------------------------------------------------------------===//
+//
+// Fields: dst_axis = N, stage = M, value = typed-attr. Standalone form wraps
+// them in <>, the typed plan's fills list in {}.
+
+static ParseResult parseTypedFillFields(AsmParser &parser, int64_t &dstAxis,
+                                        int64_t &stage, TypedAttr &value) {
+  return failure(parser.parseKeyword("dst_axis") || parser.parseEqual() ||
+                 parser.parseInteger(dstAxis) || parser.parseComma() ||
+                 parser.parseKeyword("stage") || parser.parseEqual() ||
+                 parser.parseInteger(stage) || parser.parseComma() ||
+                 parser.parseKeyword("value") || parser.parseEqual() ||
+                 parser.parseAttribute(value));
+}
+
+static TypedFillAttr parseTypedFillBody(AsmParser &parser) {
+  int64_t dstAxis, stage;
+  TypedAttr value;
+  if (parser.parseLBrace() ||
+      parseTypedFillFields(parser, dstAxis, stage, value) ||
+      parser.parseRBrace())
+    return {};
+  return TypedFillAttr::getChecked(
+      [&]() { return parser.emitError(parser.getCurrentLocation()); },
+      parser.getContext(), dstAxis, stage, value);
+}
+
+static void printTypedFillFields(AsmPrinter &printer, TypedFillAttr fill) {
+  printer << "dst_axis = " << fill.getDstAxis()
+          << ", stage = " << fill.getStage() << ", value = ";
+  printer.printAttribute(fill.getValue());
+}
+
+Attribute TypedFillAttr::parse(AsmParser &parser, Type type) {
+  int64_t dstAxis, stage;
+  TypedAttr value;
+  if (parser.parseLess() ||
+      parseTypedFillFields(parser, dstAxis, stage, value) ||
+      parser.parseGreater())
+    return {};
+  return TypedFillAttr::getChecked(
+      [&]() { return parser.emitError(parser.getCurrentLocation()); },
+      parser.getContext(), dstAxis, stage, value);
+}
+
+void TypedFillAttr::print(AsmPrinter &printer) const {
+  printer << "<";
+  printTypedFillFields(printer, *this);
+  printer << ">";
+}
+
+LogicalResult
+TypedFillAttr::verify(function_ref<InFlightDiagnostic()> emitError,
+                      int64_t dstAxis, int64_t stage, TypedAttr value) {
+  if (dstAxis < 0)
+    return emitError() << "dst_axis must be non-negative, but got: " << dstAxis;
+  if (stage < 0)
+    return emitError() << "stage must be non-negative, but got: " << stage;
+  if (!value)
+    return emitError() << "value must be a typed attribute";
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// TypedPlanAttr (C2)
+//===----------------------------------------------------------------------===//
+
+/// Product of a shape's extents, parse-style simplified.
+static Attribute extentProduct(ArrayRef<Attribute> extents, MLIRContext *ctx) {
+  Attribute product = sym::ConstantExprAttr::get(ctx, 1);
+  for (Attribute extent : extents)
+    product = sym::getSimplifiedBinaryExpr(ctx, sym::SymbolicExprOp::Mul,
+                                           product, extent);
+  return product;
+}
+
+/// Fused-fill equality: attribute identity, or both NaN (payload is outside
+/// conformance, docs/reloc-typed-semantics.md).
+static bool sameFill(TypedAttr lhs, TypedAttr rhs) {
+  if (lhs == rhs)
+    return true;
+  auto lhsFloat = dyn_cast<FloatAttr>(lhs);
+  auto rhsFloat = dyn_cast<FloatAttr>(rhs);
+  return lhsFloat && rhsFloat && lhsFloat.getType() == rhsFloat.getType() &&
+         lhsFloat.getValue().isNaN() && rhsFloat.getValue().isNaN();
+}
+
+Attribute TypedPlanAttr::parse(AsmParser &parser, Type type) {
+  MLIRContext *ctx = parser.getContext();
+  if (parser.parseLess())
+    return {};
+  TensorDescAttr source = parseDescField(parser, "source");
+  if (!source || parser.parseComma())
+    return {};
+  TensorDescAttr result = parseDescField(parser, "result");
+  if (!result || parser.parseComma())
+    return {};
+  SmallVector<Attribute> symbols;
+  if (succeeded(parser.parseOptionalKeyword("symbols"))) {
+    if (parser.parseEqual() ||
+        parser.parseCommaSeparatedList(AsmParser::Delimiter::Square,
+                                       [&]() -> ParseResult {
+                                         std::string name;
+                                         if (parser.parseString(&name))
+                                           return failure();
+                                         symbols.push_back(
+                                             StringAttr::get(ctx, name));
+                                         return success();
+                                       }) ||
+        parser.parseComma())
+      return {};
+  }
+  PlanAttr layout;
+  if (parser.parseKeyword("layout") || parser.parseEqual() ||
+      parser.parseAttribute(layout) || parser.parseComma())
+    return {};
+  SmallVector<ValueStageAttr> stages;
+  if (parser.parseKeyword("stages") || parser.parseEqual() ||
+      parser.parseCommaSeparatedList(AsmParser::Delimiter::Square,
+                                     [&]() -> ParseResult {
+                                       ValueStageAttr stage;
+                                       if (parser.parseAttribute(stage))
+                                         return failure();
+                                       stages.push_back(stage);
+                                       return success();
+                                     }))
+    return {};
+  SmallVector<TypedFillAttr> fills;
+  if (succeeded(parser.parseOptionalComma())) {
+    if (parser.parseKeyword("fills") || parser.parseEqual() ||
+        parser.parseCommaSeparatedList(
+            AsmParser::Delimiter::Square, [&]() -> ParseResult {
+              TypedFillAttr fill = parseTypedFillBody(parser);
+              if (!fill)
+                return failure();
+              fills.push_back(fill);
+              return success();
+            }))
+      return {};
+  }
+  if (parser.parseGreater())
+    return {};
+  return TypedPlanAttr::getChecked(
+      [&]() { return parser.emitError(parser.getCurrentLocation()); }, ctx,
+      source, result, ArrayAttr::get(ctx, symbols), layout, stages, fills);
+}
+
+void TypedPlanAttr::print(AsmPrinter &printer) const {
+  printer << "<source = tensor<";
+  printTensorDescBody(printer, getSource());
+  printer << ">, result = tensor<";
+  printTensorDescBody(printer, getResult());
+  printer << ">";
+  if (!getSymbols().empty()) {
+    printer << ", symbols = [";
+    llvm::interleaveComma(getSymbols(), printer, [&](Attribute symbol) {
+      printer.printAttribute(symbol);
+    });
+    printer << "]";
+  }
+  printer << ", layout = ";
+  printer.printAttribute(getLayout());
+  printer << ", stages = [";
+  llvm::interleaveComma(getStages(), printer, [&](ValueStageAttr stage) {
+    printer.printAttribute(stage);
+  });
+  printer << "]";
+  if (!getFills().empty()) {
+    printer << ", fills = [";
+    llvm::interleaveComma(getFills(), printer, [&](TypedFillAttr fill) {
+      printer << "{";
+      printTypedFillFields(printer, fill);
+      printer << "}";
+    });
+    printer << "]";
+  }
+  printer << ">";
+}
+
+LogicalResult TypedPlanAttr::verify(
+    function_ref<InFlightDiagnostic()> emitError, TensorDescAttr source,
+    TensorDescAttr result, ArrayAttr symbols, PlanAttr layout,
+    ArrayRef<ValueStageAttr> stages, ArrayRef<TypedFillAttr> fills) {
+  if (!source || !result || !layout || !symbols)
+    return emitError() << "source, result, symbols and layout are required";
+  for (Attribute symbol : symbols)
+    if (!isa<StringAttr>(symbol))
+      return emitError() << "symbols must be strings, but got: " << symbol;
+  if (stages.empty())
+    return emitError() << "typed plan needs at least one value stage; "
+                          "layout-only chains use #reloc.plan";
+  for (ValueStageAttr stage : stages)
+    if (!stage)
+      return emitError() << "stages must be #reloc.stage attributes";
+  for (TypedFillAttr fill : fills)
+    if (!fill)
+      return emitError() << "fills must be typed fill entries";
+  MLIRContext *ctx = source.getContext();
+  Type sourceElement = source.getElementType();
+  Type resultElement = result.getElementType();
+
+  // --- the layout plan maps the source descriptor onto the result ---
+  if (layout.getSrc().getElementType() != sourceElement)
+    return emitError() << "layout source element type ("
+                       << layout.getSrc().getElementType()
+                       << ") must match the typed plan source ("
+                       << sourceElement << ")";
+  if (layout.getDst().getElementType() != resultElement)
+    return emitError() << "layout destination element type ("
+                       << layout.getDst().getElementType()
+                       << ") must match the typed plan result ("
+                       << resultElement << ")";
+  ArrayRef<Attribute> layoutSrc = layout.getSrc().getExtents();
+  ArrayRef<Attribute> layoutDst = layout.getDst().getExtents();
+  if (layoutSrc.size() != source.getExtents().size())
+    return emitError() << "layout source rank (" << layoutSrc.size()
+                       << ") must match the typed plan source rank ("
+                       << source.getExtents().size() << ")";
+  for (size_t k = 0; k < layoutSrc.size(); ++k)
+    if (proveEqual(layoutSrc[k], source.getExtents()[k]) == Proof::Disproven)
+      return emitError() << "layout source dimension " << k
+                         << " provably disagrees with the typed plan source";
+  // Canonicalized layouts collapse dst axes: accept a rank change when the
+  // element counts do not provably disagree (the plan_result rule).
+  if (layoutDst.size() == result.getExtents().size()) {
+    for (size_t k = 0; k < layoutDst.size(); ++k)
+      if (proveEqual(layoutDst[k], result.getExtents()[k]) == Proof::Disproven)
+        return emitError() << "layout destination dimension " << k
+                           << " provably disagrees with the typed plan result";
+  } else if (proveEqual(extentProduct(layoutDst, ctx),
+                        extentProduct(result.getExtents(), ctx)) ==
+             Proof::Disproven) {
+    return emitError() << "layout destination element count provably "
+                          "disagrees with the typed plan result";
+  }
+
+  // --- the stages form a type chain from the source to the result ---
+  if (stages.front().getInputType() != sourceElement)
+    return emitError() << "stage 0 consumes " << stages.front().getInputType()
+                       << " but the typed plan source is " << sourceElement;
+  for (size_t k = 1; k < stages.size(); ++k)
+    if (stages[k].getInputType() != stages[k - 1].getOutputType())
+      return emitError() << "stage " << k << " consumes "
+                         << stages[k].getInputType() << " but stage " << k - 1
+                         << " produces " << stages[k - 1].getOutputType();
+  if (stages.back().getOutputType() != resultElement)
+    return emitError() << "stage " << stages.size() - 1 << " produces "
+                       << stages.back().getOutputType()
+                       << " but the typed plan result is " << resultElement;
+
+  // --- channel maps are written over the logical result coordinates ---
+  size_t rank = result.getExtents().size();
+  for (auto [k, stage] : llvm::enumerate(stages)) {
+    AffineMap channel = stage.getChannel();
+    if (!channel)
+      continue;
+    if (channel.getNumDims() != rank)
+      return emitError() << "stage " << k << " channel map has "
+                         << channel.getNumDims()
+                         << " dims but the typed plan result has rank " << rank;
+    if (channel.getNumSymbols() != symbols.size())
+      return emitError() << "stage " << k << " channel map has "
+                         << channel.getNumSymbols()
+                         << " symbols but the typed plan declares "
+                         << symbols.size();
+  }
+
+  // --- every fill resolves to a layout pad, enters at a real stage with the
+  // stage's dtype, and folds to the fused fill the layout carries ---
+  auto findPad = [&](int64_t dstAxis) -> PadFillAttr {
+    for (PadFillAttr pad : layout.getPadFill())
+      if (pad.getDstAxis() == dstAxis)
+        return pad;
+    return {};
+  };
+  for (TypedFillAttr fill : fills) {
+    PadFillAttr pad = findPad(fill.getDstAxis());
+    if (!pad)
+      return emitError() << "fill on dst_axis " << fill.getDstAxis()
+                         << " has no matching layout pad_fill entry";
+    if (fill.getStage() > static_cast<int64_t>(stages.size()))
+      return emitError() << "fill on dst_axis " << fill.getDstAxis()
+                         << " enters at stage " << fill.getStage()
+                         << " but the plan has " << stages.size() << " stages";
+    Type entryType = fill.getStage() == 0
+                         ? sourceElement
+                         : stages[fill.getStage() - 1].getOutputType();
+    if (fill.getValue().getType() != entryType)
+      return emitError() << "fill on dst_axis " << fill.getDstAxis()
+                         << " enters at stage " << fill.getStage() << " as "
+                         << entryType << " but has type "
+                         << fill.getValue().getType();
+    TypedAttr folded = fill.getValue();
+    for (size_t k = static_cast<size_t>(fill.getStage()); k < stages.size();
+         ++k) {
+      folded = foldFillThroughStage(folded, stages[k]);
+      if (!folded)
+        return emitError() << "fill on dst_axis " << fill.getDstAxis()
+                           << " cannot be folded through stage " << k
+                           << " (per-channel or runtime parameters)";
+    }
+    if (pad.getValue().getType() != resultElement)
+      return emitError() << "layout pad_fill on dst_axis " << pad.getDstAxis()
+                         << " must carry the result element type "
+                         << resultElement << ", but got "
+                         << pad.getValue().getType();
+    if (!sameFill(folded, pad.getValue()))
+      return emitError() << "fill on dst_axis " << fill.getDstAxis()
+                         << " folds to " << folded
+                         << " but the layout pad_fill carries "
+                         << pad.getValue();
+  }
+  for (PadFillAttr pad : layout.getPadFill()) {
+    bool found = false;
+    for (TypedFillAttr fill : fills)
+      found |= fill.getDstAxis() == pad.getDstAxis();
+    if (!found)
+      return emitError() << "layout pad_fill on dst_axis " << pad.getDstAxis()
+                         << " has no typed fill entry";
+  }
+
+  // --- a value program is never a view ---
+  if (layout.getNoCopy())
+    return emitError() << "a typed plan is never a pure view: layout no_copy "
+                          "must be false";
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // TableGen'd Enum Definitions
 //===----------------------------------------------------------------------===//
 

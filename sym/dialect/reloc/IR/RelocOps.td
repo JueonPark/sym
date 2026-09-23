@@ -133,6 +133,40 @@ def Reloc_PlanResultOp : Reloc_Op<"plan_result", [Pure]> {
   let hasVerifier = 1;
 }
 
+// #reloc.typed_plan referenced via a predicate, like Reloc_PlanAttrParam.
+def Reloc_TypedPlanAttrParam : Attr<
+    CPred<"::mlir::isa<::mlir::reloc::TypedPlanAttr>($_self)">,
+    "reloc typed plan attribute"> {
+  let storageType = [{ ::mlir::reloc::TypedPlanAttr }];
+  let returnType = [{ ::mlir::reloc::TypedPlanAttr }];
+  let convertFromStorage = "$_self";
+  let constBuilderCall = "$0";
+}
+
+def Reloc_TypedPlanResultOp : Reloc_Op<"typed_plan_result", [Pure]> {
+  let summary = "Materialized typed plan applied to a source tensor";
+  let description = [{
+    First-class result of --reloc-fold for a chain that contains typed value
+    transforms (C2, issue #142): `input` relocated and converted according
+    to `plan`, a #reloc.typed_plan. The operand matches the plan's logical
+    source descriptor and the result its logical result descriptor (element
+    types exactly, extents unless provably different). Not exportable until
+    C3 defines the typed artifact.
+
+    Example:
+    ```mlir
+    %0 = reloc.typed_plan_result %t plan(#reloc.typed_plan<...>)
+        : !sym.tensor<[2, 3], f32> -> !sym.tensor<[3, 2], i8>
+    ```
+  }];
+
+  let arguments = (ins Reloc_SymTensor:$input, Reloc_TypedPlanAttrParam:$plan);
+  let results = (outs Reloc_SymTensor:$result);
+
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
+}
+
 //===----------------------------------------------------------------------===//
 // Typed value transforms (C1, issue #141)
 //===----------------------------------------------------------------------===//
