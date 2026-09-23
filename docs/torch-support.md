@@ -1,4 +1,4 @@
-# Torch transfer inventory, compiler artifacts and guarded replacement (T1/T2/T3, issues #134/#135/#136)
+# Torch transfer inventory, compiler artifacts, guarded replacement and transport (T1/T2/T3/R2, issues #134/#135/#136/#146)
 
 T1 observes eager dispatch and inventories FX graphs. T2 now imports conservative
 layout/transfer regions, preserves symbolic guards, emits reloc IR, and accepts
@@ -8,15 +8,15 @@ compiler identity, ordered symbols and provenance, constraints, and logical
 source/destination rank. It can be rebound from concrete source metadata without
 retaining the FX capture or its original callable.
 
-**No transfer execution row is enabled.** Successful T2 folding proves compiler
-and host relocation agreement; it does not allocate a device result or launch a
-transfer. T3 now rewrites accepted FX regions and intercepts eligible eager
-transfers through one guarded executor, but every real CPU/CUDA transfer still
-runs the original PyTorch operation with the recorded reason
-`runtime_unavailable` until the R2 storage/stream adapter
+**Execution rows are enabled for blocking, dense, dtype-preserving CPU<->CUDA
+transfers** (float32/float16/int8, rank >= 1, zero storage offset, plain
+tensors, inference only) captured by `RelocBackend` or intercepted by
+`eager_transfers`. R2's storage/stream adapter
 ([#146](https://github.com/JueonPark/sym/issues/146), `reloc_torch.transport`)
-exists. Execution rows become supported only after the T3 CUDA acceptance tests
-below pass against that adapter.
+validates tensor storage, orders after the caller's CUDA stream, and executes
+the forward relocation through libreloc; the T3 CUDA acceptance suite below
+passes against it on real hardware. Everything outside that surface still runs
+the original PyTorch operation with a recorded reason.
 
 T2's real CPU tests cover identity, transpose, static merge/split, symbolic
 split, constant pad, transpose+pad, float32/float16/int8 exact bytes, compiler
@@ -40,8 +40,32 @@ plan = pyreloc.load_plan(compiled.plan_bytes)
 bound = pyreloc.bind(plan, compiled.bind_values(source_tensor))
 ```
 
-This surface prepares and binds a host relocation plan only. Device allocation,
-transfer launch and stream ordering remain R2 work.
+This surface prepares and binds a host relocation plan only; the sections
+below describe execution.
+
+## R2: tensor, stream and lifetime adapter (#146)
+
+`reloc_torch.transport.prepare_transfer(compiled, source, device, *,
+non_blocking=False)` validates without allocating or launching: frontend
+metadata guards, exact symbol binding, the standalone binder, the destination
+descriptor, the direction implied by the recipe against the real source/target
+devices, storage identity read from `tensor.untyped_storage()` (allocation
+base, capacity, offset), CUDA ownership through `cudaPointerGetAttributes`
+(`device_mismatch`), and the native span/plan-fit proof
+(`pyreloc.validate_transfer_source`). Expected exclusions raise
+`UnsupportedRecipe` with the reasons above plus `direction_mismatch`,
+`cuda_unavailable`, `nonblocking_unavailable`, `insufficient_capacity`,
+`unsupported_layout`, `integer_overflow` and `plan_mismatch`.
+`execute_transfer(request)` rechecks the source (stale requests are errors,
+not fallbacks), allocates the fresh dense destination on the target device,
+orders libreloc's private streams after the caller's current CUDA stream on
+the transfer device, runs the blocking forward transfer, and returns the
+destination once that request completed. Requests are single-use.
+
+Forward D2H applies the requested recipe to a CUDA source (staging copy plus
+forward host gather); it never routes through the inverse-scatter `d2h`. The
+`(2, 3, 4) -> permute(1, 2, 0)` witness and the transpose/pad recipes compare
+against independently constructed CPU results, not round trips.
 
 ## T3: guarded custom op, graph replacement and eager routing (#136)
 
@@ -132,17 +156,25 @@ regions (`copy_`, mutation through a view, returned/shared intermediates, two
 transfers, noncontiguous results, view-only functions) show zero replacement and
 identical values, aliases and version counters.
 
-| Gate (this issue) | Status on 2026-09-22 |
+| Gate (T3 #136 and R2 #146) | Status on 2026-09-22 |
 | --- | --- |
 | Registration, fake metadata, opcheck (CPU and CUDA sources) | Passed |
 | Graph safety, fallback before launch, handle lifetime, close | Passed |
 | Eager routing, reentrancy, threads, nonblocking exclusion | Passed |
 | Missing runtime/compiler capability, invalid bindings, empty/rank-0, dtype/layout: reason and zero launches on CUDA tensors | Passed |
-| Real H2D and forward D2H (identity, transpose, reshape+transpose, pad; f32/f16/i8; pinned/pageable) | Blocked on R2: 36 tests skip with reason `R2 transport adapter unavailable` |
-| Side-stream D2H producer, nondefault-stream H2D consumer, repeated allocation/reuse, exception cleanup | Blocked on R2: 4 tests skip with the same reason |
+| Real H2D and forward D2H through compiled graphs (identity, transpose, reshape+transpose, pad; f32/f16/i8; pinned/pageable) | Passed with R2 (`runtime_executions >= 1`, exact values/strides/offsets) |
+| Direct adapter H2D/D2H (identity, transpose, pad, permutation witness; f32/f16/i8; sizes 64/128/192; no_copy identity still copies) | Passed |
+| Side-stream D2H after a delayed producer, nondefault-stream H2D consumed there and on the default stream | Passed (three repetitions, 40 dependent matmuls of delay) |
+| Repeated allocate/transfer/free/reuse, exception cleanup, idempotent close, stale/consumed requests | Passed (64 iterations, prepared requests collected, < 1 MiB retained) |
+| Transfer to a non-current CUDA device (multi-GPU host) and four concurrent threads | Passed on a four-device host |
+| Native validation before any copy (one byte short, overflow, pad-only regions), host-to-host forward path, single use, backend failure | Passed (`libreloc-test` `Transfer.*`, both builds) |
 
-Skips are reported as skips; they are not counted as passes and do not enable
-any support row.
+Only the "R2 absent" regression test now skips, by design. Still excluded:
+`non_blocking=True` (falls back to PyTorch with `nonblocking_unavailable`),
+mutation (`copy_`), gradients, subclasses, nonzero offsets, non-dense sources,
+casts, and regions T2 does not import (for example a Dynamo `contiguous()`
+after a derived extent such as `s0 // 2`, which is `conditional_materialization`
+under dynamic shapes and needs static shapes).
 
 Exact counts for this revision. CPU environment: CPython 3.14.7
 (`cpython-314-x86_64-linux-gnu`, GIL enabled), PyTorch 2.14.0+cpu, NumPy 2.5.3,
@@ -153,13 +185,14 @@ CUDA environment: the same interpreter and dependency versions with PyTorch
 
 | Command | Environment | Result |
 | --- | --- | --- |
-| `pytest libreloc/python/tests/torch_frontend -m 'not gpu' -q` | CPU | 244 passed, 72 deselected |
-| `pytest libreloc/python/tests -m 'not gpu' -q` | CPU | 454 passed, 75 deselected |
-| `ctest --test-dir build/torch-cpu -R reloc-runtime` | CPU | 2 of 2 passed |
-| `pytest libreloc/python/tests/torch_frontend/test_custom_op.py libreloc/python/tests/torch_frontend/test_transfers_gpu.py libreloc/python/tests/torch_frontend/test_backend.py -m gpu -q` | CUDA | 20 passed, 44 skipped (R2 absent), 45 deselected |
-| `pytest libreloc/python/tests/torch_frontend -q` (all marks) | CUDA | 272 passed, 44 skipped |
-| `pytest libreloc/python/tests -m 'not gpu' -q` | CUDA | 453 passed, 1 skipped, 75 deselected |
-| `ctest --test-dir build/torch-cuda -R reloc-runtime` | CUDA | 2 of 2 passed |
+| `pytest libreloc/python/tests -m 'not gpu' -q` | CPU | 471 passed, 1 skipped (R2 present), 117 deselected |
+| `ctest --test-dir build/torch-cpu -R 'libreloc-test\|reloc-runtime'` | CPU | 3 of 3 passed (`Transfer.*` included) |
+| `pytest libreloc/python/tests/torch_frontend -q` (all marks) | CUDA | 373 passed, 3 skipped (1 R2-absent regression, 2 float32-only witness variants) |
+| `pytest libreloc/python/tests/torch_frontend/test_transport.py -m gpu -q` | CUDA | R2 acceptance, all passed (part of the row above) |
+| `ctest --test-dir build/torch-cuda -R 'libreloc-test\|reloc-runtime'` | CUDA | 3 of 3 passed (`CudaPipeline` and `Transfer.*` included) |
+
+The pre-R2 counts (244/454 CPU, 272 passed + 44 R2 skips CUDA) are recorded in
+the git history of this file.
 
 Observed on 2026-09-09: regular-GIL CPython 3.14.7,
 `cpython-314-x86_64-linux-gnu`, PyTorch 2.14.0+cpu and 2.14.0+cu126
@@ -176,10 +209,10 @@ kernel execution. Turing qualification remains pending hardware.
 
 | Python scenario | Raw Dynamo target | ATen observation | Direction / semantics | Candidate and current exclusion |
 | --- | --- | --- | --- | --- |
-| `.to("cuda")`, `.cuda()` | `to`, `cuda` | `aten._to_copy.default` | H2D | Blocking dense inference float32/float16/int8 only; candidate, `needs_compile_and_runtime_check`. T3 replaces the region / intercepts the call; execution falls back with `runtime_unavailable` until R2 |
-| `.cpu()` | `cpu` | `aten._to_copy.default` | D2H | Same restrictions; candidate, `needs_compile_and_runtime_check`. Same T3 status |
+| `.to("cuda")`, `.cuda()` | `to`, `cuda` | `aten._to_copy.default` | H2D | **Supported** (opt-in): blocking dense inference float32/float16/int8, zero offset, plain tensors, via `RelocBackend` regions or `eager_transfers`; validated on RTX 2080 Ti with R2 |
+| `.cpu()` | `cpu` | `aten._to_copy.default` | D2H | **Supported** (opt-in) with the same restrictions; forward relocation of the CUDA source |
 | `copy_` | `copy_` | `aten.copy_.default` | H2D/D2H mutation | No; `mutation` |
-| Frozen module parameters and buffers `.to()` | Not captured by this raw recipe | `aten._to_copy.default` | H2D, phase `module_to` | Candidate under same restrictions; `needs_compile_and_runtime_check` |
+| Frozen module parameters and buffers `.to()` | Not captured by this raw recipe | `aten._to_copy.default` | H2D, phase `module_to` | **Supported** (opt-in) inside `eager_transfers` under the same restrictions; weight lifecycle management is T4 |
 | `load_state_dict` | Not captured by this raw recipe | `aten.copy_.default` | H2D mutation into resident weights/buffers | No; `mutation` |
 | Same-device `.to()` | `to` (when retained) | No eager dispatch for no-op | Identity/alias; no transfer | No; proven identity is `same_device_noop` |
 | `.to(copy=True)` | Not captured by this raw recipe | `aten._to_copy.default` | Same-device allocation | No; `same_device_copy` |
@@ -195,12 +228,13 @@ Current tests: [raw Dynamo / symbolic ATen / real CUDA graph tests](../libreloc/
 [eager CPU/CUDA observations](../libreloc/python/tests/torch_frontend/test_inventory.py),
 [pure eligibility contract](../libreloc/python/tests/torch_frontend/test_contract.py),
 and [CLI accounting/failure tests](../libreloc/python/tests/torch_frontend/test_inventory_cli.py).
+R2 tests: [transport adapter](../libreloc/python/tests/torch_frontend/test_transport.py)
+and native [`TransferTest.cpp`](../libreloc/test/TransferTest.cpp).
 T3 tests: [preflight and fallback](../libreloc/python/tests/torch_frontend/test_runtime.py),
 [registration and fake metadata](../libreloc/python/tests/torch_frontend/test_custom_op.py),
 [graph rewriting and eager safety](../libreloc/python/tests/torch_frontend/test_backend.py),
 [keys, eviction, ownership and counters](../libreloc/python/tests/torch_frontend/test_cache.py),
 and [actual transfers, streams and allocations](../libreloc/python/tests/torch_frontend/test_transfers_gpu.py).
-Stream, lifetime and real-transfer acceptance stays open until R2 is delivered.
 
 Metadata snapshots contain shapes, strides, offset, dtype, device index, pinning,
 layout, subclass status and capacity. Symbolic expressions are strings, never

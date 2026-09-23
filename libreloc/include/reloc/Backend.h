@@ -4,7 +4,8 @@
 // against this interface. HostBackend implements it with plain memory + worker
 // threads (CI-testable); CudaBackend with pinned alloc + cudaMemcpyAsync +
 // events (RELOC_ENABLE_CUDA, tested locally). No exceptions cross this
-// interface -- failures are reported by return value.
+// interface -- failures are reported by return value or through the sticky
+// failed()/error() state added for R2 (issue #146).
 //
 //===----------------------------------------------------------------------===//
 
@@ -13,6 +14,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 
 namespace reloc {
 
@@ -49,6 +51,25 @@ public:
 
   /// Non-blocking: true iff `ev` has completed (or ev == 0).
   virtual bool queryEvent(EventHandle ev) = 0;
+
+  /// Order every private queue after the work already enqueued on an
+  /// external producer stream (a caller's CUDA stream, erased to void*).
+  /// Backends without external streams have nothing to wait for and return
+  /// true. Returns false (and records the error) on failure.
+  virtual bool waitStream(const void * /*externalStream*/) { return true; }
+
+  /// Sticky failure state: true once any operation on this backend failed.
+  /// Callers check it after a phase instead of catching exceptions.
+  virtual bool failed() const { return false; }
+
+  /// Diagnostic for the first recorded failure; empty when none.
+  virtual const std::string &error() const {
+    static const std::string none;
+    return none;
+  }
+
+  /// Device this backend's queues belong to; -1 for host-only backends.
+  virtual int device() const { return -1; }
 };
 
 } // namespace reloc

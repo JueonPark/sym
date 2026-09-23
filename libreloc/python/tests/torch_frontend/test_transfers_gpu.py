@@ -82,12 +82,18 @@ D2H_FUNCTIONS = {
 }
 
 
+# reshape+transpose derives an extent (s0 // 2) that Dynamo's 0/1
+# specialization cannot prove >= 2, so its contiguous() is imported only with
+# static shapes (T2: conditional_materialization under dynamic shapes).
+DYNAMIC = {"identity": True, "transpose": True, "reshape_transpose": False, "pad": True}
+
+
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("pinned", [False, True], ids=["pageable", "pinned"])
 @pytest.mark.parametrize("name", sorted(H2D_FUNCTIONS))
 def test_h2d_layouts_match_pytorch_exactly(real_backend, name, dtype, pinned):
     fn = H2D_FUNCTIONS[name]
-    compiled = torch.compile(fn, backend=real_backend, dynamic=True)
+    compiled = torch.compile(fn, backend=real_backend, dynamic=DYNAMIC[name])
     with torch.no_grad():
         for rows in (4, 6):
             x = _source((rows, 6), dtype, pinned=pinned)
@@ -99,7 +105,7 @@ def test_h2d_layouts_match_pytorch_exactly(real_backend, name, dtype, pinned):
 @pytest.mark.parametrize("name", sorted(D2H_FUNCTIONS))
 def test_forward_d2h_layouts_match_the_cuda_source_function(real_backend, name, dtype):
     fn = D2H_FUNCTIONS[name]
-    compiled = torch.compile(fn, backend=real_backend, dynamic=True)
+    compiled = torch.compile(fn, backend=real_backend, dynamic=DYNAMIC[name])
     with torch.no_grad():
         for rows in (4, 6):
             x = _source((rows, 6), dtype, device="cuda")
