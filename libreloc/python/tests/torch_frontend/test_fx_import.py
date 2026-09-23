@@ -388,6 +388,27 @@ def test_capture_metadata_is_not_enough_to_replay_python_numeric_overloads():
     assert 'unknown_side_effect' in {e.reason for e in report.exclusions}
 
 
+def test_grad_mode_toggle_inside_the_region_is_an_unknown_side_effect():
+    # Dynamo lowers `with torch.no_grad():` to torch._C._set_grad_enabled calls;
+    # one between the layout operations and the transfer must exclude the region
+    # rather than be reordered around by replacement.
+    api = importer()
+    graph = torch.fx.Graph()
+    x = graph.placeholder('x')
+    t = graph.call_method('t', (x,))
+    graph.call_function(torch._C._set_grad_enabled, (False,))
+    c = graph.call_method('contiguous', (t,))
+    graph.output(graph.call_method('to', (c, 'cuda')))
+    prior = torch.is_grad_enabled()
+    try:
+        report = api.import_graph(torch.fx.GraphModule({}, graph), (torch.ones(4, 6),))
+    finally:
+        torch.set_grad_enabled(prior)
+    assert torch.is_grad_enabled() == prior  # import never executes graph nodes
+    assert not report.candidates
+    assert 'unknown_side_effect' in {e.reason for e in report.exclusions}
+
+
 def test_positional_to_copy_contract_is_not_lost():
     api = importer()
     gm = torch.fx.symbolic_trace(lambda x: x.to('cuda', torch.float32, False, True))

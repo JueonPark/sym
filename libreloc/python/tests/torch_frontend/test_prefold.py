@@ -127,6 +127,10 @@ def test_torch_facing_bridge_returns_an_owned_int8_image(compiler):
     image = prefold_s8_image(_bound(compiler, _transpose(), x), x, inv, output_spec="s8_gather_quant")
     assert image.dtype == torch.int8 and image.shape == (6, 4)
     assert torch.equal(image, reference_q(x.t().contiguous(), inv))
+    shaped = prefold_s8_image(_bound(compiler, _transpose(), x), x, inv, output_spec="s8_gather_quant", shape=(2, 3, 4))
+    assert shaped.shape == (2, 3, 4) and torch.equal(shaped.reshape(6, 4), image)
+    with pytest.raises(RuntimeError, match="holds 12 bytes"):
+        prefold_s8_image(_bound(compiler, _transpose(), x), x, inv, output_spec="s8_gather_quant", shape=(3, 4))
     with pytest.raises(TypeError):
         prefold_s8_image(_bound(compiler, _transpose(), x), x.to(torch.float16), inv, output_spec="s8_gather_quant")
     with pytest.raises(ValueError):

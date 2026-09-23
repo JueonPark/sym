@@ -28,6 +28,11 @@ public:
   int nBuffers() const { return static_cast<int>(buffers_.size()); }
   size_t bufferBytes() const { return bufferBytes_; }
 
+  /// True iff every staging buffer was allocated. The constructor cannot
+  /// report an allocation failure (no exceptions cross CopyBackend), so
+  /// callers that must fail by value check this before the first acquire().
+  bool valid() const;
+
   /// Next buffer index (round-robin). Blocks until that buffer's pending event
   /// (if any) has completed, then clears it.
   int acquire();

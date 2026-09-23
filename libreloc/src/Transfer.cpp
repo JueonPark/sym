@@ -2,8 +2,10 @@
 
 #include "reloc/Transfer.h"
 
+#include "reloc/ChunkSchedule.h"
 #include "reloc/Execute.h"
 #include "reloc/GatherPool.h"
+#include "reloc/PinnedBufferPool.h"
 #include "reloc/Pipeline.h"
 
 #include <algorithm>
@@ -310,6 +312,20 @@ std::optional<TransferError> backendFailure(const CopyBackend &backend,
   return fail("backend_failure", std::string(phase) + ": " + backend.error());
 }
 
+// A CUDA view must belong to the device the backend's queues run on; the
+// validator cannot know the backend, so this is the executor's check.
+std::optional<TransferError> checkDevice(const BufferView &view,
+                                         const CopyBackend &backend,
+                                         const char *what) {
+  if (view.kind != MemoryKind::Cuda || backend.device() < 0 ||
+      view.device == backend.device())
+    return std::nullopt;
+  return fail("device_mismatch", std::string(what) + " view is on device " +
+                                     std::to_string(view.device) +
+                                     " but the backend runs on device " +
+                                     std::to_string(backend.device()));
+}
+
 } // namespace
 
 std::optional<TransferError> executeTransfer(TransferRequest &request,
@@ -319,6 +335,10 @@ std::optional<TransferError> executeTransfer(TransferRequest &request,
     return fail("already_executed", "transfer request was already executed");
   if (backend.failed())
     return backendFailure(backend, "backend unusable before launch");
+  if (auto error = checkDevice(request.source, backend, "source"))
+    return error;
+  if (auto error = checkDevice(request.destination, backend, "destination"))
+    return error;
   request.consumed = true;
 
   const auto *src = reinterpret_cast<const uint8_t *>(request.source.base) +
@@ -332,12 +352,31 @@ std::optional<TransferError> executeTransfer(TransferRequest &request,
     return backendFailure(backend, "ordering after the caller stream failed");
 
   if (request.direction == TransferDirection::HostToDevice) {
-    if (options.gather != nullptr)
-      executeH2DPipelined(request.bound, src, dst, backend, options.nBuffers,
-                          options.chunkSizeOverride, *options.gather);
-    else
-      executeH2DPipelined(request.bound, src, dst, backend, options.nBuffers,
-                          options.chunkSizeOverride, options.gatherThreads);
+    // The staging ring is built here, not inside the pipeline, so a failed
+    // pinned allocation is reported by value instead of dereferenced.
+    const int nBuffers = std::max(1, options.nBuffers);
+    ChunkSchedule sched =
+        planChunks(request.bound, nBuffers, options.chunkSizeOverride);
+    PinnedBufferPool pool(backend, nBuffers, sched.maxChunkBytes);
+    if (!pool.valid()) {
+      std::string detail = "pinned staging allocation failed for " +
+                           std::to_string(nBuffers) + " x " +
+                           std::to_string(sched.maxChunkBytes) + " bytes";
+      if (!backend.error().empty())
+        detail += ": " + backend.error();
+      return fail("backend_failure", detail);
+    }
+    if (options.gather != nullptr) {
+      executeH2DPipelined(request.bound, src, dst, backend, pool,
+                          options.chunkSizeOverride, options.gather);
+    } else if (options.gatherThreads == 1) {
+      executeH2DPipelined(request.bound, src, dst, backend, pool,
+                          options.chunkSizeOverride, /*gather=*/nullptr);
+    } else {
+      GatherPool gather(options.gatherThreads);
+      executeH2DPipelined(request.bound, src, dst, backend, pool,
+                          options.chunkSizeOverride, &gather);
+    }
     if (backend.failed())
       return backendFailure(backend, "host-to-device pipeline failed");
     return std::nullopt;

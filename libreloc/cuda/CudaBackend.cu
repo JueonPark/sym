@@ -13,17 +13,22 @@ cudaStream_t asStream(void *p) { return static_cast<cudaStream_t>(p); }
 cudaEvent_t asEvent(void *p) { return static_cast<cudaEvent_t>(p); }
 
 // Select the backend's device for the enclosing scope and restore the
-// caller's device afterwards. Destructors must not fail loudly, so the
-// restore status is deliberately ignored.
+// caller's device afterwards. `status` keeps the first failing selection
+// call so the constructor can record an invalid ordinal instead of silently
+// creating resources on the caller's device. Destructors must not fail
+// loudly, so the restore status is deliberately ignored.
 struct DeviceScope {
   int previous = -1;
   bool switched = false;
+  cudaError_t status = cudaSuccess;
   explicit DeviceScope(int device) {
     if (device < 0)
       return;
-    if (cudaGetDevice(&previous) != cudaSuccess)
+    status = cudaGetDevice(&previous);
+    if (status != cudaSuccess || previous == device)
       return;
-    if (previous != device && cudaSetDevice(device) == cudaSuccess)
+    status = cudaSetDevice(device);
+    if (status == cudaSuccess)
       switched = true;
   }
   ~DeviceScope() {
@@ -53,6 +58,10 @@ CudaBackend::CudaBackend(int numStreams, int device) {
   }
   device_ = device;
   DeviceScope scope(device_);
+  if (!check(static_cast<int>(scope.status), "cudaSetDevice")) {
+    streams_.push_back(nullptr); // keep numQueues() >= 1; failed() is set
+    return;
+  }
   streams_.reserve(numStreams);
   for (int i = 0; i < numStreams; ++i) {
     cudaStream_t s = nullptr;

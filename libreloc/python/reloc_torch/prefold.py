@@ -38,12 +38,14 @@ def prefold_eligibility(recipe, parameters=None):
     return typed_prefold_capability()
 
 
-def prefold_s8_image(bound, source, inv_scales, *, output_spec, gather_threads=1):
+def prefold_s8_image(bound, source, inv_scales, *, output_spec, shape=None, gather_threads=1):
     """Fold a float32 CPU tensor into an owned int8 host tensor through ``pyreloc.prefold_s8``.
 
     ``bound`` is the bound plan whose outer (channel) extent matches
-    ``inv_scales``; the result has the plan's packed destination shape and dtype
-    ``int8`` because quantization was explicitly requested.
+    ``inv_scales``. The result has dtype ``int8`` because quantization was
+    explicitly requested and takes ``shape`` (the logical destination shape)
+    when given; otherwise the bound plan's coalesced extents, which may merge
+    logical axes. The byte count must match the artifact either way.
     """
     import torch
     from pyreloc.torch_interop import as_ptr
@@ -61,8 +63,13 @@ def prefold_s8_image(bound, source, inv_scales, *, output_spec, gather_threads=1
         bound, *as_ptr(contiguous), *as_ptr(scales), output_spec=output_spec,
         gather_threads=gather_threads,
     ) as handle:
-        image = torch.empty(list(bound.extents), dtype=torch.int8)
-        assert image.numel() == handle.nbytes
+        result_shape = list(shape) if shape is not None else list(bound.extents)
+        image = torch.empty(result_shape, dtype=torch.int8)
+        if image.numel() != handle.nbytes:
+            raise RuntimeError(
+                f"prefold image shape {tuple(result_shape)} holds {image.numel()} bytes "
+                f"but the artifact has {handle.nbytes}"
+            )
         handle.copy_to(*as_ptr(image))
     return image
 

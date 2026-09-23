@@ -176,8 +176,12 @@ logical view (`kind` is `"host"` or `"cuda"`). Torch callers read `base`,
   are `unsupported_layout`), element size equal to the plan's, capacities
   covering the checked spans (`insufficient_capacity`), no arithmetic
   overflow (`integer_overflow`), plan/view agreement (`plan_mismatch`,
-  `direction_mismatch`). A host view is admitted on either end so the whole
-  path runs under `HostBackend` in CI.
+  `direction_mismatch`), and at execution a CUDA view on the backend's own
+  device (`device_mismatch`). A host view is admitted on either end so the
+  whole path runs under `HostBackend` in CI. The validator proves declared
+  views against declared allocations; it cannot verify raw addresses, so the
+  Torch adapter derives both from the tensor's storage and proves the CUDA
+  ordinal with `cuda_pointer_device`.
 - Blocking only: `non_blocking=True` is not offered by this API; the Torch
   adapter (`reloc_torch.transport`) reports it as `nonblocking_unavailable`.
 

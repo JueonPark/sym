@@ -37,9 +37,13 @@ enum class MemoryKind : uint8_t { Host, Cuda };
 enum class TransferDirection : uint8_t { HostToDevice, DeviceToHost };
 
 /// A framework buffer as the caller declares it: the allocation the logical
-/// tensor lives in, plus the logical view over it. Callers are responsible
-/// for truthful allocation declarations and for keeping owners alive through
-/// the blocking call.
+/// tensor lives in, plus the logical view over it. Trust boundary: the
+/// validator proves that the *declared* view and plan fit the *declared*
+/// allocation; it cannot verify raw addresses, capacities or device ordinals
+/// against the allocator. Callers are responsible for truthful declarations
+/// (the Torch adapter derives them from the tensor's storage and proves the
+/// ordinal with cudaPointerGetAttributes) and for keeping owners alive
+/// through the blocking call.
 struct BufferView {
   uintptr_t base = 0;           // allocation base address
   size_t capacityBytes = 0;     // bytes owned from `base`
@@ -54,7 +58,7 @@ struct BufferView {
 /// A stable reason code plus a human-readable detail. Codes:
 ///   invalid_view, unsupported_layout, insufficient_capacity,
 ///   integer_overflow, plan_mismatch, direction_mismatch, already_executed,
-///   backend_failure.
+///   device_mismatch, backend_failure.
 struct TransferError {
   std::string code;
   std::string message;
@@ -104,8 +108,11 @@ struct TransferOptions {
 /// Execute a validated request through `backend` and block until this
 /// request's work has completed (never a device-wide synchronization).
 /// Marks the request consumed before launching; a consumed request fails
-/// with already_executed before any work. Backend failures surface as
-/// backend_failure with the backend's diagnostic. Never throws.
+/// with already_executed before any work. A CUDA view whose ordinal differs
+/// from backend.device() fails with device_mismatch before any work (host
+/// backends, device() < 0, accept every ordinal). Staging allocation and
+/// backend failures surface as backend_failure with the backend's
+/// diagnostic. Never throws.
 std::optional<TransferError> executeTransfer(TransferRequest &request,
                                              CopyBackend &backend,
                                              const TransferOptions &options);

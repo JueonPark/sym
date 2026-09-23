@@ -188,9 +188,9 @@ CUDA environment: the same interpreter and dependency versions with PyTorch
 
 | Command | Environment | Result |
 | --- | --- | --- |
-| `pytest libreloc/python/tests -m 'not gpu' -q` | CPU | 492 passed, 1 skipped (R2 present), 123 deselected |
+| `pytest libreloc/python/tests -m 'not gpu' -q` | CPU | 493 passed, 1 skipped (R2 present), 123 deselected |
 | `ctest --test-dir build/torch-cpu -R 'libreloc-test\|reloc-runtime'` | CPU | 3 of 3 passed (`Transfer.*` included) |
-| `pytest libreloc/python/tests/torch_frontend -q` (all marks) | CUDA | 400 passed, 3 skipped (1 R2-absent regression, 2 float32-only witness variants) |
+| `pytest libreloc/python/tests/torch_frontend -q` (all marks) | CUDA | 401 passed, 3 skipped (1 R2-absent regression, 2 float32-only witness variants) |
 | `pytest libreloc/python/tests/torch_frontend/test_transport.py -m gpu -q` | CUDA | R2 acceptance, all passed (part of the row above) |
 | `ctest --test-dir build/torch-cuda -R 'libreloc-test\|reloc-runtime'` | CUDA | 3 of 3 passed (`CudaPipeline` and `Transfer.*` included) |
 

@@ -353,6 +353,60 @@ TEST(Transfer, BackendFailuresPropagateWithoutRetry) {
             static_cast<long>(dst.size()));
 }
 
+TEST(Transfer, HostToDeviceStagingFailureIsReportedNotDereferenced) {
+  BoundPlan b = transposePlan();
+  std::vector<uint8_t> src = iotaBytes(24, 4);
+  std::vector<uint8_t> dst(static_cast<size_t>(b.totalBytes), 0xCD);
+  auto validated = reloc::validateTransfer(
+      b, hostView(src.data(), src.size(), 0, {4, 6}, {6, 1}, 4),
+      hostView(dst.data(), dst.size(), 0, {6, 4}, {4, 1}, 4),
+      TransferDirection::HostToDevice);
+  auto request = std::get<TransferRequest>(validated);
+  FailingStagingBackend backend;
+  TransferOptions options;
+  options.nBuffers = 2;
+  auto error = reloc::executeTransfer(request, backend, options);
+  ASSERT_TRUE(error.has_value());
+  EXPECT_EQ(error->code, "backend_failure");
+  EXPECT_NE(error->message.find("pinned staging allocation failed"),
+            std::string::npos);
+  EXPECT_TRUE(request.consumed);
+  EXPECT_EQ(std::count(dst.begin(), dst.end(), 0xCD),
+            static_cast<long>(dst.size()));
+}
+
+class DeviceOneBackend : public reloc::HostBackend {
+public:
+  DeviceOneBackend() : HostBackend(1) {}
+  int device() const override { return 1; }
+};
+
+TEST(Transfer, CudaViewOnAnotherDeviceFailsBeforeAnyWork) {
+  BoundPlan b = transposePlan();
+  std::vector<uint8_t> src = iotaBytes(24, 4);
+  std::vector<uint8_t> dst(static_cast<size_t>(b.totalBytes), 0xCD);
+  BufferView destination =
+      hostView(dst.data(), dst.size(), 0, {6, 4}, {4, 1}, 4);
+  destination.kind = MemoryKind::Cuda;
+  destination.device = 0;
+  auto validated = reloc::validateTransfer(
+      b, hostView(src.data(), src.size(), 0, {4, 6}, {6, 1}, 4), destination,
+      TransferDirection::HostToDevice);
+  ASSERT_EQ(codeOf(validated), "ok");
+  auto request = std::get<TransferRequest>(validated);
+  DeviceOneBackend backend;
+  auto error = reloc::executeTransfer(request, backend, TransferOptions{});
+  ASSERT_TRUE(error.has_value());
+  EXPECT_EQ(error->code, "device_mismatch");
+  EXPECT_FALSE(request.consumed);
+  EXPECT_EQ(std::count(dst.begin(), dst.end(), 0xCD),
+            static_cast<long>(dst.size()));
+  // A host backend (device() < 0) accepts any ordinal.
+  reloc::HostBackend host(1);
+  ASSERT_FALSE(
+      reloc::executeTransfer(request, host, TransferOptions{}).has_value());
+}
+
 TEST(Transfer, SourceOnlyValidationMatchesFullValidation) {
   BoundPlan b = transposePlan();
   std::vector<uint8_t> src = iotaBytes(24, 4);

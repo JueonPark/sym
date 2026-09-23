@@ -71,6 +71,13 @@ def _identity_recipe(descriptor, direction):
     return identity_recipe(len(descriptor.shape), descriptor.dtype, direction)
 
 
+def _byte_snapshot(tensor):
+    """Owned copy of the tensor's bytes: the freshness witness must not alias the slot."""
+    import torch
+
+    return tensor.contiguous().view(torch.uint8).reshape(-1).clone()
+
+
 class _StableState:
     __slots__ = ("fingerprint", "saved_bytes", "prepared")
 
@@ -186,7 +193,7 @@ class PreparedWeights:
                 # Inference API used with autograd live: keep PyTorch semantics
                 # and record it instead of detaching behind the caller's back.
                 self._backend.diagnostics.record_fallback("requires_grad")
-                return replay(recipe, source).to(device)
+                return replay(recipe, source).to(device, copy=True)
             src = source.detach()
             try:
                 compiled = self._compile(name, recipe)
@@ -223,7 +230,7 @@ class PreparedWeights:
         # Data caching only for plain dense CPU sources the guards admit; other
         # sources (external storage, devices) take the current-value path.
         cacheable = src.device.type == "cpu" and source_reason(src) is None
-        current = src.contiguous().view(torch.uint8).reshape(-1) if cacheable else None
+        current = _byte_snapshot(src) if cacheable else None
         if state is not None:
             unchanged = (
                 cacheable
@@ -240,19 +247,22 @@ class PreparedWeights:
             prepared = self._materialize(compiled, recipe, src)
             if prepared is None:
                 return replay(recipe, src).to(device, copy=True)
-            # Publish only if the source did not change while preparing.
+            # Publish only if the source did not change while preparing: the
+            # snapshot taken above is owned, so this compares the live bytes
+            # against a copy, not against themselves.
             if self._fingerprint(self._slot(name)) != fingerprint or not torch.equal(
-                src.contiguous().view(torch.uint8).reshape(-1), current
+                _byte_snapshot(src), current
             ):
                 return replay(recipe, self._slot(name).detach()).to(device, copy=True)
-            state = _StableState(fingerprint, current.clone(), prepared)
+            state = _StableState(fingerprint, current, prepared)
             self._states[name] = state
             self._backend.diagnostics.increment("weight_preparations")
-        # The prepared host tensor already has the destination layout; move it
-        # with an identity artifact derived from that descriptor.
-        identity = self._backend.compile_recipe(
-            _identity_recipe(compiled.logical_destination, "h2d" if device.type == "cuda" else recipe.direction)
-        )
+        # The prepared host tensor already has the destination layout. A CPU
+        # target needs a copy, not a transfer; a CUDA target moves it with an
+        # identity artifact derived from that descriptor.
+        if device.type != "cuda":
+            return state.prepared.to(device, copy=True)
+        identity = self._backend.compile_recipe(_identity_recipe(compiled.logical_destination, "h2d"))
         entry = self._entry(
             identity, lambda tensor, *symbols: tensor.to(device, copy=True), f"weight/{name}/prepared"
         )

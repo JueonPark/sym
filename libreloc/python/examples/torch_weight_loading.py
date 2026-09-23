@@ -15,9 +15,11 @@ Four scenarios, each asserting the numerical result against plain PyTorch:
    (C3/C4/R3); the gate's reason is reported and the layout-only scenarios stay
    runnable.
 
-With ``--device cpu`` the adapter reports ``direction_mismatch`` and every
-relocation runs through the recorded PyTorch fallback, which exercises the
-lifecycle mechanics without CUDA.
+With ``--device cpu`` no device transfer exists: ``module.to("cpu")`` moves
+nothing, and stable preparation builds the layout through the CPU relocation
+executor and copies it for the CPU target, so the lifecycle mechanics
+(preparations, invalidations, freshness) run without CUDA and without the
+adapter.
 """
 import argparse
 import json

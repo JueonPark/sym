@@ -56,10 +56,10 @@ struct OwnedPrefold {
       throw py::value_error(
           "destination buffer too small: " + std::to_string(dstBytes) +
           " bytes, artifact has " + std::to_string(artifact.bytes()));
-    const void *src = artifact.data();
-    const size_t bytes = static_cast<size_t>(artifact.bytes());
-    py::gil_scoped_release release;
-    std::memcpy(reinterpret_cast<void *>(dst), src, bytes);
+    // The GIL stays held: close() from another Python thread frees the
+    // artifact's staging, so releasing it here would race that free.
+    std::memcpy(reinterpret_cast<void *>(dst), artifact.data(),
+                static_cast<size_t>(artifact.bytes()));
   }
 };
 

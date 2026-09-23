@@ -109,8 +109,9 @@ def test_stable_preparation_reuses_until_bytes_change(cpu_backend, counting_runt
         stats = cpu_backend.stats()
         assert stats["weight_preparations"] == 5
         assert stats["weight_invalidations"] == 4
-        assert stats["plan_compiles"] == 2  # the weight recipe and its identity transfer
+        assert stats["plan_compiles"] == 1  # the weight recipe only: a CPU target copies the prepared layout
         assert counting_runtime.executions == cpu_backend.stats()["runtime_executions"]
+        assert not stats["fallbacks"]  # the CPU target never routes through a device transfer
 
 
 def test_replacement_load_state_dict_and_tied_parameters(cpu_backend, transpose_weight_recipe):
@@ -151,7 +152,10 @@ def test_changed_shape_or_dtype_falls_back_to_pytorch_with_a_reason(cpu_backend,
     # Both the shape change and the dtype change violate the recipe's source
     # descriptor guard; each fell back to PyTorch with that reason.
     assert stats["fallbacks"].get("source_descriptor", 0) >= 2
-    assert counting_runtime.executions == 1
+    # The first get prepared the layout through the CPU relocation executor and
+    # copied it for the CPU target; no adapter transfer ran at any point.
+    assert counting_runtime.executions == 0
+    assert stats["weight_preparations"] == 1
 
 
 def test_deleted_slot_dead_module_and_close_raise_clearly(cpu_backend, transpose_weight_recipe):

@@ -153,9 +153,11 @@ backend.close()
   returns a fresh tensor, and never rewrites slots, `Parameter` identity or
   `requires_grad`. `stable=True` retains the transformed host layout only
   after freshness checks (identity, descriptor, storage, mutation version and
-  a byte snapshot compared on every reuse); `invalidate()` and `close()`
-  release it. With grad mode on and a gradient-requiring source, the recipe is
-  replayed through PyTorch and recorded.
+  an owned byte snapshot compared on every reuse); a CUDA target moves the
+  retained layout with an identity artifact, a CPU target copies it directly;
+  `invalidate()` and `close()` release it. With grad mode on and a
+  gradient-requiring source, the recipe is replayed through PyTorch and
+  recorded.
 
 ## 5. Semantics and boundaries
 
