@@ -198,7 +198,10 @@ def infer_reshape(source_shape, target_shape):
 
 
 def operation_shape(shape, operation):
-    from .recipe import Pad, Reshape, Transpose
+    from .recipe import TYPED_OPERATIONS, Pad, Reshape, Transpose
+    if isinstance(operation, TYPED_OPERATIONS):
+        # Value transforms are element-wise: the logical shape is unchanged.
+        return tuple(shape)
     match operation:
         case Transpose(perm):
             if sorted(perm) != list(range(len(shape))):
@@ -222,7 +225,7 @@ def bind_recipe(recipe, sources, concrete_source):
     footprint also fits signed i64. No alignment guard is imposed here: alignment
     is a runtime strategy choice. This function does not execute or bind a plan.
     """
-    from .recipe import Pad, Reshape
+    from .recipe import TYPED_OPERATIONS, Pad, Reshape
     shape = concrete_source.shape
     if not shape or any(type(d) is not int or d <= 0 for d in shape):
         raise GuardError('positive_extent')
@@ -264,6 +267,7 @@ def bind_recipe(recipe, sources, concrete_source):
         raise GuardError('source_descriptor')
     footprint(src.shape, src.dtype)
     current = src.shape
+    dtype = src.dtype
 
     def divisibility(e):
         match expression(e):
@@ -285,13 +289,20 @@ def bind_recipe(recipe, sources, concrete_source):
             if ev(product(current)) != ev(product(target)):
                 raise GuardError('element_count')
         if isinstance(op, Pad):
-            if ev(op.lo) < 0 or ev(op.hi) < 0 or op.fill.dtype != src.dtype:
+            if ev(op.lo) < 0 or ev(op.hi) < 0 or op.fill.dtype != dtype:
                 raise GuardError('padding')
+        if isinstance(op, TYPED_OPERATIONS):
+            # Typed stages change the dtype (and so the footprint) of every
+            # later boundary; a per-channel axis must exist on its operand.
+            axis = getattr(op, 'axis', None)
+            if axis is not None and not 0 <= axis < len(current):
+                raise GuardError('channel_axis')
+            dtype = op.dtype
         dims(target)
-        footprint(target, src.dtype)
+        footprint(target, dtype)
         current = target
     dst = recipe.destination
-    if (dims(current) != dims(dst.shape) or src.dtype != dst.dtype or ev(dst.offset) != 0
+    if (dims(current) != dims(dst.shape) or dtype != dst.dtype or ev(dst.offset) != 0
             or tuple(ev(d) for d in dst.strides) != tuple(ev(d) for d in dense_strides(dst.shape))):
         raise GuardError('destination_descriptor')
     footprint(dst.shape, dst.dtype)

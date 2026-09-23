@@ -31,6 +31,17 @@ them; it is the runtime half of the compiler → runtime handoff.
   count is sanity-capped against the remaining byte budget before it gates
   an allocation, and hostile inputs are rejected by construction and
   fuzz-tested (`libreloc/test/DecodeTest.cpp`).
+- `reloc::peekWireVersion` / `reloc::decodeTypedPlan` (`reloc/Decode.h`) —
+  C3's versioned contract (issue #143): `decodePlan` stays v0-only and
+  rejects a v1 header at offset 4 exactly like the pre-C3 runtime did;
+  `decodeTypedPlan` reads wire format v1 (`TypedRelocationPlan`: source and
+  result descriptors, the v0 layout body verbatim with fused fills, the
+  ordered value stages with explicit signedness, inline or named-binding
+  parameters and channel maps, and the original fills with entry stages),
+  validates every invariant with byte-offset diagnostics and re-verifies each
+  fused fill against the C1 reference arithmetic (`reloc/TypedValue.h`)
+  before anything can bind (`libreloc/test/TypedDecodeTest.cpp`, goldens
+  pinned by `test/dialect/reloc/typed_serialize.mlir`).
 - `reloc::bind` (`reloc/Bind.h`) — `RelocationPlan` plus a caller-supplied
   `{symbol -> value}` map in, `BoundPlan` out. Requires an exact symbol-map
   match, enforces the two-class constraint contract (divisibility and
@@ -38,6 +49,11 @@ them; it is the runtime half of the compiler → runtime handoff.
   on the bound plan for execute-time downgrade, never a bind failure),
   coalesces adjacent contiguous axes to a fixpoint, and picks an execution
   strategy unless the caller forces one (`libreloc/test/BindTest.cpp`).
+- `reloc::bindTyped` (`reloc/Bind.h`) — `TypedRelocationPlan` plus the symbol
+  map plus a `{parameter name -> ParameterValue}` map in, `TypedBoundPlan`
+  out (C3). See "Typed plans" below for the footprints, the parameter
+  contract and what binding does not certify
+  (`libreloc/test/TypedBindTest.cpp`).
 - `reloc::executeView` / `executeH2D` / `executeH2DThreaded` / `gatherChunk` /
   `executeD2H` (`reloc/Execute.h`) — CPU relocation executors over a
   `BoundPlan`; `no_copy` view publish, single- and multi-thread strided copy
@@ -102,9 +118,12 @@ them; it is the runtime half of the compiler → runtime handoff.
   (quantize) and `ieee_rne` (f32→f16) in
   [docs/reloc-typed-semantics.md](../docs/reloc-typed-semantics.md), pinned
   by the `TypedSemantics.*` witness cases; the compiler folds typed chains
-  into `#reloc.typed_plan` ([docs/reloc-typed-folding.md](../docs/reloc-typed-folding.md)),
-  but the artifact and dispatch that will reach these kernels are C3–C4/R3
-  and do not exist yet.
+  into `#reloc.typed_plan` ([docs/reloc-typed-folding.md](../docs/reloc-typed-folding.md))
+  and C3 ships them as wire v1 typed plans that this runtime decodes and
+  binds ("Typed plans" below); the dispatch that will reach these kernels is
+  C4/R3 and does not exist yet. The scalar references behind the decoder's
+  fill re-verification are public here too: `quantizeOneF32S8`,
+  `narrowF32F16`, `widenF16F32`.
 - `reloc::cuda` (`reloc/CudaKernels.h`) — R0.2's GPU kernels (issue #75),
   compiled for sm_75 + sm_89 under `RELOC_ENABLE_CUDA`: the JustCopy
   ceiling (`copyF32`), plan-driven strided relocate in naive
@@ -208,6 +227,70 @@ pybind11 discoverable, then point `PYTHONPATH` at the build tree —
 
 Without pybind11 the target is skipped with a notice and everything else
 still builds.
+
+### Typed plans (C3, issue #143)
+
+A typed plan is the folded form of a chain that contains value transforms
+(`reloc.cast`, `reloc.quantize`, `reloc.dequantize`;
+[docs/reloc-typed-semantics.md](../docs/reloc-typed-semantics.md),
+[docs/reloc-typed-folding.md](../docs/reloc-typed-folding.md)). It travels as
+**wire format v1** ([docs/reloc-plan-format.md](../docs/reloc-plan-format.md)),
+produced by `sym-reloc-export --typed` with a schema-2 manifest
+([docs/reloc-export.md](../docs/reloc-export.md)). Version dispatch is
+explicit and never crosses:
+
+```python
+version = pyreloc.wire_version(blob)          # 0, 1, or None (not a plan header)
+plan = pyreloc.load_plan(blob)                # v0 only: v1 -> DecodeError at offset 4
+typed = pyreloc.load_typed_plan(blob)         # v1 only: v0 -> DecodeError at offset 4
+typed.stages                                  # transform, policy, in/out dtype + signedness, axis, channel
+typed.parameters                              # [{name, dtype, rank, stage, role}] declared runtime bindings
+bound = pyreloc.bind_typed(typed, {"B": 4}, {"s": ("float32", [3], scale_bytes)})
+```
+
+`bind_typed(plan, symbols, parameters)` binds the layout through the v0 binder
+(`bound.layout.typed == True`), evaluates stage shapes and binding extents in
+checked i64, and takes every runtime parameter **by declared name** as a
+`(dtype, extents, bytes)` triple: dtype, rank and extents must match the
+declaration, the extent of a per-channel parameter must equal the stage
+operand's channel extent (re-checked on every rebind), the byte size must be
+exactly `elements * width`, scales must be finite and strictly positive, zero
+points must lie in the quantized range, and missing, extra or mismatched
+parameters are `BindError`s before anything else can happen. The bytes are
+copied into the bound plan (an owned snapshot; no pointer is retained).
+
+The bound plan reports **three distinct footprints** instead of one
+`elementSize`/`totalBytes` pair, because the element width changes along the
+chain:
+
+| Field | Meaning |
+|---|---|
+| `source_bytes` | the caller's source tensor, before any pad |
+| `cuts[k]` (`boundary`, `dtype`, `elements`, `bytes`) | the tensor at stage boundary `k` (0 = entering stage 0, `k` = output of stage `k-1`), pads included from the stage they entered at; a variant transferring at boundary `k` moves `wire_bytes(k)` |
+| `destination_bytes` | the padded result, `== layout.total_bytes` (cross-checked at bind) |
+| `parameter_bytes` | every bound parameter, recorded apart from the tensors |
+
+The v0 fields of the typed layout (`layout.element_size`, `layout.total_bytes`)
+are never reinterpreted: they describe the result tensor only.
+
+**A bound typed plan certifies the representation and the guards, not a
+kernel.** `bound.requirements` names what still has to be supplied before it
+can run (`"typed_execution_dispatch"`: R3). Until then every layout-only
+executor refuses the typed layout explicitly rather than copying
+source-width bytes into a destination-width allocation:
+`relocate`/`relocate_inverse`/`h2d`/`d2h` raise `ValueError`,
+`validate_transfer_source`/`make_transfer` raise
+`TransferError("typed_unsupported: ...")`, and the C++ executors assert. The
+R3 handoff contract is therefore: decode with `decodeTypedPlan`, bind with
+`bindTyped`, read the stage list and the cuts to pick the boundary and the
+kernel, and clear `requirements` by dispatching; nothing in this runtime
+guesses at that dispatch.
+
+The Torch-free contract tests are `libreloc/python/tests/test_typed_bindings.py`
+(they need the real exporter through `SYM_RELOC_EXPORT` and fail without
+it); the frontend bridge (`reloc_torch` typed recipes, schema-2 admission,
+portable `format_version` 2) is exercised by
+`libreloc/python/tests/torch_frontend/test_typed_artifact.py`.
 
 ### pytest oracle harness
 

@@ -21,6 +21,7 @@ from .artifact import UnsupportedRecipe
 
 FRONTEND_IDENTITY = "reloc_torch/1"
 WIRE_VERSION = 0
+TYPED_WIRE_VERSION = 1
 DEFAULT_CAPACITY = 128
 
 
@@ -44,9 +45,14 @@ def artifact_key(
     compiler_identity,
     runtime_capability,
     frontend_identity=FRONTEND_IDENTITY,
-    wire_version=WIRE_VERSION,
+    wire_version=None,
     blocking=True,
 ):
+    # A typed recipe (C3) is a wire v1 artifact with value transforms; the
+    # key says so, so a layout-only and a typed recipe can never share one.
+    typed = recipe.typed
+    if wire_version is None:
+        wire_version = TYPED_WIRE_VERSION if typed else WIRE_VERSION
     return ArtifactKey(
         recipe.canonical_identity,
         str(frontend_identity),
@@ -56,7 +62,7 @@ def artifact_key(
         "dense",
         recipe.direction,
         bool(blocking),
-        "layout_only",
+        "typed" if typed else "layout_only",
         str(runtime_capability),
     )
 
@@ -203,6 +209,7 @@ __all__ = (
     "DEFAULT_CAPACITY",
     "FRONTEND_IDENTITY",
     "REGISTRY",
+    "TYPED_WIRE_VERSION",
     "WIRE_VERSION",
     "ArtifactCache",
     "ArtifactKey",

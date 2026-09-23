@@ -230,7 +230,8 @@ jobs:
               pip install -q lit pytest numpy && \
               lit -sv build/sym/test && \
               PYTHONPATH=/workspace/build/sym/python python3 -c "import sys, pyreloc; pyreloc.make_transfer; pyreloc.BufferView; assert \"torch\" not in sys.modules" && \
-              PYTHONPATH=/workspace/build/sym/python python3 -m pytest libreloc/python/tests --ignore=libreloc/python/tests/torch_frontend -q
+              test -x build/sym/sym/tools/sym-reloc-export && \
+              SYM_RELOC_EXPORT=/workspace/build/sym/sym/tools/sym-reloc-export PYTHONPATH=/workspace/build/sym/python python3 -m pytest libreloc/python/tests --ignore=libreloc/python/tests/torch_frontend -q
             '
 
   torch-cpu-cp314:
