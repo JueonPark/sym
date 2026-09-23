@@ -53,7 +53,11 @@ representation of folded layout-transform chains. Plans are structurally
 verified at construction time; undecidable pad ranges degrade to a
 `runtime_pad_check` flag instead of being rejected.
 Plans serialize to an MLIR-free binary format for the runtime handoff —
-see [docs/reloc-plan-format.md](docs/reloc-plan-format.md).
+see [docs/reloc-plan-format.md](docs/reloc-plan-format.md). The typed value
+transforms (`reloc.cast`, `reloc.quantize`, `reloc.dequantize`) and their
+numerical contract are defined in
+[docs/reloc-typed-semantics.md](docs/reloc-typed-semantics.md); their
+artifact encoding and execution are still in progress (C2–C4, R3).
 
 | Attribute | Description |
 |-----------|-------------|

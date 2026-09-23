@@ -50,9 +50,17 @@ scraping are not part of this interface.
 Reason codes are `invalid_function_count`, `unsupported_signature`,
 `unsupported_operation`, `prefolded_input`, `unsupported_descriptor`,
 `unsupported_dtype`, `unsupported_expression`, `disconnected_chain`,
-`empty_chain`, and `fold_unsupported`. Consumers should retain unknown future
-reason codes as fallback reasons. Syntactically or verifier-invalid input is
-an error (exit 1), even if its intended operation would be unsupported.
+`empty_chain`, `fold_unsupported`, and `typed_unsupported`. Consumers should
+retain unknown future reason codes as fallback reasons. Syntactically or
+verifier-invalid input is an error (exit 1), even if its intended operation
+would be unsupported.
+
+`typed_unsupported` marks a verifier-valid chain that contains a typed value
+transform (`reloc.cast`, `reloc.quantize`, `reloc.dequantize`). Their
+semantics are defined in [reloc-typed-semantics.md](reloc-typed-semantics.md)
+(C1, issue #141); wire format v0, manifest schema 1 and this interface remain
+layout-only until C2/C3 (issues #142, #143) supply the typed representation and
+encoder. A valid typed module is therefore not yet an executable typed artifact.
 
 ## Manifest schema 1
 

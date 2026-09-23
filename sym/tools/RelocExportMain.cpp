@@ -5,6 +5,7 @@
 #include "RelocDialect.h"
 #include "RelocPasses.h"
 #include "RelocSerialization.h"
+#include "RelocUtils.h"
 #include "SymDialect.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -267,6 +268,14 @@ int main(int argc, char **argv) {
     if (isa<reloc::PlanResultOp>(op))
       return unsupported("prefolded_input",
                          "input must contain original reloc chain operations");
+    // C1 defines the typed value transforms and their semantics; the wire v0
+    // artifact and this interface stay layout-only until C2/C3 supply the
+    // typed representation and encoder (docs/reloc-typed-semantics.md).
+    if (reloc::isTypedValueTransformOp(&op))
+      return unsupported("typed_unsupported",
+                         "typed value transforms (reloc.cast, reloc.quantize, "
+                         "reloc.dequantize) have no typed artifact "
+                         "representation or encoder yet");
     if (!reloc::isFoldableChainOp(&op))
       return unsupported(
           "unsupported_operation",

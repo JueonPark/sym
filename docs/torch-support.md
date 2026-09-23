@@ -254,7 +254,7 @@ kernel execution. Turing qualification remains pending hardware.
 | `load_state_dict` | Not captured by this raw recipe | `aten.copy_.default` | H2D mutation into resident weights/buffers | No; `mutation` |
 | Same-device `.to()` | `to` (when retained) | No eager dispatch for no-op | Identity/alias; no transfer | No; proven identity is `same_device_noop` |
 | `.to(copy=True)` | Not captured by this raw recipe | `aten._to_copy.default` | Same-device allocation | No; `same_device_copy` |
-| `.to(float16)` | `to` | `aten._to_copy.default` | Same-device cast | No; `typed_transform_unavailable` |
+| `.to(float16)` | `to` | `aten._to_copy.default` | Same-device cast | No; `typed_transform_unavailable` (the numerical contract is defined by C1 in [reloc-typed-semantics.md](reloc-typed-semantics.md); execution waits for C2–C4/R3) |
 | `reshape`, `transpose` | `reshape`, `transpose` | `aten.view.default`, `aten.transpose.int` | Metadata-only views in tested recipe | No; `layout_only` |
 | `contiguous` | `contiguous` | `aten.clone.default` | Materializes tested transposed view | No as an eager transfer; `unsupported_operator`. Inside a captured region T3 accepts it when Dynamo proves every extent >= 2 (guarded `singleton_extent`), otherwise `conditional_materialization` |
 | Constant pad | `torch._C._nn.pad` | `aten.constant_pad_nd.default` | Padding recipe | No; compiler/runtime evidence absent |

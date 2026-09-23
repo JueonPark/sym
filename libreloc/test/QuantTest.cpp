@@ -397,6 +397,192 @@ TEST(PackS8S4, Avx512BitExactVsScalar) {
   }
 }
 
+//===----------------------------------------------------------------------===//
+// C1 witness vectors (docs/reloc-typed-semantics.md, "Witness vectors"): pin
+// the existing kernels to the declared `symmetric_rne` / `ieee_rne` policies
+// on the exact inputs the contract names, so a kernel change that silently
+// alters a policy fails here before any typed plan can rely on it.
+//===----------------------------------------------------------------------===//
+
+// Unit scale, zero point 0. The tie vector must produce [-2,-2,0,0,2,2]:
+// round-to-nearest-even. Saturation clamps the limits; NaN maps to -128 and
+// the infinities saturate.
+const float kQuantWitness[] = {-2.5f, -1.5f,  -0.5f,     0.5f,       1.5f,
+                               2.5f,  -129.f, -128.f,    -127.f,     126.f,
+                               127.f, 128.f,  HUGE_VALF, -HUGE_VALF, NAN};
+const int8_t kQuantWant[] = {-2,   -2,  0,   0,   2,   2,    -128, -128,
+                             -127, 126, 127, 127, 127, -128, -128};
+constexpr int64_t kQuantWitnessCount =
+    sizeof(kQuantWitness) / sizeof(kQuantWitness[0]);
+
+void expectSymmetricRneWitness(Variant v) {
+  // Cycle the witnesses through 64 lanes so SIMD bodies (32 per AVX2 step,
+  // 16 per AVX-512 step) see them inside full vectors, not only in the tail.
+  const int64_t n = 64;
+  std::vector<float> src(n);
+  std::vector<int8_t> want(n);
+  for (int64_t i = 0; i < n; ++i) {
+    src[i] = kQuantWitness[i % kQuantWitnessCount];
+    want[i] = kQuantWant[i % kQuantWitnessCount];
+  }
+  const float inv = 1.0f;
+  std::vector<int8_t> dst(n, 42);
+  reloc::quant::quantizePackF32S8(src.data(), dst.data(), 1, n, &inv, v);
+  for (int64_t i = 0; i < n; ++i)
+    EXPECT_EQ(dst[i], want[i])
+        << "variant=" << static_cast<int>(v) << " i=" << i << " x=" << src[i];
+}
+
+TEST(TypedSemantics, SymmetricRneQuantizeWitnessVectors) {
+  expectSymmetricRneWitness(Variant::Scalar);
+  for (Variant v : {Variant::AVX2, Variant::AVX512})
+    if (reloc::quant::cpuSupports(v))
+      expectSymmetricRneWitness(v);
+}
+
+TEST(TypedSemantics, ReciprocalScaleIsFormedOnceInBinary32) {
+  // The contract is t = fl32(x * inv) with inv = fl32(1 / scale): two
+  // binary32 roundings. x / scale is a single correctly rounded division and
+  // is NOT bit-equivalent; the kernels consume inv, and so does the
+  // reference. Evidence for the non-equivalence at scale 0.3 (the same
+  // witness the pinned PyTorch build reproduces: 3 of 8 differ).
+  const float scale = 0.3f;
+  const float inv = 1.0f / scale;
+  const float xs[] = {0.1f, 0.3f, 0.7f, 1.1f, 2.9f, 10.1f, 100.3f, 1000.7f};
+  int differ = 0;
+  for (float x : xs) {
+    const float byInv = x * inv, byDiv = x / scale;
+    uint32_t a, b;
+    std::memcpy(&a, &byInv, sizeof(a));
+    std::memcpy(&b, &byDiv, sizeof(b));
+    differ += a != b;
+  }
+  EXPECT_EQ(differ, 3);
+  std::vector<int8_t> dst(8, 42);
+  reloc::quant::quantizePackF32S8(xs, dst.data(), 1, 8, &inv, Variant::Scalar);
+  for (int i = 0; i < 8; ++i)
+    EXPECT_EQ(dst[i], refQuantOne(xs[i], inv)) << "i=" << i;
+}
+
+TEST(TypedSemantics, PerChannelAxisIsTheOperandAxisNotTheKernelChannel) {
+  // Witness: shape [2, 3, 4], channel axis 1, scales {0.5, 1, 2},
+  // x[i] = i - 11.5. The declared semantics index the parameter by the
+  // operand's axis-1 coordinate. The existing kernels only know
+  // "channel = outermost contiguous block" (quantizePackF32S8) or
+  // "channel = outermost coalesced plan axis" (gatherQuantizeF32S8), so a
+  // non-outer channel axis must be reached by slicing or by a plan that
+  // moves the channel axis outermost -- the mapping C2 must carry through
+  // folds and R3 must establish before dispatch.
+  float x[24];
+  for (int i = 0; i < 24; ++i)
+    x[i] = static_cast<float>(i) - 11.5f;
+  const float inv[3] = {1.0f / 0.5f, 1.0f / 1.0f, 1.0f / 2.0f}; // exact
+  int8_t want[24];
+  for (int a = 0; a < 2; ++a)
+    for (int c = 0; c < 3; ++c)
+      for (int k = 0; k < 4; ++k)
+        want[a * 12 + c * 4 + k] = refQuantOne(x[a * 12 + c * 4 + k], inv[c]);
+  // torch.quantize_per_channel(x, scales, zeros, axis=1, qint8).int_repr()[0]
+  // on the pinned PyTorch 2.14.0 CPU build (docs table):
+  const int8_t torchSlice0[12] = {-23, -21, -19, -17, -8, -6,
+                                  -6,  -4,  -2,  -1,  -1, 0};
+  for (int i = 0; i < 12; ++i)
+    EXPECT_EQ(want[i], torchSlice0[i]) << "i=" << i;
+
+  // Slice loop: one contiguous kernel call per outer index.
+  int8_t sliced[24];
+  for (int a = 0; a < 2; ++a)
+    reloc::quant::quantizePackF32S8(x + a * 12, sliced + a * 12, 3, 4, inv,
+                                    Variant::Scalar);
+  EXPECT_EQ(0, std::memcmp(want, sliced, sizeof(want)));
+
+  // Plan form: a relocation whose outermost axis IS the channel axis
+  // (dst layout [c][a][k]) feeds the fused kernel directly.
+  reloc::BoundPlan b;
+  b.extents = {3, 2, 4};
+  b.srcStrides = {4, 12, 1};
+  b.dstStrides = {8, 4, 1};
+  b.elementSize = 4;
+  b.totalBytes = 24 * 4;
+  int8_t relocated[24];
+  reloc::quant::gatherQuantizeF32S8(b, x, relocated, inv, 0, 3,
+                                    Variant::Scalar);
+  for (int c = 0; c < 3; ++c)
+    for (int a = 0; a < 2; ++a)
+      for (int k = 0; k < 4; ++k)
+        EXPECT_EQ(relocated[c * 8 + a * 4 + k], want[a * 12 + c * 4 + k])
+            << "c=" << c << " a=" << a << " k=" << k;
+}
+
+TEST(TypedSemantics, IeeeRneNarrowingWitnessVectors) {
+  struct Case {
+    float in;
+    uint16_t want;
+  } cases[] = {
+      {0.0f, 0x0000},                // +0
+      {-0.0f, 0x8000},               // -0 (sign preserved)
+      {0x1p-24f, 0x0001},            // 2^-24: smallest binary16 subnormal
+      {0x1p-25f, 0x0000},            // 2^-25: tie between 0 and 2^-24 -> even
+      {0x1.8p-25f, 0x0001},          // above the tie: rounds up
+      {0x1p-14f, 0x0400},            // 2^-14: smallest binary16 normal
+      {65504.0f, 0x7BFF},            // largest finite binary16
+      {65519.99f, 0x7BFF},           // below the overflow tie
+      {65520.0f, 0x7C00},            // tie between 65504 and 2^16 -> inf
+      {1e5f, 0x7C00},                // overflow -> +inf, never saturates
+      {HUGE_VALF, 0x7C00},           // +inf
+      {-HUGE_VALF, 0xFC00},          // -inf
+      {1.0f + 0x1p-11f, 0x3C00},     // tie between 1.0 and 1+2^-10 -> even
+      {1.0f + 3 * 0x1p-12f, 0x3C01}, // above the tie: rounds up
+  };
+  std::vector<Variant> variants = {Variant::Scalar};
+  for (Variant v : {Variant::AVX2, Variant::AVX512})
+    if (reloc::quant::cpuSupports(v))
+      variants.push_back(v);
+  for (Variant v : variants) {
+    for (const Case &c : cases) {
+      // Eight copies fill one F16C vector so the SIMD body handles the value.
+      float in[8];
+      uint16_t out[8];
+      std::fill(in, in + 8, c.in);
+      reloc::quant::convertF32F16(in, out, 8, v);
+      for (int i = 0; i < 8; ++i)
+        EXPECT_EQ(out[i], c.want)
+            << "variant=" << static_cast<int>(v) << " in=" << c.in;
+    }
+    // NaN: the result must be a NaN; payload and sign are outside conformance.
+    uint32_t payloadBits = 0x7fc12345u;
+    float payloadNan;
+    std::memcpy(&payloadNan, &payloadBits, sizeof(payloadNan));
+    uint16_t h = 0;
+    reloc::quant::convertF32F16(&payloadNan, &h, 1, v);
+    EXPECT_EQ(h & 0x7C00u, 0x7C00u);
+    EXPECT_NE(h & 0x3FFu, 0u);
+  }
+}
+
+TEST(TypedSemantics, AffineDequantizeReferenceBits) {
+  // out = fl32((q - zero_point) * scale): the integer difference is exact
+  // (|q - zp| <= 255), then one binary32 rounding. libreloc has no CPU
+  // dequantize kernel (an R3 gap); this pins the reference arithmetic to the
+  // bits the pinned PyTorch 2.14.0 build produces for q * 0.3 (CPU and CUDA
+  // agree, and torch.dequantize matches).
+  const int8_t q[] = {-128, -1, 0, 1, 127};
+  const uint32_t want[] = {0xc219999au, 0xbe99999au, 0x00000000u, 0x3e99999au,
+                           0x42186667u};
+  for (int i = 0; i < 5; ++i) {
+    const float out = static_cast<float>(q[i]) * 0.3f;
+    uint32_t bits;
+    std::memcpy(&bits, &out, sizeof(bits));
+    EXPECT_EQ(bits, want[i]) << "q=" << static_cast<int>(q[i]);
+  }
+  // Nonzero zero point: q = -128, zp = 127 -> (-255) * 0.3f.
+  const float shifted =
+      static_cast<float>(static_cast<int32_t>(-128) - 127) * 0.3f;
+  uint32_t shiftedBits;
+  std::memcpy(&shiftedBits, &shifted, sizeof(shiftedBits));
+  EXPECT_EQ(shiftedBits, 0xc2990000u);
+}
+
 TEST(QuantParallel, AllWrappersMatchSerial) {
   reloc::GatherPool pool(4);
   // quantize_pack: 1037 channels x 1031 elements: > 2 chunks past the 1
