@@ -386,5 +386,16 @@ mlir::reloc::encodePlan(PlanAttr plan, Location loc,
     emitError(loc) << "cannot encode a null plan";
     return failure();
   }
+  // Wire format v0 is layout-only: a plan whose element type changes is the
+  // layout part of a #reloc.typed_plan (C2) and needs C3's typed artifact.
+  if (plan.getSrc().getElementType() != plan.getDst().getElementType()) {
+    emitError(loc) << "wire format v0 encodes layout-only plans: source "
+                      "element type "
+                   << plan.getSrc().getElementType()
+                   << " differs from destination element type "
+                   << plan.getDst().getElementType()
+                   << " (typed plans need the C3 artifact)";
+    return failure();
+  }
   return PlanEncoder(loc).encode(plan, symbolNames);
 }

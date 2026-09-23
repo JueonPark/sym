@@ -62,6 +62,12 @@ struct TestRelocUtilsPass
           op->emitRemark() << "isPureView = "
                            << (isPureView(plan) ? "true" : "false");
       }
+      // C2: `typed_plan` + `canonicalize` reports canonicalizeTypedPlan.
+      if (auto typed = op->getAttrOfType<TypedPlanAttr>("typed_plan"))
+        if (op->hasAttr("canonicalize"))
+          if (TypedPlanAttr canonical =
+                  canonicalizeTypedPlan(typed, op->getLoc()))
+            op->emitRemark() << "canonicalized typed: " << canonical;
     });
   }
 

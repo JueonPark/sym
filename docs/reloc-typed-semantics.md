@@ -292,9 +292,11 @@ guards above as its binding contract.
   position is C2's to carry and R3's to establish
   (`TypedSemantics.PerChannelAxisIsTheOperandAxisNotTheKernelChannel` shows
   both the slice form and the axis-outermost plan form).
-- **Fold pass today.** Typed ops are chain boundaries: a layout prefix folds
-  to a `plan_result` that the typed op consumes, and a typed op between two
-  layout segments marks both for fallback (`test/dialect/reloc/typed_fold.mlir`).
+- **Fold pass.** Typed ops are chain members (C2): the layout folds into one
+  `#reloc.plan`, every stage records its channel map over the logical result
+  coordinates, fills fold through later per-tensor stages or the chain bails,
+  and the result is a `reloc.typed_plan_result`
+  ([reloc-typed-folding.md](reloc-typed-folding.md)).
 
 ## 6. Witness vectors
 
@@ -351,11 +353,11 @@ rows name their gtest cases.
 
 ## 8. Handoff
 
-**C2 (folding and canonicalization) receives** the operation/policy schema
+**C2 (folding and canonicalization) consumed** the operation/policy schema
 (§1, §3), the channel-axis meaning and its behavior under transpose, reshape
-and pad (§4.3, §5), the stage-typing and fill-value rules (§5), and the
-current fold-pass behavior (`typed_fold.mlir`): typed ops are chain boundaries
-until C2 folds them into a typed plan.
+and pad (§4.3, §5) and the stage-typing and fill-value rules (§5); its
+typed-plan representation, folding rules and rejection boundaries are
+[reloc-typed-folding.md](reloc-typed-folding.md).
 
 **C3 (versioned artifact and binding) receives** the parameter declaration
 model (§4.4): constants by value, runtime parameters by name with declared

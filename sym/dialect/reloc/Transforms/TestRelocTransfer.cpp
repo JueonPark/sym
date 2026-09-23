@@ -46,9 +46,17 @@ struct TestRelocTransferPass
           chain.front()->getOperand(0).getType()));
       for (Operation *link : chain) {
         if (failed(foldChainOp(builder, link))) {
-          link->emitRemark() << "fold bail: " << link->getName();
+          link->emitRemark()
+              << "fold bail: " << link->getName()
+              << (builder.bailReason.empty() ? ""
+                                             : " (" + builder.bailReason + ")");
           return;
         }
+      }
+      if (!builder.stages.empty()) {
+        if (TypedPlanAttr typed = builder.finalizeTyped(op->getLoc()))
+          op->emitRemark() << "folded typed plan: " << typed;
+        return;
       }
       if (PlanAttr plan = builder.finalize(op->getLoc()))
         op->emitRemark() << "folded plan: " << plan;

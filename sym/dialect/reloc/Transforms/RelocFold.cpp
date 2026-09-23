@@ -11,6 +11,7 @@
 #include "PlanBuilder.h"
 #include "RelocDialect.h"
 #include "RelocPasses.h"
+#include "RelocUtils.h"
 #include "SymDialect.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -26,6 +27,12 @@ namespace {
 /// Discardable marker for chains left to per-op fallback. Also serves as a
 /// manual opt-out: marked ops are never folded.
 constexpr StringLiteral kFallbackAttrName = "reloc.fallback";
+
+/// C2: stable reason recorded next to the marker on chains that contain a
+/// typed value transform ("structural", "marked", "layout_bail",
+/// "fill_not_foldable", "pad_stage", ...). Layout-only chains keep their v0
+/// marking (the unit attribute alone), so existing output is unchanged.
+constexpr StringLiteral kFallbackReasonAttrName = "reloc.fallback_reason";
 
 struct RelocFoldPass : public impl::RelocFoldPassBase<RelocFoldPass> {
   void runOnOperation() override {
@@ -44,10 +51,17 @@ struct RelocFoldPass : public impl::RelocFoldPassBase<RelocFoldPass> {
         return signalPassFailure();
   }
 
-  /// Mark every chain op for per-op fallback; the chain stays intact.
-  LogicalResult markFallback(ArrayRef<Operation *> chain) {
-    for (Operation *op : chain)
+  /// Mark every chain op for per-op fallback; the chain stays intact. A
+  /// chain with a typed op also records `reason` (only where none is
+  /// recorded yet, so re-marking never rewrites the first run's reason).
+  LogicalResult markFallback(ArrayRef<Operation *> chain, StringRef reason) {
+    bool typed = llvm::any_of(chain, isTypedValueTransformOp);
+    for (Operation *op : chain) {
       op->setAttr(kFallbackAttrName, UnitAttr::get(&getContext()));
+      if (typed && !op->hasAttr(kFallbackReasonAttrName))
+        op->setAttr(kFallbackReasonAttrName,
+                    StringAttr::get(&getContext(), reason));
+    }
     return success();
   }
 
@@ -70,14 +84,14 @@ struct RelocFoldPass : public impl::RelocFoldPassBase<RelocFoldPass> {
     // byte-identical.
     for (Operation *op : chain)
       if (op->hasAttr(kFallbackAttrName))
-        return markFallback(chain);
+        return markFallback(chain, "marked");
 
     // Structural bail (a): a non-tail member's value escapes the chain;
     // folding it away would need partial folding (and erasing it would be
     // invalid). All-or-nothing: mark and keep.
     for (Operation *op : chain)
       if (op != tail && !op->getResult(0).hasOneUse())
-        return markFallback(chain);
+        return markFallback(chain, "structural");
 
     // Structural bail (b) — sandwich interruption: a non-reloc op sits
     // between two foldable segments (reloc -> X -> reloc). Both segments
@@ -87,44 +101,64 @@ struct RelocFoldPass : public impl::RelocFoldPassBase<RelocFoldPass> {
     // of the sandwich a chain sits on, it self-detects X, so marking is
     // order-independent between the two segments.
     if (Operation *rootDef = chain.front()->getOperand(0).getDefiningOp())
-      if (!isFoldableChainOp(rootDef) && !isa<PlanResultOp>(rootDef))
+      if (!isFoldableChainOp(rootDef) &&
+          !isa<PlanResultOp, TypedPlanResultOp>(rootDef))
         for (Value operand : rootDef->getOperands())
           if (operand.getDefiningOp() &&
               isFoldableChainOp(operand.getDefiningOp()))
-            return markFallback(chain);
+            return markFallback(chain, "structural");
     for (Operation *user : tail->getResult(0).getUsers())
-      if (!isFoldableChainOp(user) && !isa<PlanResultOp>(user))
+      if (!isFoldableChainOp(user) &&
+          !isa<PlanResultOp, TypedPlanResultOp>(user))
         for (Value result : user->getResults())
           for (Operation *downstream : result.getUsers())
             if (isFoldableChainOp(downstream))
-              return markFallback(chain);
+              return markFallback(chain, "structural");
 
     // Fold front-to-back; any transfer-function bail falls the whole
-    // chain back (all-or-nothing).
+    // chain back (all-or-nothing). A typed transfer function leaves its
+    // stable reason in the builder; layout bails report "layout_bail".
     Value root = chain.front()->getOperand(0);
     PlanBuilder builder(cast<sym::SymbolicTensorType>(root.getType()));
     for (Operation *op : chain)
       if (failed(foldChainOp(builder, op)))
-        return markFallback(chain);
-
-    // In-pass verification: finalize builds the plan through
-    // PlanAttr::getChecked. A null plan means the P1a verifier rejected
-    // our own fold output - a pass error, never a silent skip. (The
-    // transfer functions only construct verifier-clean plans, so this is
-    // defensive.)
-    PlanAttr plan = builder.finalize(tail->getLoc());
-    if (!plan)
-      return failure(); // getChecked already emitted the diagnostic
-
-    // #B5: canonicalize so equivalent chains materialize identical plans.
-    plan = canonicalizePlan(plan, tail->getLoc());
-    if (!plan)
-      return failure(); // getChecked already emitted the diagnostic
+        return markFallback(chain, builder.bailReason.empty()
+                                       ? StringRef("layout_bail")
+                                       : StringRef(builder.bailReason));
 
     OpBuilder rewriter(tail);
-    auto materialized = rewriter.create<PlanResultOp>(
-        tail->getLoc(), tail->getResult(0).getType(), root, plan);
-    tail->getResult(0).replaceAllUsesWith(materialized.getResult());
+    Value materialized;
+    if (!builder.stages.empty()) {
+      // C2: at least one value stage folded -> a typed plan. In-pass
+      // verification through TypedPlanAttr::getChecked; a null plan is a
+      // pass error, never a silent skip.
+      TypedPlanAttr typed = builder.finalizeTyped(tail->getLoc());
+      if (!typed)
+        return failure(); // getChecked already emitted the diagnostic
+      typed = canonicalizeTypedPlan(typed, tail->getLoc());
+      if (!typed)
+        return failure();
+      materialized = rewriter.create<TypedPlanResultOp>(
+          tail->getLoc(), tail->getResult(0).getType(), root, typed);
+    } else {
+      // In-pass verification: finalize builds the plan through
+      // PlanAttr::getChecked. A null plan means the P1a verifier rejected
+      // our own fold output - a pass error, never a silent skip. (The
+      // transfer functions only construct verifier-clean plans, so this is
+      // defensive.)
+      PlanAttr plan = builder.finalize(tail->getLoc());
+      if (!plan)
+        return failure(); // getChecked already emitted the diagnostic
+
+      // #B5: canonicalize so equivalent chains materialize identical plans.
+      plan = canonicalizePlan(plan, tail->getLoc());
+      if (!plan)
+        return failure(); // getChecked already emitted the diagnostic
+
+      materialized = rewriter.create<PlanResultOp>(
+          tail->getLoc(), tail->getResult(0).getType(), root, plan);
+    }
+    tail->getResult(0).replaceAllUsesWith(materialized);
     // Erase tail-first: each predecessor's single use dies with its
     // successor.
     for (auto it = chain.rbegin(); it != chain.rend(); ++it)

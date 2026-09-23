@@ -268,3 +268,71 @@ PlanAttr mlir::reloc::canonicalizePlan(PlanAttr plan, Location loc) {
       DenseBoolArrayAttr::get(ctx, contiguous), noCopy, runtimePadCheck,
       inverse);
 }
+
+//===----------------------------------------------------------------------===//
+// Typed plans (C2, issue #142)
+//===----------------------------------------------------------------------===//
+
+/// Constant-fold a descriptor's expressions.
+static TensorDescAttr resimplifyDesc(TensorDescAttr desc, MLIRContext *ctx) {
+  SmallVector<Attribute> extents, strides;
+  for (Attribute extent : desc.getExtents())
+    extents.push_back(resimplify(extent, ctx));
+  for (Attribute stride : desc.getStrides())
+    strides.push_back(resimplify(stride, ctx));
+  return TensorDescAttr::get(ctx, extents, strides,
+                             resimplify(desc.getOffset(), ctx),
+                             desc.getElementType());
+}
+
+TypedPlanAttr mlir::reloc::canonicalizeTypedPlan(TypedPlanAttr plan,
+                                                 Location loc) {
+  MLIRContext *ctx = plan.getContext();
+  PlanAttr layout = canonicalizePlan(plan.getLayout(), loc);
+  if (!layout)
+    return {};
+  // no_copy is recomputed from BOTH the layout and the value program: any
+  // value stage moves data, so the flag is false however the index map
+  // proves out. isPureView(layout) still answers the layout question.
+  if (layout.getNoCopy())
+    layout = PlanAttr::get(
+        ctx, layout.getSrc(), layout.getDst(), layout.getPerm(),
+        layout.getAxes(), layout.getPadFill(), layout.getDivisibility(),
+        layout.getAlignment(), layout.getContiguity(), /*noCopy=*/false,
+        layout.getRuntimePadCheck(), layout.getInverse());
+
+  // Stages: constant-fold the logical shapes, simplify the channel maps.
+  // Nothing is removed: no C1 policy is an identity, f32 -> f16 -> f32 stays
+  // lossy, and quantize -> dequantize is not an inverse pair.
+  SmallVector<ValueStageAttr> stages;
+  for (ValueStageAttr stage : plan.getStages()) {
+    SmallVector<Attribute> shape;
+    for (Attribute extent : stage.getShape())
+      shape.push_back(resimplify(extent, ctx));
+    AffineMap channel = stage.getChannel();
+    if (channel)
+      channel = AffineMap::get(channel.getNumDims(), channel.getNumSymbols(),
+                               simplifyAffineExpr(channel.getResult(0),
+                                                  channel.getNumDims(),
+                                                  channel.getNumSymbols()),
+                               ctx);
+    stages.push_back(ValueStageAttr::get(
+        ctx, stage.getTransform(), stage.getPolicy(), stage.getInputType(),
+        stage.getOutputType(), ArrayRef<Attribute>(shape), stage.getScale(),
+        stage.getZeroPoint(), stage.getAxis(), channel));
+  }
+
+  // Fills: canonical order by dst axis (the layout's pads are sorted the
+  // same way); the bits are never touched.
+  SmallVector<TypedFillAttr> fills(plan.getFills().begin(),
+                                   plan.getFills().end());
+  llvm::sort(fills, [](TypedFillAttr lhs, TypedFillAttr rhs) {
+    return lhs.getDstAxis() < rhs.getDstAxis();
+  });
+
+  return TypedPlanAttr::getChecked(
+      [&]() { return emitError(loc); }, ctx,
+      resimplifyDesc(plan.getSource(), ctx),
+      resimplifyDesc(plan.getResult(), ctx), plan.getSymbols(), layout,
+      ArrayRef<ValueStageAttr>(stages), ArrayRef<TypedFillAttr>(fills));
+}

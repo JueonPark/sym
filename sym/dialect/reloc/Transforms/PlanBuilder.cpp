@@ -7,6 +7,7 @@
 #include "PlanBuilder.h"
 #include "RelocUtils.h"
 #include "SymUtils.h"
+#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Diagnostics.h"
@@ -18,7 +19,7 @@ using namespace mlir;
 using namespace mlir::reloc;
 
 PlanBuilder::PlanBuilder(sym::SymbolicTensorType input)
-    : ctx(input.getContext()) {
+    : ctx(input.getContext()), elementType(input.getElementType()) {
   ArrayRef<Attribute> shape = input.getShape();
   assert(!shape.empty() && "rank-0 tensors have no relocation plan");
   Attribute zero = sym::ConstantExprAttr::get(ctx, 0);
@@ -47,9 +48,11 @@ PlanAttr PlanBuilder::finalize(Location loc) const {
     dstExtents.push_back(extent);
   }
   Attribute zero = sym::ConstantExprAttr::get(ctx, 0);
-  auto dst = TensorDescAttr::get(ctx, dstExtents,
-                                 /*strides=*/ArrayRef<Attribute>(), zero,
-                                 src.getElementType());
+  // The dst element type is the CURRENT stage dtype: identical to the source
+  // for layout-only chains, the last value stage's output otherwise (C2).
+  auto dst =
+      TensorDescAttr::get(ctx, dstExtents,
+                          /*strides=*/ArrayRef<Attribute>(), zero, elementType);
   SmallVector<Attribute> dstStrides = canonicalRowMajorStrides(dstExtents, ctx);
   SmallVector<AxisInfoAttr> axisAttrs;
   axisAttrs.reserve(axes.size());
@@ -83,6 +86,65 @@ PlanAttr PlanBuilder::finalize(Location loc) const {
       /*noCopy=*/false, runtimePadCheck, inverse);
 }
 
+TypedPlanAttr PlanBuilder::finalizeTyped(Location loc) const {
+  if (stages.empty())
+    return {};
+  PlanAttr layout = finalize(loc);
+  if (!layout)
+    return {};
+  // The logical result is the layout dst as finalized here (full logical
+  // rank); canonicalization may later merge the LAYOUT's axes but never
+  // touches this descriptor or the channel maps written over it.
+  TensorDescAttr result = layout.getDst();
+  size_t rank = axes.size();
+  SmallVector<Attribute> symbolAttrs;
+  for (StringRef name : symbolNames)
+    symbolAttrs.push_back(StringAttr::get(ctx, name));
+  SmallVector<ValueStageAttr> stageAttrs;
+  for (const PlanValueStage &stage : stages) {
+    AffineMap channel;
+    if (stage.channel)
+      channel = AffineMap::get(
+          rank, symbolNames.size(),
+          simplifyAffineExpr(stage.channel, rank, symbolNames.size()), ctx);
+    // Exact argument types keep the concrete getChecked overload (the
+    // generic Base::getChecked needs the storage class, complete only in
+    // RelocAttributes.cpp).
+    ValueStageAttr attr = ValueStageAttr::getChecked(
+        [&]() { return emitError(loc); }, ctx, stage.transform, stage.policy,
+        stage.inputType, stage.outputType, ArrayRef<Attribute>(stage.shape),
+        stage.scale, stage.zeroPoint, stage.axis, channel);
+    if (!attr)
+      return {};
+    stageAttrs.push_back(attr);
+  }
+  SmallVector<TypedFillAttr> fillAttrs;
+  for (const PlanPad &pad : pads)
+    fillAttrs.push_back(
+        TypedFillAttr::get(ctx, pad.axis, pad.stage, pad.original));
+  return TypedPlanAttr::getChecked([&]() { return emitError(loc); }, ctx, src,
+                                   result, ArrayAttr::get(ctx, symbolAttrs),
+                                   layout, ArrayRef<ValueStageAttr>(stageAttrs),
+                                   ArrayRef<TypedFillAttr>(fillAttrs));
+}
+
+/// True when any folded stage carries a channel expression (C2): only then
+/// do layout folds need to rewrite coordinates.
+static bool tracksChannels(const PlanBuilder &plan) {
+  return llvm::any_of(plan.stages, [](const PlanValueStage &stage) {
+    return static_cast<bool>(stage.channel);
+  });
+}
+
+/// Rewrite every channel expression through `dimReplacements` (old dim k ->
+/// dimReplacements[k]).
+static void replaceChannelDims(PlanBuilder &plan,
+                               ArrayRef<AffineExpr> dimReplacements) {
+  for (PlanValueStage &stage : plan.stages)
+    if (stage.channel)
+      stage.channel = stage.channel.replaceDims(dimReplacements);
+}
+
 LogicalResult mlir::reloc::foldTranspose(PlanBuilder &plan,
                                          ArrayRef<int64_t> opPerm) {
   int64_t rank = static_cast<int64_t>(plan.axes.size());
@@ -104,6 +166,13 @@ LogicalResult mlir::reloc::foldTranspose(PlanBuilder &plan,
     newIndexOfOld[opPerm[k]] = k;
   for (PlanPad &pad : plan.pads)
     pad.axis = newIndexOfOld[pad.axis];
+  // C2: channel expressions follow their coordinates through the permutation.
+  if (tracksChannels(plan)) {
+    SmallVector<AffineExpr> dims(rank);
+    for (int64_t k = 0; k < rank; ++k)
+      dims[k] = getAffineDimExpr(newIndexOfOld[k], plan.ctx);
+    replaceChannelDims(plan, dims);
+  }
   plan.axes = std::move(newAxes);
   plan.perm = std::move(newPerm);
   return success();
@@ -222,6 +291,46 @@ LogicalResult mlir::reloc::foldReshape(PlanBuilder &plan,
   };
   Attribute one = sym::ConstantExprAttr::get(ctx, 1);
 
+  // C2: channel expressions are written over the current dims; a reshape
+  // rewrites each referenced old dim as an affine expression of the new
+  // dims (KEEP: the new dim; SPLIT: the row-major recombination of the new
+  // run; MERGE: floordiv/mod of the merged coordinate). Only referenced dims
+  // are converted so the plan's symbol table stays minimal; extents become
+  // affine symbols through the builder's symbol list, committed on success.
+  const bool trackChannels = tracksChannels(plan);
+  SmallVector<bool> referenced(old.size(), false);
+  if (trackChannels)
+    for (const PlanValueStage &stage : plan.stages)
+      if (stage.channel)
+        stage.channel.walk([&](AffineExpr expr) {
+          if (auto dim = dyn_cast<AffineDimExpr>(expr))
+            referenced[dim.getPosition()] = true;
+        });
+  SmallVector<StringRef> symbols(plan.symbolNames);
+  SmallVector<AffineExpr> oldDimExprs(old.size(),
+                                      getAffineConstantExpr(0, ctx));
+  auto affine = [&](Attribute expr) -> AffineExpr {
+    FailureOr<AffineExpr> converted = symToAffine(expr, symbols, ctx);
+    return succeeded(converted) ? *converted : AffineExpr();
+  };
+  // Row-major recombination of a run of new dims [first, first + n) with
+  // extents `targets`: sum_t d_(first+t) * prod_(l>t) targets[l].
+  auto recombine = [&](ArrayRef<Attribute> targets,
+                       size_t first) -> AffineExpr {
+    AffineExpr sum = getAffineConstantExpr(0, ctx);
+    AffineExpr stride = getAffineConstantExpr(1, ctx);
+    for (int64_t t = static_cast<int64_t>(targets.size()) - 1; t >= 0; --t) {
+      sum = sum + getAffineDimExpr(first + t, ctx) * stride;
+      if (t == 0)
+        break; // the outermost extent is never a stride: keep symbols minimal
+      AffineExpr extent = affine(targets[t]);
+      if (!extent)
+        return {};
+      stride = stride * extent;
+    }
+    return sum;
+  };
+
   SmallVector<PlanAxis> newAxes;
   SmallVector<DivisibilityAttr> emitted;
   SmallVector<int64_t> newIndexOfOld(old.size(), -1);
@@ -265,6 +374,7 @@ LogicalResult mlir::reloc::foldReshape(PlanBuilder &plan,
     }
 
     size_t numOld = iEnd - i, numNew = jEnd - j;
+    const size_t firstNew = newAxes.size();
     if (needsDivisibility || (numOld == 1 && numNew > 1)) {
       // SPLIT one axis into the target run.
       if (plan.findPad(static_cast<int64_t>(i)))
@@ -277,9 +387,16 @@ LogicalResult mlir::reloc::foldReshape(PlanBuilder &plan,
             !llvm::is_contained(emitted, constraint))
           emitted.push_back(constraint);
       }
+      if (trackChannels && referenced[i]) {
+        // [B, 12] -> [B, 4, 3]: original channel = 3 * c_outer + c_inner.
+        oldDimExprs[i] = recombine(targetShape.slice(j, numNew), firstNew);
+        if (!oldDimExprs[i])
+          return failure();
+      }
     } else if (numOld == 1 && numNew == 1) {
       newIndexOfOld[i] = static_cast<int64_t>(newAxes.size());
       newAxes.push_back(old[i]); // KEEP (extents proven equal)
+      oldDimExprs[i] = getAffineDimExpr(firstNew, ctx);
     } else {
       // MERGE the old run (contiguity-gated), then split if numNew > 1.
       for (size_t p = i; p < iEnd; ++p)
@@ -294,6 +411,34 @@ LogicalResult mlir::reloc::foldReshape(PlanBuilder &plan,
       else
         appendSplitAxes(targetShape.slice(j, numNew), mergedStride, newAxes,
                         ctx);
+      if (trackChannels) {
+        // [B, C] -> [B * C]: original channel = flat_index mod C; an outer
+        // merged axis is flat_index floordiv (product of the inner extents).
+        AffineExpr merged =
+            numNew == 1 ? getAffineDimExpr(firstNew, ctx)
+                        : recombine(targetShape.slice(j, numNew), firstNew);
+        if (!merged)
+          return failure();
+        for (size_t p = i; p < iEnd; ++p) {
+          if (!referenced[p])
+            continue;
+          AffineExpr inner = getAffineConstantExpr(1, ctx);
+          for (size_t q = p + 1; q < iEnd; ++q) {
+            AffineExpr extent = affine(old[q].extent);
+            if (!extent)
+              return failure();
+            inner = inner * extent;
+          }
+          AffineExpr coordinate = merged.floorDiv(inner);
+          if (p != i) {
+            AffineExpr extent = affine(old[p].extent);
+            if (!extent)
+              return failure();
+            coordinate = coordinate % extent;
+          }
+          oldDimExprs[p] = coordinate;
+        }
+      }
     }
     i = iEnd;
     j = jEnd;
@@ -330,6 +475,10 @@ LogicalResult mlir::reloc::foldReshape(PlanBuilder &plan,
   plan.divisibility.append(emitted.begin(), emitted.end());
   for (PlanPad &pad : plan.pads)
     pad.axis = newIndexOfOld[pad.axis];
+  if (trackChannels) {
+    replaceChannelDims(plan, oldDimExprs);
+    plan.symbolNames = std::move(symbols);
+  }
   return success();
 }
 
@@ -360,17 +509,110 @@ LogicalResult mlir::reloc::foldPad(PlanBuilder &plan, int64_t axis,
     return sym::getSimplifiedBinaryExpr(ctx, sym::SymbolicExprOp::Add, lhs,
                                         rhs);
   };
+  // C2: channel expressions of already-folded stages are written over the
+  // current dst coordinates; a new leading width moves the padded axis, so
+  // the stage's coordinate along it becomes d_axis - lo.
+  SmallVector<StringRef> symbols(plan.symbolNames);
+  AffineExpr loAffine;
+  if (tracksChannels(plan) && !(getConstant(lo, loValue) && loValue == 0)) {
+    FailureOr<AffineExpr> converted = symToAffine(lo, symbols, ctx);
+    if (failed(converted))
+      return failure();
+    loAffine = *converted;
+  }
+  auto shiftChannels = [&]() {
+    if (!loAffine)
+      return;
+    SmallVector<AffineExpr> dims;
+    for (size_t k = 0; k < plan.axes.size(); ++k)
+      dims.push_back(getAffineDimExpr(k, ctx));
+    dims[axis] = dims[axis] - loAffine;
+    replaceChannelDims(plan, dims);
+    plan.symbolNames = std::move(symbols);
+  };
+  const int64_t entryStage = static_cast<int64_t>(plan.stages.size());
   for (PlanPad &pad : plan.pads) {
     if (pad.axis != axis)
       continue;
     if (pad.value != value)
       return failure(); // one fill value per axis in the plan format
+    if (pad.stage != entryStage) {
+      // Two pads of one axis entering at different value stages have two
+      // entry points; the plan format keeps one per axis, so keep the
+      // original chain instead of merging them.
+      plan.bailReason = "pad_stage";
+      return failure();
+    }
     // The new pad wraps the old valid region: widths accumulate.
     pad.lo = add(pad.lo, lo);
     pad.hi = add(pad.hi, hi);
+    shiftChannels();
     return success();
   }
-  plan.pads.push_back({axis, lo, hi, value});
+  plan.pads.push_back({axis, lo, hi, value, /*original=*/value, entryStage});
+  shiftChannels();
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// foldValueStage (C2)
+//===----------------------------------------------------------------------===//
+
+LogicalResult mlir::reloc::foldValueStage(
+    PlanBuilder &plan, ValueTransform transform, NumericPolicy policy,
+    Type inputType, Type outputType, ArrayRef<Attribute> shape, Attribute scale,
+    Attribute zeroPoint, std::optional<int64_t> axis) {
+  MLIRContext *ctx = plan.ctx;
+  plan.bailReason.clear();
+  if (inputType != plan.elementType || shape.size() != plan.axes.size()) {
+    plan.bailReason = "type_chain";
+    return failure();
+  }
+  int64_t rank = static_cast<int64_t>(plan.axes.size());
+  if (axis && (*axis < 0 || *axis >= rank)) {
+    plan.bailReason = "channel_axis";
+    return failure();
+  }
+  // Every pending pad's fused fill must pass through this stage as ONE
+  // value: casts always fold, quantize/dequantize only with per-tensor
+  // constant parameters. A per-channel stage would give every padded
+  // position its own channel's code, so the fill program is absent.
+  SmallVector<TypedAttr> fused;
+  if (!plan.pads.empty()) {
+    if (axis) {
+      plan.bailReason = "fill_not_foldable";
+      return failure();
+    }
+    // A per-tensor stage attribute (no channel map) is verifier-valid, so
+    // the C1 reference arithmetic can be reused directly.
+    ValueStageAttr stageAttr =
+        ValueStageAttr::get(ctx, transform, policy, inputType, outputType,
+                            shape, scale, zeroPoint, -1, AffineMap());
+    for (const PlanPad &pad : plan.pads) {
+      TypedAttr folded = foldFillThroughStage(pad.value, stageAttr);
+      if (!folded) {
+        plan.bailReason = "fill_not_foldable";
+        return failure();
+      }
+      fused.push_back(folded);
+    }
+  }
+  // Commit.
+  for (auto [pad, value] : llvm::zip(plan.pads, fused))
+    pad.value = value;
+  PlanValueStage stage;
+  stage.transform = transform;
+  stage.policy = policy;
+  stage.inputType = inputType;
+  stage.outputType = outputType;
+  stage.shape.assign(shape.begin(), shape.end());
+  stage.scale = scale;
+  stage.zeroPoint = zeroPoint;
+  stage.axis = axis.value_or(-1);
+  if (axis)
+    stage.channel = getAffineDimExpr(*axis, ctx);
+  plan.stages.push_back(std::move(stage));
+  plan.elementType = outputType;
   return success();
 }
 
@@ -379,7 +621,19 @@ LogicalResult mlir::reloc::foldPad(PlanBuilder &plan, int64_t axis,
 //===----------------------------------------------------------------------===//
 
 bool mlir::reloc::isFoldableChainOp(Operation *op) {
-  return isa<TransposeOp, ReshapeOp, PadOp>(op);
+  return isa<TransposeOp, ReshapeOp, PadOp>(op) || isTypedValueTransformOp(op);
+}
+
+/// Element type and logical shape of a typed op's operand/result.
+template <typename OpType>
+static LogicalResult
+foldTypedOp(PlanBuilder &plan, OpType op, ValueTransform transform,
+            Attribute scale, Attribute zeroPoint, std::optional<int64_t> axis) {
+  auto input = cast<sym::SymbolicTensorType>(op.getInput().getType());
+  auto result = cast<sym::SymbolicTensorType>(op.getResult().getType());
+  return foldValueStage(plan, transform, op.getPolicy(), input.getElementType(),
+                        result.getElementType(), input.getShape(), scale,
+                        zeroPoint, axis);
 }
 
 LogicalResult mlir::reloc::foldChainOp(PlanBuilder &plan, Operation *op) {
@@ -393,6 +647,20 @@ LogicalResult mlir::reloc::foldChainOp(PlanBuilder &plan, Operation *op) {
       .Case([&](PadOp pad) {
         return foldPad(plan, pad.getAxis(), pad.getLo(), pad.getHi(),
                        pad.getValue());
+      })
+      .Case([&](CastOp cast) {
+        return foldTypedOp(plan, cast, ValueTransform::Cast, Attribute(),
+                           Attribute(), std::nullopt);
+      })
+      .Case([&](QuantizeOp quantize) {
+        return foldTypedOp(plan, quantize, ValueTransform::Quantize,
+                           quantize.getScale(), quantize.getZeroPointAttr(),
+                           quantize.getAxis());
+      })
+      .Case([&](DequantizeOp dequantize) {
+        return foldTypedOp(plan, dequantize, ValueTransform::Dequantize,
+                           dequantize.getScale(), dequantize.getZeroPointAttr(),
+                           dequantize.getAxis());
       })
       .Default([](Operation *) { return failure(); });
 }

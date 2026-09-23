@@ -30,3 +30,9 @@
 // signless-only); the error fires during serialization, not verification.
 // expected-error @below {{signed/unsigned integer element types are not representable in wire format v0 (signless only): 'si32'}}
 "test.plan"() {serialize, name = "signed", plan = #reloc.plan<src = tensor<[8], si32>, dst = tensor<[8], si32>, perm = [0], axes = [{name = "x", extent = 8, src_stride = 1, dst_stride = 1}], inverse = affine_map<(d0) -> (d0)>>} : () -> ()
+
+// The layout part of a typed plan (C2) changes the element type; wire v0 is
+// layout-only, so the encoder refuses it instead of presenting a typed plan
+// as a v0 artifact.
+// expected-error @below {{wire format v0 encodes layout-only plans: source element type 'f32' differs from destination element type 'i8' (typed plans need the C3 artifact)}}
+"test.plan"() {serialize, name = "typed_layout", plan = #reloc.plan<src = tensor<[8], f32>, dst = tensor<[8], i8>, perm = [0], axes = [{name = "x", extent = 8, src_stride = 1, dst_stride = 1}], inverse = affine_map<(d0) -> (d0)>>} : () -> ()

@@ -56,8 +56,10 @@ Plans serialize to an MLIR-free binary format for the runtime handoff —
 see [docs/reloc-plan-format.md](docs/reloc-plan-format.md). The typed value
 transforms (`reloc.cast`, `reloc.quantize`, `reloc.dequantize`) and their
 numerical contract are defined in
-[docs/reloc-typed-semantics.md](docs/reloc-typed-semantics.md); their
-artifact encoding and execution are still in progress (C2–C4, R3).
+[docs/reloc-typed-semantics.md](docs/reloc-typed-semantics.md), and
+`--reloc-fold` folds them with the layout chain into `#reloc.typed_plan`
+([docs/reloc-typed-folding.md](docs/reloc-typed-folding.md)); their artifact
+encoding and execution are still in progress (C3–C4, R3).
 
 | Attribute | Description |
 |-----------|-------------|

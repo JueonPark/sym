@@ -101,8 +101,10 @@ them; it is the runtime half of the compiler → runtime handoff.
   contract these kernels implement is now named: `symmetric_rne`
   (quantize) and `ieee_rne` (f32→f16) in
   [docs/reloc-typed-semantics.md](../docs/reloc-typed-semantics.md), pinned
-  by the `TypedSemantics.*` witness cases; the typed compiler path that
-  will dispatch to them is C2–C4/R3 and does not exist yet.
+  by the `TypedSemantics.*` witness cases; the compiler folds typed chains
+  into `#reloc.typed_plan` ([docs/reloc-typed-folding.md](../docs/reloc-typed-folding.md)),
+  but the artifact and dispatch that will reach these kernels are C3–C4/R3
+  and do not exist yet.
 - `reloc::cuda` (`reloc/CudaKernels.h`) — R0.2's GPU kernels (issue #75),
   compiled for sm_75 + sm_89 under `RELOC_ENABLE_CUDA`: the JustCopy
   ceiling (`copyF32`), plan-driven strided relocate in naive
