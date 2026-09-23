@@ -20,6 +20,7 @@
 #include "reloc/CudaBackend.h"
 #endif
 
+#include "PyPrefold.h"
 #include "PyTransfer.h"
 
 #include <pybind11/pybind11.h>
@@ -456,4 +457,6 @@ PYBIND11_MODULE(_pyreloc, m) {
 
   // R2 (issue #146): validated forward transfer requests; Torch-free.
   registerTransferBindings(m);
+  // T4 Task 3 (issue #137): owned bridge to the existing prefolder; Torch-free.
+  registerPrefoldBindings(m);
 }
