@@ -113,6 +113,11 @@ them; it is the runtime half of the compiler → runtime handoff.
 
 ## Python bindings (pyreloc)
 
+The optional Torch frontend (`reloc_torch`: `torch.compile` backend, eager
+transfer scope, prepared inference weights) is documented in
+[docs/torch-integration.md](../docs/torch-integration.md) with its evidence in
+[docs/torch-support.md](../docs/torch-support.md).
+
 `libreloc/python/` builds a pybind11 extension exposing the runtime to
 Python (issue #46): `load_plan(bytes) -> PlanHandle`,
 `bind(plan, {symbol: value}, strategy="auto") -> BoundPlan`,

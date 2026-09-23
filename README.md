@@ -191,6 +191,15 @@ if (failed(diag)) {
 }
 ```
 
+### PyTorch integration
+
+An opt-in PyTorch frontend (`libreloc/python/reloc_torch`) captures CPU↔CUDA
+transfers and their adjacent layout operations, compiles them to symbolic
+relocation plans and executes them through libreloc with guarded fallback to
+PyTorch. Installation, activation and boundaries:
+[docs/torch-integration.md](docs/torch-integration.md); support matrix and
+evidence: [docs/torch-support.md](docs/torch-support.md).
+
 ## Supported External Operations
 
 The `SymbolicShapeOpInterface` is attached to the following `arith` dialect operations:
