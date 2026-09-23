@@ -1,6 +1,4 @@
 import dataclasses
-import os
-from pathlib import Path
 
 import pytest
 
@@ -11,16 +9,21 @@ from reloc_torch.records import TensorMetadata, TransferRecord
 def compiler():
     from reloc_torch import CompilerClient
 
-    configured = os.environ.get("SYM_RELOC_EXPORT")
-    if configured is None:
-        sym_opt = os.environ.get("SYM_OPT")
-        if sym_opt is None:
-            pytest.fail("SYM_RELOC_EXPORT or SYM_OPT must select the R1 exporter")
-        configured = str(Path(sym_opt).with_name("sym-reloc-export"))
-    exporter = Path(configured)
-    if not exporter.is_file():
-        pytest.fail(f"configured R1 exporter is absent: {exporter}")
-    return CompilerClient(exporter)
+    try:
+        return CompilerClient.from_environment()
+    except RuntimeError as error:
+        pytest.fail(str(error))
+
+
+@pytest.fixture(autouse=True)
+def isolate_handle_registry():
+    """Release handles a failing test left in the process-global registry."""
+    from reloc_torch.cache import REGISTRY
+
+    before = set(REGISTRY._entries)
+    yield
+    for handle in set(REGISTRY._entries) - before:
+        REGISTRY._release(handle)
 
 
 @pytest.fixture
@@ -45,12 +48,110 @@ def split_transpose_recipe():
 
 
 @pytest.fixture
+def identity_recipe():
+    """Rank-one symbolic identity: the dense-input control-flow recipe for T3 tests."""
+    from reloc_torch.recipe import Recipe, TensorSpec
+    from reloc_torch.symbolic import Const, Symbol
+
+    descriptor = TensorSpec((Symbol("s0"),), (Const(1),), Const(0), "float32")
+    return Recipe(descriptor, (), descriptor, "h2d")
+
+
+class CountingRuntime:
+    """CPU-only test adapter: real guards, real host relocation, counted launches.
+
+    It never simulates CUDA success. Preflight rejects non-CPU destinations,
+    nonblocking requests, and every source the shared frontend guards reject,
+    so a stride ``(2,)`` view fails with ``unsupported_layout`` before launch.
+    """
+
+    capability_identity = "cpu-test-adapter/1"
+
+    def __init__(self, *, fail_execution=None):
+        self.executions = 0
+        self.preflights = 0
+        self.fail_execution = fail_execution
+
+    def preflight(self, compiled, src, device, *, non_blocking=False):
+        from reloc_torch.artifact import UnsupportedRecipe
+        from reloc_torch.runtime import prepare_host_call
+
+        self.preflights += 1
+        if device.type != "cpu":
+            raise UnsupportedRecipe("unsupported_device", "CPU-only test adapter")
+        return prepare_host_call(compiled, src, device, non_blocking=non_blocking)
+
+    def execute(self, call):
+        import torch
+        import pyreloc
+        from pyreloc.torch_interop import as_ptr
+
+        self.executions += 1
+        if self.fail_execution is not None:
+            raise self.fail_execution
+        destination = call.destination
+        out = torch.empty_strided(
+            destination.shape, destination.strides, dtype=call.src.dtype, device="cpu"
+        )
+        pyreloc.relocate(call.bound, *as_ptr(call.src), *as_ptr(out))
+        return out
+
+
+@pytest.fixture
+def counting_runtime():
+    return CountingRuntime()
+
+
+def make_entry(compiled, runtime, fallback, *, symbolic_bindings=()):
+    from reloc_torch.diagnostics import Diagnostics
+    from reloc_torch.runtime import ExecutionEntry
+
+    return ExecutionEntry(
+        compiled=compiled,
+        original=fallback,
+        runtime=runtime,
+        diagnostics=Diagnostics(),
+        symbolic_bindings=tuple(symbolic_bindings),
+    )
+
+
+@pytest.fixture
+def entry(compiler, identity_recipe, counting_runtime):
+    """Identity execution entry whose fallback is a counted ``src.clone()``."""
+    calls = []
+
+    def fallback(src, *symbols):
+        calls.append(tuple(symbols))
+        return src.clone()
+
+    result = make_entry(compiler.compile(identity_recipe), counting_runtime, fallback)
+    result.fallback_log = calls
+    return result
+
+
+@pytest.fixture
 def cuda_device():
     import torch
 
     if not torch.cuda.is_available():
         pytest.skip("CUDA is unavailable")
     return torch.device("cuda", torch.cuda.current_device())
+
+
+@pytest.fixture
+def real_runtime():
+    """The production R2 transport bridge, or an explicit skip while R2 is absent.
+
+    Missing R2 (#146) is a documented blocked dependency of T3, not a passing
+    result: tests that need actual transfers skip with this reason and are
+    reported as skips, never as passes.
+    """
+    from reloc_torch.runtime import TransportAdapter
+
+    adapter = TransportAdapter()
+    if not adapter.available:
+        pytest.skip(f"R2 transport adapter unavailable: {adapter.unavailable_reason}")
+    return adapter
 
 
 @pytest.fixture

@@ -1,4 +1,4 @@
-# Torch transfer inventory and compiler artifacts (T1/T2, issues #134/#135)
+# Torch transfer inventory, compiler artifacts and guarded replacement (T1/T2/T3, issues #134/#135/#136)
 
 T1 observes eager dispatch and inventories FX graphs. T2 now imports conservative
 layout/transfer regions, preserves symbolic guards, emits reloc IR, and accepts
@@ -8,11 +8,15 @@ compiler identity, ordered symbols and provenance, constraints, and logical
 source/destination rank. It can be rebound from concrete source metadata without
 retaining the FX capture or its original callable.
 
-**No transfer replacement is enabled.** Successful T2 folding proves compiler
-and host relocation agreement; it does not allocate a device result, launch a
-transfer, or rewrite an FX graph. The original callable remains in the imported
-candidate for fallback. T3 still depends on the unimplemented R2 storage/stream
-adapter before any H2D/D2H execution row can become supported.
+**No transfer execution row is enabled.** Successful T2 folding proves compiler
+and host relocation agreement; it does not allocate a device result or launch a
+transfer. T3 now rewrites accepted FX regions and intercepts eligible eager
+transfers through one guarded executor, but every real CPU/CUDA transfer still
+runs the original PyTorch operation with the recorded reason
+`runtime_unavailable` until the R2 storage/stream adapter
+([#146](https://github.com/JueonPark/sym/issues/146), `reloc_torch.transport`)
+exists. Execution rows become supported only after the T3 CUDA acceptance tests
+below pass against that adapter.
 
 T2's real CPU tests cover identity, transpose, static merge/split, symbolic
 split, constant pad, transpose+pad, float32/float16/int8 exact bytes, compiler
@@ -37,7 +41,125 @@ bound = pyreloc.bind(plan, compiled.bind_values(source_tensor))
 ```
 
 This surface prepares and binds a host relocation plan only. Device allocation,
-transfer launch, graph replacement, and fallback orchestration remain T3/R2 work.
+transfer launch and stream ordering remain R2 work.
+
+## T3: guarded custom op, graph replacement and eager routing (#136)
+
+`reloc_torch.RelocBackend(compiler=..., runtime=...)` is a callable
+`torch.compile` backend and `reloc_torch.eager_transfers(backend=...)` is a
+scoped dispatch mode. Both route through one executor,
+`reloc_torch.runtime.execute_or_fallback`, which runs every expected guard
+(metadata, exact symbol binding, symbol reconciliation, extent family,
+declared output metadata, adapter preflight) before a destination is allocated
+or work is launched, and runs the saved original region exactly once on an
+expected rejection. Errors after the launch decision surface as
+`ExecutionError` with recipe/direction context and are never retried.
+
+```python
+import torch
+from reloc_torch import RelocBackend, eager_transfers
+
+backend = RelocBackend()  # SYM_RELOC_EXPORT / SYM_OPT select the R1 exporter
+compiled = torch.compile(fn, backend=backend, dynamic=True)
+with torch.no_grad():
+    y = compiled(x)                 # accepted regions call reloc_torch::transfer
+    with eager_transfers(backend=backend):
+        w = weight.to("cuda")       # eligible eager transfers use the same adapter
+print(backend.stats())              # dynamo_compiles, plan_compiles, symbol_binds,
+                                    # cache_hits, runtime_executions, fallbacks, ...
+backend.close()
+```
+
+Implemented and tested on the qualified baseline (observed 2026-09-22):
+
+- `reloc_torch::transfer(Tensor src, str handle, SymInt[] symbols, SymInt[] out_shape,
+  SymInt[] out_strides, Device device) -> Tensor`, registered once through
+  `torch.library.custom_op` with `mutates_args=()`. The fake kernel is
+  `torch.empty_strided(out_shape, out_strides, dtype=src.dtype, device=device)`
+  and consults no registry, binder, compiler or runtime. Real results are
+  verified to be fresh, zero-offset tensors with exactly the declared metadata.
+  `torch.library.opcheck` with inference tensors ran the 2.14.0 default set
+  `test_schema`, `test_autograd_registration`, `test_faketensor`,
+  `test_aot_dispatch_dynamic`: all `SUCCESS` on a CPU source (CPU build) and on
+  a CUDA source (cu126 build, result produced by the recorded fallback). Direct
+  gradient-requiring calls fail at call time; entry points fall back before the op.
+  A module reload or duplicate import reuses the live registration: re-registering
+  would replace the dispatcher entry and invalidate `OpOverload` objects already
+  captured as FX node targets.
+- Every result handed back by either entry point, from the adapter or from the
+  original region once the promised metadata is known, passes
+  `reloc_torch.runtime.verify_result`: fresh storage, declared shape, dtype,
+  zero offset and device, and declared strides on every extent larger than one.
+- Graph replacement preserves the captured `GraphModule`, inserts `sym_size`
+  symbols and symbolic output shape/stride nodes, erases only verified member
+  nodes, and keeps every rejected region's original nodes. Live graphs own their
+  handle registrations; artifact-cache eviction cannot invalidate them; a
+  guard miss replays only the region, never the enclosing graph's effects.
+- Eager interception admits only what T1's `classify` admits (real blocking
+  CPU/CUDA `aten._to_copy` of plain dense tensors with unchanged dtype); it
+  compiles one symbolic identity artifact per rank/dtype/direction and reuses
+  the common cache. Nested scopes, exceptions, other threads and a compiled
+  function inside a scope never offload twice.
+- Artifacts are cached in a bounded LRU (default 128) keyed by canonical recipe,
+  frontend/compiler identity, wire version, dtype/layout family, transfer
+  semantics and runtime capability identity; rejections share that identity and
+  bound; concurrent same-key requests compile once.
+- `requires_grad` excludes a source only while grad mode is enabled, when
+  execution would be gradient-requiring; under `torch.no_grad()` parameters and
+  buffers are ordinary dense inputs for both the eager and the graph path
+  (Dynamo guards the captured grad mode; the graph callable re-checks per call).
+- Dynamo does not trace a frame while the eager dispatch mode is active: a
+  `torch.compile` call first executed inside `eager_transfers` runs eagerly and
+  its transfers are offloaded there, once each. Compile outside the scope for
+  graph replacement; a compiled function run inside the scope executes its
+  custom op with interception suspended and never offloads twice.
+- Importer refinement: `Tensor.contiguous()` after a non-dense layout is accepted
+  when the ShapeEnv proves every extent is at least two (Dynamo's 0/1
+  specialization), which is exactly when the materialization is unconditional.
+  Those extents are recorded as candidate guards and enforced at bind time
+  (`singleton_extent` fallback), so the original region and the recipe agree on
+  output metadata over the accepted family. Derived extents such as `s0 // 64`
+  remain `conditional_materialization`.
+
+CUDA evidence for T3 comes from the second environment below: an NVIDIA GeForce
+RTX 2080 Ti (capability 7.5, four devices, driver 595.71.05), CUDA toolkit
+12.6.3 (`nvcc` V12.6.85) at `/tmp/sym-cuda-toolkit-12.6.3`, PyTorch
+2.14.0+cu126 listing sm_50–sm_90, and a cp314 extension built with
+`RELOC_ENABLE_CUDA=ON`. Real Dynamo captures of `x.to("cuda").transpose(0, 1).contiguous()`
+are rewritten (one artifact reused across shapes) and produce PyTorch-exact
+values, strides, offsets and devices through the recorded fallback; excluded
+regions (`copy_`, mutation through a view, returned/shared intermediates, two
+transfers, noncontiguous results, view-only functions) show zero replacement and
+identical values, aliases and version counters.
+
+| Gate (this issue) | Status on 2026-09-22 |
+| --- | --- |
+| Registration, fake metadata, opcheck (CPU and CUDA sources) | Passed |
+| Graph safety, fallback before launch, handle lifetime, close | Passed |
+| Eager routing, reentrancy, threads, nonblocking exclusion | Passed |
+| Missing runtime/compiler capability, invalid bindings, empty/rank-0, dtype/layout: reason and zero launches on CUDA tensors | Passed |
+| Real H2D and forward D2H (identity, transpose, reshape+transpose, pad; f32/f16/i8; pinned/pageable) | Blocked on R2: 36 tests skip with reason `R2 transport adapter unavailable` |
+| Side-stream D2H producer, nondefault-stream H2D consumer, repeated allocation/reuse, exception cleanup | Blocked on R2: 4 tests skip with the same reason |
+
+Skips are reported as skips; they are not counted as passes and do not enable
+any support row.
+
+Exact counts for this revision. CPU environment: CPython 3.14.7
+(`cpython-314-x86_64-linux-gnu`, GIL enabled), PyTorch 2.14.0+cpu, NumPy 2.5.3,
+pytest 9.1.1, pybind11 3.0.4, extension
+`build/torch-cpu/python/pyreloc/_pyreloc.cpython-314-x86_64-linux-gnu.so`.
+CUDA environment: the same interpreter and dependency versions with PyTorch
+2.14.0+cu126 (CUDA 12.6) and the `build/torch-cuda` extension.
+
+| Command | Environment | Result |
+| --- | --- | --- |
+| `pytest libreloc/python/tests/torch_frontend -m 'not gpu' -q` | CPU | 244 passed, 72 deselected |
+| `pytest libreloc/python/tests -m 'not gpu' -q` | CPU | 454 passed, 75 deselected |
+| `ctest --test-dir build/torch-cpu -R reloc-runtime` | CPU | 2 of 2 passed |
+| `pytest libreloc/python/tests/torch_frontend/test_custom_op.py libreloc/python/tests/torch_frontend/test_transfers_gpu.py libreloc/python/tests/torch_frontend/test_backend.py -m gpu -q` | CUDA | 20 passed, 44 skipped (R2 absent), 45 deselected |
+| `pytest libreloc/python/tests/torch_frontend -q` (all marks) | CUDA | 272 passed, 44 skipped |
+| `pytest libreloc/python/tests -m 'not gpu' -q` | CUDA | 453 passed, 1 skipped, 75 deselected |
+| `ctest --test-dir build/torch-cuda -R reloc-runtime` | CUDA | 2 of 2 passed |
 
 Observed on 2026-09-09: regular-GIL CPython 3.14.7,
 `cpython-314-x86_64-linux-gnu`, PyTorch 2.14.0+cpu and 2.14.0+cu126
@@ -54,8 +176,8 @@ kernel execution. Turing qualification remains pending hardware.
 
 | Python scenario | Raw Dynamo target | ATen observation | Direction / semantics | Candidate and current exclusion |
 | --- | --- | --- | --- | --- |
-| `.to("cuda")`, `.cuda()` | `to`, `cuda` | `aten._to_copy.default` | H2D | Blocking dense inference float32/float16/int8 only; candidate, `needs_compile_and_runtime_check` |
-| `.cpu()` | `cpu` | `aten._to_copy.default` | D2H | Same restrictions; candidate, `needs_compile_and_runtime_check` |
+| `.to("cuda")`, `.cuda()` | `to`, `cuda` | `aten._to_copy.default` | H2D | Blocking dense inference float32/float16/int8 only; candidate, `needs_compile_and_runtime_check`. T3 replaces the region / intercepts the call; execution falls back with `runtime_unavailable` until R2 |
+| `.cpu()` | `cpu` | `aten._to_copy.default` | D2H | Same restrictions; candidate, `needs_compile_and_runtime_check`. Same T3 status |
 | `copy_` | `copy_` | `aten.copy_.default` | H2D/D2H mutation | No; `mutation` |
 | Frozen module parameters and buffers `.to()` | Not captured by this raw recipe | `aten._to_copy.default` | H2D, phase `module_to` | Candidate under same restrictions; `needs_compile_and_runtime_check` |
 | `load_state_dict` | Not captured by this raw recipe | `aten.copy_.default` | H2D mutation into resident weights/buffers | No; `mutation` |
@@ -63,19 +185,22 @@ kernel execution. Turing qualification remains pending hardware.
 | `.to(copy=True)` | Not captured by this raw recipe | `aten._to_copy.default` | Same-device allocation | No; `same_device_copy` |
 | `.to(float16)` | `to` | `aten._to_copy.default` | Same-device cast | No; `typed_transform_unavailable` |
 | `reshape`, `transpose` | `reshape`, `transpose` | `aten.view.default`, `aten.transpose.int` | Metadata-only views in tested recipe | No; `layout_only` |
-| `contiguous` | `contiguous` | `aten.clone.default` | Materializes tested transposed view | No; `unsupported_operator` |
+| `contiguous` | `contiguous` | `aten.clone.default` | Materializes tested transposed view | No as an eager transfer; `unsupported_operator`. Inside a captured region T3 accepts it when Dynamo proves every extent >= 2 (guarded `singleton_extent`), otherwise `conditional_materialization` |
 | Constant pad | `torch._C._nn.pad` | `aten.constant_pad_nd.default` | Padding recipe | No; compiler/runtime evidence absent |
 | Symbolic size and division | `operator.floordiv` with shape input | `aten.sym_size.int`, `operator.floordiv` | Shape expressions | No; not a transfer |
 | Intervening `add_` | `add_` | `aten.add_.Tensor` | Mutation; provenance cleared | No; `mutation` |
-| Nonblocking `.to()` | `to` | `aten._to_copy.default` | H2D/D2H | No; `nonblocking_unavailable` |
+| Nonblocking `.to()` | `to` | `aten._to_copy.default` | H2D/D2H | No; `nonblocking_unavailable` (T3 redispatches to PyTorch before any adapter call) |
 
 Current tests: [raw Dynamo / symbolic ATen / real CUDA graph tests](../libreloc/python/tests/torch_frontend/test_graph_inventory.py),
 [eager CPU/CUDA observations](../libreloc/python/tests/torch_frontend/test_inventory.py),
 [pure eligibility contract](../libreloc/python/tests/torch_frontend/test_contract.py),
 and [CLI accounting/failure tests](../libreloc/python/tests/torch_frontend/test_inventory_cli.py).
-T2 must separately test normalization, symbolic guards, constant pad and multiple
-users; T3 must prove stream, lifetime, alias and mutation correctness before any
-execution row becomes supported.
+T3 tests: [preflight and fallback](../libreloc/python/tests/torch_frontend/test_runtime.py),
+[registration and fake metadata](../libreloc/python/tests/torch_frontend/test_custom_op.py),
+[graph rewriting and eager safety](../libreloc/python/tests/torch_frontend/test_backend.py),
+[keys, eviction, ownership and counters](../libreloc/python/tests/torch_frontend/test_cache.py),
+and [actual transfers, streams and allocations](../libreloc/python/tests/torch_frontend/test_transfers_gpu.py).
+Stream, lifetime and real-transfer acceptance stays open until R2 is delivered.
 
 Metadata snapshots contain shapes, strides, offset, dtype, device index, pinning,
 layout, subclass status and capacity. Symbolic expressions are strings, never
@@ -113,8 +238,17 @@ export PYTHONPATH="$TORCH_BUILD/python"
 export SYM_OPT="$TORCH_BUILD/sym/tools/sym-opt"
 export SYM_RELOC_EXPORT="$TORCH_BUILD/sym/tools/sym-reloc-export"
 "$TORCH_PYTHON" -m pytest libreloc/python/tests/torch_frontend -m gpu -q
+"$TORCH_PYTHON" -m pytest libreloc/python/tests/torch_frontend/test_custom_op.py libreloc/python/tests/torch_frontend/test_transfers_gpu.py libreloc/python/tests/torch_frontend/test_backend.py -m gpu -q
 PATH=/tmp/sym-cuda-toolkit-12.6.3/bin:$PATH "$TORCH_PYTHON" libreloc/python/examples/torch_transfer_inventory.py --device cuda --output /tmp/inventory-cuda.json
 ```
+
+The CUDA build used for T3 was configured with `-DRELOC_ENABLE_CUDA=ON
+-DCUDAToolkit_ROOT=/tmp/sym-cuda-toolkit-12.6.3
+-DCMAKE_CUDA_COMPILER=/tmp/sym-cuda-toolkit-12.6.3/bin/nvcc
+-DCMAKE_CUDA_HOST_COMPILER=/usr/bin/g++` (the toolkit runfile installs without
+root through `--toolkitpath`/`--defaultroot`). The `configure_file` copies of
+`reloc_torch` in `$TORCH_BUILD/python` precede the source tree on `PYTHONPATH`;
+rebuild `pyreloc_ext` after editing the package so tests see current sources.
 
 The CLI exits nonzero on scenario failure or unavailable requested CUDA. CPU
 runs explicitly mark `.cuda()` as not requested. Every scenario reports event

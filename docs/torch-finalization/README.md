@@ -6,8 +6,11 @@ documented in [Torch support](../torch-support.md). Child issues
 [#135](https://github.com/JueonPark/sym/issues/135) (T2),
 [#136](https://github.com/JueonPark/sym/issues/136) (T3), and
 [#137](https://github.com/JueonPark/sym/issues/137) (T4) are open.
-T2 and its R1 compiler-artifact prerequisite are implemented. R2 and the T3–T4
-execution integration remain planned under [#131](https://github.com/JueonPark/sym/issues/131).
+T2 and its R1 compiler-artifact prerequisite are implemented. T3's custom op,
+graph replacement, eager routing, cache and fallback are implemented and
+validated on CPU and on real CUDA through the fallback path; its real-transfer
+and stream acceptance stays open until R2 delivers `reloc_torch.transport`.
+R2 and T4 remain planned under [#131](https://github.com/JueonPark/sym/issues/131).
 
 These plans expand section 1 of [the project finalization plan](../project-finalization-plan.md).
 T1–T4 are work identifiers corresponding to those child issues. Each linked document
@@ -111,8 +114,11 @@ The following requirements apply to every task in all four plans:
 
 ## Interfaces and ownership
 
-T1 and T2 names below are implemented interfaces; T3 and T4 names remain
-proposed. `pyreloc.load_plan`, `pyreloc.bind`, and the execution functions are
+T1, T2 and T3 names below are implemented interfaces; T4 names remain
+proposed. The T3 / R2 bridge rows are implemented on the T3 side
+(`reloc_torch.runtime.TransportAdapter` delegates to R2's
+`prepare_transfer`/`execute_transfer` and reports their absence as
+`runtime_unavailable`). `pyreloc.load_plan`, `pyreloc.bind`, and the execution functions are
 existing runtime interfaces. Keep compiler
 artifacts independent of Python object identities and process-local caches.
 
@@ -172,8 +178,8 @@ test requirements using [T4's environment setup](t4-dynamic-inputs-and-weights.m
 Use `/tmp/sym-torch-cpu` with `build/torch-cpu` for CPU tests and
 `/tmp/sym-torch-cuda` with `build/torch-cuda` for GPU tests. New files, APIs,
 and tests named in those commands are
-T1/T2 and the R1 exporter deliverables now exist. R2–R4 and T3–T4 remain
-unimplemented.
+T1/T2/T3 and the R1 exporter deliverables now exist. R2–R4 and T4 remain
+unimplemented; T3's CUDA acceptance tests skip with an explicit reason until R2.
 
 ```bash
 export TORCH_PYTHON=/tmp/sym-torch-cpu/bin/python

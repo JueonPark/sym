@@ -1,4 +1,5 @@
 """Subprocess bridge for the supported R1 relocation-plan exporter."""
+import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -18,6 +19,39 @@ class CompilerClient:
 
     def __init__(self, executable):
         self.executable = Path(executable)
+        self._identity = None
+
+    @classmethod
+    def from_environment(cls, environ=None):
+        """Resolve the documented exporter configuration: ``SYM_RELOC_EXPORT``,
+        else the ``sym-reloc-export`` sibling of ``SYM_OPT``."""
+        environ = os.environ if environ is None else environ
+        configured = environ.get("SYM_RELOC_EXPORT")
+        if configured is None:
+            sym_opt = environ.get("SYM_OPT")
+            if sym_opt is None:
+                raise RuntimeError(
+                    "SYM_RELOC_EXPORT or SYM_OPT must select the R1 exporter"
+                )
+            configured = Path(sym_opt).with_name("sym-reloc-export")
+        client = cls(configured)
+        if not client.executable.is_file():
+            raise RuntimeError(f"configured R1 exporter is absent: {client.executable}")
+        return client
+
+    @property
+    def identity(self):
+        """Pre-compilation compiler identity for cache keys: the resolved
+        exporter path plus the binary's size and modification time, so a
+        rebuilt exporter never reuses artifacts or rejections produced by the
+        previous binary. Never an object id."""
+        if self._identity is None:
+            self._identity = f"sym-reloc-export@{self.executable.resolve()}"
+        try:
+            status = os.stat(self.executable)
+        except OSError:
+            return self._identity
+        return f"{self._identity}#{status.st_size}-{status.st_mtime_ns}"
 
     def compile(self, recipe):
         mlir = emit_mlir(recipe).encode("utf-8")
