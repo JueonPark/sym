@@ -54,6 +54,23 @@ them; it is the runtime half of the compiler → runtime handoff.
   out (C3). See "Typed plans" below for the footprints, the parameter
   contract and what binding does not certify
   (`libreloc/test/TypedBindTest.cpp`).
+- `reloc::typed::prepareProgram` / `executeHost` (`reloc/TypedExecute.h`) —
+  R3's scalar reference for typed plans (issue #147): every stage's C1
+  arithmetic with the reciprocal scale formed once, the layout, the pad
+  fills folded to any stage boundary, and execution of any contiguous stage
+  range from the dense source layout into the dense padded result layout
+  (`libreloc/test/TypedExecuteTest.cpp`).
+- `reloc::dispatch` (`reloc/Dispatch.h`) — capability (`queryCapability`:
+  the rows that are equivalent to the reference and exist for this program,
+  direction and device end), policy (`prepareDispatch` /
+  `selectImplementation`: `original_cpu` forces the CPU reference pipeline,
+  `auto` translates the central cost model's advice to an eligible row or
+  falls back with a recorded reason), execution (`executeDispatch` over any
+  `CopyBackend`; CUDA rows through `CudaBackend`) and the scalar report
+  (source / wire / destination / parameter bytes, observed payload,
+  implementation, placement reason). `prefoldSpecFor` is the S8 prefold
+  capability shared with T4. [docs/runtime-dispatch.md](../docs/runtime-dispatch.md)
+  is the contract; `libreloc/test/DispatchTest.cpp` the evidence.
 - `reloc::executeView` / `executeH2D` / `executeH2DThreaded` / `gatherChunk` /
   `executeD2H` (`reloc/Execute.h`) — CPU relocation executors over a
   `BoundPlan`; `no_copy` view publish, single- and multi-thread strided copy
@@ -275,16 +292,36 @@ are never reinterpreted: they describe the result tensor only.
 
 **A bound typed plan certifies the representation and the guards, not a
 kernel.** `bound.requirements` names what still has to be supplied before it
-can run (`"typed_execution_dispatch"`: R3). Until then every layout-only
-executor refuses the typed layout explicitly rather than copying
-source-width bytes into a destination-width allocation:
+can run (`"typed_execution_dispatch"`), and R3 supplies it: the dispatcher
+below. Every layout-only executor still refuses the typed layout explicitly
+rather than copying source-width bytes into a destination-width allocation:
 `relocate`/`relocate_inverse`/`h2d`/`d2h` raise `ValueError`,
 `validate_transfer_source`/`make_transfer` raise
-`TransferError("typed_unsupported: ...")`, and the C++ executors assert. The
-R3 handoff contract is therefore: decode with `decodeTypedPlan`, bind with
-`bindTyped`, read the stage list and the cuts to pick the boundary and the
-kernel, and clear `requirements` by dispatching; nothing in this runtime
-guesses at that dispatch.
+`TransferError("typed_unsupported: ...")`, and the C++ executors assert.
+
+### Typed dispatch (R3, issue #147)
+
+```python
+rows = pyreloc.query_capability(bound, "h2d", device="cuda")   # pure: eligible rows + stable exclusions
+pick = pyreloc.select_dispatch(bound, "h2d", "cuda", policy="auto", calibration=cal)  # pure selection
+req = pyreloc.prepare_dispatch(bound, src_view, dst_view, "h2d", policy="original_cpu")
+report = pyreloc.execute_dispatch(req, caller_stream=stream_handle)   # blocks; scalar-only report
+```
+
+`original_cpu` runs the layout and every stage on the CPU (`executeHost`)
+and then the necessary copy (transform then H2D, or D2H of the dense source
+then the forward CPU program); `auto` chooses only among the rows the
+capability query qualified as bit-identical to that reference and records
+why (`no_calibration`, `only_qualified_path`, `cost_model_prefers_a|b`,
+`advice_unavailable_path`, ...). The report carries `source_bytes`,
+`wire_bytes` (from the actual stage partition), `destination_bytes`,
+`parameter_bytes`, the observed `payload_bytes_transferred`,
+`implementation`, `policy` and `placement_reason`. Rows, exclusions,
+policies and byte accounting: [docs/runtime-dispatch.md](../docs/runtime-dispatch.md).
+The Torch bridge is `reloc_torch.dispatch.prepare_typed_transfer` /
+`execute_typed_transfer` (parameters as CPU tensors by declared name,
+snapshotted and re-checked by value). `pyreloc.typed_prefold_spec(bound)`
+is the S8 prefold capability T4 consumes.
 
 The Torch-free contract tests are `libreloc/python/tests/test_typed_bindings.py`
 (they need the real exporter through `SYM_RELOC_EXPORT` and fail without

@@ -369,7 +369,13 @@ parameters and bindings need a new wire version. Until then the exporter
 answers `typed_unsupported` (`test/dialect/reloc/export_check.py`).
 
 **C4 and R3 receive** the witness vectors (§6), the compatibility table (§7)
-and these concrete kernel/reference gaps:
+and these concrete kernel/reference gaps. R3 (issue #147,
+[runtime-dispatch.md](runtime-dispatch.md)) closed 1–3 and 5 with the scalar
+reference (`reloc::typed::executeHost`: `inv` formed once from the declared
+scale, CPU dequantize with any zero point, CPU widening, channel maps over
+the result coordinates) and 6 for the reference path (pads are legal there;
+the fused kernels stay excluded on padded plans); 4 remains an exclusion
+(`no_cuda_kernel:nonzero_zero_point`) and 7 is not planned:
 
 1. Form `inv = fl32(1/scale)` from the declared scale before calling the
    `invScales`-based kernels; never accept a caller reciprocal on the typed path.

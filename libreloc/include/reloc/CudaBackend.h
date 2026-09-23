@@ -46,6 +46,17 @@ public:
   const std::string &error() const override { return error_; }
   int device() const override { return device_; }
 
+  /// R3 (issue #147): typed dispatch launches kernels on this backend's
+  /// queues and needs device scratch. The raw cudaStream_t of `queue`,
+  /// erased to void* (the CudaKernels.h convention).
+  void *stream(int queue) const { return streams_[static_cast<size_t>(queue)]; }
+  /// Device memory on this backend's device; nullptr on failure (recorded).
+  void *allocDevice(size_t bytes);
+  void freeDevice(void *p);
+  /// Record a pending launch error (cudaGetLastError) under `what`; true
+  /// when none is pending.
+  bool recordLaunchStatus(const char *what);
+
 private:
   /// Record the first failing status; returns true when `status` is success.
   bool check(int status, const char *what);

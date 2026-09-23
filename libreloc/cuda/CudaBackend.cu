@@ -175,6 +175,26 @@ bool CudaBackend::waitStream(const void *externalStream) {
   return ok;
 }
 
+void *CudaBackend::allocDevice(size_t bytes) {
+  DeviceScope scope(device_);
+  void *p = nullptr;
+  if (!check(cudaMalloc(&p, bytes), "cudaMalloc"))
+    return nullptr;
+  return p;
+}
+
+void CudaBackend::freeDevice(void *p) {
+  if (p == nullptr)
+    return;
+  DeviceScope scope(device_);
+  check(cudaFree(p), "cudaFree");
+}
+
+bool CudaBackend::recordLaunchStatus(const char *what) {
+  DeviceScope scope(device_);
+  return check(cudaGetLastError(), what);
+}
+
 bool cudaPointerDevice(const void *pointer, int &device, std::string &error) {
   cudaPointerAttributes attributes{};
   cudaError_t status = cudaPointerGetAttributes(&attributes, pointer);

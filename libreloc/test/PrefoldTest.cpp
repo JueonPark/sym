@@ -8,6 +8,7 @@
 #include "gtest/gtest.h"
 
 #include <cstring>
+#include <memory>
 #include <vector>
 
 namespace {
@@ -206,3 +207,58 @@ TEST(PrefoldArtifactTest, MoveTransfersOwnership) {
 }
 
 } // namespace
+
+//===----------------------------------------------------------------------===//
+// R3 (issue #147), Task 4: the artifact may own its backend.
+//===----------------------------------------------------------------------===//
+
+TEST(PrefoldArtifactTest, SharedBackendOutlivesTheCallerReference) {
+  // Identity [4, 8] plan: S8QuantPack through the shared_ptr overload.
+  reloc::BoundPlan b;
+  b.extents = {4, 8};
+  b.srcStrides = {8, 1};
+  b.dstStrides = {8, 1};
+  b.elementSize = 4;
+  b.totalBytes = 4 * 8 * 4;
+  b.L = 8;
+  std::vector<float> src(32);
+  for (size_t i = 0; i < src.size(); ++i)
+    src[i] = static_cast<float>(i) * 0.5f - 7.0f;
+  const float inv[4] = {1.0f, 2.0f, 4.0f, 0.5f};
+  auto backend = std::make_shared<reloc::HostBackend>(1);
+  std::weak_ptr<reloc::CopyBackend> watch = backend;
+  {
+    reloc::GatherPool pool(1);
+    reloc::prefold::PrefoldArtifact artifact = reloc::prefold::prefoldArtifact(
+        b, src.data(), reloc::prefold::OutputSpec::S8QuantPack, inv, backend,
+        pool);
+    ASSERT_TRUE(artifact.valid());
+    EXPECT_TRUE(artifact.ownsBackend());
+    EXPECT_EQ(artifact.bytes(), 32);
+    backend.reset(); // the caller lets go; the artifact keeps it alive
+    EXPECT_FALSE(watch.expired());
+    std::vector<int8_t> expected(32);
+    reloc::quant::quantizePackF32S8(src.data(), expected.data(), 4, 8, inv,
+                                    reloc::quant::Variant::Scalar);
+    EXPECT_EQ(std::memcmp(artifact.data(), expected.data(), 32), 0);
+    reloc::prefold::PrefoldArtifact moved = std::move(artifact);
+    EXPECT_TRUE(moved.ownsBackend());
+    EXPECT_FALSE(artifact.valid()); // NOLINT(bugprone-use-after-move)
+    EXPECT_FALSE(watch.expired());
+  }
+  // Staging was freed through the backend before the backend went away.
+  EXPECT_TRUE(watch.expired());
+  // A null backend is an invalid artifact, never a dereference.
+  reloc::GatherPool pool(1);
+  reloc::prefold::PrefoldArtifact none = reloc::prefold::prefoldArtifact(
+      b, src.data(), reloc::prefold::OutputSpec::S8QuantPack, inv,
+      std::shared_ptr<reloc::CopyBackend>(), pool);
+  EXPECT_FALSE(none.valid());
+  EXPECT_FALSE(none.ownsBackend());
+  // The reference overload keeps the caller's lifetime contract.
+  reloc::HostBackend plain(1);
+  reloc::prefold::PrefoldArtifact borrowed = reloc::prefold::prefoldArtifact(
+      b, src.data(), reloc::prefold::OutputSpec::S8QuantPack, inv, plain, pool);
+  EXPECT_TRUE(borrowed.valid());
+  EXPECT_FALSE(borrowed.ownsBackend());
+}

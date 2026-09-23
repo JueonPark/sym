@@ -74,6 +74,19 @@ PrefoldArtifact prefoldArtifact(const BoundPlan &bound, const float *srcBase,
   return a;
 }
 
+PrefoldArtifact prefoldArtifact(const BoundPlan &bound, const float *srcBase,
+                                OutputSpec spec, const float *invScales,
+                                std::shared_ptr<CopyBackend> backend,
+                                GatherPool &pool, quant::Variant v) {
+  if (!backend)
+    return PrefoldArtifact();
+  PrefoldArtifact a =
+      prefoldArtifact(bound, srcBase, spec, invScales, *backend, pool, v);
+  if (a.valid())
+    a.owner_ = std::move(backend);
+  return a;
+}
+
 bool prefoldWins(int64_t nReuse, double tTransformMs, double tPrefoldMs,
                  double penaltyMs) {
   if (nReuse < 1)

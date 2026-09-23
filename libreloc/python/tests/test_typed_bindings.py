@@ -15,7 +15,8 @@ import numpy as np
 import pytest
 
 import pyreloc
-from conftest import corpus_entries, reloc_export_executable, typed_golden_hex
+from conftest import corpus_entries
+from typed_support import reloc_export_executable, typed_golden_hex
 
 TYPED_GOLDENS = (
     "quantize_transpose",

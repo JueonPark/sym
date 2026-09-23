@@ -23,7 +23,7 @@ endif()
 
 find_package(Python REQUIRED COMPONENTS Interpreter Development.Module)
 
-pybind11_add_module(pyreloc_ext MODULE PyReloc.cpp PyTransfer.cpp PyPrefold.cpp)
+pybind11_add_module(pyreloc_ext MODULE PyReloc.cpp PyTransfer.cpp PyPrefold.cpp PyDispatch.cpp)
 target_link_libraries(pyreloc_ext PRIVATE reloc_runtime)
 set_target_properties(pyreloc_ext PROPERTIES
   OUTPUT_NAME _pyreloc
