@@ -166,6 +166,32 @@ def real_runtime():
 
 
 @pytest.fixture
+def backend(compiler, real_runtime):
+    """RelocBackend over the real R1 exporter and R2 transport (GPU tests)."""
+    from reloc_torch import RelocBackend
+
+    result = RelocBackend(compiler=compiler, runtime=real_runtime)
+    yield result
+    result.close()
+
+
+@pytest.fixture
+def transpose_weight_recipe():
+    """f32 (4, 6) -> (6, 4) through one transpose; the T4 weight recipe."""
+    from reloc_torch.recipe import Recipe, TensorSpec, Transpose
+    from reloc_torch.symbolic import Const, dense_strides
+
+    source = (Const(4), Const(6))
+    destination = (Const(6), Const(4))
+    return Recipe(
+        TensorSpec(source, dense_strides(source), Const(0), "float32"),
+        (Transpose((1, 0)),),
+        TensorSpec(destination, dense_strides(destination), Const(0), "float32"),
+        "h2d",
+    )
+
+
+@pytest.fixture
 def h2d_record():
     source = TensorMetadata(
         shape=(4, 6),

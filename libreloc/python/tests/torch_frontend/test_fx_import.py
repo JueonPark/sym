@@ -192,8 +192,9 @@ def test_real_original_callable_matches_raw_and_aten(fn):
         assert actual.device == expected.device
 
 
-def test_raw_dynamo_conditional_materialization_is_not_assumed_dense_for_singletons():
+def test_raw_dynamo_derived_extent_materialization_is_guarded_not_assumed():
     api = importer()
+    from reloc_torch.symbolic import Const, FloorDiv, Symbol
     graphs = []
     def backend(gm, inputs):
         graphs.append((gm, inputs))
@@ -215,8 +216,13 @@ def test_raw_dynamo_conditional_materialization_is_not_assumed_dense_for_singlet
     contiguous = next(n for n in normalized.graph.nodes if n.name == old_tail.name)
     assert contiguous.target == torch.ops.aten.contiguous.default
     report = api.import_graph(gm, inputs)
-    assert not report.candidates
-    assert 'conditional_materialization' in {e.reason for e in report.exclusions}
+    # contiguous() after the derived extent s0 // 64 is a no-op only when that
+    # extent is 1; Dynamo's own guards exclude 0 and 1 for this graph, so the
+    # region is accepted with the extent recorded as a bind-time guard (a
+    # singleton binding falls back instead of publishing dense strides).
+    candidate, = report.candidates
+    assert candidate.extent_guards == (FloorDiv(Symbol('s0'), 64),)
+    assert candidate.recipe.destination.shape == (Const(64), FloorDiv(Symbol('s0'), 64))
     assert snapshot(gm) == before
 
 
