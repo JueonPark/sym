@@ -155,6 +155,45 @@ void quantRunScalar(const float *src, int64_t srcStride, int8_t *dst, int64_t n,
 
 } // namespace detail
 
+int8_t quantizeOneF32S8(float x, float invScale) {
+  return detail::quantOne(x, invScale);
+}
+
+uint16_t narrowF32F16(float x) { return detail::f32ToF16Scalar(x); }
+
+float widenF16F32(uint16_t h) {
+  // Exact: every binary16 value is a binary32 value. NaN payloads shift
+  // into the high mantissa bits (outside conformance either way).
+  const uint32_t sign = static_cast<uint32_t>(h & 0x8000u) << 16;
+  const uint32_t exponent = (h >> 10) & 0x1fu;
+  uint32_t mantissa = h & 0x3ffu;
+  uint32_t bits;
+  if (exponent == 0) {
+    if (mantissa == 0) {
+      bits = sign; // +-0
+    } else {
+      // Subnormal: value = m * 2^-24. Renormalizing m to 1.f * 2^10 with
+      // `shifts` shifts gives 1.f * 2^(-14 - shifts), i.e. a biased binary32
+      // exponent of 127 - 14 - shifts.
+      int shifts = 0;
+      while ((mantissa & 0x400u) == 0) {
+        mantissa <<= 1;
+        ++shifts;
+      }
+      mantissa &= 0x3ffu;
+      bits = sign | (static_cast<uint32_t>(127 - 14 - shifts) << 23) |
+             (mantissa << 13);
+    }
+  } else if (exponent == 31) {
+    bits = sign | 0x7f800000u | (mantissa << 13); // inf or NaN
+  } else {
+    bits = sign | ((exponent + 112u) << 23) | (mantissa << 13);
+  }
+  float out;
+  std::memcpy(&out, &bits, sizeof(out));
+  return out;
+}
+
 void quantizePackF32S8(const float *src, int8_t *dst, int64_t channels,
                        int64_t channelSize, const float *invScales, Variant v) {
   const Variant r = resolveFor(Kernel::QuantizePack, v);

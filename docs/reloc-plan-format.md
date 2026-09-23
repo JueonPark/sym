@@ -158,3 +158,128 @@ other versions (decoder-side enforcement lands with P2).
 v0 carries no per-section byte lengths, so decoders parse sections in full to
 advance; any layout change (including additions) bumps the version, and v0
 decoders must reject unknown versions rather than attempt partial reads.
+
+| Version | Content | Encoder | Decoder |
+| --- | --- | --- | --- |
+| `0` | layout-only `#reloc.plan` (this document above); frozen, byte-identical goldens | `encodePlan` | `decodePlan` (v0 only) |
+| `1` | typed `#reloc.typed_plan` (C3, issue #143; below) | `encodeTypedPlan` | `decodeTypedPlan` (v1 only) |
+
+`decodePlan` never accepts v1 and `decodeTypedPlan` never accepts v0: a
+runtime built before v1 rejects a v1 blob with `unsupported wire format
+version` at byte offset 4, and a v1 consumer asks `peekWireVersion` (or reads
+bytes 4..8) before choosing the decoder. Nothing in v0 is reinterpreted: the
+layout-only `elementSize` and `totalBytes` keep their meaning, and typed
+footprints are separate fields of the typed bound result.
+
+# Reloc Plan Wire Format v1 (typed plans)
+
+Binary encoding of a `#reloc.typed_plan` ([reloc-typed-folding.md](reloc-typed-folding.md)):
+the logical source and result descriptors, ONE folded layout plan (the v0
+body verbatim, with fused pad fills in the result dtype), the ordered value
+stages with their parameters and channel maps, and the original fills with
+their entry stages. Same primitives, `expr`, `type`, `tensor_desc` and
+`typed_value` as v0; the same design rules (fixed-width little-endian, fixed
+section order, no optional sections, counts checked against the remaining
+byte budget before any allocation).
+
+## New primitives
+
+```
+stage_type   type, u8 signedness             (0 signless, 1 signed, 2 unsigned)
+param        u8 kind                         (0 none, 1 inline, 2 binding)
+             kind 1: u8 rank (0 or 1), type element, u32 count, count × u64 raw
+                     (rank 0 => count 1; raw = the element's bit pattern
+                      zero-extended to 64 bits, like typed_value)
+             kind 2: str name, u8 rank (0 or 1), rank × expr extents, type element
+```
+
+Signedness is semantic: storage stays signless `i8` in the descriptors, and
+the quantize output / dequantize input `stage_type` says `signed`. A `param`
+of kind `binding` is the stable runtime identity of a parameter: its name,
+its declared rank/extents (sym expressions over the plan symbols) and its
+element type. No address, device or framework object is ever encoded.
+
+## Expressions in v1
+
+The v0 opcode set is unchanged. A third context, the **channel** context,
+allows both `PUSH_SYM` (plan symbols) and `PUSH_DIM` (a coordinate of the
+logical **result** descriptor, index `< result rank`). Plan-context and
+inverse-context rules are as in v0.
+
+## Plan layout (fixed section order)
+
+```
+0. magic            4 bytes ASCII "RPLN"
+1. version          u32 = 1
+2. symbol table     u32 count, count × str         (first use over sections 3..7)
+3. source           tensor_desc                    (logical source; its type is the source dtype)
+4. result           tensor_desc                    (logical result; logical rank; its type is the result dtype)
+5. layout           the v0 body: v0 sections 3..12 verbatim
+                      src/dst types == source/result types; pad_fill values are
+                      the FUSED fills in the result dtype
+6. stages           u32 count (>= 1), per stage:
+                      u8 transform        0 cast, 1 quantize, 2 dequantize
+                      u8 policy           0 ieee_rne, 1 exact, 2 symmetric_rne, 3 affine
+                      stage_type input
+                      stage_type output
+                      u32 rank, rank × expr shape   (logical operand shape)
+                      param scale
+                      param zero_point
+                      i64 axis            (-1 = per tensor, else a channel axis of `shape`)
+                      u8 has_channel      (0 or 1)
+                      [u32 num_dims, expr channel]  (present iff has_channel;
+                                                     channel context; num_dims == result rank)
+7. fills            u32 count, per entry:
+                      u32 dst_axis, u32 stage, typed_value original
+```
+
+## Decoder-enforced invariants
+
+Every rule below fails decoding (before any allocation beyond the checked
+counts) with the byte offset of the violated item:
+
+- transform/policy pairs and types follow [reloc-typed-semantics.md](reloc-typed-semantics.md):
+  cast `f32 (signless) -> f16 (signless)` under `ieee_rne` or `f16 -> f32`
+  under `exact`; quantize `f32 -> int 8 (signed)` under `symmetric_rne`;
+  dequantize `int 8 (signed) -> f32` under `affine`;
+- stage 0 consumes the source type, stage `k+1` consumes what stage `k`
+  produces, the last stage produces the result type; the layout's `src`/`dst`
+  types equal the source/result types and its `src` rank equals the source
+  rank;
+- a cast carries no parameters (both `param` kinds `none`, axis `-1`, no
+  channel); quantize/dequantize carry a scale (`kind != none`) whose element
+  type is `f32`; a zero point is an integer (`inline`: any width ≤ 64,
+  `binding`: `int 32`); an absent zero point means the constant 0;
+- axis `-1`: both parameters rank 0 and no channel; axis in `[0, rank)`:
+  scale rank 1, zero point rank 0 or 1, channel present with
+  `num_dims == result rank`; a rank-1 inline parameter whose axis extent is a
+  constant stream must have exactly that many values (symbolic extents are
+  bind-time guards);
+- inline scale values are finite and strictly positive; inline zero points
+  lie in `[-128, 127]` and are 0 under `symmetric_rne`, which also rejects a
+  zero-point binding;
+- a binding name is unique within a stage; a name reused by another stage
+  must declare the same rank, element type and extents (otherwise
+  "conflicting parameter declaration");
+- every fill's `dst_axis` names exactly one layout `pad_fill` entry and
+  every layout pad has exactly one fill; `stage <= stage count`; the original
+  fill's type equals the type entering that stage (the source type at stage
+  0); the layout's fused fill type equals the result type; folding the
+  original through the later stages with the C1 reference arithmetic
+  (casts; quantize/dequantize only with inline per-tensor parameters — any
+  other parameter after the entry point is rejected) reproduces the fused
+  fill bit for bit (NaN matches NaN);
+- the layout body obeys every v0 rule, and no bytes follow section 7.
+
+A decoded typed plan is a validated *representation*. It does not certify
+that any kernel can execute it: binding (`bindTyped`) adds the symbol and
+parameter guards and the footprints, and execution capability is R3's.
+
+## Symbol table ordering (v1)
+
+First use in encoding order over sections 3..7: source descriptor, result
+descriptor, the layout body (as v0 orders it), then each stage's shape,
+scale binding extents, zero-point binding extents and channel expression,
+then nothing (fills carry no expressions). Channel maps use `PUSH_SYM` with
+these indices; the attribute's own `symbols` list only fixes affine symbol
+positions and is not encoded separately.

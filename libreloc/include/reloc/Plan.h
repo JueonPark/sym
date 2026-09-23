@@ -106,6 +106,77 @@ struct RelocationPlan {
   std::vector<ExprStream> inverse; // one stream per dst axis (PushDim only)
 };
 
+//===----------------------------------------------------------------------===//
+// Wire format v1: typed plans (C3, issue #143; spec "Wire Format v1")
+//===----------------------------------------------------------------------===//
+
+/// Stage transform / policy / signedness bytes. Values match the wire.
+enum class ValueTransformKind : uint8_t {
+  Cast = 0,
+  Quantize = 1,
+  Dequantize = 2
+};
+enum class NumericPolicyKind : uint8_t {
+  IeeeRne = 0,
+  Exact = 1,
+  SymmetricRne = 2,
+  Affine = 3,
+};
+enum class Signedness : uint8_t { Signless = 0, Signed = 1, Unsigned = 2 };
+
+/// A stage's element type with its semantic signedness (storage stays
+/// signless in the descriptors; quantize output / dequantize input are
+/// `Signed` int 8 by operation semantics).
+struct StageType {
+  ElementType type;
+  Signedness signedness = Signedness::Signless;
+};
+
+/// A quantization parameter as declared: absent, an inline constant (exact
+/// bits), or a runtime binding identified by name.
+enum class ParamKind : uint8_t { None = 0, Inline = 1, Binding = 2 };
+
+struct StageParam {
+  ParamKind kind = ParamKind::None;
+  uint8_t rank = 0;                       // 0 per tensor, 1 per channel
+  ElementType elementType{};              // f32 scales, integer zero points
+  std::vector<uint64_t> inlineBits;       // Inline: rank-0 => one value
+  std::string bindingName;                // Binding
+  std::vector<ExprStream> bindingExtents; // Binding: `rank` streams
+};
+
+/// One typed value stage (spec section 6).
+struct ValueStage {
+  ValueTransformKind transform = ValueTransformKind::Cast;
+  NumericPolicyKind policy = NumericPolicyKind::IeeeRne;
+  StageType input;
+  StageType output;
+  std::vector<ExprStream> shape; // logical operand shape
+  StageParam scale;
+  StageParam zeroPoint;
+  int64_t axis = -1; // channel axis of `shape`; -1 per tensor
+  bool hasChannel = false;
+  ExprStream channel; // channel context: PushDim = result coordinate
+};
+
+/// A pad fill as the program wrote it, with the stage it entered at.
+struct TypedFill {
+  uint32_t dstAxis = 0;
+  uint32_t stage = 0;
+  ElementType type{};
+  uint64_t bits = 0;
+};
+
+/// The decoded typed plan. `layout.symbols` is the same table as `symbols`.
+struct TypedRelocationPlan {
+  std::vector<std::string> symbols;
+  TensorDesc source;
+  TensorDesc result;
+  RelocationPlan layout;
+  std::vector<ValueStage> stages;
+  std::vector<TypedFill> fills;
+};
+
 } // namespace reloc
 
 #endif // RELOC_PLAN_H

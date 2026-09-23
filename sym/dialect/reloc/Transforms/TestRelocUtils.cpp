@@ -63,12 +63,42 @@ struct TestRelocUtilsPass
                            << (isPureView(plan) ? "true" : "false");
       }
       // C2: `typed_plan` + `canonicalize` reports canonicalizeTypedPlan.
-      if (auto typed = op->getAttrOfType<TypedPlanAttr>("typed_plan"))
-        if (op->hasAttr("canonicalize"))
+      // C3: `typed_plan` + `serialize` pins the wire v1 golden bytes.
+      if (auto typed = op->getAttrOfType<TypedPlanAttr>("typed_plan")) {
+        if (op->hasAttr("canonicalize")) {
           if (TypedPlanAttr canonical =
                   canonicalizeTypedPlan(typed, op->getLoc()))
             op->emitRemark() << "canonicalized typed: " << canonical;
+        } else if (op->hasAttr("serialize")) {
+          testSerializeTyped(op, typed);
+        }
+      }
     });
+  }
+
+  /// Encode a typed plan twice (wire v1); report size and determinism as a
+  /// remark and print the hex on stdout for FileCheck golden matching.
+  void testSerializeTyped(Operation *op, TypedPlanAttr plan) {
+    std::vector<std::string> symbolNames;
+    FailureOr<std::vector<uint8_t>> first =
+        encodeTypedPlan(plan, op->getLoc(), &symbolNames);
+    if (failed(first))
+      return; // encodeTypedPlan emitted the error.
+    FailureOr<std::vector<uint8_t>> second =
+        encodeTypedPlan(plan, op->getLoc());
+    bool deterministic = succeeded(second) && *first == *second;
+    op->emitRemark() << "encoded typed " << first->size()
+                     << " bytes, deterministic = "
+                     << (deterministic ? "true" : "false") << ", symbols = ["
+                     << llvm::join(symbolNames, ", ") << "]";
+    StringRef name = "typed_plan";
+    if (auto nameAttr = op->getAttrOfType<StringAttr>("name"))
+      name = nameAttr.getValue();
+    llvm::outs() << "typed_plan_hex(" << name << "): "
+                 << llvm::toHex(
+                        llvm::ArrayRef<uint8_t>(first->data(), first->size()),
+                        /*LowerCase=*/true)
+                 << "\n";
   }
 
   void testBridge(Operation *op, Attribute expr, MLIRContext *context) {

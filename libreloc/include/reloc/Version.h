@@ -13,9 +13,13 @@
 
 namespace reloc {
 
-/// The wire-format version this runtime decodes. Decoders must reject any
-/// other version (spec: "Versioning").
+/// The layout-only wire-format version decodePlan decodes. Decoders must
+/// reject any other version (spec: "Versioning").
 inline constexpr uint32_t kWireFormatVersion = 0;
+
+/// The typed wire-format version decodeTypedPlan decodes (C3, issue #143;
+/// spec: "Wire Format v1"). v0 stays frozen and byte-identical.
+inline constexpr uint32_t kTypedWireFormatVersion = 1;
 
 /// Human-readable library identification.
 const char *versionString();

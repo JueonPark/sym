@@ -39,12 +39,18 @@ enum : uint8_t {
   kIndex = 3,
 };
 
+// v1 stage bytes (docs/reloc-plan-format.md, "Wire Format v1").
+enum : uint8_t { kSignless = 0, kSigned = 1 };
+enum : uint8_t { kParamNone = 0, kParamInline = 1, kParamBinding = 2 };
+
 class PlanEncoder {
 public:
   explicit PlanEncoder(Location loc) : loc(loc) {}
 
   FailureOr<std::vector<uint8_t>> encode(PlanAttr plan,
                                          std::vector<std::string> *symbolNames);
+  FailureOr<std::vector<uint8_t>>
+  encodeTyped(TypedPlanAttr plan, std::vector<std::string> *symbolNames);
 
 private:
   // --- primitive emitters (into `body`) ---
@@ -53,11 +59,11 @@ private:
     for (int shift = 0; shift < 32; shift += 8)
       body.push_back(static_cast<uint8_t>(value >> shift));
   }
-  void emitI64(int64_t value) {
-    auto bits = static_cast<uint64_t>(value);
+  void emitU64(uint64_t value) {
     for (int shift = 0; shift < 64; shift += 8)
-      body.push_back(static_cast<uint8_t>(bits >> shift));
+      body.push_back(static_cast<uint8_t>(value >> shift));
   }
+  void emitI64(int64_t value) { emitU64(static_cast<uint64_t>(value)); }
   void emitStr(StringRef str) {
     emitU32(str.size());
     body.insert(body.end(), str.begin(), str.end());
@@ -77,11 +83,21 @@ private:
   LogicalResult emitExprOps(Attribute expr, uint32_t &opCount,
                             std::vector<uint8_t> &ops);
   LogicalResult emitAffineExprOps(AffineExpr expr, uint32_t &opCount,
-                                  std::vector<uint8_t> &ops);
+                                  std::vector<uint8_t> &ops,
+                                  ArrayAttr channelSymbols = nullptr);
   LogicalResult emitInverseResult(AffineExpr expr);
   LogicalResult emitType(Type type);
   LogicalResult emitDesc(TensorDescAttr desc);
   LogicalResult emitTypedValue(TypedAttr value);
+  // v0 sections 3..12 into `body` (shared by v0 and the v1 layout section).
+  LogicalResult emitLayoutBody(PlanAttr plan);
+  // v1 stage pieces.
+  LogicalResult emitStageType(Type type, bool isSigned);
+  LogicalResult emitParam(Attribute param);
+  LogicalResult emitStage(ValueStageAttr stage, ArrayAttr channelSymbols);
+  // header + symbol table + body.
+  std::vector<uint8_t> assemble(uint32_t version,
+                                std::vector<std::string> *symbolNames);
 
   Location loc;
   std::vector<uint8_t> body;
@@ -153,9 +169,12 @@ LogicalResult PlanEncoder::emitExpr(Attribute expr) {
   return success();
 }
 
-/// Append postfix ops for an inverse-map affine expression.
+/// Append postfix ops for an affine expression: the inverse map (dims only)
+/// or, with `channelSymbols`, a v1 channel map whose symbol positions name
+/// entries of that list (encoded through the wire symbol table).
 LogicalResult PlanEncoder::emitAffineExprOps(AffineExpr expr, uint32_t &opCount,
-                                             std::vector<uint8_t> &ops) {
+                                             std::vector<uint8_t> &ops,
+                                             ArrayAttr channelSymbols) {
   auto pushByte = [&](uint8_t b) { ops.push_back(b); };
   auto pushU32 = [&](uint32_t v) {
     for (int shift = 0; shift < 32; shift += 8)
@@ -179,6 +198,19 @@ LogicalResult PlanEncoder::emitAffineExprOps(AffineExpr expr, uint32_t &opCount,
     ++opCount;
     return success();
   }
+  if (auto symbol = dyn_cast<AffineSymbolExpr>(expr)) {
+    if (!channelSymbols || symbol.getPosition() >= channelSymbols.size())
+      return emitError(loc) << "inverse map uses an expression not "
+                               "representable in wire format v0 (affine "
+                               "symbols)";
+    auto name = dyn_cast<StringAttr>(channelSymbols[symbol.getPosition()]);
+    if (!name)
+      return emitError(loc) << "channel map symbol is not a string";
+    pushByte(kPushSym);
+    pushU32(symbolIndex(name.getValue()));
+    ++opCount;
+    return success();
+  }
   if (auto binary = dyn_cast<AffineBinaryOpExpr>(expr)) {
     uint8_t opcode;
     switch (binary.getKind()) {
@@ -196,11 +228,13 @@ LogicalResult PlanEncoder::emitAffineExprOps(AffineExpr expr, uint32_t &opCount,
       break;
     default:
       return emitError(loc)
-             << "inverse map uses an operation not representable in wire "
-                "format v0 (ceildiv)";
+             << "affine map uses an operation not representable in the wire "
+                "format (ceildiv)";
     }
-    if (failed(emitAffineExprOps(binary.getLHS(), opCount, ops)) ||
-        failed(emitAffineExprOps(binary.getRHS(), opCount, ops)))
+    if (failed(
+            emitAffineExprOps(binary.getLHS(), opCount, ops, channelSymbols)) ||
+        failed(
+            emitAffineExprOps(binary.getRHS(), opCount, ops, channelSymbols)))
       return failure();
     pushByte(opcode);
     ++opCount;
@@ -298,6 +332,12 @@ LogicalResult PlanEncoder::emitTypedValue(TypedAttr value) {
 
 FailureOr<std::vector<uint8_t>>
 PlanEncoder::encode(PlanAttr plan, std::vector<std::string> *symbolNames) {
+  if (failed(emitLayoutBody(plan)))
+    return failure();
+  return assemble(/*version=*/0, symbolNames);
+}
+
+LogicalResult PlanEncoder::emitLayoutBody(PlanAttr plan) {
   // Sections 3..12 into `body`; the symbol table fills up as a side effect.
   if (failed(emitDesc(plan.getSrc())) || failed(emitDesc(plan.getDst())))
     return failure();
@@ -351,14 +391,124 @@ PlanEncoder::encode(PlanAttr plan, std::vector<std::string> *symbolNames) {
   for (AffineExpr result : inverse.getResults())
     if (failed(emitInverseResult(result)))
       return failure();
+  return success();
+}
 
+LogicalResult PlanEncoder::emitStageType(Type type, bool isSigned) {
+  if (failed(emitType(type)))
+    return failure();
+  emitU8(isSigned ? kSigned : kSignless);
+  return success();
+}
+
+LogicalResult PlanEncoder::emitParam(Attribute param) {
+  if (!param) {
+    emitU8(kParamNone);
+    return success();
+  }
+  if (auto dense = dyn_cast<DenseElementsAttr>(param)) {
+    ShapedType type = dense.getType();
+    if (type.getRank() > 1)
+      return emitError(loc) << "inline parameter rank above 1 is not "
+                               "representable in wire format v1";
+    emitU8(kParamInline);
+    emitU8(static_cast<uint8_t>(type.getRank()));
+    if (failed(emitType(type.getElementType())))
+      return failure();
+    const int64_t count = type.getRank() == 0 ? 1 : type.getDimSize(0);
+    emitU32(static_cast<uint32_t>(count));
+    if (isa<FloatType>(type.getElementType())) {
+      for (APFloat value : dense.getValues<APFloat>())
+        emitU64(value.bitcastToAPInt().getZExtValue());
+    } else {
+      for (APInt value : dense.getValues<APInt>()) {
+        if (value.getBitWidth() > 64)
+          return emitError(loc) << "inline parameter wider than 64 bits is "
+                                   "not representable in wire format v1";
+        emitU64(value.getZExtValue());
+      }
+    }
+    return success();
+  }
+  if (auto binding = dyn_cast<ParamBindingAttr>(param)) {
+    emitU8(kParamBinding);
+    emitStr(binding.getName());
+    emitU8(static_cast<uint8_t>(binding.getExtents().size()));
+    for (Attribute extent : binding.getExtents())
+      if (failed(emitExpr(extent)))
+        return failure();
+    return emitType(binding.getElementType());
+  }
+  return emitError(loc) << "parameter is neither a dense constant nor a "
+                           "#reloc.binding: "
+                        << param;
+}
+
+LogicalResult PlanEncoder::emitStage(ValueStageAttr stage,
+                                     ArrayAttr channelSymbols) {
+  emitU8(static_cast<uint8_t>(stage.getTransform()));
+  emitU8(static_cast<uint8_t>(stage.getPolicy()));
+  // Signedness is semantic: int8 storage is signless, the quantize output
+  // and dequantize input are signed by the operation.
+  const bool quantize = stage.getTransform() == ValueTransform::Quantize;
+  const bool dequantize = stage.getTransform() == ValueTransform::Dequantize;
+  if (failed(emitStageType(stage.getInputType(), dequantize)) ||
+      failed(emitStageType(stage.getOutputType(), quantize)))
+    return failure();
+  emitU32(stage.getShape().size());
+  for (Attribute extent : stage.getShape())
+    if (failed(emitExpr(extent)))
+      return failure();
+  if (failed(emitParam(stage.getScale())) ||
+      failed(emitParam(stage.getZeroPoint())))
+    return failure();
+  emitI64(stage.getAxis());
+  AffineMap channel = stage.getChannel();
+  emitU8(channel ? 1 : 0);
+  if (channel) {
+    emitU32(channel.getNumDims());
+    uint32_t opCount = 0;
+    std::vector<uint8_t> ops;
+    if (failed(emitAffineExprOps(channel.getResult(0), opCount, ops,
+                                 channelSymbols)))
+      return failure();
+    emitU32(opCount);
+    body.insert(body.end(), ops.begin(), ops.end());
+  }
+  return success();
+}
+
+FailureOr<std::vector<uint8_t>>
+PlanEncoder::encodeTyped(TypedPlanAttr plan,
+                         std::vector<std::string> *symbolNames) {
+  // 3-4: logical descriptors. 5: the v0 layout body. 6: stages. 7: fills.
+  if (failed(emitDesc(plan.getSource())) || failed(emitDesc(plan.getResult())))
+    return failure();
+  if (failed(emitLayoutBody(plan.getLayout())))
+    return failure();
+  emitU32(plan.getStages().size());
+  for (ValueStageAttr stage : plan.getStages())
+    if (failed(emitStage(stage, plan.getSymbols())))
+      return failure();
+  emitU32(plan.getFills().size());
+  for (TypedFillAttr fill : plan.getFills()) {
+    emitU32(static_cast<uint32_t>(fill.getDstAxis()));
+    emitU32(static_cast<uint32_t>(fill.getStage()));
+    if (failed(emitTypedValue(fill.getValue())))
+      return failure();
+  }
+  return assemble(/*version=*/1, symbolNames);
+}
+
+std::vector<uint8_t>
+PlanEncoder::assemble(uint32_t version, std::vector<std::string> *symbolNames) {
   // Assemble: header + symbol table + body.
   std::vector<uint8_t> out;
   out.reserve(body.size() + 64);
   const char magic[4] = {'R', 'P', 'L', 'N'};
   out.insert(out.end(), magic, magic + 4);
-  for (int shift = 0; shift < 32; shift += 8) // version u32 = 0
-    out.push_back(static_cast<uint8_t>(0u >> shift));
+  for (int shift = 0; shift < 32; shift += 8) // version u32
+    out.push_back(static_cast<uint8_t>(version >> shift));
   for (int shift = 0; shift < 32; shift += 8) // symbol count
     out.push_back(
         static_cast<uint8_t>(static_cast<uint32_t>(symbols.size()) >> shift));
@@ -398,4 +548,14 @@ mlir::reloc::encodePlan(PlanAttr plan, Location loc,
     return failure();
   }
   return PlanEncoder(loc).encode(plan, symbolNames);
+}
+
+FailureOr<std::vector<uint8_t>>
+mlir::reloc::encodeTypedPlan(TypedPlanAttr plan, Location loc,
+                             std::vector<std::string> *symbolNames) {
+  if (!plan) {
+    emitError(loc) << "cannot encode a null typed plan";
+    return failure();
+  }
+  return PlanEncoder(loc).encodeTyped(plan, symbolNames);
 }

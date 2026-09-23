@@ -4,6 +4,7 @@
 add_executable(libreloc-test
   VersionTest.cpp
   DecodeTest.cpp
+  TypedDecodeTest.cpp
   EvalTest.cpp
   BindTest.cpp
   ExecuteTest.cpp

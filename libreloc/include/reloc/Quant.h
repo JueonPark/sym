@@ -84,6 +84,18 @@ void gatherQuantizeF32S8(const BoundPlan &bound, const float *srcBase,
                          int64_t outerBegin, int64_t outerEnd,
                          Variant v = Variant::Auto);
 
+/// Scalar reference points of the typed value contract
+/// (docs/reloc-typed-semantics.md), exposed for the typed decoder/binder
+/// (C3) and for R3's reference paths. Each is the exact arithmetic the
+/// kernels above implement.
+///   quantizeOneF32S8: symmetric_rne with the reciprocal already formed
+///   (q = rne(clamp(x * invScale, -128, 127)), NaN -> -128).
+///   narrowF32F16:     ieee_rne (RNE, overflow -> inf, subnormals kept).
+///   widenF16F32:      exact.
+int8_t quantizeOneF32S8(float x, float invScale);
+uint16_t narrowF32F16(float x);
+float widenF16F32(uint16_t h);
+
 /// Multi-thread wrappers over a caller-owned GatherPool (D-track parallel
 /// producer, issue #65): partition with the pipeline's per-worker byte
 /// floor (kMinGatherBytesPerWorker) so small inputs stay inline. Output is
