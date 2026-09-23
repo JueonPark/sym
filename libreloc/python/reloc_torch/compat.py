@@ -469,8 +469,59 @@ def symbolic_capture(function, *inputs):
     return make_fx(function, tracing_mode='symbolic')(*inputs)
 
 
+def quantized_decomposed():
+    """The pinned ``quantized_decomposed`` operator namespace (registered by
+    ``torch.ao.quantization.fx._decomposed``), or None when the wheel lacks it.
+
+    C4 audit (Torch 2.14.0): ``dequantize_per_tensor`` computes
+    ``(q.to(f32) - zero_point) * scale`` and ``dequantize_per_channel`` the
+    same per channel; a Python float scale multiplies a f32 tensor as
+    fl32(scale), so both are C1's ``affine`` with one rounding (witness bits
+    match). ``quantize_per_*`` forms ``1.0 / scale`` in double and converts
+    NaN through ``.to(dtype)``: not C1's ``symmetric_rne`` (fl32 reciprocal,
+    NaN -> -128), so quantize captures stay excluded.
+    """
+    try:
+        import torch
+        import torch.ao.quantization.fx._decomposed  # noqa: F401  (registers the library)
+
+        return torch.ops.quantized_decomposed
+    except (ImportError, AttributeError, RuntimeError):
+        return None
+
+
+def quantized_overload(node):
+    """The concrete overload a Dynamo ``quantized_decomposed`` packet call
+    resolves to, or None when the node is not such a packet call.
+
+    Dynamo records ``OpOverloadPacket`` targets while ``make_fx`` records
+    overloads; only the packets of the audited operators are resolved, by the
+    same rule the dispatcher applies: the per-tensor operators take the
+    ``.tensor`` overload when the scale is a tensor (a graph node) and
+    ``.default`` for a Python scalar.
+    """
+    qd = quantized_decomposed()
+    if qd is None or node.op != 'call_function':
+        return None
+    packets = {
+        qd.dequantize_per_tensor: (qd.dequantize_per_tensor.default, qd.dequantize_per_tensor.tensor),
+        qd.quantize_per_tensor: (qd.quantize_per_tensor.default, qd.quantize_per_tensor.tensor),
+        qd.dequantize_per_channel: (qd.dequantize_per_channel.default, None),
+        qd.quantize_per_channel: (qd.quantize_per_channel.default, None),
+    }
+    overloads = packets.get(node.target)
+    if overloads is None:
+        return None
+    scalar_overload, tensor_overload = overloads
+    scale = node.args[1] if len(node.args) > 1 else node.kwargs.get('scale')
+    if tensor_overload is not None and hasattr(scale, 'op'):
+        return tensor_overload
+    return scalar_overload
+
+
 def fx_kind(node):
-    """Closed normalization vocabulary, from the T1 pinned capture inventory."""
+    """Closed normalization vocabulary, from the T1 pinned capture inventory
+    plus C4's audited typed operators."""
     import operator
     import torch
     aten = torch.ops.aten
@@ -490,8 +541,20 @@ def fx_kind(node):
         operator.add: 'scalar', operator.sub: 'scalar', operator.mod: 'scalar',
         operator.getitem: 'scalar', getattr: 'scalar',
     }
+    qd = quantized_decomposed()
+    if qd is not None:
+        kinds.update({
+            qd.dequantize_per_tensor.default: 'dequantize',
+            qd.dequantize_per_tensor.tensor: 'dequantize',
+            qd.dequantize_per_channel.default: 'dequantize',
+            qd.quantize_per_tensor.default: 'quantize',
+            qd.quantize_per_tensor.tensor: 'quantize',
+            qd.quantize_per_tensor.tensor2: 'quantize',
+            qd.quantize_per_channel.default: 'quantize',
+        })
     if node.op == 'call_function':
-        return kinds.get(node.target)
+        target = quantized_overload(node)
+        return kinds.get(target if target is not None else node.target)
     if node.op == 'call_method':
         return {'to': 'transfer', 'cpu': 'transfer', 'cuda': 'transfer',
                 'permute': 'permute', 'transpose': 'transpose', 't': 'transpose', 'view': 'reshape',
@@ -518,6 +581,9 @@ def fx_canonical_call(node, source_value):
         if not args or args[0] is None:
             raise ValueError('unrecognized_fx_target')
         return aten.transpose.int, (args[0], 0, 1), {}
+    overload = quantized_overload(node)
+    if overload is not None:
+        return overload, node.args, dict(node.kwargs)
     if node.op == 'call_function' and hasattr(node.target, '_schema'):
         return node.target, node.args, dict(node.kwargs)
     args, kwargs = node.args, dict(node.kwargs)

@@ -14,6 +14,8 @@ COUNTERS = (
     "symbol_binds",
     "cache_hits",
     "runtime_executions",
+    "typed_executions",
+    "typed_payload_bytes",
     "weight_preparations",
     "weight_invalidations",
 )
@@ -29,6 +31,7 @@ class Diagnostics:
         self.fallbacks = Counter()
         self.exclusions = Counter()
         self.redispatches = Counter()
+        self.dispatches = Counter()
 
     def increment(self, name, amount=1):
         with self._lock:
@@ -48,12 +51,21 @@ class Diagnostics:
         with self._lock:
             self.redispatches[str(reason)] += 1
 
+    def record_dispatch(self, report):
+        """Aggregate an R3 typed dispatch report: the implementation that ran
+        and the bytes it moved (scalars only; the report holds no tensors)."""
+        with self._lock:
+            self._counters["typed_executions"] += 1
+            self._counters["typed_payload_bytes"] += int(report.get("payload_bytes_transferred", 0))
+            self.dispatches[str(report.get("implementation"))] += 1
+
     def snapshot(self):
         with self._lock:
             result = dict(self._counters)
             result["fallbacks"] = dict(self.fallbacks)
             result["exclusions"] = dict(self.exclusions)
             result["redispatches"] = dict(self.redispatches)
+            result["dispatches"] = dict(self.dispatches)
         return result
 
 

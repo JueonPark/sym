@@ -15,6 +15,10 @@ _VIEW_OPERATORS = frozenset(
 )
 _SUPPORTED_DEVICES = frozenset({"cpu", "cuda"})
 _SUPPORTED_DTYPES = frozenset({"float32", "float16", "int8"})
+# C4: a transfer that also casts is a typed candidate when C1 defines the
+# pair (f32 -> f16 `ieee_rne`, f16 -> f32 `exact`); every other dtype change
+# stays `typed_transform_unavailable`.
+_C1_CASTS = frozenset({("float32", "float16"), ("float16", "float32")})
 
 
 def _category(record: TransferRecord) -> str:
@@ -115,7 +119,9 @@ def classify(record: TransferRecord) -> Eligibility:
         return Eligibility(category, False, "nonblocking_unavailable")
     if record.aliases_source:
         return Eligibility(category, False, "unsupported_layout")
-    if record.source.dtype != record.destination.dtype:
+    if record.source.dtype != record.destination.dtype and (
+        record.source.dtype, record.destination.dtype
+    ) not in _C1_CASTS:
         return Eligibility(category, False, "typed_transform_unavailable")
     if record.operator not in _TRANSFER_OPERATORS:
         return Eligibility(category, False, "unsupported_operator")

@@ -73,7 +73,9 @@ def test_raw_normalization_uses_fake_only_and_retains_original(fn):
 @pytest.mark.parametrize(('fn', 'reason'), [
     (lambda x: transfer(x.transpose(0, 1)), 'destination_layout'),
     (lambda x: transfer(x, non_blocking=True), 'nonblocking_unavailable'),
-    (lambda x: transfer(x, dtype=torch.float16), 'typed_transform_unavailable'),
+    (lambda x: transfer(x, dtype=torch.bfloat16), 'typed_transform_unavailable'),
+    (lambda x: transfer(x, dtype=torch.int8), 'typed_transform_unavailable'),
+    (lambda x: transfer(x, dtype=torch.float16), None),  # C4: a C1 cast rides the transfer
     (lambda x: transfer(transfer(x).cpu()), 'multiple_transfers'),
     (lambda x: (transfer(x.transpose(0, 1).contiguous()), x.transpose(0, 1)), None),
 ])

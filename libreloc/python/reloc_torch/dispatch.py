@@ -50,12 +50,22 @@ def _parameter_snapshot(name, value, declared):
             f"parameter {name!r} lives on {value.device}; only validated CPU parameter "
             "values are supported (device parameters have no qualified preparation path)",
         )
+    import torch
+
     dtype = compat.dtype_name(value.dtype)
+    data = value.detach().contiguous()
+    if declared[0] == "int32" and value.dtype in (torch.int64, torch.int16, torch.int8):
+        # Zero points arrive from graphs as whatever integer width PyTorch
+        # gave them; the value is what matters and converts exactly, the
+        # binder still range-checks it.
+        if data.numel() and (int(data.min()) < -(2 ** 31) or int(data.max()) >= 2 ** 31):
+            raise UnsupportedRecipe("bind_error", f"parameter {name!r} does not fit int32")
+        data = data.to(torch.int32)
+        dtype = "int32"
     if dtype != declared[0]:
         raise UnsupportedRecipe(
             "parameter_dtype", f"parameter {name!r} is {dtype}, declared {declared[0]}"
         )
-    data = value.detach().contiguous()
     return (dtype, [int(d) for d in data.shape], data.numpy().tobytes())
 
 
