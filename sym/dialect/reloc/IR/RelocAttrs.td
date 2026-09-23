@@ -129,6 +129,17 @@ def Reloc_NumericPolicyAttr
   let assemblyFormat = "`<` $value `>`";
 }
 
+// 7b. Which typed value transform a plan stage applies (C2, issue #142).
+def Reloc_ValueTransform : I32EnumAttr<"ValueTransform",
+    "typed value transform applied by a plan stage", [
+  I32EnumAttrCase<"Cast", 0, "cast">,
+  I32EnumAttrCase<"Quantize", 1, "quantize">,
+  I32EnumAttrCase<"Dequantize", 2, "dequantize">
+]> {
+  let cppNamespace = "::mlir::reloc";
+  let genSpecializedAttr = 0;
+}
+
 // 8. Runtime quantization parameter declaration: a stable binding name (the
 //    identity the runtime binds by, like a plan symbol; never an address),
 //    the declared extents (rank 0 per tensor, rank 1 per channel; sym
@@ -142,6 +153,75 @@ def Reloc_ParamBindingAttr : Reloc_Attr<"ParamBinding", "binding"> {
     StringRefParameter<"binding name">:$name,
     ArrayRefParameter<"::mlir::Attribute">:$extents,
     "::mlir::Type":$elementType
+  );
+  let hasCustomAssemblyFormat = 1;
+  let genVerifyDecl = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// Typed plan (C2, issue #142): ordered value stages over one layout plan
+//===----------------------------------------------------------------------===//
+
+// 9. One value stage: the transform, its policy, input/output element types,
+//    the logical shape of its operand (the shape the channel axis refers to),
+//    the C1 parameters, and -- per channel only -- the channel-selection map
+//    from the typed plan's logical RESULT coordinates (dims) and plan symbols
+//    to the parameter index. Assembly:
+//      #reloc.stage<quantize symmetric_rne : f32 -> i8, shape = [B, C],
+//                   scale = <dense|binding>, zero_point = <dense|binding>,
+//                   axis = 1, channel = (d0, d1)[s0] -> (d1 mod s0)>
+def Reloc_ValueStageAttr : Reloc_Attr<"ValueStage", "stage"> {
+  let summary = "One typed value stage of a typed plan";
+  let parameters = (ins
+    "::mlir::reloc::ValueTransform":$transform,
+    "::mlir::reloc::NumericPolicy":$policy,
+    "::mlir::Type":$inputType,
+    "::mlir::Type":$outputType,
+    ArrayRefParameter<"::mlir::Attribute">:$shape,
+    "::mlir::Attribute":$scale,
+    "::mlir::Attribute":$zeroPoint,
+    "int64_t":$axis,
+    "::mlir::AffineMap":$channel
+  );
+  let hasCustomAssemblyFormat = 1;
+  let genVerifyDecl = 1;
+}
+
+// 10. A pad fill as the program wrote it, with the stage index at which it
+//     entered the computation (0 = before every value stage). The layout
+//     plan's pad_fill carries the FUSED fill in the result dtype; this entry
+//     keeps the original so the requested computation is reconstructible and
+//     the fusion is verifiable. Body syntax (shared with the typed plan):
+//       {dst_axis = 0, stage = 0, value = 1.0 : f32}
+def Reloc_TypedFillAttr : Reloc_Attr<"TypedFill", "typed_fill"> {
+  let summary = "Original pad fill and the value stage it entered at";
+  let parameters = (ins
+    "int64_t":$dstAxis,
+    "int64_t":$stage,
+    "::mlir::TypedAttr":$value
+  );
+  let hasCustomAssemblyFormat = 1;
+  let genVerifyDecl = 1;
+}
+
+// 11. The typed plan: logical source/result descriptors, plan symbols bound
+//     by name (affine symbol positions of the channel maps), ONE layout plan
+//     whose src/dst element types are the source/result dtypes and whose pad
+//     fills are fused into the result dtype, the ordered value stages, and
+//     the original fills with their entry stages. Verified as a type chain.
+//       #reloc.typed_plan<source = tensor<...>, result = tensor<...>,
+//                         symbols = ["C"], layout = #reloc.plan<...>,
+//                         stages = [#reloc.stage<...>, ...],
+//                         fills = [{dst_axis = 0, stage = 0, value = ...}]>
+def Reloc_TypedPlanAttr : Reloc_Attr<"TypedPlan", "typed_plan"> {
+  let summary = "Ordered typed value stages over one folded layout plan";
+  let parameters = (ins
+    "TensorDescAttr":$source,
+    "TensorDescAttr":$result,
+    "::mlir::ArrayAttr":$symbols,
+    "PlanAttr":$layout,
+    ArrayRefParameter<"ValueStageAttr">:$stages,
+    ArrayRefParameter<"TypedFillAttr">:$fills
   );
   let hasCustomAssemblyFormat = 1;
   let genVerifyDecl = 1;

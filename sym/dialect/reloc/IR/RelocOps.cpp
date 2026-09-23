@@ -414,8 +414,10 @@ LogicalResult PlanResultOp::verify() {
 // reloc.cast / reloc.quantize / reloc.dequantize preserve the logical shape
 // and change only the element type. The numerical meaning of each policy is
 // docs/reloc-typed-semantics.md; the verifiers below enforce static legality
-// only. Value guards on runtime parameters and undecidable symbolic channel
-// lengths are bind-time obligations (C3): a Proof::Unknown never rejects.
+// only, through the helpers in RelocUtils shared with the typed-plan stage
+// attribute (C2). Value guards on runtime parameters and undecidable symbolic
+// channel lengths are bind-time obligations (C3): a Proof::Unknown never
+// rejects.
 
 /// Parse `policy <keyword>` into `attrName`.
 static ParseResult parsePolicy(OpAsmParser &parser, OperationState &result,
@@ -455,135 +457,6 @@ static LogicalResult verifyPreservedShape(Operation *op,
       return op->emitOpError()
              << "result dimension " << k << " must equal operand dimension "
              << k << " (value transforms preserve the logical shape)";
-  return success();
-}
-
-/// Constant extents print as plain integers in diagnostics; anything else
-/// prints as the attribute.
-static std::string describeExtent(Attribute extent) {
-  std::string text;
-  llvm::raw_string_ostream os(text);
-  if (auto constant = dyn_cast<sym::ConstantExprAttr>(extent))
-    os << constant.getValue();
-  else
-    os << extent;
-  return text;
-}
-
-namespace {
-enum class ParamRole { Scale, ZeroPoint };
-} // namespace
-
-static StringRef roleName(ParamRole role) {
-  return role == ParamRole::Scale ? "scale" : "zero_point";
-}
-
-/// One quantization parameter: a dense constant or a #reloc.binding, rank 0
-/// (per tensor) or rank 1 (per channel, length == the channel axis extent
-/// unless undecidable), role-specific element type, valid constant values.
-static LogicalResult verifyQuantParam(Operation *op, ParamRole role,
-                                      Attribute attr,
-                                      sym::SymbolicTensorType input,
-                                      std::optional<int64_t> axis) {
-  StringRef name = roleName(role);
-  MLIRContext *ctx = op->getContext();
-  int64_t rank = 0;
-  Attribute channels; // rank-1 length as a sym expression
-  if (auto dense = dyn_cast<DenseElementsAttr>(attr)) {
-    ShapedType type = dense.getType();
-    rank = type.getRank();
-    if (rank > 1)
-      return op->emitOpError() << "parameters must have rank 0 or 1, but "
-                               << name << " has rank " << rank;
-    Type element = type.getElementType();
-    if (role == ParamRole::Scale) {
-      if (!element.isF32())
-        return op->emitOpError()
-               << "scale constants must have element type f32, but got "
-               << element;
-      for (auto [index, value] : llvm::enumerate(dense.getValues<APFloat>()))
-        if (!value.isFinite() || value.isNegative() || value.isZero())
-          return op->emitOpError()
-                 << "scale must be finite and strictly positive, but element "
-                 << index << " is " << FloatAttr::get(element, value);
-    } else {
-      if (!element.isSignlessInteger())
-        return op->emitOpError() << "zero_point constants must have a "
-                                    "signless integer element type, but got "
-                                 << element;
-      for (auto [index, value] : llvm::enumerate(dense.getValues<APInt>())) {
-        int64_t zeroPoint = value.getSExtValue();
-        if (zeroPoint < -128 || zeroPoint > 127)
-          return op->emitOpError()
-                 << "zero point must lie in [-128, 127], but element " << index
-                 << " is " << zeroPoint;
-      }
-    }
-    if (rank == 1)
-      channels = sym::ConstantExprAttr::get(ctx, type.getDimSize(0));
-  } else if (auto binding = dyn_cast<ParamBindingAttr>(attr)) {
-    rank = static_cast<int64_t>(binding.getExtents().size());
-    Type element = binding.getElementType();
-    if (role == ParamRole::Scale && !element.isF32())
-      return op->emitOpError()
-             << "scale bindings must declare element type f32, but got "
-             << element;
-    if (role == ParamRole::ZeroPoint && !element.isSignlessInteger(32))
-      return op->emitOpError()
-             << "zero_point bindings must declare element type i32, but got "
-             << element;
-    if (rank == 1)
-      channels = binding.getExtents()[0];
-  } else {
-    return op->emitOpError()
-           << name << " must be a dense constant or a #reloc.binding, but got "
-           << attr;
-  }
-
-  if (!axis) {
-    if (rank != 0)
-      return op->emitOpError() << "per-tensor form (no axis) requires rank-0 "
-                                  "parameters, but "
-                               << name << " has rank " << rank;
-    return success();
-  }
-  if (role == ParamRole::Scale && rank != 1)
-    return op->emitOpError()
-           << "per-channel form requires a rank-1 scale, but scale has rank "
-           << rank;
-  if (rank == 1) {
-    Attribute extent = input.getShape()[*axis];
-    if (proveEqual(channels, extent) == Proof::Disproven)
-      return op->emitOpError()
-             << name << (isa<DenseElementsAttr>(attr) ? " has " : " declares ")
-             << describeExtent(channels) << " channel entries, but axis "
-             << *axis << " has extent " << describeExtent(extent);
-  }
-  return success();
-}
-
-/// Shared quantize/dequantize checks: axis range, both parameters, distinct
-/// binding names.
-static LogicalResult verifyQuantParams(Operation *op,
-                                       sym::SymbolicTensorType input,
-                                       Attribute scale, Attribute zeroPoint,
-                                       std::optional<int64_t> axis) {
-  int64_t rank = static_cast<int64_t>(input.getShape().size());
-  if (axis && (*axis < 0 || *axis >= rank))
-    return op->emitOpError() << "axis (" << *axis
-                             << ") is out of range for operand rank " << rank;
-  if (failed(verifyQuantParam(op, ParamRole::Scale, scale, input, axis)))
-    return failure();
-  if (zeroPoint && failed(verifyQuantParam(op, ParamRole::ZeroPoint, zeroPoint,
-                                           input, axis)))
-    return failure();
-  auto scaleBinding = dyn_cast<ParamBindingAttr>(scale);
-  auto zeroPointBinding = dyn_cast_or_null<ParamBindingAttr>(zeroPoint);
-  if (scaleBinding && zeroPointBinding &&
-      scaleBinding.getName() == zeroPointBinding.getName())
-    return op->emitOpError() << "runtime parameters must use distinct binding "
-                                "names, but scale and zero_point both bind \""
-                             << scaleBinding.getName() << "\"";
   return success();
 }
 
@@ -641,6 +514,23 @@ static void printQuantLike(OpType op, OpAsmPrinter &printer) {
   printOpTypes(printer, op.getInput().getType(), op.getResult().getType());
 }
 
+/// Shared quantize/dequantize verifier: signature, shape, parameters.
+template <typename OpType>
+static LogicalResult verifyQuantLike(OpType op, ValueTransform transform) {
+  auto inputType = cast<sym::SymbolicTensorType>(op.getInput().getType());
+  auto resultType = cast<sym::SymbolicTensorType>(op.getResult().getType());
+  auto emitError = [&]() { return op.emitOpError(); };
+  if (failed(verifyValueTransformSignature(emitError, transform, op.getPolicy(),
+                                           inputType.getElementType(),
+                                           resultType.getElementType())))
+    return failure();
+  if (failed(verifyPreservedShape(op, inputType, resultType)))
+    return failure();
+  return verifyQuantizationParameters(emitError, inputType.getShape(),
+                                      op.getScale(), op.getZeroPointAttr(),
+                                      op.getAxis(), op.getPolicy());
+}
+
 //===----------------------------------------------------------------------===//
 // CastOp
 //===----------------------------------------------------------------------===//
@@ -679,28 +569,11 @@ void CastOp::print(OpAsmPrinter &printer) {
 LogicalResult CastOp::verify() {
   auto inputType = cast<sym::SymbolicTensorType>(getInput().getType());
   auto resultType = cast<sym::SymbolicTensorType>(getResult().getType());
-  Type from = inputType.getElementType(), to = resultType.getElementType();
-  std::optional<NumericPolicy> required;
-  StringRef pair;
-  if (from.isF32() && to.isF16()) {
-    required = NumericPolicy::IeeeRne;
-    pair = "f32 -> f16";
-  } else if (from.isF16() && to.isF32()) {
-    required = NumericPolicy::Exact;
-    pair = "f16 -> f32";
-  }
-  if (!required)
-    return emitOpError() << "cast from " << from << " to " << to
-                         << " is not a supported typed conversion (f32 -> "
-                            "f16, f16 -> f32)";
-  if (failed(verifyPreservedShape(*this, inputType, resultType)))
+  if (failed(verifyValueTransformSignature(
+          [&]() { return emitOpError(); }, ValueTransform::Cast, getPolicy(),
+          inputType.getElementType(), resultType.getElementType())))
     return failure();
-  if (getPolicy() != *required)
-    return emitOpError() << "policy '" << stringifyNumericPolicy(getPolicy())
-                         << "' is not defined for the " << pair
-                         << " cast (use '" << stringifyNumericPolicy(*required)
-                         << "')";
-  return success();
+  return verifyPreservedShape(*this, inputType, resultType);
 }
 
 //===----------------------------------------------------------------------===//
@@ -727,38 +600,7 @@ void QuantizeOp::print(OpAsmPrinter &printer) {
 }
 
 LogicalResult QuantizeOp::verify() {
-  auto inputType = cast<sym::SymbolicTensorType>(getInput().getType());
-  auto resultType = cast<sym::SymbolicTensorType>(getResult().getType());
-  Type from = inputType.getElementType(), to = resultType.getElementType();
-  if (!from.isF32() || !to.isSignlessInteger(8))
-    return emitOpError() << "quantize expects an f32 operand and a signless i8 "
-                            "result (int8 signedness is declared by the "
-                            "operation, not by the storage type), but got "
-                         << from << " -> " << to;
-  if (failed(verifyPreservedShape(*this, inputType, resultType)))
-    return failure();
-  if (getPolicy() != NumericPolicy::SymmetricRne)
-    return emitOpError() << "policy '" << stringifyNumericPolicy(getPolicy())
-                         << "' is not defined for reloc.quantize (use "
-                            "'symmetric_rne')";
-  if (failed(verifyQuantParams(*this, inputType, getScale(), getZeroPointAttr(),
-                               getAxis())))
-    return failure();
-  // symmetric_rne has no zero point: only the constant 0 is admitted, so the
-  // runtime never needs a bind-time zero-point guard for this policy.
-  if (Attribute zeroPoint = getZeroPointAttr()) {
-    if (isa<ParamBindingAttr>(zeroPoint))
-      return emitOpError() << "policy symmetric_rne admits only the constant "
-                              "zero point 0, but zero_point is a runtime "
-                              "binding";
-    for (auto [index, value] :
-         llvm::enumerate(cast<DenseElementsAttr>(zeroPoint).getValues<APInt>()))
-      if (!value.isZero())
-        return emitOpError() << "policy symmetric_rne admits only the constant "
-                                "zero point 0, but element "
-                             << index << " is " << value.getSExtValue();
-  }
-  return success();
+  return verifyQuantLike(*this, ValueTransform::Quantize);
 }
 
 //===----------------------------------------------------------------------===//
@@ -785,21 +627,81 @@ void DequantizeOp::print(OpAsmPrinter &printer) {
 }
 
 LogicalResult DequantizeOp::verify() {
+  return verifyQuantLike(*this, ValueTransform::Dequantize);
+}
+
+//===----------------------------------------------------------------------===//
+// TypedPlanResultOp (C2, issue #142)
+//===----------------------------------------------------------------------===//
+
+ParseResult TypedPlanResultOp::parse(OpAsmParser &parser,
+                                     OperationState &result) {
+  OpAsmParser::UnresolvedOperand input;
+  TypedPlanAttr plan;
+  if (parser.parseOperand(input) || parser.parseKeyword("plan") ||
+      parser.parseLParen() || parser.parseAttribute(plan) ||
+      parser.parseRParen())
+    return failure();
+  result.addAttribute(getPlanAttrName(result.name), plan);
+  if (parser.parseOptionalAttrDict(result.attributes))
+    return failure();
+  Type inputType, resultType;
+  if (parseOpTypes(parser, inputType, resultType) ||
+      parser.resolveOperand(input, inputType, result.operands))
+    return failure();
+  result.addTypes(resultType);
+  return success();
+}
+
+void TypedPlanResultOp::print(OpAsmPrinter &printer) {
+  printer << " " << getInput() << " plan(";
+  printer.printAttribute(getPlan());
+  printer << ")";
+  printer.printOptionalAttrDict((*this)->getAttrs(),
+                                /*elidedAttrs=*/{getPlanAttrName()});
+  printOpTypes(printer, getInput().getType(), getResult().getType());
+}
+
+LogicalResult TypedPlanResultOp::verify() {
   auto inputType = cast<sym::SymbolicTensorType>(getInput().getType());
   auto resultType = cast<sym::SymbolicTensorType>(getResult().getType());
-  Type from = inputType.getElementType(), to = resultType.getElementType();
-  if (!from.isSignlessInteger(8) || !to.isF32())
-    return emitOpError() << "dequantize expects a signless i8 operand and an "
-                            "f32 result, but got "
-                         << from << " -> " << to;
-  if (failed(verifyPreservedShape(*this, inputType, resultType)))
-    return failure();
-  if (getPolicy() != NumericPolicy::Affine)
-    return emitOpError() << "policy '" << stringifyNumericPolicy(getPolicy())
-                         << "' is not defined for reloc.dequantize (use "
-                            "'affine')";
-  return verifyQuantParams(*this, inputType, getScale(), getZeroPointAttr(),
-                           getAxis());
+  TypedPlanAttr plan = getPlan();
+  ArrayRef<Attribute> sourceExtents = plan.getSource().getExtents();
+  ArrayRef<Attribute> resultExtents = plan.getResult().getExtents();
+
+  if (inputType.getShape().size() != sourceExtents.size())
+    return emitOpError() << "input rank (" << inputType.getShape().size()
+                         << ") must match the typed plan source rank ("
+                         << sourceExtents.size() << ")";
+  if (inputType.getElementType() != plan.getSource().getElementType())
+    return emitOpError() << "input element type (" << inputType.getElementType()
+                         << ") must match the typed plan source element type ("
+                         << plan.getSource().getElementType() << ")";
+  if (resultType.getElementType() != plan.getResult().getElementType())
+    return emitOpError() << "result element type ("
+                         << resultType.getElementType()
+                         << ") must match the typed plan result element type ("
+                         << plan.getResult().getElementType() << ")";
+  // The typed plan's result descriptor keeps the logical rank (channel maps
+  // are written over it), so ranks match exactly; extents are checked as
+  // disproven-only, like plan_result.
+  if (resultType.getShape().size() != resultExtents.size())
+    return emitOpError() << "result rank (" << resultType.getShape().size()
+                         << ") must match the typed plan result rank ("
+                         << resultExtents.size() << ")";
+  for (size_t k = 0; k < sourceExtents.size(); ++k)
+    if (proveEqual(inputType.getShape()[k], sourceExtents[k]) ==
+        Proof::Disproven)
+      return emitOpError() << "input dimension " << k
+                           << " provably disagrees with the typed plan source "
+                              "extent";
+  for (size_t k = 0; k < resultExtents.size(); ++k)
+    if (proveEqual(resultType.getShape()[k], resultExtents[k]) ==
+        Proof::Disproven)
+      return emitOpError() << "result dimension " << k
+                           << " provably disagrees with the typed plan result "
+                              "extent";
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

@@ -13,8 +13,10 @@
 
 #include "RelocDialect.h"
 #include "SymDialect.h"
+#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Location.h"
 #include "llvm/ADT/SmallVector.h"
+#include <optional>
 #include <string>
 
 namespace mlir {
@@ -30,10 +32,29 @@ struct PlanAxis {
 
 /// One pending pad (at most one per dst axis; same-value re-pads merge).
 struct PlanPad {
-  int64_t axis;    // dst axis index (kept current across folds)
-  Attribute lo;    // sym expression: leading pad width
-  Attribute hi;    // sym expression: trailing pad width
-  TypedAttr value; // fill value
+  int64_t axis;       // dst axis index (kept current across folds)
+  Attribute lo;       // sym expression: leading pad width
+  Attribute hi;       // sym expression: trailing pad width
+  TypedAttr value;    // FUSED fill: the fill in the current element type
+  TypedAttr original; // the fill as written (C2), in its entry stage's dtype
+  int64_t stage = 0;  // value stages folded before this pad entered (C2)
+};
+
+/// One folded typed value stage (C2, issue #142): what the stage does and how
+/// the CURRENT dst-view coordinates select its channel parameter. Transposes
+/// and reshapes rewrite `channel` (they are index maps), pads shift it by
+/// their leading width; finalizeTyped() turns it into the stage's channel
+/// map over the logical result coordinates.
+struct PlanValueStage {
+  ValueTransform transform;
+  NumericPolicy policy;
+  Type inputType;
+  Type outputType;
+  SmallVector<Attribute> shape; // logical operand shape when folded
+  Attribute scale;     // dense constant or #reloc.binding (casts: null)
+  Attribute zeroPoint; // optional
+  int64_t axis = -1;   // channel axis on `shape`; -1 per tensor
+  AffineExpr channel;  // parameter index over current view dims
 };
 
 /// Invariants between transfer-function calls:
@@ -55,12 +76,22 @@ public:
   explicit PlanBuilder(sym::SymbolicTensorType input);
 
   /// Emit the #reloc.plan for the current state: dst gets the axis extents
-  /// with canonical row-major strides, the inverse map is the inverse of
-  /// perm, divisibility constraints are emitted in insertion order, and
-  /// contiguity flags mark axes with provably-unit source stride (no_copy
-  /// detection lands in #B5). Verifier-checked; returns null after
-  /// emitting an error at `loc` if verification fails.
+  /// with canonical row-major strides and the CURRENT element type, the
+  /// inverse map is the inverse of perm, divisibility constraints are
+  /// emitted in insertion order, and contiguity flags mark axes with
+  /// provably-unit source stride (no_copy detection lands in #B5).
+  /// Verifier-checked; returns null after emitting an error at `loc` if
+  /// verification fails.
   PlanAttr finalize(Location loc) const;
+
+  /// C2: emit the #reloc.typed_plan for a chain that folded at least one
+  /// value stage: finalize()'s layout (source dtype -> current dtype, fused
+  /// fills), the logical result descriptor (the layout dst at finalize time,
+  /// before any canonical axis merging), the stages with their channel maps
+  /// over that result's coordinates, and the original fills with their entry
+  /// stages. Returns null when no stage was folded (use finalize()) or when
+  /// verification fails (after emitting an error at `loc`).
+  TypedPlanAttr finalizeTyped(Location loc) const;
 
   // State is public: transfer functions are free functions over the builder.
   MLIRContext *ctx;
@@ -69,6 +100,10 @@ public:
   SmallVector<int64_t> perm;
   SmallVector<DivisibilityAttr> divisibility;
   SmallVector<PlanPad> pads;
+  Type elementType;                   // current stage dtype (C2)
+  SmallVector<PlanValueStage> stages; // folded value stages, in order (C2)
+  SmallVector<StringRef> symbolNames; // affine symbol positions of channels
+  std::string bailReason; // stable reason set by a failing transfer function
 
   /// The pad on dst axis `axis`, or nullptr.
   const PlanPad *findPad(int64_t axis) const {
@@ -111,12 +146,29 @@ LogicalResult foldReshape(PlanBuilder &plan, ArrayRef<Attribute> targetShape);
 LogicalResult foldPad(PlanBuilder &plan, int64_t axis, Attribute lo,
                       Attribute hi, TypedAttr value);
 
-/// True for ops the P1b transfer functions can fold (#B1-#B3:
-/// reloc.transpose, reloc.reshape, reloc.pad).
+/// C2 transfer function: fold one typed value transform (C1's reloc.cast /
+/// reloc.quantize / reloc.dequantize, already verified) into `plan`. Every
+/// pending pad's fused fill is folded through the stage with the C1
+/// reference arithmetic; a per-channel or runtime parameter makes a single
+/// fused fill impossible, so the fold fails with bailReason
+/// "fill_not_foldable". On success the stage is recorded with its channel
+/// expression (the operand's channel-axis coordinate) and the element type
+/// advances. Fails, leaving `plan` untouched, when the input type is not
+/// the current element type or `shape` does not match the current rank.
+LogicalResult foldValueStage(PlanBuilder &plan, ValueTransform transform,
+                             NumericPolicy policy, Type inputType,
+                             Type outputType, ArrayRef<Attribute> shape,
+                             Attribute scale, Attribute zeroPoint,
+                             std::optional<int64_t> axis);
+
+/// True for ops the transfer functions can fold: the layout ops (#B1-#B3:
+/// reloc.transpose, reloc.reshape, reloc.pad) and, since C2, the typed value
+/// transforms (reloc.cast, reloc.quantize, reloc.dequantize).
 bool isFoldableChainOp(Operation *op);
 
 /// Dispatch one chain op through its transfer function. Returns failure
-/// for a transfer-function bail or a non-foldable op.
+/// for a transfer-function bail or a non-foldable op; a typed bail leaves
+/// its stable reason in plan.bailReason (empty for layout bails).
 LogicalResult foldChainOp(PlanBuilder &plan, Operation *op);
 
 /// #B5: canonicalize `plan` so equivalent chains yield the same attribute:
@@ -130,6 +182,15 @@ LogicalResult foldChainOp(PlanBuilder &plan, Operation *op);
 /// no_copy recomputation only. Idempotent. Returns null after emitting a
 /// diagnostic at `loc` if the rebuilt plan fails verification.
 PlanAttr canonicalizePlan(PlanAttr plan, Location loc);
+
+/// C2: canonicalize a typed plan. The layout goes through canonicalizePlan
+/// with no_copy cleared afterwards (a value program is never a view; R3 asks
+/// isPureView(layout) for the index-map question), descriptors and stage
+/// shapes are constant-folded, channel maps simplified, fills sorted by dst
+/// axis with their bits untouched. No stage is ever removed: no C1 policy is
+/// an identity and lossy sequences are never cancelled. Idempotent. Returns
+/// null after emitting a diagnostic at `loc` if verification fails.
+TypedPlanAttr canonicalizeTypedPlan(TypedPlanAttr plan, Location loc);
 
 } // namespace reloc
 } // namespace mlir

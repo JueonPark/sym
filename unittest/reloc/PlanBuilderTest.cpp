@@ -934,6 +934,408 @@ TEST_F(PlanBuilderTest, CanonicalizeSafeSubsetPreservesSymbolicDstAndPadCheck) {
   EXPECT_TRUE(canon.getRuntimePadCheck());
 }
 
+//===----------------------------------------------------------------------===//
+// Typed folding (C2, issue #142): stage composition, channel tracking,
+// fill fusion, rollback, canonicalization.
+//===----------------------------------------------------------------------===//
+
+/// Evaluate an affine expression over concrete dims/symbols (floor
+/// semantics, matching the plan's sym expressions).
+static int64_t evalAffine(AffineExpr expr, ArrayRef<int64_t> dims,
+                          ArrayRef<int64_t> symbols) {
+  if (auto constant = dyn_cast<AffineConstantExpr>(expr))
+    return constant.getValue();
+  if (auto dim = dyn_cast<AffineDimExpr>(expr))
+    return dims[dim.getPosition()];
+  if (auto symbol = dyn_cast<AffineSymbolExpr>(expr))
+    return symbols[symbol.getPosition()];
+  auto binary = cast<AffineBinaryOpExpr>(expr);
+  int64_t lhs = evalAffine(binary.getLHS(), dims, symbols);
+  int64_t rhs = evalAffine(binary.getRHS(), dims, symbols);
+  switch (binary.getKind()) {
+  case AffineExprKind::Add:
+    return lhs + rhs;
+  case AffineExprKind::Mul:
+    return lhs * rhs;
+  case AffineExprKind::FloorDiv:
+    return floorDiv(lhs, rhs);
+  case AffineExprKind::Mod:
+    return lhs - floorDiv(lhs, rhs) * rhs;
+  default:
+    llvm_unreachable("unexpected affine expression kind in a channel map");
+  }
+}
+
+/// Channel oracle: a tensor over the stage operand's shape whose value at
+/// every element is that element's coordinate along `axis`. Pushed through
+/// the reference layout ops it tells, at each result index, which channel
+/// parameter the fused program must select there.
+static Tensor channelIds(ArrayRef<int64_t> shape, int64_t axis) {
+  Tensor ids = iota(shape);
+  SmallVector<int64_t> strides = rowMajorStrides(shape);
+  for (int64_t &value : ids.data)
+    value = (value / strides[axis]) % shape[axis];
+  return ids;
+}
+
+/// Compare a stage's channel map against the oracle over every result index.
+static void expectChannelMap(reloc::TypedPlanAttr plan, size_t stageIndex,
+                             const Tensor &expected,
+                             ArrayRef<int64_t> symbolValues) {
+  AffineMap channel = plan.getStages()[stageIndex].getChannel();
+  ASSERT_TRUE(channel);
+  ASSERT_EQ(channel.getNumDims(), expected.shape.size());
+  ASSERT_EQ(channel.getNumResults(), 1u);
+  SmallVector<int64_t> index(expected.shape.size(), 0);
+  for (size_t n = 0; n < expected.data.size(); ++n) {
+    EXPECT_EQ(evalAffine(channel.getResult(0), index, symbolValues),
+              expected.data[n])
+        << "flat result index " << n;
+    for (int64_t k = static_cast<int64_t>(expected.shape.size()) - 1; k >= 0;
+         --k) {
+      if (++index[k] < expected.shape[k])
+        break;
+      index[k] = 0;
+    }
+  }
+}
+
+class TypedPlanBuilderTest : public PlanBuilderTest {
+protected:
+  Type f32() { return Float32Type::get(&context); }
+  Type f16() { return Float16Type::get(&context); }
+  Type i8() { return IntegerType::get(&context, 8); }
+  Type i32() { return IntegerType::get(&context, 32); }
+  Attribute scalarScale(double value) {
+    return DenseElementsAttr::get(RankedTensorType::get({}, f32()),
+                                  FloatAttr::get(f32(), value));
+  }
+  Attribute channelScales(ArrayRef<double> values) {
+    SmallVector<Attribute> attrs;
+    for (double value : values)
+      attrs.push_back(FloatAttr::get(f32(), value));
+    return DenseElementsAttr::get(
+        RankedTensorType::get({static_cast<int64_t>(values.size())}, f32()),
+        attrs);
+  }
+  Attribute scaleBinding(StringRef name, ArrayRef<Attribute> extents) {
+    return reloc::ParamBindingAttr::get(&context, name, extents, f32());
+  }
+  TypedAttr s8(int64_t value) { return IntegerAttr::get(i8(), value); }
+  /// The stage operand's logical shape: the current dst view INCLUDING pad
+  /// widths (what the typed op's operand type carries in the IR).
+  SmallVector<Attribute> operandShape(const reloc::PlanBuilder &builder) {
+    SmallVector<Attribute> shape;
+    for (auto [k, axis] : llvm::enumerate(builder.axes)) {
+      Attribute extent = axis.extent;
+      if (const reloc::PlanPad *pad = builder.findPad(static_cast<int64_t>(k)))
+        extent = sym::getSimplifiedBinaryExpr(
+            &context, sym::SymbolicExprOp::Add,
+            sym::getSimplifiedBinaryExpr(&context, sym::SymbolicExprOp::Add,
+                                         extent, pad->lo),
+            pad->hi);
+      shape.push_back(extent);
+    }
+    return shape;
+  }
+  LogicalResult quantize(reloc::PlanBuilder &builder, Attribute scale,
+                         std::optional<int64_t> axis) {
+    return reloc::foldValueStage(builder, reloc::ValueTransform::Quantize,
+                                 reloc::NumericPolicy::SymmetricRne, f32(),
+                                 i8(), operandShape(builder), scale,
+                                 Attribute(), axis);
+  }
+  LogicalResult castDown(reloc::PlanBuilder &builder) {
+    return reloc::foldValueStage(builder, reloc::ValueTransform::Cast,
+                                 reloc::NumericPolicy::IeeeRne, f32(), f16(),
+                                 operandShape(builder), Attribute(),
+                                 Attribute(), std::nullopt);
+  }
+  reloc::TypedPlanAttr finalizeTyped(const reloc::PlanBuilder &builder) {
+    reloc::TypedPlanAttr plan =
+        builder.finalizeTyped(UnknownLoc::get(&context));
+    EXPECT_TRUE(plan);
+    return plan;
+  }
+  reloc::TypedPlanAttr canonicalTyped(reloc::TypedPlanAttr raw) {
+    reloc::TypedPlanAttr canon =
+        reloc::canonicalizeTypedPlan(raw, UnknownLoc::get(&context));
+    EXPECT_TRUE(canon);
+    return canon;
+  }
+};
+
+TEST_F(TypedPlanBuilderTest, ChannelSurvivesTransposeThenSplit) {
+  // [2, 12] quantized on axis 1 (12 distinct scales), transposed to [12, 2],
+  // then the channel axis split 12 -> [4, 3]: channel = 3 * d0 + d1.
+  reloc::PlanBuilder builder(makeType({dim(2), dim(12)}));
+  SmallVector<double> scales;
+  for (int k = 0; k < 12; ++k)
+    scales.push_back(1.0 / (k + 1));
+  ASSERT_TRUE(succeeded(quantize(builder, channelScales(scales), 1)));
+  ASSERT_TRUE(succeeded(reloc::foldTranspose(builder, {1, 0})));
+  ASSERT_TRUE(succeeded(reloc::foldReshape(builder, {dim(4), dim(3), dim(2)})));
+  reloc::TypedPlanAttr plan = finalizeTyped(builder);
+  ASSERT_TRUE(plan);
+  Tensor expected =
+      reshapeRef(transposeRef(channelIds({2, 12}, 1), {1, 0}), {4, 3, 2});
+  expectChannelMap(plan, 0, expected, {});
+  // The stage keeps its logical operand shape and axis; the result keeps
+  // rank 3 even after the canonical layout collapses.
+  EXPECT_EQ(plan.getStages()[0].getAxis(), 1);
+  EXPECT_EQ(plan.getStages()[0].getShape().size(), 2u);
+  reloc::TypedPlanAttr canon = canonicalTyped(plan);
+  EXPECT_EQ(canon.getResult().getExtents().size(), 3u);
+  expectChannelMap(canon, 0, expected, {});
+  EXPECT_FALSE(canon.getLayout().getNoCopy());
+}
+
+TEST_F(TypedPlanBuilderTest, ChannelSurvivesFlattenWithMod) {
+  reloc::PlanBuilder builder(makeType({dim(2), dim(3)}));
+  ASSERT_TRUE(
+      succeeded(quantize(builder, channelScales({0.5, 0.25, 0.125}), 1)));
+  ASSERT_TRUE(succeeded(reloc::foldReshape(builder, {dim(6)})));
+  reloc::TypedPlanAttr plan = finalizeTyped(builder);
+  ASSERT_TRUE(plan);
+  expectChannelMap(plan, 0, reshapeRef(channelIds({2, 3}, 1), {6}), {});
+}
+
+TEST_F(TypedPlanBuilderTest, PermutationThenCoalescingKeepsChannel) {
+  // Channel on axis 0 of [2, 3, 4], moved last by the transpose, then the two
+  // leading axes merge: channel = d1 of the [12, 2] result.
+  reloc::PlanBuilder builder(makeType({dim(2), dim(3), dim(4)}));
+  ASSERT_TRUE(succeeded(quantize(builder, channelScales({0.5, 0.25}), 0)));
+  ASSERT_TRUE(succeeded(reloc::foldTranspose(builder, {1, 2, 0})));
+  ASSERT_TRUE(succeeded(reloc::foldReshape(builder, {dim(12), dim(2)})));
+  reloc::TypedPlanAttr plan = finalizeTyped(builder);
+  ASSERT_TRUE(plan);
+  Tensor expected =
+      reshapeRef(transposeRef(channelIds({2, 3, 4}, 0), {1, 2, 0}), {12, 2});
+  expectChannelMap(plan, 0, expected, {});
+}
+
+TEST_F(TypedPlanBuilderTest, SymbolicSplitRetainsDivisibilityAndLength) {
+  // [B, C] quantized per channel over a runtime scale declared over [C],
+  // split C by 3: the fold retains C % 3 == 0, the stage keeps shape [B, C]
+  // and the binding (parameter_length == C is C3's guard), and the channel
+  // map needs no symbol.
+  reloc::PlanBuilder builder(makeType({dim("B"), dim("C")}));
+  ASSERT_TRUE(succeeded(quantize(builder, scaleBinding("s", {dim("C")}), 1)));
+  ASSERT_TRUE(succeeded(
+      reloc::foldReshape(builder, {dim("B"), div(dim("C"), 3), dim(3)})));
+  reloc::TypedPlanAttr plan = finalizeTyped(builder);
+  ASSERT_TRUE(plan);
+  ASSERT_EQ(plan.getLayout().getDivisibility().size(), 1u);
+  EXPECT_EQ(plan.getLayout().getDivisibility()[0].getExpr(), dim("C"));
+  EXPECT_EQ(plan.getLayout().getDivisibility()[0].getDivisor(), 3);
+  EXPECT_EQ(plan.getStages()[0].getShape(),
+            ArrayRef<Attribute>({dim("B"), dim("C")}));
+  EXPECT_EQ(plan.getStages()[0].getScale(), scaleBinding("s", {dim("C")}));
+  EXPECT_TRUE(plan.getSymbols().empty());
+  // Concrete witness B = 2, C = 6 -> [2, 2, 3].
+  expectChannelMap(plan, 0, reshapeRef(channelIds({2, 6}, 1), {2, 2, 3}), {});
+}
+
+TEST_F(TypedPlanBuilderTest, SymbolicFlattenBindsTheChannelSymbol) {
+  reloc::PlanBuilder builder(makeType({dim("B"), dim("C")}));
+  ASSERT_TRUE(succeeded(quantize(builder, scaleBinding("s", {dim("C")}), 1)));
+  Attribute flat = sym::getSimplifiedBinaryExpr(
+      &context, sym::SymbolicExprOp::Mul, dim("B"), dim("C"));
+  ASSERT_TRUE(succeeded(reloc::foldReshape(builder, {flat})));
+  reloc::TypedPlanAttr plan = finalizeTyped(builder);
+  ASSERT_TRUE(plan);
+  ASSERT_EQ(plan.getSymbols().size(), 1u);
+  EXPECT_EQ(cast<StringAttr>(plan.getSymbols()[0]).getValue(), "C");
+  // Witness B = 2, C = 3: channel = flat mod C.
+  expectChannelMap(plan, 0, reshapeRef(channelIds({2, 3}, 1), {6}), {3});
+}
+
+TEST_F(TypedPlanBuilderTest, PadOrderWitnessAtScaleHalf) {
+  // Pad f32 1.0 then quantize at scale 0.5: fused code 2, entered at stage 0.
+  reloc::PlanBuilder padFirst(makeType({dim(6)}));
+  ASSERT_TRUE(
+      succeeded(reloc::foldPad(padFirst, 0, dim(1), dim(1), fill(1.0))));
+  ASSERT_TRUE(succeeded(quantize(padFirst, scalarScale(0.5), std::nullopt)));
+  reloc::TypedPlanAttr a = finalizeTyped(padFirst);
+  ASSERT_TRUE(a);
+  ASSERT_EQ(a.getLayout().getPadFill().size(), 1u);
+  EXPECT_EQ(a.getLayout().getPadFill()[0].getValue(), s8(2));
+  ASSERT_EQ(a.getFills().size(), 1u);
+  EXPECT_EQ(a.getFills()[0].getStage(), 0);
+  EXPECT_EQ(a.getFills()[0].getValue(), fill(1.0));
+  EXPECT_EQ(a.getStages()[0].getShape(), ArrayRef<Attribute>({dim(8)}));
+
+  // Quantize first, then pad s8 with code 1: fused code 1, entered at stage 1.
+  reloc::PlanBuilder quantizeFirst(makeType({dim(6)}));
+  ASSERT_TRUE(
+      succeeded(quantize(quantizeFirst, scalarScale(0.5), std::nullopt)));
+  ASSERT_TRUE(
+      succeeded(reloc::foldPad(quantizeFirst, 0, dim(1), dim(1), s8(1))));
+  reloc::TypedPlanAttr b = finalizeTyped(quantizeFirst);
+  ASSERT_TRUE(b);
+  EXPECT_EQ(b.getLayout().getPadFill()[0].getValue(), s8(1));
+  EXPECT_EQ(b.getFills()[0].getStage(), 1);
+  EXPECT_EQ(b.getStages()[0].getShape(), ArrayRef<Attribute>({dim(6)}));
+  EXPECT_NE(a, b);
+  EXPECT_NE(canonicalTyped(a), canonicalTyped(b));
+}
+
+TEST_F(TypedPlanBuilderTest, PadBeforePerChannelStageBailsAndRollsBack) {
+  reloc::PlanBuilder builder(makeType({dim(6), dim(3)}));
+  ASSERT_TRUE(succeeded(reloc::foldPad(builder, 0, dim(1), dim(1), fill(1.0))));
+  EXPECT_TRUE(failed(quantize(builder, channelScales({0.5, 0.25, 0.125}), 1)));
+  EXPECT_EQ(builder.bailReason, "fill_not_foldable");
+  EXPECT_TRUE(builder.stages.empty());
+  ASSERT_EQ(builder.pads.size(), 1u);
+  EXPECT_EQ(builder.pads[0].value, fill(1.0)); // still the f32 fill
+  EXPECT_EQ(builder.elementType, f32());
+  // A runtime scale cannot fold the fill either.
+  EXPECT_TRUE(failed(quantize(builder, scaleBinding("s", {}), std::nullopt)));
+  EXPECT_EQ(builder.bailReason, "fill_not_foldable");
+  EXPECT_TRUE(builder.stages.empty());
+  // The same pad AFTER a per-tensor stage is fine: the layout-only plan the
+  // builder would emit is unaffected by the failed attempts.
+  reloc::PlanAttr layoutOnly = finalize(builder);
+  ASSERT_TRUE(layoutOnly);
+  EXPECT_EQ(layoutOnly.getDst().getElementType(), f32());
+}
+
+TEST_F(TypedPlanBuilderTest, LateLayoutBailLeavesStagesIntact) {
+  // A transposed merge is not contiguous: the reshape fails after the stage
+  // and the transpose were folded, and neither is disturbed.
+  reloc::PlanBuilder builder(makeType({dim(4), dim(6)}));
+  ASSERT_TRUE(succeeded(quantize(builder, scaleBinding("s", {dim(4)}), 0)));
+  ASSERT_TRUE(succeeded(reloc::foldTranspose(builder, {1, 0})));
+  AffineExpr before = builder.stages[0].channel;
+  EXPECT_TRUE(failed(reloc::foldReshape(builder, {dim(24)})));
+  EXPECT_TRUE(builder.bailReason.empty()); // a layout bail, not a typed one
+  ASSERT_EQ(builder.stages.size(), 1u);
+  EXPECT_EQ(builder.stages[0].channel, before);
+  EXPECT_EQ(builder.axes.size(), 2u);
+  EXPECT_EQ(builder.elementType, i8());
+}
+
+TEST_F(TypedPlanBuilderTest, PadsEnteringAtDifferentStagesDoNotMerge) {
+  reloc::PlanBuilder builder(makeType({dim(6)}));
+  ASSERT_TRUE(succeeded(reloc::foldPad(builder, 0, dim(1), dim(0), fill(0.0))));
+  ASSERT_TRUE(succeeded(quantize(builder, scalarScale(1.0), std::nullopt)));
+  // The fused fill is now code 0; a second s8 pad with code 0 has the same
+  // fused value but a different entry point, so it is not merged.
+  EXPECT_TRUE(failed(reloc::foldPad(builder, 0, dim(0), dim(1), s8(0))));
+  EXPECT_EQ(builder.bailReason, "pad_stage");
+  ASSERT_EQ(builder.pads.size(), 1u);
+  EXPECT_EQ(builder.pads[0].stage, 0);
+}
+
+TEST_F(TypedPlanBuilderTest, PadAfterStageShiftsTheChannel) {
+  // Quantize on axis 1, then pad that axis by lo = 1: result coordinate d1
+  // selects channel d1 - 1; the padded channel takes the s8 fill.
+  reloc::PlanBuilder builder(makeType({dim(2), dim(3)}));
+  ASSERT_TRUE(
+      succeeded(quantize(builder, channelScales({0.5, 0.25, 0.125}), 1)));
+  ASSERT_TRUE(succeeded(reloc::foldPad(builder, 1, dim(1), dim(0), s8(0))));
+  reloc::TypedPlanAttr plan = finalizeTyped(builder);
+  ASSERT_TRUE(plan);
+  AffineMap channel = plan.getStages()[0].getChannel();
+  ASSERT_TRUE(channel);
+  EXPECT_EQ(evalAffine(channel.getResult(0), {0, 1}, {}), 0);
+  EXPECT_EQ(evalAffine(channel.getResult(0), {1, 3}, {}), 2);
+  EXPECT_EQ(plan.getFills()[0].getStage(), 1);
+}
+
+TEST_F(TypedPlanBuilderTest, CanonicalizeIsIdempotentAndNeverAView) {
+  reloc::PlanBuilder builder(makeType({dim(8), dim(128)}));
+  ASSERT_TRUE(succeeded(castDown(builder)));
+  reloc::TypedPlanAttr raw = finalizeTyped(builder);
+  ASSERT_TRUE(raw);
+  reloc::TypedPlanAttr once = canonicalTyped(raw);
+  EXPECT_EQ(once.getLayout().getAxes().size(), 1u); // layout axes merged
+  EXPECT_TRUE(reloc::isPureView(once.getLayout())); // the index map IS a view
+  EXPECT_FALSE(once.getLayout().getNoCopy());       // the plan is not
+  EXPECT_EQ(once.getResult().getExtents().size(), 2u);
+  EXPECT_EQ(once.getStages().size(), 1u);
+  EXPECT_EQ(canonicalTyped(once), once);
+}
+
+TEST_F(TypedPlanBuilderTest, LossyPairsAreNotCancelled) {
+  reloc::PlanBuilder casts(makeType({dim(4)}));
+  ASSERT_TRUE(succeeded(castDown(casts)));
+  ASSERT_TRUE(succeeded(reloc::foldValueStage(
+      casts, reloc::ValueTransform::Cast, reloc::NumericPolicy::Exact, f16(),
+      f32(), {dim(4)}, Attribute(), Attribute(), std::nullopt)));
+  reloc::TypedPlanAttr castPlan = canonicalTyped(finalizeTyped(casts));
+  ASSERT_TRUE(castPlan);
+  EXPECT_EQ(castPlan.getStages().size(), 2u);
+  EXPECT_EQ(castPlan.getSource().getElementType(),
+            castPlan.getResult().getElementType());
+
+  reloc::PlanBuilder quant(makeType({dim(4)}));
+  ASSERT_TRUE(succeeded(quantize(quant, scalarScale(0.5), std::nullopt)));
+  ASSERT_TRUE(succeeded(reloc::foldValueStage(
+      quant, reloc::ValueTransform::Dequantize, reloc::NumericPolicy::Affine,
+      i8(), f32(), {dim(4)}, scalarScale(0.5), Attribute(), std::nullopt)));
+  reloc::TypedPlanAttr quantPlan = canonicalTyped(finalizeTyped(quant));
+  ASSERT_TRUE(quantPlan);
+  EXPECT_EQ(quantPlan.getStages().size(), 2u);
+}
+
+TEST_F(TypedPlanBuilderTest, FillFoldingFollowsTheC1Tables) {
+  auto stage = [&](reloc::ValueTransform transform, reloc::NumericPolicy policy,
+                   Type in, Type out, Attribute scale, Attribute zeroPoint,
+                   int64_t axis) {
+    return reloc::ValueStageAttr::get(&context, transform, policy, in, out,
+                                      ArrayRef<Attribute>({dim(4)}), scale,
+                                      zeroPoint, axis, AffineMap());
+  };
+  using reloc::foldFillThroughStage;
+  reloc::ValueStageAttr narrow =
+      stage(reloc::ValueTransform::Cast, reloc::NumericPolicy::IeeeRne, f32(),
+            f16(), Attribute(), Attribute(), -1);
+  EXPECT_EQ(foldFillThroughStage(fill(1.5), narrow),
+            FloatAttr::get(f16(), 1.5));
+  EXPECT_EQ(foldFillThroughStage(fill(1e5), narrow),
+            FloatAttr::get(f16(), APFloat::getInf(APFloat::IEEEhalf())));
+  reloc::ValueStageAttr quantHalf =
+      stage(reloc::ValueTransform::Quantize, reloc::NumericPolicy::SymmetricRne,
+            f32(), i8(), scalarScale(0.5), Attribute(), -1);
+  EXPECT_EQ(foldFillThroughStage(fill(1.0), quantHalf), s8(2));
+  EXPECT_EQ(foldFillThroughStage(fill(2.5), quantHalf), s8(5));
+  EXPECT_EQ(foldFillThroughStage(fill(200.0), quantHalf), s8(127));
+  EXPECT_EQ(foldFillThroughStage(fill(-200.0), quantHalf), s8(-128));
+  EXPECT_EQ(foldFillThroughStage(fill(std::numeric_limits<double>::quiet_NaN()),
+                                 quantHalf),
+            s8(-128));
+  // Ties to even at unit scale: 2.5 -> 2, -2.5 -> -2.
+  reloc::ValueStageAttr quantUnit =
+      stage(reloc::ValueTransform::Quantize, reloc::NumericPolicy::SymmetricRne,
+            f32(), i8(), scalarScale(1.0), Attribute(), -1);
+  EXPECT_EQ(foldFillThroughStage(fill(2.5), quantUnit), s8(2));
+  EXPECT_EQ(foldFillThroughStage(fill(-2.5), quantUnit), s8(-2));
+  // Dequantize: (q - zp) * scale with one rounding.
+  Attribute zp127 = DenseElementsAttr::get(RankedTensorType::get({}, i32()),
+                                           IntegerAttr::get(i32(), 127));
+  reloc::ValueStageAttr dequant =
+      stage(reloc::ValueTransform::Dequantize, reloc::NumericPolicy::Affine,
+            i8(), f32(), scalarScale(0.3), zp127, -1);
+  TypedAttr folded = foldFillThroughStage(s8(-128), dequant);
+  ASSERT_TRUE(folded);
+  EXPECT_EQ(cast<FloatAttr>(folded).getValue().bitcastToAPInt().getZExtValue(),
+            0xc2990000u);
+  // Not foldable: wrong entry dtype, per-channel, runtime binding.
+  EXPECT_FALSE(foldFillThroughStage(s8(1), quantHalf));
+  reloc::ValueStageAttr perChannel = reloc::ValueStageAttr::get(
+      &context, reloc::ValueTransform::Quantize,
+      reloc::NumericPolicy::SymmetricRne, f32(), i8(),
+      ArrayRef<Attribute>({dim(3)}), channelScales({0.5, 0.25, 0.125}),
+      Attribute(), 0,
+      AffineMap::get(1, 0, getAffineDimExpr(0, &context), &context));
+  EXPECT_FALSE(foldFillThroughStage(fill(1.0), perChannel));
+  reloc::ValueStageAttr bound =
+      stage(reloc::ValueTransform::Quantize, reloc::NumericPolicy::SymmetricRne,
+            f32(), i8(), scaleBinding("s", {}), Attribute(), -1);
+  EXPECT_FALSE(foldFillThroughStage(fill(1.0), bound));
+}
+
 TEST_F(PlanBuilderTest, ConfluenceSplitPathsToSameShape) {
   // Path A: [24] -> reshape [2,3,4] -> reshape [6,4]; Path B: [24] ->
   // reshape [6,4] directly.

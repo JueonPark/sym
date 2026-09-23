@@ -265,7 +265,7 @@ int main(int argc, char **argv) {
   size_t chainCount = 0;
   auto &block = function.front();
   for (Operation &op : block.without_terminator()) {
-    if (isa<reloc::PlanResultOp>(op))
+    if (isa<reloc::PlanResultOp, reloc::TypedPlanResultOp>(op))
       return unsupported("prefolded_input",
                          "input must contain original reloc chain operations");
     // C1 defines the typed value transforms and their semantics; the wire v0
@@ -316,7 +316,9 @@ int main(int argc, char **argv) {
       result = plan;
       ++planCount;
     }
-    if (op->hasAttr("reloc.fallback") || reloc::isFoldableChainOp(op))
+    // A typed plan (C2) is not a v0 artifact: never present it as success.
+    if (op->hasAttr("reloc.fallback") || reloc::isFoldableChainOp(op) ||
+        isa<reloc::TypedPlanResultOp>(op))
       residual = true;
   });
   if (residual || planCount != 1)

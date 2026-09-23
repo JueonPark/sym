@@ -58,9 +58,12 @@ would be unsupported.
 `typed_unsupported` marks a verifier-valid chain that contains a typed value
 transform (`reloc.cast`, `reloc.quantize`, `reloc.dequantize`). Their
 semantics are defined in [reloc-typed-semantics.md](reloc-typed-semantics.md)
-(C1, issue #141); wire format v0, manifest schema 1 and this interface remain
-layout-only until C2/C3 (issues #142, #143) supply the typed representation and
-encoder. A valid typed module is therefore not yet an executable typed artifact.
+(C1, issue #141) and their folded representation, `#reloc.typed_plan`, in
+[reloc-typed-folding.md](reloc-typed-folding.md) (C2, issue #142); wire format
+v0, manifest schema 1 and this interface remain layout-only until C3 (issue
+#143) supplies the typed encoder. A pre-folded `reloc.typed_plan_result` is
+`prefolded_input`, like `reloc.plan_result`. A valid typed module is therefore
+not yet an executable typed artifact.
 
 ## Manifest schema 1
 

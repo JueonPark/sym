@@ -183,7 +183,8 @@ Use `/tmp/sym-torch-cpu` with `build/torch-cpu` for CPU tests and
 and tests named in those commands are
 T1–T4, the R1 exporter and the R2 transport adapter now exist. C1's typed
 operation semantics ([reloc-typed-semantics.md](../reloc-typed-semantics.md))
-are defined and verified; C2–C4 and R3–R4 remain unimplemented.
+and C2's typed folding ([reloc-typed-folding.md](../reloc-typed-folding.md))
+are implemented in the compiler; C3–C4 and R3–R4 remain unimplemented.
 
 ```bash
 export TORCH_PYTHON=/tmp/sym-torch-cpu/bin/python
