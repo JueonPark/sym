@@ -68,12 +68,6 @@
   "description": "C1's dequantize bits with zero point 127: q = -128 gives (-255) * 0.3 = 0xC2990000",
   "generator_seed": 20260923,
   "manifest": {
-    "compiler": {
-      "build_identity": "40040d04ba7d81d3238210ea3396a35ce4a7a00e/Release",
-      "interface_version": 1,
-      "llvm_version": "21.1.8",
-      "name": "sym-reloc-export"
-    },
     "constraints": {
       "divisibility": []
     },
@@ -159,7 +153,6 @@
   },
   "mlir": "func.func @torch_relocation(%x: !sym.tensor<[5], i8>) -> !sym.tensor<[5], f32> {\n  %v0 = reloc.dequantize %x scale(dense<0x3E99999A> : tensor<f32>) zero_point(dense<127> : tensor<i32>) policy affine : !sym.tensor<[5], i8> -> !sym.tensor<[5], f32>\n  return %v0 : !sym.tensor<[5], f32>\n}\n",
   "name": "dequant_zp127",
-  "numpy": "2.5.3",
   "parameters": {},
   "plan_sha256": "1c46058f752e042abc24d783da9b5e7a3491b8f876d56f27d49ba191e9160e56",
   "recipe": {

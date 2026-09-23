@@ -164,12 +164,6 @@
   "description": "f32 -> s8 -> f32 with a padded destination: distinct source, wire and destination footprints; two bindings",
   "generator_seed": 20260923,
   "manifest": {
-    "compiler": {
-      "build_identity": "40040d04ba7d81d3238210ea3396a35ce4a7a00e/Release",
-      "interface_version": 1,
-      "llvm_version": "21.1.8",
-      "name": "sym-reloc-export"
-    },
     "constraints": {
       "divisibility": []
     },
@@ -287,7 +281,6 @@
   },
   "mlir": "func.func @torch_relocation(%x: !sym.tensor<[\"s0\"], f32>) -> !sym.tensor<[(3 + \"s0\")], f32> {\n  %v0 = reloc.quantize %x scale(dense<0x3F000000> : tensor<f32>) policy symmetric_rne : !sym.tensor<[\"s0\"], f32> -> !sym.tensor<[\"s0\"], i8>\n  %v1 = reloc.dequantize %v0 scale(dense<0x3F000000> : tensor<f32>) policy affine : !sym.tensor<[\"s0\"], i8> -> !sym.tensor<[\"s0\"], f32>\n  %v2 = reloc.pad %v1 axis 0 lo 1 hi 2 value (0x3FC00000 : f32) : !sym.tensor<[\"s0\"], f32> -> !sym.tensor<[(3 + \"s0\")], f32>\n  return %v2 : !sym.tensor<[(3 + \"s0\")], f32>\n}\n",
   "name": "quant_dequant_padded",
-  "numpy": "2.5.3",
   "parameters": {},
   "plan_sha256": "56a5055aa3d9a55dc8f90532fddcfb88cdce7f9235f0512afaa47b5a514569c9",
   "recipe": {

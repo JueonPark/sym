@@ -74,12 +74,6 @@
   "description": "dequantize -> cast: s8 [8] affine with scale 0.25 and zero point -3, then narrowed to f16 (both roundings kept)",
   "generator_seed": 20260923,
   "manifest": {
-    "compiler": {
-      "build_identity": "40040d04ba7d81d3238210ea3396a35ce4a7a00e/Release",
-      "interface_version": 1,
-      "llvm_version": "21.1.8",
-      "name": "sym-reloc-export"
-    },
     "constraints": {
       "divisibility": []
     },
@@ -181,7 +175,6 @@
   },
   "mlir": "func.func @torch_relocation(%x: !sym.tensor<[8], i8>) -> !sym.tensor<[8], f16> {\n  %v0 = reloc.dequantize %x scale(dense<0x3E800000> : tensor<f32>) zero_point(dense<-3> : tensor<i32>) policy affine : !sym.tensor<[8], i8> -> !sym.tensor<[8], f32>\n  %v1 = reloc.cast %v0 policy ieee_rne : !sym.tensor<[8], f32> -> !sym.tensor<[8], f16>\n  return %v1 : !sym.tensor<[8], f16>\n}\n",
   "name": "dequant_inline_zp_cast",
-  "numpy": "2.5.3",
   "parameters": {},
   "plan_sha256": "0098f1d2b7dc2e4046c3360fab17cb40aba2e44113afd9d4c873b51a8fe26726",
   "recipe": {

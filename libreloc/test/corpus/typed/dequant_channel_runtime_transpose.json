@@ -110,12 +110,6 @@
   "description": "dequantize + layout: s8 [2, 3, 4] per-channel runtime scales and zero points on axis 1, then transposed to [3, 2, 4]",
   "generator_seed": 20260923,
   "manifest": {
-    "compiler": {
-      "build_identity": "40040d04ba7d81d3238210ea3396a35ce4a7a00e/Release",
-      "interface_version": 1,
-      "llvm_version": "21.1.8",
-      "name": "sym-reloc-export"
-    },
     "constraints": {
       "divisibility": []
     },
@@ -288,7 +282,6 @@
   },
   "mlir": "func.func @torch_relocation(%x: !sym.tensor<[2, 3, 4], i8>) -> !sym.tensor<[3, 2, 4], f32> {\n  %v0 = reloc.dequantize %x axis 1 scale(#reloc.binding<\"scales\" : [3], f32>) zero_point(#reloc.binding<\"zero_points\" : [3], i32>) policy affine : !sym.tensor<[2, 3, 4], i8> -> !sym.tensor<[2, 3, 4], f32>\n  %v1 = reloc.transpose %v0 perm [1, 0, 2] : !sym.tensor<[2, 3, 4], f32> -> !sym.tensor<[3, 2, 4], f32>\n  return %v1 : !sym.tensor<[3, 2, 4], f32>\n}\n",
   "name": "dequant_channel_runtime_transpose",
-  "numpy": "2.5.3",
   "parameters": {
     "scales": {
       "bits": [

@@ -287,10 +287,11 @@ def build(entry, compiler, seed):
         "name": entry["name"],
         "description": entry["description"],
         "generator_seed": seed,
-        "numpy": np.__version__,
         "mlir": emit_mlir(recipe),
         "recipe": recipe_json,
-        "manifest": compiled.manifest,
+        # The compiler block (build identity) changes with every build and is
+        # not part of what the fixture pins; the .reloc payload keeps it.
+        "manifest": {k: v for k, v in compiled.manifest.items() if k != "compiler"},
         "plan_sha256": hashlib.sha256(compiled.plan_bytes).hexdigest(),
         "symbols": list(compiled.symbols),
         "parameters": {name: {"dtype": value.dtype.name, "shape": list(value.shape), "bits": hex_bits(value)}
@@ -300,6 +301,16 @@ def build(entry, compiler, seed):
         "bindings": bindings,
     }
     return compiled, meta
+
+
+def normalized(path, data):
+    """The portable payload carries the compiler's build identity, which a
+    fresh build changes legitimately; everything else must be identical."""
+    if path.suffix != ".reloc":
+        return data
+    payload = json.loads(data)
+    payload["manifest"].pop("compiler", None)
+    return json.dumps(payload, sort_keys=True).encode("utf-8")
 
 
 def main():
@@ -321,7 +332,7 @@ def main():
         }
         for path, data in outputs.items():
             if args.check:
-                if not path.exists() or path.read_bytes() != data:
+                if not path.exists() or normalized(path, path.read_bytes()) != normalized(path, data):
                     mismatches.append(path.name)
             else:
                 path.write_bytes(data)

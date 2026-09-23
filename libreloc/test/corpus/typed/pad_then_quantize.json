@@ -74,12 +74,6 @@
   "description": "pad order witness: pad f32 1.0 first, then quantize at scale 0.5 (the fill becomes code 2)",
   "generator_seed": 20260923,
   "manifest": {
-    "compiler": {
-      "build_identity": "40040d04ba7d81d3238210ea3396a35ce4a7a00e/Release",
-      "interface_version": 1,
-      "llvm_version": "21.1.8",
-      "name": "sym-reloc-export"
-    },
     "constraints": {
       "divisibility": []
     },
@@ -165,7 +159,6 @@
   },
   "mlir": "func.func @torch_relocation(%x: !sym.tensor<[6], f32>) -> !sym.tensor<[8], i8> {\n  %v0 = reloc.pad %x axis 0 lo 1 hi 1 value (0x3F800000 : f32) : !sym.tensor<[6], f32> -> !sym.tensor<[8], f32>\n  %v1 = reloc.quantize %v0 scale(dense<0x3F000000> : tensor<f32>) policy symmetric_rne : !sym.tensor<[8], f32> -> !sym.tensor<[8], i8>\n  return %v1 : !sym.tensor<[8], i8>\n}\n",
   "name": "pad_then_quantize",
-  "numpy": "2.5.3",
   "parameters": {},
   "plan_sha256": "82befdb812281e7bafc8be7f88d36cee5ea0a0f890111cd2e0d62f28e0656773",
   "recipe": {

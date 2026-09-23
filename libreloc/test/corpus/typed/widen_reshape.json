@@ -110,12 +110,6 @@
   "description": "cast + layout: f16 [2, 12] widened exactly then reshaped to [6, 4], C1's binary16 -> binary32 witness bits first",
   "generator_seed": 20260923,
   "manifest": {
-    "compiler": {
-      "build_identity": "40040d04ba7d81d3238210ea3396a35ce4a7a00e/Release",
-      "interface_version": 1,
-      "llvm_version": "21.1.8",
-      "name": "sym-reloc-export"
-    },
     "constraints": {
       "divisibility": []
     },
@@ -207,7 +201,6 @@
   },
   "mlir": "func.func @torch_relocation(%x: !sym.tensor<[2, 12], f16>) -> !sym.tensor<[6, 4], f32> {\n  %v0 = reloc.cast %x policy exact : !sym.tensor<[2, 12], f16> -> !sym.tensor<[2, 12], f32>\n  %v1 = reloc.reshape %v0 to [6, 4] : !sym.tensor<[2, 12], f32> -> !sym.tensor<[6, 4], f32>\n  return %v1 : !sym.tensor<[6, 4], f32>\n}\n",
   "name": "widen_reshape",
-  "numpy": "2.5.3",
   "parameters": {},
   "plan_sha256": "5b26644da341faffffd55f11a1194e438402f668d0f1989ea00a41a44a5bfe18",
   "recipe": {

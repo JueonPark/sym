@@ -93,12 +93,6 @@
   "description": "symmetric_rne edge cases at scale 0.5: ties, signed-i8 limits, NaN/inf, signed zero, a subnormal and a non-multiple",
   "generator_seed": 20260923,
   "manifest": {
-    "compiler": {
-      "build_identity": "40040d04ba7d81d3238210ea3396a35ce4a7a00e/Release",
-      "interface_version": 1,
-      "llvm_version": "21.1.8",
-      "name": "sym-reloc-export"
-    },
     "constraints": {
       "divisibility": []
     },
@@ -177,7 +171,6 @@
   },
   "mlir": "func.func @torch_relocation(%x: !sym.tensor<[16], f32>) -> !sym.tensor<[16], i8> {\n  %v0 = reloc.quantize %x scale(dense<0x3F000000> : tensor<f32>) policy symmetric_rne : !sym.tensor<[16], f32> -> !sym.tensor<[16], i8>\n  return %v0 : !sym.tensor<[16], i8>\n}\n",
   "name": "quantize_edges",
-  "numpy": "2.5.3",
   "parameters": {},
   "plan_sha256": "be8341eb57710c737b0683a071a3e56fa19317018b33c26ec94914296ab8e36a",
   "recipe": {

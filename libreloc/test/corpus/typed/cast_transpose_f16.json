@@ -108,12 +108,6 @@
   "description": "layout + cast: f32 [4, 6] transposed then narrowed to f16 with C1's binary16 boundary vectors",
   "generator_seed": 20260923,
   "manifest": {
-    "compiler": {
-      "build_identity": "40040d04ba7d81d3238210ea3396a35ce4a7a00e/Release",
-      "interface_version": 1,
-      "llvm_version": "21.1.8",
-      "name": "sym-reloc-export"
-    },
     "constraints": {
       "divisibility": []
     },
@@ -205,7 +199,6 @@
   },
   "mlir": "func.func @torch_relocation(%x: !sym.tensor<[4, 6], f32>) -> !sym.tensor<[6, 4], f16> {\n  %v0 = reloc.transpose %x perm [1, 0] : !sym.tensor<[4, 6], f32> -> !sym.tensor<[6, 4], f32>\n  %v1 = reloc.cast %v0 policy ieee_rne : !sym.tensor<[6, 4], f32> -> !sym.tensor<[6, 4], f16>\n  return %v1 : !sym.tensor<[6, 4], f16>\n}\n",
   "name": "cast_transpose_f16",
-  "numpy": "2.5.3",
   "parameters": {},
   "plan_sha256": "7679bb6df34f6fdd117a93db14e21aa8dbb5c63ebf8bdce872a7bdf37ceae66a",
   "recipe": {

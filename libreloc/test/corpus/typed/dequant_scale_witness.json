@@ -70,12 +70,6 @@
   "description": "C1's dequantize bits: q in [-128, -1, 0, 1, 127], scale 0.3, zero point 0",
   "generator_seed": 20260923,
   "manifest": {
-    "compiler": {
-      "build_identity": "40040d04ba7d81d3238210ea3396a35ce4a7a00e/Release",
-      "interface_version": 1,
-      "llvm_version": "21.1.8",
-      "name": "sym-reloc-export"
-    },
     "constraints": {
       "divisibility": []
     },
@@ -154,7 +148,6 @@
   },
   "mlir": "func.func @torch_relocation(%x: !sym.tensor<[5], i8>) -> !sym.tensor<[5], f32> {\n  %v0 = reloc.dequantize %x scale(dense<0x3E99999A> : tensor<f32>) policy affine : !sym.tensor<[5], i8> -> !sym.tensor<[5], f32>\n  return %v0 : !sym.tensor<[5], f32>\n}\n",
   "name": "dequant_scale_witness",
-  "numpy": "2.5.3",
   "parameters": {},
   "plan_sha256": "808845c96fdff3206a02df2a93ab668263b7a3a9245af8188abe3e45b1050bb6",
   "recipe": {
