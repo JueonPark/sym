@@ -26,13 +26,17 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <variant>
+#include <vector>
 
 namespace py = pybind11;
 
@@ -59,6 +63,241 @@ uint32_t planElementSize(const reloc::RelocationPlan &plan) {
 struct BindException : std::runtime_error {
   using std::runtime_error::runtime_error;
 };
+
+//===----------------------------------------------------------------------===//
+// Typed plans (C3, issue #143): Torch-free load/bind metadata.
+//===----------------------------------------------------------------------===//
+
+std::string dtypeName(reloc::ElementType type) {
+  switch (type.kind) {
+  case reloc::ElementTypeKind::Float:
+    return "float" + std::to_string(type.bitwidth);
+  case reloc::ElementTypeKind::BFloat:
+    return "bfloat" + std::to_string(type.bitwidth);
+  case reloc::ElementTypeKind::Integer:
+    return "int" + std::to_string(type.bitwidth);
+  case reloc::ElementTypeKind::Index:
+    return "index";
+  }
+  return "unknown";
+}
+
+reloc::ElementType parseDtype(const std::string &name) {
+  static const std::pair<const char *, reloc::ElementType> table[] = {
+      {"float16", {reloc::ElementTypeKind::Float, 16}},
+      {"float32", {reloc::ElementTypeKind::Float, 32}},
+      {"float64", {reloc::ElementTypeKind::Float, 64}},
+      {"bfloat16", {reloc::ElementTypeKind::BFloat, 16}},
+      {"int8", {reloc::ElementTypeKind::Integer, 8}},
+      {"int16", {reloc::ElementTypeKind::Integer, 16}},
+      {"int32", {reloc::ElementTypeKind::Integer, 32}},
+      {"int64", {reloc::ElementTypeKind::Integer, 64}},
+  };
+  for (const auto &entry : table)
+    if (name == entry.first)
+      return entry.second;
+  throw py::value_error("unknown parameter dtype '" + name +
+                        "' (expected float16/float32/float64/bfloat16/"
+                        "int8/int16/int32/int64)");
+}
+
+const char *transformName(reloc::ValueTransformKind kind) {
+  switch (kind) {
+  case reloc::ValueTransformKind::Cast:
+    return "cast";
+  case reloc::ValueTransformKind::Quantize:
+    return "quantize";
+  case reloc::ValueTransformKind::Dequantize:
+    return "dequantize";
+  }
+  return "unknown";
+}
+
+const char *policyName(reloc::NumericPolicyKind kind) {
+  switch (kind) {
+  case reloc::NumericPolicyKind::IeeeRne:
+    return "ieee_rne";
+  case reloc::NumericPolicyKind::Exact:
+    return "exact";
+  case reloc::NumericPolicyKind::SymmetricRne:
+    return "symmetric_rne";
+  case reloc::NumericPolicyKind::Affine:
+    return "affine";
+  }
+  return "unknown";
+}
+
+const char *signednessName(reloc::Signedness signedness) {
+  switch (signedness) {
+  case reloc::Signedness::Signless:
+    return "signless";
+  case reloc::Signedness::Signed:
+    return "signed";
+  case reloc::Signedness::Unsigned:
+    return "unsigned";
+  }
+  return "unknown";
+}
+
+py::object describeParam(const reloc::StageParam &param) {
+  if (param.kind == reloc::ParamKind::None)
+    return py::none();
+  py::dict out;
+  out["kind"] = param.kind == reloc::ParamKind::Inline ? "inline" : "binding";
+  out["dtype"] = dtypeName(param.elementType);
+  out["rank"] = static_cast<int>(param.rank);
+  if (param.kind == reloc::ParamKind::Inline)
+    out["count"] = param.inlineBits.size();
+  else
+    out["name"] = param.bindingName;
+  return std::move(out);
+}
+
+reloc::TypedRelocationPlan loadTypedPlan(const py::bytes &data) {
+  std::string buf = data;
+  auto result = reloc::decodeTypedPlan(
+      reinterpret_cast<const uint8_t *>(buf.data()), buf.size());
+  if (auto *err = std::get_if<reloc::DecodeError>(&result))
+    throw DecodeException("decode error at byte offset " +
+                          std::to_string(err->offset) + ": " + err->message);
+  return std::get<reloc::TypedRelocationPlan>(std::move(result));
+}
+
+py::object wireVersion(const py::bytes &data) {
+  std::string buf = data;
+  std::optional<uint32_t> version = reloc::peekWireVersion(
+      reinterpret_cast<const uint8_t *>(buf.data()), buf.size());
+  if (!version)
+    return py::none();
+  return py::int_(*version);
+}
+
+py::list typedStages(const reloc::TypedRelocationPlan &plan) {
+  py::list out;
+  for (const reloc::ValueStage &stage : plan.stages) {
+    py::dict entry;
+    entry["transform"] = transformName(stage.transform);
+    entry["policy"] = policyName(stage.policy);
+    entry["input"] = dtypeName(stage.input.type);
+    entry["input_signedness"] = signednessName(stage.input.signedness);
+    entry["output"] = dtypeName(stage.output.type);
+    entry["output_signedness"] = signednessName(stage.output.signedness);
+    entry["rank"] = stage.shape.size();
+    entry["axis"] = stage.axis;
+    entry["has_channel"] = stage.hasChannel;
+    entry["scale"] = describeParam(stage.scale);
+    entry["zero_point"] = describeParam(stage.zeroPoint);
+    out.append(std::move(entry));
+  }
+  return out;
+}
+
+/// Runtime parameter declarations in first-declaration order (one entry
+/// per name; the decoder guarantees consistent redeclarations).
+py::list typedParameters(const reloc::TypedRelocationPlan &plan) {
+  py::list out;
+  std::vector<std::string> seen;
+  for (size_t k = 0; k < plan.stages.size(); ++k) {
+    const reloc::ValueStage &stage = plan.stages[k];
+    for (const auto &[param, role] :
+         {std::pair<const reloc::StageParam *, const char *>{&stage.scale,
+                                                             "scale"},
+          std::pair<const reloc::StageParam *, const char *>{&stage.zeroPoint,
+                                                             "zero_point"}}) {
+      if (param->kind != reloc::ParamKind::Binding)
+        continue;
+      if (std::find(seen.begin(), seen.end(), param->bindingName) != seen.end())
+        continue;
+      seen.push_back(param->bindingName);
+      py::dict entry;
+      entry["name"] = param->bindingName;
+      entry["dtype"] = dtypeName(param->elementType);
+      entry["rank"] = static_cast<int>(param->rank);
+      entry["stage"] = k;
+      entry["role"] = role;
+      out.append(std::move(entry));
+    }
+  }
+  return out;
+}
+
+reloc::TypedBoundPlan
+bindTypedPlan(const reloc::TypedRelocationPlan &plan,
+              const std::map<std::string, int64_t> &symbols,
+              const py::dict &parameters) {
+  reloc::ParameterMap values;
+  for (auto item : parameters) {
+    std::string name = py::cast<std::string>(item.first);
+    py::tuple spec = py::cast<py::tuple>(item.second);
+    if (spec.size() != 3)
+      throw py::value_error("parameter '" + name +
+                            "' must be a (dtype, extents, bytes) tuple");
+    reloc::ParameterValue value;
+    value.elementType = parseDtype(py::cast<std::string>(spec[0]));
+    value.extents = py::cast<std::vector<int64_t>>(spec[1]);
+    std::string bytes = py::cast<py::bytes>(spec[2]);
+    value.bytes.assign(bytes.begin(), bytes.end());
+    values[name] = std::move(value);
+  }
+  auto result = reloc::bindTyped(plan, symbols, values);
+  if (auto *err = std::get_if<reloc::BindError>(&result))
+    throw BindException(err->message);
+  return std::get<reloc::TypedBoundPlan>(std::move(result));
+}
+
+py::list boundCuts(const reloc::TypedBoundPlan &bound) {
+  py::list out;
+  for (const reloc::StageFootprint &cut : bound.cuts) {
+    py::dict entry;
+    entry["boundary"] = cut.boundary;
+    entry["dtype"] = dtypeName(cut.elementType);
+    entry["elements"] = cut.elements;
+    entry["bytes"] = cut.bytes;
+    out.append(std::move(entry));
+  }
+  return out;
+}
+
+py::object describeBound(const reloc::BoundParameter &param) {
+  if (!param.present)
+    return py::none();
+  py::dict out;
+  out["dtype"] = dtypeName(param.elementType);
+  out["length"] = param.length;
+  out["bytes"] = param.bytes.size();
+  out["binding"] = param.bindingName.empty()
+                       ? py::object(py::none())
+                       : py::object(py::str(param.bindingName));
+  return std::move(out);
+}
+
+py::list boundStages(const reloc::TypedBoundPlan &bound) {
+  py::list out;
+  for (const reloc::BoundStage &stage : bound.stages) {
+    py::dict entry;
+    entry["transform"] = transformName(stage.transform);
+    entry["policy"] = policyName(stage.policy);
+    entry["input"] = dtypeName(stage.input.type);
+    entry["output"] = dtypeName(stage.output.type);
+    entry["shape"] = stage.shape;
+    entry["axis"] = stage.axis;
+    entry["has_channel"] = stage.hasChannel;
+    entry["scale"] = describeBound(stage.scale);
+    entry["zero_point"] = describeBound(stage.zeroPoint);
+    out.append(std::move(entry));
+  }
+  return out;
+}
+
+/// The layout-only executors never run the layout of a typed plan.
+void rejectTypedLayout(const reloc::BoundPlan &b, const char *what) {
+  if (b.typed)
+    throw py::value_error(
+        std::string(what) +
+        ": the bound plan is the layout of a typed plan; layout-only "
+        "executors would copy source-width bytes into a destination-width "
+        "allocation (typed execution is R3's dispatch)");
+}
 
 const char *strategyName(reloc::Strategy s) {
   switch (s) {
@@ -142,6 +381,7 @@ reloc::BoundPlan bindPlan(const reloc::RelocationPlan &plan,
 void relocateHost(const reloc::BoundPlan &b, uintptr_t srcPtr, size_t srcBytes,
                   uintptr_t dstPtr, size_t dstBytes, int gatherThreads,
                   std::shared_ptr<reloc::GatherPool> gatherPool) {
+  rejectTypedLayout(b, "relocate");
   checkBuffer("src", srcPtr, srcBytes, minSrcBytes(b));
   checkBuffer("dst", dstPtr, dstBytes, static_cast<size_t>(b.totalBytes));
   checkGatherArgs(gatherThreads, gatherPool);
@@ -174,6 +414,7 @@ void relocateHost(const reloc::BoundPlan &b, uintptr_t srcPtr, size_t srcBytes,
 
 void relocateInverseHost(const reloc::BoundPlan &b, uintptr_t dstPtr,
                          size_t dstBytes, uintptr_t srcPtr, size_t srcBytes) {
+  rejectTypedLayout(b, "relocate_inverse");
   checkBuffer("dst", dstPtr, dstBytes, static_cast<size_t>(b.totalBytes));
   checkBuffer("src(out)", srcPtr, srcBytes, minSrcBytes(b));
   const void *dst = reinterpret_cast<const void *>(dstPtr);
@@ -186,6 +427,7 @@ void h2dCuda(const reloc::BoundPlan &b, uintptr_t srcPtr, size_t srcBytes,
              uintptr_t dstPtr, size_t dstBytes, int nBuffers, int nStreams,
              int gatherThreads, std::shared_ptr<reloc::GatherPool> gatherPool) {
 #ifdef RELOC_ENABLE_CUDA
+  rejectTypedLayout(b, "h2d");
   checkBuffer("src", srcPtr, srcBytes, minSrcBytes(b));
   checkBuffer("dst", dstPtr, dstBytes, static_cast<size_t>(b.totalBytes));
   checkGatherArgs(gatherThreads, gatherPool);
@@ -211,6 +453,7 @@ void d2hCuda(const reloc::BoundPlan &b, uintptr_t dstPtr, size_t dstBytes,
              uintptr_t srcPtr, size_t srcBytes, int nBuffers, int nStreams,
              int gatherThreads, std::shared_ptr<reloc::GatherPool> gatherPool) {
 #ifdef RELOC_ENABLE_CUDA
+  rejectTypedLayout(b, "d2h");
   checkBuffer("dst", dstPtr, dstBytes, static_cast<size_t>(b.totalBytes));
   checkBuffer("src(out)", srcPtr, srcBytes, minSrcBytes(b));
   checkGatherArgs(gatherThreads, gatherPool);
@@ -280,6 +523,10 @@ PYBIND11_MODULE(_pyreloc, m) {
           "total_bytes", [](const reloc::BoundPlan &b) { return b.totalBytes; })
       .def_property_readonly("no_copy",
                              [](const reloc::BoundPlan &b) { return b.noCopy; })
+      .def_property_readonly(
+          "typed", [](const reloc::BoundPlan &b) { return b.typed; },
+          "True for the layout of a typed plan (bind_typed): refused by "
+          "relocate/h2d/d2h/make_transfer; typed execution is R3's.")
       .def_property_readonly(
           "strategy",
           [](const reloc::BoundPlan &b) { return strategyName(b.strategy); })
@@ -454,6 +701,132 @@ PYBIND11_MODULE(_pyreloc, m) {
 #else
   m.attr("cuda_enabled") = false;
 #endif
+
+  // C3 (issue #143): typed plans. Version dispatch is explicit: load_plan
+  // stays v0-only, load_typed_plan is v1-only, wire_version tells them
+  // apart. Binding validates the representation and the parameter guards;
+  // it never certifies a kernel (see TypedBoundPlan.requirements).
+  m.def("wire_version", &wireVersion, py::arg("data"),
+        "The wire format version of a plan blob with a valid header (0 = "
+        "layout-only, 1 = typed), or None when the header is not a plan.");
+
+  py::class_<reloc::TypedRelocationPlan>(m, "TypedPlanHandle")
+      .def_property_readonly(
+          "symbols",
+          [](const reloc::TypedRelocationPlan &p) { return p.symbols; })
+      .def_property_readonly("source_dtype",
+                             [](const reloc::TypedRelocationPlan &p) {
+                               return dtypeName(p.source.elementType);
+                             })
+      .def_property_readonly("result_dtype",
+                             [](const reloc::TypedRelocationPlan &p) {
+                               return dtypeName(p.result.elementType);
+                             })
+      .def_property_readonly("source_rank",
+                             [](const reloc::TypedRelocationPlan &p) {
+                               return p.source.extents.size();
+                             })
+      .def_property_readonly("result_rank",
+                             [](const reloc::TypedRelocationPlan &p) {
+                               return p.result.extents.size();
+                             })
+      .def_property_readonly(
+          "num_stages",
+          [](const reloc::TypedRelocationPlan &p) { return p.stages.size(); })
+      .def_property_readonly("stages", &typedStages,
+                             "Decoded stages: transform, policy, input/output "
+                             "dtypes with signedness, rank, axis, channel "
+                             "presence and parameter declarations.")
+      .def_property_readonly("parameters", &typedParameters,
+                             "Runtime parameter declarations (name, dtype, "
+                             "rank, first stage, role) in declaration order; "
+                             "every one must be supplied to bind_typed.")
+      .def_property_readonly(
+          "fills",
+          [](const reloc::TypedRelocationPlan &p) { return p.fills.size(); })
+      .def("__repr__", [](const reloc::TypedRelocationPlan &p) {
+        std::ostringstream os;
+        os << "TypedPlanHandle(" << dtypeName(p.source.elementType) << " -> "
+           << dtypeName(p.result.elementType) << ", stages=" << p.stages.size()
+           << ", symbols=[";
+        for (size_t i = 0; i < p.symbols.size(); ++i)
+          os << (i ? ", " : "") << "'" << p.symbols[i] << "'";
+        os << "])";
+        return os.str();
+      });
+
+  m.def("load_typed_plan", &loadTypedPlan, py::arg("data"),
+        "Decode a wire-format-v1 typed plan blob. Raises DecodeError with "
+        "the byte offset and diagnostic on invalid input, including a v0 "
+        "blob (use load_plan for those).");
+
+  py::class_<reloc::TypedBoundPlan>(m, "TypedBoundPlan")
+      .def_property_readonly(
+          "source_bytes",
+          [](const reloc::TypedBoundPlan &b) { return b.sourceBytes; },
+          "Bytes of the caller's source tensor (before any pad).")
+      .def_property_readonly(
+          "destination_bytes",
+          [](const reloc::TypedBoundPlan &b) { return b.destinationBytes; },
+          "Bytes of the padded result tensor (== layout.total_bytes).")
+      .def_property_readonly(
+          "parameter_bytes",
+          [](const reloc::TypedBoundPlan &b) { return b.parameterBytes; },
+          "Bytes of every bound parameter, recorded apart from the tensor "
+          "footprints.")
+      .def_property_readonly("cuts", &boundCuts,
+                             "Byte footprint at every stage boundary "
+                             "(boundary 0 = the tensor entering stage 0, k = "
+                             "the output of stage k, pads included from their "
+                             "entry stage). A variant transferring at boundary "
+                             "k moves cuts[k]['bytes'] on the wire.")
+      .def(
+          "wire_bytes",
+          [](const reloc::TypedBoundPlan &b, size_t boundary) {
+            if (boundary >= b.cuts.size())
+              throw py::value_error("boundary out of range");
+            return b.cuts[boundary].bytes;
+          },
+          py::arg("boundary"), "cuts[boundary]['bytes'].")
+      .def_property_readonly(
+          "requirements",
+          [](const reloc::TypedBoundPlan &b) { return b.requirements; },
+          "What binding does not certify and R3 must still supply (e.g. "
+          "'typed_execution_dispatch').")
+      .def_property_readonly(
+          "layout", [](const reloc::TypedBoundPlan &b) { return b.layout; },
+          "The bound layout (typed == True): index mapping and fused fills; "
+          "refused by the layout-only executors.")
+      .def_property_readonly(
+          "source_extents",
+          [](const reloc::TypedBoundPlan &b) { return b.sourceExtents; })
+      .def_property_readonly(
+          "result_extents",
+          [](const reloc::TypedBoundPlan &b) { return b.resultExtents; })
+      .def_property_readonly("source_dtype",
+                             [](const reloc::TypedBoundPlan &b) {
+                               return dtypeName(b.sourceType);
+                             })
+      .def_property_readonly("result_dtype",
+                             [](const reloc::TypedBoundPlan &b) {
+                               return dtypeName(b.resultType);
+                             })
+      .def_property_readonly("stages", &boundStages)
+      .def("__repr__", [](const reloc::TypedBoundPlan &b) {
+        std::ostringstream os;
+        os << "TypedBoundPlan(source_bytes=" << b.sourceBytes
+           << ", destination_bytes=" << b.destinationBytes
+           << ", parameter_bytes=" << b.parameterBytes
+           << ", stages=" << b.stages.size() << ")";
+        return os.str();
+      });
+
+  m.def("bind_typed", &bindTypedPlan, py::arg("plan"), py::arg("symbols"),
+        py::arg("parameters") = py::dict(),
+        "Bind a typed plan against {symbol: value} and {parameter name: "
+        "(dtype, extents, bytes)}. The bytes are copied (owned snapshot). "
+        "Raises BindError on symbol/parameter mismatches, invalid values, "
+        "unsupported descriptors or overflowing footprints.");
 
   // R2 (issue #146): validated forward transfer requests; Torch-free.
   registerTransferBindings(m);

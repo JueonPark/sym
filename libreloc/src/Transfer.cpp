@@ -148,6 +148,13 @@ std::optional<TransferError> checkPlanAgainstSource(const BoundPlan &bound,
       bound.extents.size() != bound.srcStrides.size() ||
       bound.extents.size() != bound.dstStrides.size())
     return fail("plan_mismatch", "bound plan has inconsistent axes");
+  // C3: the layout part of a typed plan changes the element width along
+  // the way; this layout-only path would copy source-width bytes into a
+  // destination-width allocation. Typed execution is R3's dispatch.
+  if (bound.typed)
+    return fail("typed_unsupported",
+                "bound plan is the layout of a typed plan; the layout-only "
+                "transfer path cannot execute it");
   if (bound.elementSize == 0 || bound.elementSize != source.elementSize)
     return fail("plan_mismatch",
                 "plan element size differs from the source view");

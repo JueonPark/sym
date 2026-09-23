@@ -3,10 +3,14 @@
 #include "reloc/Bind.h"
 
 #include "reloc/CostModel.h"
+#include "reloc/TypedValue.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <limits>
+#include <set>
 
 namespace reloc {
 namespace {
@@ -352,6 +356,320 @@ BindResult bind(const RelocationPlan &plan, const SymbolMap &symbolMap,
   }
 
   return bound;
+}
+
+//===----------------------------------------------------------------------===//
+// Typed binding (C3, issue #143)
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+bool evalAll(const std::vector<ExprStream> &streams,
+             const SymbolValues &symbols, const char *what,
+             std::vector<int64_t> &out, std::string &error) {
+  out.clear();
+  for (const ExprStream &stream : streams) {
+    int64_t value = 0;
+    if (!evalField(stream, symbols, what, value, error))
+      return false;
+    out.push_back(value);
+  }
+  return true;
+}
+
+/// The supported descriptor subset: concrete extents >= 1, zero offset,
+/// strides elided or equal to the dense row-major suffix products.
+bool concreteDenseDescriptor(const TensorDesc &desc,
+                             const SymbolValues &symbols, const char *what,
+                             std::vector<int64_t> &extents,
+                             std::string &error) {
+  if (!evalAll(desc.extents, symbols, what, extents, error))
+    return false;
+  if (extents.empty())
+    return (error = std::string(what) + ": rank must be >= 1"), false;
+  for (int64_t extent : extents)
+    if (extent < 1)
+      return (error = std::string(what) + ": extents must be >= 1"), false;
+  int64_t offset = 0;
+  if (!evalField(desc.offset, symbols, what, offset, error))
+    return false;
+  if (offset != 0)
+    return (error = std::string(what) + ": only zero offsets are supported"),
+           false;
+  if (!desc.strides.empty()) {
+    std::vector<int64_t> strides;
+    if (!evalAll(desc.strides, symbols, what, strides, error))
+      return false;
+    int64_t running = 1;
+    for (size_t k = extents.size(); k-- > 0;) {
+      if (strides[k] != running)
+        return (error = std::string(what) +
+                        ": only dense row-major strides are supported"),
+               false;
+      if (!mulOk(running, extents[k], running))
+        return (error = std::string(what) + ": stride product overflows"),
+               false;
+    }
+  }
+  return true;
+}
+
+int64_t signExtendValue(uint64_t bits, uint32_t bitwidth) {
+  if (bitwidth >= 64)
+    return static_cast<int64_t>(bits);
+  const uint64_t mask = (uint64_t{1} << bitwidth) - 1;
+  uint64_t value = bits & mask;
+  if (value & (uint64_t{1} << (bitwidth - 1)))
+    value |= ~mask;
+  return static_cast<int64_t>(value);
+}
+
+/// Value guards of docs/reloc-typed-semantics.md §4.2 over owned bytes.
+bool checkParameterValues(const BoundParameter &param, bool isScale,
+                          NumericPolicyKind policy, std::string &error) {
+  const uint32_t width = typed::byteWidth(param.elementType);
+  for (int64_t i = 0; i < param.length; ++i) {
+    const uint8_t *element =
+        param.bytes.data() + static_cast<size_t>(i) * width;
+    if (isScale) {
+      float value;
+      std::memcpy(&value, element, sizeof(value));
+      if (!std::isfinite(value) || !(value > 0.0f))
+        return (error = "scale must be finite and strictly positive"), false;
+      continue;
+    }
+    uint64_t bits = 0;
+    for (uint32_t b = 0; b < width; ++b)
+      bits |= static_cast<uint64_t>(element[b]) << (8 * b);
+    const int64_t zeroPoint = signExtendValue(bits, param.elementType.bitwidth);
+    if (zeroPoint < -128 || zeroPoint > 127)
+      return (error = "zero point must lie in [-128, 127]"), false;
+    if (policy == NumericPolicyKind::SymmetricRne && zeroPoint != 0)
+      return (error = "symmetric_rne admits only the zero point 0"), false;
+  }
+  return true;
+}
+
+/// An inline constant as owned little-endian element bytes.
+BoundParameter fromInline(const StageParam &param) {
+  BoundParameter out;
+  out.present = true;
+  out.elementType = param.elementType;
+  out.length = static_cast<int64_t>(param.inlineBits.size());
+  const uint32_t width = typed::byteWidth(param.elementType);
+  out.bytes.reserve(param.inlineBits.size() * width);
+  for (uint64_t bits : param.inlineBits)
+    for (uint32_t b = 0; b < width; ++b)
+      out.bytes.push_back(static_cast<uint8_t>(bits >> (8 * b)));
+  return out;
+}
+
+} // namespace
+
+TypedBindResult bindTyped(const TypedRelocationPlan &plan,
+                          const SymbolMap &symbolMap,
+                          const ParameterMap &parameters) {
+  std::string error;
+  TypedBoundPlan out;
+
+  // 1. The layout binds under the v0 rules (divisibility, pad ranges,
+  // extents, strides) and is marked typed: never for layout executors.
+  BindResult layout = bind(plan.layout, symbolMap);
+  if (auto *layoutError = std::get_if<BindError>(&layout))
+    return BindError{"layout: " + layoutError->message};
+  out.layout = std::get<BoundPlan>(std::move(layout));
+  out.layout.typed = true;
+  if (!resolveSymbols(plan.layout, symbolMap, out.symbols, error))
+    return BindError{error};
+
+  // 2. Logical descriptors in the supported subset; byte-multiple widths.
+  if (!concreteDenseDescriptor(plan.source, out.symbols, "source",
+                               out.sourceExtents, error) ||
+      !concreteDenseDescriptor(plan.result, out.symbols, "result",
+                               out.resultExtents, error))
+    return BindError{error};
+  out.sourceType = plan.source.elementType;
+  out.resultType = plan.result.elementType;
+  const uint32_t sourceWidth = typed::byteWidth(out.sourceType);
+  const uint32_t resultWidth = typed::byteWidth(out.resultType);
+  if (sourceWidth == 0 || resultWidth == 0)
+    return BindError{"element type bitwidth must be a positive multiple of 8"};
+
+  // 3. Stages: concrete shapes, then parameters (inline or bound) with
+  // their guards. A channel length is always re-evaluated under THESE
+  // symbols, never carried over from an earlier bind.
+  std::set<std::string> usedParameters;
+  for (const ValueStage &stage : plan.stages) {
+    BoundStage bound;
+    bound.transform = stage.transform;
+    bound.policy = stage.policy;
+    bound.input = stage.input;
+    bound.output = stage.output;
+    bound.axis = stage.axis;
+    bound.hasChannel = stage.hasChannel;
+    bound.channel = stage.channel;
+    if (!evalAll(stage.shape, out.symbols, "stage shape", bound.shape, error))
+      return BindError{error};
+    for (int64_t extent : bound.shape)
+      if (extent < 1)
+        return BindError{"stage shape extents must be >= 1"};
+    if (stage.axis >= 0 &&
+        static_cast<uint64_t>(stage.axis) >= bound.shape.size())
+      return BindError{"stage channel axis out of range"};
+    const std::pair<const StageParam *, BoundParameter *> roles[] = {
+        {&stage.scale, &bound.scale}, {&stage.zeroPoint, &bound.zeroPoint}};
+    for (auto [declared, target] : roles) {
+      if (declared->kind == ParamKind::None)
+        continue;
+      const bool isScale = declared == &stage.scale;
+      const int64_t expected =
+          declared->rank == 0 ? 1
+                              : bound.shape[static_cast<size_t>(stage.axis)];
+      const uint32_t width = typed::byteWidth(declared->elementType);
+      if (width == 0)
+        return BindError{"parameter element type bitwidth must be a positive "
+                         "multiple of 8"};
+      if (declared->kind == ParamKind::Inline) {
+        *target = fromInline(*declared);
+        if (target->length != expected)
+          return BindError{
+              "inline parameter holds " + std::to_string(target->length) +
+              " values but the channel extent is " + std::to_string(expected)};
+      } else {
+        const std::string &name = declared->bindingName;
+        auto it = parameters.find(name);
+        if (it == parameters.end())
+          return BindError{"unbound parameter: " + name};
+        usedParameters.insert(name);
+        const ParameterValue &value = it->second;
+        if (!typed::sameType(value.elementType, declared->elementType))
+          return BindError{"parameter '" + name +
+                           "' element type differs from its declaration"};
+        if (value.extents.size() != declared->rank)
+          return BindError{"parameter '" + name +
+                           "' rank differs from its declaration"};
+        int64_t declaredLength = 1;
+        if (declared->rank == 1 &&
+            !evalField(declared->bindingExtents[0], out.symbols,
+                       "parameter extent", declaredLength, error))
+          return BindError{error};
+        if (declaredLength != expected)
+          return BindError{"parameter '" + name + "' declares length " +
+                           std::to_string(declaredLength) +
+                           " but the channel extent is " +
+                           std::to_string(expected)};
+        const int64_t valueLength = declared->rank == 0 ? 1 : value.extents[0];
+        if (valueLength != expected)
+          return BindError{"parameter '" + name + "' has length " +
+                           std::to_string(valueLength) +
+                           " but the channel extent is " +
+                           std::to_string(expected)};
+        int64_t needed = 0;
+        if (!mulOk(expected, static_cast<int64_t>(width), needed))
+          return BindError{"parameter byte count overflows"};
+        if (value.bytes.size() != static_cast<size_t>(needed))
+          return BindError{"parameter '" + name + "' has " +
+                           std::to_string(value.bytes.size()) +
+                           " bytes, expected " + std::to_string(needed)};
+        target->present = true;
+        target->elementType = declared->elementType;
+        target->length = expected;
+        target->bytes = value.bytes; // owned snapshot
+        target->bindingName = name;
+      }
+      if (!checkParameterValues(*target, isScale, stage.policy, error))
+        return BindError{(isScale ? "scale" : "zero_point") +
+                         std::string(": ") + error};
+      int64_t total = 0;
+      if (__builtin_add_overflow(out.parameterBytes,
+                                 static_cast<int64_t>(target->bytes.size()),
+                                 &total))
+        return BindError{"parameter byte total overflows"};
+      out.parameterBytes = total;
+    }
+    out.stages.push_back(std::move(bound));
+  }
+  for (const auto &entry : parameters)
+    if (!usedParameters.count(entry.first))
+      return BindError{"unknown parameter in binding: " + entry.first};
+
+  // 4. Footprints. Source: the caller's tensor. Boundary k: the tensor
+  // entering stage k (k < stages), or the result (k == stages), including
+  // every pad that entered at a stage <= k. Destination == the layout's
+  // totalBytes by construction; the equality is checked, not assumed.
+  int64_t sourceElements = 1;
+  for (int64_t extent : out.sourceExtents)
+    if (!mulOk(sourceElements, extent, sourceElements))
+      return BindError{"source element count overflows"};
+  if (!mulOk(sourceElements, static_cast<int64_t>(sourceWidth),
+             out.sourceBytes))
+    return BindError{"source byte count overflows"};
+  std::vector<int64_t> axisExtents;
+  if (!evalAll(
+          [&] {
+            std::vector<ExprStream> extents;
+            for (const Axis &axis : plan.layout.axes)
+              extents.push_back(axis.extent);
+            return extents;
+          }(),
+          out.symbols, "layout axis extent", axisExtents, error))
+    return BindError{error};
+  std::vector<int64_t> padWidth(axisExtents.size(), 0);
+  std::vector<uint32_t> padStage(axisExtents.size(), 0);
+  for (const PadFill &pad : plan.layout.padFill) {
+    if (pad.dstAxis >= axisExtents.size())
+      return BindError{"pad dst_axis out of range"};
+    int64_t lo = 0, hi = 0;
+    if (!evalField(pad.lo, out.symbols, "pad lo", lo, error) ||
+        !evalField(pad.hi, out.symbols, "pad hi", hi, error))
+      return BindError{error};
+    int64_t total = 0;
+    if (lo < 0 || hi < 0 || __builtin_add_overflow(lo, hi, &total))
+      return BindError{"pad widths must be non-negative"};
+    padWidth[pad.dstAxis] = total;
+    for (const TypedFill &fill : plan.fills)
+      if (fill.dstAxis == pad.dstAxis)
+        padStage[pad.dstAxis] = fill.stage;
+  }
+  for (uint32_t boundary = 0; boundary <= plan.stages.size(); ++boundary) {
+    StageFootprint cut;
+    cut.boundary = boundary;
+    cut.elementType =
+        boundary == 0 ? out.sourceType : plan.stages[boundary - 1].output.type;
+    cut.elements = 1;
+    for (size_t a = 0; a < axisExtents.size(); ++a) {
+      int64_t extent = axisExtents[a];
+      if (padWidth[a] != 0 && padStage[a] <= boundary &&
+          __builtin_add_overflow(extent, padWidth[a], &extent))
+        return BindError{"padded extent overflows"};
+      if (!mulOk(cut.elements, extent, cut.elements))
+        return BindError{"stage element count overflows"};
+    }
+    const uint32_t width = typed::byteWidth(cut.elementType);
+    if (width == 0)
+      return BindError{"stage element type bitwidth must be a positive "
+                       "multiple of 8"};
+    if (!mulOk(cut.elements, static_cast<int64_t>(width), cut.bytes))
+      return BindError{"stage byte count overflows"};
+    out.cuts.push_back(cut);
+  }
+  out.destinationBytes = out.cuts.back().bytes;
+  if (out.destinationBytes != out.layout.totalBytes)
+    return BindError{"layout footprint (" +
+                     std::to_string(out.layout.totalBytes) +
+                     " bytes) disagrees with the result descriptor (" +
+                     std::to_string(out.destinationBytes) + " bytes)"};
+  int64_t resultElements = 1;
+  for (int64_t extent : out.resultExtents)
+    if (!mulOk(resultElements, extent, resultElements))
+      return BindError{"result element count overflows"};
+  if (resultElements != out.cuts.back().elements)
+    return BindError{"result descriptor element count disagrees with the "
+                     "layout"};
+
+  // 5. What binding does NOT certify: R3's dispatch.
+  out.requirements = {"typed_execution_dispatch"};
+  return out;
 }
 
 } // namespace reloc

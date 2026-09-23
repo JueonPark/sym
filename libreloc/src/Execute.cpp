@@ -130,12 +130,17 @@ void gatherChunk(const BoundPlan &bound, const void *srcBaseV, void *dstBaseV,
 }
 
 void executeH2D(const BoundPlan &bound, const void *srcBase, void *dstBase) {
+  // C3: the layout of a typed plan changes element width; only R3's typed
+  // dispatch may run it. Callers reaching the executors check `typed`
+  // (pyreloc, Transfer.cpp); this assert is the last line of defense.
+  assert(!bound.typed && "typed bound layout given to a layout-only executor");
   fillDst(bound, dstBase);
   gatherChunk(bound, srcBase, dstBase, 0, bound.extents[0]);
 }
 
 void executeH2DThreaded(const BoundPlan &bound, const void *srcBase,
                         void *dstBase, unsigned threads) {
+  assert(!bound.typed && "typed bound layout given to a layout-only executor");
   const int64_t outer = bound.extents[0];
   // Fill pads once, single-threaded, before any worker writes valid cells
   // (gatherChunk no longer fills). No race: happens-before all workers.
@@ -220,6 +225,7 @@ void scatterChunk(const BoundPlan &bound, const void *dstBaseV, void *srcBaseV,
 }
 
 void executeD2H(const BoundPlan &bound, const void *dstBaseV, void *srcBaseV) {
+  assert(!bound.typed && "typed bound layout given to a layout-only executor");
   scatterChunk(bound, dstBaseV, srcBaseV, 0, bound.extents[0]);
 }
 

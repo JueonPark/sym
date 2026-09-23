@@ -70,6 +70,11 @@ struct BoundPlan {
   uint32_t elementSize = 0; // bytes per element
   int64_t totalBytes = 0;   // destination footprint
   bool noCopy = false;
+  /// C3: true for the layout part of a TypedBoundPlan. Its source and
+  /// destination element widths differ, so the layout-only executors and
+  /// transfer validators refuse it (they would copy source-width bytes into
+  /// a destination-width allocation); only R3's typed dispatch may run it.
+  bool typed = false;
   Strategy strategy = Strategy::Auto;
   int64_t L = 1; // innermost coalesced contiguous run length, elements
   // Execute-time downgrade input. Each Alignment::axis is in coalesced
@@ -100,6 +105,95 @@ BindResult bind(const RelocationPlan &plan, const SymbolMap &symbolMap,
                 Strategy override = Strategy::Auto,
                 const costmodel::CostModel *model = nullptr,
                 double wireRatio = 1.0, int K = 1, int64_t nReuse = -1);
+
+//===----------------------------------------------------------------------===//
+// Typed binding (C3, issue #143)
+//===----------------------------------------------------------------------===//
+
+/// A runtime parameter value handed to bindTyped: element type, extents
+/// (empty for rank 0, one entry for rank 1) and the little-endian element
+/// bytes. bindTyped copies `bytes` into the bound plan (owned snapshot), so
+/// the caller's buffer may be released as soon as bindTyped returns and
+/// nothing about it (address, device, framework object) survives binding.
+struct ParameterValue {
+  ElementType elementType{};
+  std::vector<int64_t> extents;
+  std::vector<uint8_t> bytes;
+};
+
+/// Caller-facing parameter binding, by declared name.
+using ParameterMap = std::map<std::string, ParameterValue>;
+
+/// One stage parameter after binding, uniform for inline constants and
+/// runtime bindings: validated values, owned bytes.
+struct BoundParameter {
+  bool present = false;
+  ElementType elementType{};
+  int64_t length = 0;         // 1 per tensor, the channel extent per channel
+  std::vector<uint8_t> bytes; // length * width(elementType) bytes
+  std::string bindingName;    // empty for inline constants
+};
+
+/// One bound stage: the decoded stage with concrete shape and parameters.
+/// `channel` stays an expression over the logical result coordinates
+/// (PushDim) and plan symbols (PushSym); R3 evaluates it per element.
+struct BoundStage {
+  ValueTransformKind transform = ValueTransformKind::Cast;
+  NumericPolicyKind policy = NumericPolicyKind::IeeeRne;
+  StageType input;
+  StageType output;
+  std::vector<int64_t> shape; // concrete logical operand shape
+  int64_t axis = -1;
+  bool hasChannel = false;
+  ExprStream channel;
+  BoundParameter scale;
+  BoundParameter zeroPoint;
+};
+
+/// The byte footprint of the tensor at one stage boundary: boundary 0 is
+/// the source side, boundary k the output of stage k. Pads entering at or
+/// before the boundary are included in `elements`. An execution variant
+/// that transfers at boundary k moves exactly `bytes` on the wire.
+struct StageFootprint {
+  uint32_t boundary = 0;
+  ElementType elementType{};
+  int64_t elements = 0;
+  int64_t bytes = 0;
+};
+
+/// The typed bound result. It certifies the representation and its guards,
+/// never an executor: `requirements` lists what R3 must still supply.
+struct TypedBoundPlan {
+  BoundPlan layout; // typed == true: refused by layout-only executors
+  std::vector<int64_t> sourceExtents;
+  std::vector<int64_t> resultExtents; // padded logical result
+  ElementType sourceType{};
+  ElementType resultType{};
+  SymbolValues symbols;
+  std::vector<BoundStage> stages;
+  std::vector<StageFootprint> cuts; // boundaries 0..stages.size()
+  int64_t sourceBytes = 0;          // cuts.front().bytes
+  int64_t destinationBytes = 0;     // cuts.back().bytes == layout.totalBytes
+  int64_t parameterBytes = 0;       // every bound parameter, recorded apart
+  std::vector<std::string> requirements; // e.g. "typed_execution_dispatch"
+};
+
+using TypedBindResult = std::variant<TypedBoundPlan, BindError>;
+
+/// Bind a decoded typed plan against symbol values and runtime parameters.
+/// Fails (BindError) on: the layout's own bind errors; a source or result
+/// descriptor outside the supported subset (dense row-major, zero offset,
+/// extents >= 1, byte-multiple element widths); a missing, extra or
+/// mismatched parameter (unknown name, wrong element type or rank, length
+/// different from the channel extent re-evaluated under these symbols);
+/// invalid parameter values (non-finite or non-positive scales, zero points
+/// outside [-128, 127], nonzero under symmetric_rne); an inline per-channel
+/// parameter whose length disagrees with the now-concrete extent; and any
+/// overflow while computing element counts or byte footprints. Every
+/// failure happens before anything is copied or executed.
+TypedBindResult bindTyped(const TypedRelocationPlan &plan,
+                          const SymbolMap &symbolMap,
+                          const ParameterMap &parameters);
 
 } // namespace reloc
 

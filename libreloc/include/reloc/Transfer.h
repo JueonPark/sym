@@ -58,7 +58,8 @@ struct BufferView {
 /// A stable reason code plus a human-readable detail. Codes:
 ///   invalid_view, unsupported_layout, insufficient_capacity,
 ///   integer_overflow, plan_mismatch, direction_mismatch, already_executed,
-///   device_mismatch, backend_failure.
+///   device_mismatch, backend_failure, typed_unsupported (the bound plan is
+///   the layout of a typed plan; C3).
 struct TransferError {
   std::string code;
   std::string message;
