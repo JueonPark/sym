@@ -1,0 +1,399 @@
+{
+  "bindings": [
+    {
+      "capability": {
+        "cuda": {
+          "d2h": [
+            "cpu_reference",
+            "cuda_stages_then_cpu@1",
+            "cuda_stages_then_cpu@2"
+          ],
+          "h2d": [
+            "cpu_reference"
+          ]
+        },
+        "host": {
+          "d2h": [
+            "cpu_reference"
+          ],
+          "h2d": [
+            "cpu_reference"
+          ]
+        }
+      },
+      "expected": {
+        "bits": [
+          "3fc00000",
+          "c0200000",
+          "bfc00000",
+          "bf000000",
+          "3f000000",
+          "3fc00000",
+          "40200000",
+          "c2800000",
+          "427e0000",
+          "c2800000",
+          "0",
+          "3f000000",
+          "427e0000",
+          "c2800000",
+          "3fc00000",
+          "3fc00000"
+        ],
+        "dtype": "float32",
+        "sha256": "ebe8ecfd80f84fcf607af7108244aa6cddb6be6bf2149e7714515c2d04d1f4d9",
+        "shape": [
+          16
+        ]
+      },
+      "footprints": {
+        "d2h": {
+          "destination_bytes": 64,
+          "parameter_bytes": 8,
+          "source_bytes": 52,
+          "wire_boundary": 0,
+          "wire_bytes": 52
+        },
+        "h2d": {
+          "destination_bytes": 64,
+          "parameter_bytes": 8,
+          "source_bytes": 52,
+          "wire_boundary": 2,
+          "wire_bytes": 64
+        }
+      },
+      "source": {
+        "bits": [
+          "c0200000",
+          "bfc00000",
+          "bf000000",
+          "3f000000",
+          "3fc00000",
+          "40200000",
+          "7fc00000",
+          "7f800000",
+          "ff800000",
+          "80000000",
+          "3e99999a",
+          "42800000",
+          "c2810000"
+        ],
+        "dtype": "float32",
+        "shape": [
+          13
+        ]
+      },
+      "symbols": {
+        "s0": 13
+      }
+    },
+    {
+      "capability": {
+        "cuda": {
+          "d2h": [
+            "cpu_reference",
+            "cuda_stages_then_cpu@1",
+            "cuda_stages_then_cpu@2"
+          ],
+          "h2d": [
+            "cpu_reference"
+          ]
+        },
+        "host": {
+          "d2h": [
+            "cpu_reference"
+          ],
+          "h2d": [
+            "cpu_reference"
+          ]
+        }
+      },
+      "expected": {
+        "bits": [
+          "3fc00000",
+          "c0200000",
+          "bfc00000",
+          "bf000000",
+          "3f000000",
+          "3fc00000",
+          "40200000",
+          "3fc00000",
+          "3fc00000"
+        ],
+        "dtype": "float32",
+        "sha256": "8c280f6c41fafbdecd451c9fcf7262cdea1068a6599326eae47b07290c9021de",
+        "shape": [
+          9
+        ]
+      },
+      "footprints": {
+        "d2h": {
+          "destination_bytes": 36,
+          "parameter_bytes": 8,
+          "source_bytes": 24,
+          "wire_boundary": 0,
+          "wire_bytes": 24
+        },
+        "h2d": {
+          "destination_bytes": 36,
+          "parameter_bytes": 8,
+          "source_bytes": 24,
+          "wire_boundary": 2,
+          "wire_bytes": 36
+        }
+      },
+      "source": {
+        "bits": [
+          "c0200000",
+          "bfc00000",
+          "bf000000",
+          "3f000000",
+          "3fc00000",
+          "40200000"
+        ],
+        "dtype": "float32",
+        "shape": [
+          6
+        ]
+      },
+      "symbols": {
+        "s0": 6
+      }
+    }
+  ],
+  "description": "f32 -> s8 -> f32 with a padded destination: distinct source, wire and destination footprints; two bindings",
+  "generator_seed": 20260923,
+  "manifest": {
+    "constraints": {
+      "divisibility": []
+    },
+    "fills": [
+      {
+        "bits": "3fc00000",
+        "dst_axis": 0,
+        "dtype": "float32",
+        "stage": 2
+      }
+    ],
+    "input_sha256": "20bab74f2b81cbd6fcfc6ac9c3b94ff99367d5d94a281b59f8e4fafd02425502",
+    "logical_destination": {
+      "dtype": "float32",
+      "offset": [
+        "const",
+        0
+      ],
+      "shape": [
+        [
+          "add",
+          [
+            "const",
+            3
+          ],
+          [
+            "symbol",
+            "s0"
+          ]
+        ]
+      ],
+      "strides": [
+        [
+          "const",
+          1
+        ]
+      ]
+    },
+    "logical_source": {
+      "dtype": "float32",
+      "offset": [
+        "const",
+        0
+      ],
+      "shape": [
+        [
+          "symbol",
+          "s0"
+        ]
+      ],
+      "strides": [
+        [
+          "const",
+          1
+        ]
+      ]
+    },
+    "parameters": [],
+    "plan_count": 1,
+    "plan_sha256": "56a5055aa3d9a55dc8f90532fddcfb88cdce7f9235f0512afaa47b5a514569c9",
+    "schema_version": 2,
+    "stages": [
+      {
+        "axis": -1,
+        "channel": null,
+        "input_dtype": "float32",
+        "output_dtype": "int8",
+        "policy": "symmetric_rne",
+        "scale": {
+          "bits": [
+            "3f000000"
+          ],
+          "dtype": "float32",
+          "kind": "inline",
+          "shape": []
+        },
+        "shape": [
+          [
+            "symbol",
+            "s0"
+          ]
+        ],
+        "transform": "quantize",
+        "zero_point": null
+      },
+      {
+        "axis": -1,
+        "channel": null,
+        "input_dtype": "int8",
+        "output_dtype": "float32",
+        "policy": "affine",
+        "scale": {
+          "bits": [
+            "3f000000"
+          ],
+          "dtype": "float32",
+          "kind": "inline",
+          "shape": []
+        },
+        "shape": [
+          [
+            "symbol",
+            "s0"
+          ]
+        ],
+        "transform": "dequantize",
+        "zero_point": null
+      }
+    ],
+    "status": "ok",
+    "symbols": [
+      "s0"
+    ],
+    "wire_version": 1
+  },
+  "mlir": "func.func @torch_relocation(%x: !sym.tensor<[\"s0\"], f32>) -> !sym.tensor<[(3 + \"s0\")], f32> {\n  %v0 = reloc.quantize %x scale(dense<0x3F000000> : tensor<f32>) policy symmetric_rne : !sym.tensor<[\"s0\"], f32> -> !sym.tensor<[\"s0\"], i8>\n  %v1 = reloc.dequantize %v0 scale(dense<0x3F000000> : tensor<f32>) policy affine : !sym.tensor<[\"s0\"], i8> -> !sym.tensor<[\"s0\"], f32>\n  %v2 = reloc.pad %v1 axis 0 lo 1 hi 2 value (0x3FC00000 : f32) : !sym.tensor<[\"s0\"], f32> -> !sym.tensor<[(3 + \"s0\")], f32>\n  return %v2 : !sym.tensor<[(3 + \"s0\")], f32>\n}\n",
+  "name": "quant_dequant_padded",
+  "parameters": {},
+  "plan_sha256": "56a5055aa3d9a55dc8f90532fddcfb88cdce7f9235f0512afaa47b5a514569c9",
+  "recipe": {
+    "destination": {
+      "dtype": "float32",
+      "offset": [
+        "const",
+        0
+      ],
+      "shape": [
+        [
+          "add",
+          [
+            "const",
+            3
+          ],
+          [
+            "symbol",
+            "s0"
+          ]
+        ]
+      ],
+      "strides": [
+        [
+          "const",
+          1
+        ]
+      ]
+    },
+    "direction": "h2d",
+    "operations": [
+      {
+        "axis": null,
+        "dtype": "int8",
+        "kind": "quantize",
+        "policy": "symmetric_rne",
+        "scale": {
+          "bits": [
+            1056964608
+          ],
+          "dtype": "float32",
+          "kind": "inline",
+          "shape": []
+        },
+        "zero_point": null
+      },
+      {
+        "axis": null,
+        "dtype": "float32",
+        "kind": "dequantize",
+        "policy": "affine",
+        "scale": {
+          "bits": [
+            1056964608
+          ],
+          "dtype": "float32",
+          "kind": "inline",
+          "shape": []
+        },
+        "zero_point": null
+      },
+      {
+        "axis": 0,
+        "fill": {
+          "bits": 1069547520,
+          "dtype": "float32"
+        },
+        "hi": [
+          "const",
+          2
+        ],
+        "kind": "pad",
+        "lo": [
+          "const",
+          1
+        ]
+      }
+    ],
+    "source": {
+      "dtype": "float32",
+      "offset": [
+        "const",
+        0
+      ],
+      "shape": [
+        [
+          "symbol",
+          "s0"
+        ]
+      ],
+      "strides": [
+        [
+          "const",
+          1
+        ]
+      ]
+    }
+  },
+  "stages": [
+    {
+      "input_dtype": "float32",
+      "output_dtype": "int8",
+      "policy": "symmetric_rne",
+      "transform": "quantize"
+    },
+    {
+      "input_dtype": "int8",
+      "output_dtype": "float32",
+      "policy": "affine",
+      "transform": "dequantize"
+    }
+  ],
+  "symbols": [
+    "s0"
+  ]
+}

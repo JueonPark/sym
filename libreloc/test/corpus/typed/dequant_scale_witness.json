@@ -1,0 +1,220 @@
+{
+  "bindings": [
+    {
+      "capability": {
+        "cuda": {
+          "d2h": [
+            "cpu_reference",
+            "cuda_stages_then_cpu@1"
+          ],
+          "h2d": [
+            "cpu_reference",
+            "cpu_stages_cuda_stages@0"
+          ]
+        },
+        "host": {
+          "d2h": [
+            "cpu_reference"
+          ],
+          "h2d": [
+            "cpu_reference"
+          ]
+        }
+      },
+      "expected": {
+        "bits": [
+          "c219999a",
+          "be99999a",
+          "0",
+          "3e99999a",
+          "42186667"
+        ],
+        "dtype": "float32",
+        "sha256": "d94371b7b9db844239cc19ac11943d25fab04a5d5fb75670bc903e60e9c93993",
+        "shape": [
+          5
+        ]
+      },
+      "footprints": {
+        "d2h": {
+          "destination_bytes": 20,
+          "parameter_bytes": 4,
+          "source_bytes": 5,
+          "wire_boundary": 0,
+          "wire_bytes": 5
+        },
+        "h2d": {
+          "destination_bytes": 20,
+          "parameter_bytes": 4,
+          "source_bytes": 5,
+          "wire_boundary": 1,
+          "wire_bytes": 20
+        }
+      },
+      "source": {
+        "bits": [
+          "80",
+          "ff",
+          "0",
+          "1",
+          "7f"
+        ],
+        "dtype": "int8",
+        "shape": [
+          5
+        ]
+      },
+      "symbols": {}
+    }
+  ],
+  "description": "C1's dequantize bits: q in [-128, -1, 0, 1, 127], scale 0.3, zero point 0",
+  "generator_seed": 20260923,
+  "manifest": {
+    "constraints": {
+      "divisibility": []
+    },
+    "fills": [],
+    "input_sha256": "40a0d10fba3c26772d61632be16007801dff8848b13cccfa77aa3027453b1746",
+    "logical_destination": {
+      "dtype": "float32",
+      "offset": [
+        "const",
+        0
+      ],
+      "shape": [
+        [
+          "const",
+          5
+        ]
+      ],
+      "strides": [
+        [
+          "const",
+          1
+        ]
+      ]
+    },
+    "logical_source": {
+      "dtype": "int8",
+      "offset": [
+        "const",
+        0
+      ],
+      "shape": [
+        [
+          "const",
+          5
+        ]
+      ],
+      "strides": [
+        [
+          "const",
+          1
+        ]
+      ]
+    },
+    "parameters": [],
+    "plan_count": 1,
+    "plan_sha256": "808845c96fdff3206a02df2a93ab668263b7a3a9245af8188abe3e45b1050bb6",
+    "schema_version": 2,
+    "stages": [
+      {
+        "axis": -1,
+        "channel": null,
+        "input_dtype": "int8",
+        "output_dtype": "float32",
+        "policy": "affine",
+        "scale": {
+          "bits": [
+            "3e99999a"
+          ],
+          "dtype": "float32",
+          "kind": "inline",
+          "shape": []
+        },
+        "shape": [
+          [
+            "const",
+            5
+          ]
+        ],
+        "transform": "dequantize",
+        "zero_point": null
+      }
+    ],
+    "status": "ok",
+    "symbols": [],
+    "wire_version": 1
+  },
+  "mlir": "func.func @torch_relocation(%x: !sym.tensor<[5], i8>) -> !sym.tensor<[5], f32> {\n  %v0 = reloc.dequantize %x scale(dense<0x3E99999A> : tensor<f32>) policy affine : !sym.tensor<[5], i8> -> !sym.tensor<[5], f32>\n  return %v0 : !sym.tensor<[5], f32>\n}\n",
+  "name": "dequant_scale_witness",
+  "parameters": {},
+  "plan_sha256": "808845c96fdff3206a02df2a93ab668263b7a3a9245af8188abe3e45b1050bb6",
+  "recipe": {
+    "destination": {
+      "dtype": "float32",
+      "offset": [
+        "const",
+        0
+      ],
+      "shape": [
+        [
+          "const",
+          5
+        ]
+      ],
+      "strides": [
+        [
+          "const",
+          1
+        ]
+      ]
+    },
+    "direction": "h2d",
+    "operations": [
+      {
+        "axis": null,
+        "dtype": "float32",
+        "kind": "dequantize",
+        "policy": "affine",
+        "scale": {
+          "bits": [
+            1050253722
+          ],
+          "dtype": "float32",
+          "kind": "inline",
+          "shape": []
+        },
+        "zero_point": null
+      }
+    ],
+    "source": {
+      "dtype": "int8",
+      "offset": [
+        "const",
+        0
+      ],
+      "shape": [
+        [
+          "const",
+          5
+        ]
+      ],
+      "strides": [
+        [
+          "const",
+          1
+        ]
+      ]
+    }
+  },
+  "stages": [
+    {
+      "input_dtype": "int8",
+      "output_dtype": "float32",
+      "policy": "affine",
+      "transform": "dequantize"
+    }
+  ],
+  "symbols": []
+}

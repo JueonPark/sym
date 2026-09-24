@@ -242,7 +242,10 @@ class RelocBackend:
             with self._lock:
                 self._live[registration] = entry
             with graph.inserting_before(tail):
-                op_node = _insert_transfer(graph, root, tail, compiled, registration.handle, device)
+                op_node = _insert_transfer(
+                    graph, root, tail, compiled, registration.handle, device,
+                    [nodes[name] for name in candidate.parameters],
+                )
             tail.replace_all_uses_with(op_node)
             for member in reversed(members):
                 if member.users:
@@ -271,9 +274,9 @@ def _region_reason(nodes, candidate):
     return None
 
 
-def _insert_transfer(graph, root, tail, compiled, handle, device):
+def _insert_transfer(graph, root, tail, compiled, handle, device, parameters=()):
     import torch
-    from .ops import OP
+    from .ops import OP, TYPED_OP
 
     symbol_nodes = {}
     for source in compiled.symbol_sources:
@@ -304,9 +307,20 @@ def _insert_transfer(graph, root, tail, compiled, handle, device):
     destination = compiled.logical_destination
     out_shape = [emit(dim) for dim in destination.shape]
     out_strides = [emit(dim) for dim in destination.strides]
-    node = graph.call_function(
-        OP, (root, handle, symbols, out_shape, out_strides, torch.device(device))
-    )
+    if compiled.typed:
+        # C4: the typed op carries the destination dtype explicitly and its
+        # runtime parameters as graph inputs (recipe declaration order).
+        if len(parameters) != len(compiled.parameters):
+            raise RuntimeError("typed candidate parameters do not match the compiled declarations")
+        node = graph.call_function(
+            TYPED_OP,
+            (root, list(parameters), handle, symbols, out_shape, out_strides,
+             torch.device(device), getattr(torch, destination.dtype)),
+        )
+    else:
+        node = graph.call_function(
+            OP, (root, handle, symbols, out_shape, out_strides, torch.device(device))
+        )
     node.meta = dict(tail.meta)
     return node
 

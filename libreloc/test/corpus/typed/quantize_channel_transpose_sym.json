@@ -1,0 +1,434 @@
+{
+  "bindings": [
+    {
+      "capability": {
+        "cuda": {
+          "d2h": [
+            "cpu_reference"
+          ],
+          "h2d": [
+            "cpu_reference",
+            "cpu_stages_cuda_stages@0",
+            "cuda_relocate_f32"
+          ]
+        },
+        "host": {
+          "d2h": [
+            "cpu_reference"
+          ],
+          "h2d": [
+            "cpu_reference"
+          ]
+        }
+      },
+      "expected": {
+        "bits": [
+          "80",
+          "0",
+          "31",
+          "45",
+          "e0",
+          "7f",
+          "7f",
+          "b1",
+          "80",
+          "48",
+          "80",
+          "b",
+          "90",
+          "80",
+          "74"
+        ],
+        "dtype": "int8",
+        "sha256": "1ba30dfd308ea9f36e1c613797c123c937c622a8447e1b6f8502bbfbb419a1f4",
+        "shape": [
+          3,
+          5
+        ]
+      },
+      "footprints": {
+        "d2h": {
+          "destination_bytes": 15,
+          "parameter_bytes": 12,
+          "source_bytes": 60,
+          "wire_boundary": 0,
+          "wire_bytes": 60
+        },
+        "h2d": {
+          "destination_bytes": 15,
+          "parameter_bytes": 12,
+          "source_bytes": 60,
+          "wire_boundary": 1,
+          "wire_bytes": 15
+        }
+      },
+      "source": {
+        "bits": [
+          "7fc00000",
+          "7f800000",
+          "ff800000",
+          "80000000",
+          "42892416",
+          "402b65f9",
+          "42456301",
+          "c21eff86",
+          "c1df9f29",
+          "4289acb8",
+          "c2806dc4",
+          "c24f9cfd",
+          "c201f7f9",
+          "4210d316",
+          "41e79347"
+        ],
+        "dtype": "float32",
+        "shape": [
+          5,
+          3
+        ]
+      },
+      "symbols": {
+        "s0": 5
+      }
+    },
+    {
+      "capability": {
+        "cuda": {
+          "d2h": [
+            "cpu_reference"
+          ],
+          "h2d": [
+            "cpu_reference",
+            "cpu_stages_cuda_stages@0",
+            "cuda_relocate_f32"
+          ]
+        },
+        "host": {
+          "d2h": [
+            "cpu_reference"
+          ],
+          "h2d": [
+            "cpu_reference"
+          ]
+        }
+      },
+      "expected": {
+        "bits": [
+          "80",
+          "0",
+          "31",
+          "45",
+          "e0",
+          "d3",
+          "15",
+          "c4",
+          "7f",
+          "7f",
+          "b1",
+          "80",
+          "48",
+          "7f",
+          "52",
+          "d0",
+          "80",
+          "b",
+          "90",
+          "80",
+          "74",
+          "df",
+          "7f",
+          "7f"
+        ],
+        "dtype": "int8",
+        "sha256": "9c41acb44299900c6b38593cd057ec296f2c8064da030b0b991aa52facf05d8b",
+        "shape": [
+          3,
+          8
+        ]
+      },
+      "footprints": {
+        "d2h": {
+          "destination_bytes": 24,
+          "parameter_bytes": 12,
+          "source_bytes": 96,
+          "wire_boundary": 0,
+          "wire_bytes": 96
+        },
+        "h2d": {
+          "destination_bytes": 24,
+          "parameter_bytes": 12,
+          "source_bytes": 96,
+          "wire_boundary": 1,
+          "wire_bytes": 24
+        }
+      },
+      "source": {
+        "bits": [
+          "7fc00000",
+          "7f800000",
+          "ff800000",
+          "80000000",
+          "42892416",
+          "402b65f9",
+          "42456301",
+          "c21eff86",
+          "c1df9f29",
+          "4289acb8",
+          "c2806dc4",
+          "c24f9cfd",
+          "c201f7f9",
+          "4210d316",
+          "41e79347",
+          "c23517b5",
+          "427fb72b",
+          "c1040260",
+          "41aa4548",
+          "422498d5",
+          "422f8c63",
+          "c26e8de9",
+          "c1c05ab9",
+          "426cbc70"
+        ],
+        "dtype": "float32",
+        "shape": [
+          8,
+          3
+        ]
+      },
+      "symbols": {
+        "s0": 8
+      }
+    }
+  ],
+  "description": "layout + quantize: f32 [s0, 3] per-channel (runtime scale over 3 channels) then transposed to [3, s0]; two bindings",
+  "generator_seed": 20260923,
+  "manifest": {
+    "constraints": {
+      "divisibility": []
+    },
+    "fills": [],
+    "input_sha256": "61f866acbcb0508c479a1c47b43945017a7d54671834b1b72fab6736a4253411",
+    "logical_destination": {
+      "dtype": "int8",
+      "offset": [
+        "const",
+        0
+      ],
+      "shape": [
+        [
+          "const",
+          3
+        ],
+        [
+          "symbol",
+          "s0"
+        ]
+      ],
+      "strides": [
+        [
+          "symbol",
+          "s0"
+        ],
+        [
+          "const",
+          1
+        ]
+      ]
+    },
+    "logical_source": {
+      "dtype": "float32",
+      "offset": [
+        "const",
+        0
+      ],
+      "shape": [
+        [
+          "symbol",
+          "s0"
+        ],
+        [
+          "const",
+          3
+        ]
+      ],
+      "strides": [
+        [
+          "const",
+          3
+        ],
+        [
+          "const",
+          1
+        ]
+      ]
+    },
+    "parameters": [
+      {
+        "dtype": "float32",
+        "extents": [
+          [
+            "const",
+            3
+          ]
+        ],
+        "name": "s"
+      }
+    ],
+    "plan_count": 1,
+    "plan_sha256": "fc47220532a1e0e29bd0be0b32e7aa44ac90afcc03b537c335cb42d74706f6d5",
+    "schema_version": 2,
+    "stages": [
+      {
+        "axis": 1,
+        "channel": {
+          "dims": 2,
+          "expr": [
+            "dim",
+            0
+          ]
+        },
+        "input_dtype": "float32",
+        "output_dtype": "int8",
+        "policy": "symmetric_rne",
+        "scale": {
+          "dtype": "float32",
+          "extents": [
+            [
+              "const",
+              3
+            ]
+          ],
+          "kind": "binding",
+          "name": "s"
+        },
+        "shape": [
+          [
+            "symbol",
+            "s0"
+          ],
+          [
+            "const",
+            3
+          ]
+        ],
+        "transform": "quantize",
+        "zero_point": null
+      }
+    ],
+    "status": "ok",
+    "symbols": [
+      "s0"
+    ],
+    "wire_version": 1
+  },
+  "mlir": "func.func @torch_relocation(%x: !sym.tensor<[\"s0\", 3], f32>) -> !sym.tensor<[3, \"s0\"], i8> {\n  %v0 = reloc.quantize %x axis 1 scale(#reloc.binding<\"s\" : [3], f32>) policy symmetric_rne : !sym.tensor<[\"s0\", 3], f32> -> !sym.tensor<[\"s0\", 3], i8>\n  %v1 = reloc.transpose %v0 perm [1, 0] : !sym.tensor<[\"s0\", 3], i8> -> !sym.tensor<[3, \"s0\"], i8>\n  return %v1 : !sym.tensor<[3, \"s0\"], i8>\n}\n",
+  "name": "quantize_channel_transpose_sym",
+  "parameters": {
+    "s": {
+      "bits": [
+        "3f800000",
+        "3f000000",
+        "3e800000"
+      ],
+      "dtype": "float32",
+      "shape": [
+        3
+      ]
+    }
+  },
+  "plan_sha256": "fc47220532a1e0e29bd0be0b32e7aa44ac90afcc03b537c335cb42d74706f6d5",
+  "recipe": {
+    "destination": {
+      "dtype": "int8",
+      "offset": [
+        "const",
+        0
+      ],
+      "shape": [
+        [
+          "const",
+          3
+        ],
+        [
+          "symbol",
+          "s0"
+        ]
+      ],
+      "strides": [
+        [
+          "symbol",
+          "s0"
+        ],
+        [
+          "const",
+          1
+        ]
+      ]
+    },
+    "direction": "h2d",
+    "operations": [
+      {
+        "axis": 1,
+        "dtype": "int8",
+        "kind": "quantize",
+        "policy": "symmetric_rne",
+        "scale": {
+          "dtype": "float32",
+          "extents": [
+            [
+              "const",
+              3
+            ]
+          ],
+          "kind": "binding",
+          "name": "s"
+        },
+        "zero_point": null
+      },
+      {
+        "kind": "transpose",
+        "perm": [
+          1,
+          0
+        ]
+      }
+    ],
+    "source": {
+      "dtype": "float32",
+      "offset": [
+        "const",
+        0
+      ],
+      "shape": [
+        [
+          "symbol",
+          "s0"
+        ],
+        [
+          "const",
+          3
+        ]
+      ],
+      "strides": [
+        [
+          "const",
+          3
+        ],
+        [
+          "const",
+          1
+        ]
+      ]
+    }
+  },
+  "stages": [
+    {
+      "input_dtype": "float32",
+      "output_dtype": "int8",
+      "policy": "symmetric_rne",
+      "transform": "quantize"
+    }
+  ],
+  "symbols": [
+    "s0"
+  ]
+}

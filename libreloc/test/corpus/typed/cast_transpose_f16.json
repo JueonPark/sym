@@ -1,0 +1,284 @@
+{
+  "bindings": [
+    {
+      "capability": {
+        "cuda": {
+          "d2h": [
+            "cpu_reference"
+          ],
+          "h2d": [
+            "cpu_reference"
+          ]
+        },
+        "host": {
+          "d2h": [
+            "cpu_reference"
+          ],
+          "h2d": [
+            "cpu_reference"
+          ]
+        }
+      },
+      "expected": {
+        "bits": [
+          "1",
+          "7c00",
+          "fc00",
+          "7c00",
+          "0",
+          "7c00",
+          "7c00",
+          "fbd7",
+          "1",
+          "3c00",
+          "693b",
+          "fa56",
+          "400",
+          "3c01",
+          "7a06",
+          "f7ef",
+          "7bff",
+          "8000",
+          "f8da",
+          "786b",
+          "7bff",
+          "7c00",
+          "f6d3",
+          "7711"
+        ],
+        "dtype": "float16",
+        "sha256": "1af349a9f972b4bb6f29a0455f36e2a6b1caca17d039fd8f651c9683c596f2a8",
+        "shape": [
+          6,
+          4
+        ]
+      },
+      "footprints": {
+        "d2h": {
+          "destination_bytes": 48,
+          "parameter_bytes": 0,
+          "source_bytes": 96,
+          "wire_boundary": 0,
+          "wire_bytes": 96
+        },
+        "h2d": {
+          "destination_bytes": 48,
+          "parameter_bytes": 0,
+          "source_bytes": 96,
+          "wire_boundary": 1,
+          "wire_bytes": 48
+        }
+      },
+      "source": {
+        "bits": [
+          "33800000",
+          "33000000",
+          "33400000",
+          "38800000",
+          "477fe000",
+          "477feffd",
+          "477ff000",
+          "47c35000",
+          "3f801000",
+          "3f801800",
+          "80000000",
+          "7f800000",
+          "ff800000",
+          "4785ed3e",
+          "45276195",
+          "4740c2af",
+          "c71b4589",
+          "c6da616e",
+          "478672ab",
+          "c77ad664",
+          "c74abf4f",
+          "c6fdd851",
+          "470d6e23",
+          "46e225d4"
+        ],
+        "dtype": "float32",
+        "shape": [
+          4,
+          6
+        ]
+      },
+      "symbols": {}
+    }
+  ],
+  "description": "layout + cast: f32 [4, 6] transposed then narrowed to f16 with C1's binary16 boundary vectors",
+  "generator_seed": 20260923,
+  "manifest": {
+    "constraints": {
+      "divisibility": []
+    },
+    "fills": [],
+    "input_sha256": "b62b8fa0aabb38c77cc1cbfbd7df523fb017739b54e1b5c370feb3ddbfd8a81e",
+    "logical_destination": {
+      "dtype": "float16",
+      "offset": [
+        "const",
+        0
+      ],
+      "shape": [
+        [
+          "const",
+          6
+        ],
+        [
+          "const",
+          4
+        ]
+      ],
+      "strides": [
+        [
+          "const",
+          4
+        ],
+        [
+          "const",
+          1
+        ]
+      ]
+    },
+    "logical_source": {
+      "dtype": "float32",
+      "offset": [
+        "const",
+        0
+      ],
+      "shape": [
+        [
+          "const",
+          4
+        ],
+        [
+          "const",
+          6
+        ]
+      ],
+      "strides": [
+        [
+          "const",
+          6
+        ],
+        [
+          "const",
+          1
+        ]
+      ]
+    },
+    "parameters": [],
+    "plan_count": 1,
+    "plan_sha256": "7679bb6df34f6fdd117a93db14e21aa8dbb5c63ebf8bdce872a7bdf37ceae66a",
+    "schema_version": 2,
+    "stages": [
+      {
+        "axis": -1,
+        "channel": null,
+        "input_dtype": "float32",
+        "output_dtype": "float16",
+        "policy": "ieee_rne",
+        "scale": null,
+        "shape": [
+          [
+            "const",
+            6
+          ],
+          [
+            "const",
+            4
+          ]
+        ],
+        "transform": "cast",
+        "zero_point": null
+      }
+    ],
+    "status": "ok",
+    "symbols": [],
+    "wire_version": 1
+  },
+  "mlir": "func.func @torch_relocation(%x: !sym.tensor<[4, 6], f32>) -> !sym.tensor<[6, 4], f16> {\n  %v0 = reloc.transpose %x perm [1, 0] : !sym.tensor<[4, 6], f32> -> !sym.tensor<[6, 4], f32>\n  %v1 = reloc.cast %v0 policy ieee_rne : !sym.tensor<[6, 4], f32> -> !sym.tensor<[6, 4], f16>\n  return %v1 : !sym.tensor<[6, 4], f16>\n}\n",
+  "name": "cast_transpose_f16",
+  "parameters": {},
+  "plan_sha256": "7679bb6df34f6fdd117a93db14e21aa8dbb5c63ebf8bdce872a7bdf37ceae66a",
+  "recipe": {
+    "destination": {
+      "dtype": "float16",
+      "offset": [
+        "const",
+        0
+      ],
+      "shape": [
+        [
+          "const",
+          6
+        ],
+        [
+          "const",
+          4
+        ]
+      ],
+      "strides": [
+        [
+          "const",
+          4
+        ],
+        [
+          "const",
+          1
+        ]
+      ]
+    },
+    "direction": "h2d",
+    "operations": [
+      {
+        "kind": "transpose",
+        "perm": [
+          1,
+          0
+        ]
+      },
+      {
+        "dtype": "float16",
+        "kind": "cast",
+        "policy": "ieee_rne"
+      }
+    ],
+    "source": {
+      "dtype": "float32",
+      "offset": [
+        "const",
+        0
+      ],
+      "shape": [
+        [
+          "const",
+          4
+        ],
+        [
+          "const",
+          6
+        ]
+      ],
+      "strides": [
+        [
+          "const",
+          6
+        ],
+        [
+          "const",
+          1
+        ]
+      ]
+    }
+  },
+  "stages": [
+    {
+      "input_dtype": "float32",
+      "output_dtype": "float16",
+      "policy": "ieee_rne",
+      "transform": "cast"
+    }
+  ],
+  "symbols": []
+}

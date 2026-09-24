@@ -66,6 +66,8 @@ class PreparedCall:
     destination: ConcreteDescriptor
     non_blocking: bool = False
     request: object = None
+    # C4: the scalar-only R3 report the adapter attaches after a typed dispatch.
+    report: object = None
     _snapshot: tuple = field(init=False, repr=False, compare=False)
     _consumed: bool = field(default=False, init=False, repr=False, compare=False)
 
@@ -119,11 +121,12 @@ class ExecutionEntry:
     def close(self):
         self.closed = True
 
-    def fallback(self, src, *symbols):
-        """Run the saved original region once with T2's ordered scalar arguments."""
+    def fallback(self, src, *symbols, parameters=()):
+        """Run the saved original region once with T2's ordered scalar arguments
+        and, for a typed region, its runtime parameter tensors (C4)."""
         with self._lock:
             self.fallback_calls += 1
-        return self.original(src, *self.scalar_arguments(symbols))
+        return self.original(src, *self.scalar_arguments(symbols), *parameters)
 
     def scalar_arguments(self, symbols):
         if not self.symbolic_bindings:
@@ -323,12 +326,19 @@ class TransportAdapter:
             return "reloc_torch.transport/unavailable"
         return f"reloc_torch.transport/{getattr(self._module, 'CAPABILITY_IDENTITY', '0')}"
 
-    def preflight(self, compiled, src, device, *, non_blocking=False):
+    def preflight(self, compiled, src, device, *, non_blocking=False, parameters=None):
         import torch
 
         if not self.available:
             raise UnsupportedRecipe("runtime_unavailable", self.unavailable_reason)
-        request = self._module.prepare_transfer(compiled, src, device, non_blocking=non_blocking)
+        if getattr(compiled, "typed", False):
+            # C4: typed recipes run through R3's dispatch bridge; parameters
+            # are CPU tensors bound by declared name and snapshotted there.
+            request = self._dispatch().prepare_typed_transfer(
+                compiled, src, device, parameters=dict(parameters or {}),
+            )
+        else:
+            request = self._module.prepare_transfer(compiled, src, device, non_blocking=non_blocking)
         missing = [name for name in self.REQUEST_ATTRIBUTES if not hasattr(request, name)]
         if missing:
             raise RuntimeError(
@@ -347,7 +357,14 @@ class TransportAdapter:
         )
 
     def execute(self, call):
+        if getattr(call.compiled, "typed", False):
+            result = self._dispatch().execute_typed_transfer(call.request)
+            call.report = result.report
+            return result.tensor
         return self._module.execute_transfer(call.request)
+
+    def _dispatch(self):
+        return importlib.import_module(f"{__package__}.dispatch")
 
 
 def _derived_symbols(entry, src):
@@ -360,7 +377,7 @@ def _derived_symbols(entry, src):
     return values
 
 
-def _fallback(entry, src, symbols, reason, promised=None):
+def _fallback(entry, src, symbols, reason, promised=None, parameters=()):
     if symbols is None:
         # Symbol values only matter for the original region's scalar
         # placeholders; eager identity entries have none.
@@ -373,11 +390,11 @@ def _fallback(entry, src, symbols, reason, promised=None):
                     f"source of rank {src.dim()} (recipe symbols {entry.compiled.symbols})"
                 )
     entry.diagnostics.record_fallback(reason)
-    result = entry.fallback(src, *symbols)
+    result = entry.fallback(src, *symbols, parameters=tuple(parameters))
     return result if promised is None else verify_result(result, src, promised)
 
 
-def execute_or_fallback(entry, src, symbols, device, *, non_blocking=False, declared=None):
+def execute_or_fallback(entry, src, symbols, device, *, non_blocking=False, declared=None, parameters=()):
     """Preflight, then either dispatch once or run the original region once.
 
     ``symbols`` is the ordered list of concrete values supplied by the op (or
@@ -386,20 +403,30 @@ def execute_or_fallback(entry, src, symbols, device, *, non_blocking=False, decl
     supplied symbols, so every expected exclusion has a stable reason before the
     adapter is consulted. ``declared`` optionally carries the output metadata
     promised to the graph; a mismatch with the compiled descriptor is an error,
-    never a fallback. Every result handed back, from the adapter or from the
-    original region once the promised metadata is known, passes ``verify_result``.
+    never a fallback. ``parameters`` are the typed region's runtime parameter
+    tensors in recipe declaration order (C4); they reach the adapter by
+    declared name and the original region positionally. Every result handed
+    back, from the adapter or from the original region once the promised
+    metadata is known, passes ``verify_result``.
     """
     import torch
 
     if entry.closed:
         raise RuntimeError("execution entry is closed")
     device = torch.device(device)
+    parameters = tuple(parameters)
+    typed = getattr(entry.compiled, "typed", False)
+    names = tuple(p.name for p in entry.compiled.parameters) if typed else ()
+    if len(parameters) != len(names):
+        raise RuntimeError(
+            f"expected {len(names)} runtime parameters {names} for {entry.describe()}, got {len(parameters)}"
+        )
     with suspend_interception():
         if non_blocking:
-            return _fallback(entry, src, symbols, "nonblocking_unavailable", declared)
+            return _fallback(entry, src, symbols, "nonblocking_unavailable", declared, parameters)
         reason = source_reason(src)
         if reason is not None:
-            return _fallback(entry, src, symbols, reason, declared)
+            return _fallback(entry, src, symbols, reason, declared, parameters)
         try:
             bindings = bind_symbols(entry.compiled, src)
             destination = destination_descriptor(entry.compiled, bindings, device)
@@ -407,14 +434,14 @@ def execute_or_fallback(entry, src, symbols, device, *, non_blocking=False, decl
                 if expression(guard).evaluate(bindings, checked=True) < 2:
                     raise UnsupportedRecipe("singleton_extent", f"{guard} binds below two")
         except UnsupportedRecipe as error:
-            return _fallback(entry, src, symbols, error.reason, declared)
+            return _fallback(entry, src, symbols, error.reason, declared, parameters)
         except (KeyError, GuardError) as error:
-            return _fallback(entry, src, symbols, getattr(error, "reason", "missing_symbol"), declared)
+            return _fallback(entry, src, symbols, getattr(error, "reason", "missing_symbol"), declared, parameters)
         promised = destination if declared is None else declared
         if symbols is not None:
             expected = [bindings[name] for name in entry.compiled.symbols]
             if [int(value) for value in symbols] != expected:
-                return _fallback(entry, src, symbols, "symbol_mismatch", promised)
+                return _fallback(entry, src, symbols, "symbol_mismatch", promised, parameters)
         if declared is not None and (
             tuple(declared.shape) != destination.shape or tuple(declared.strides) != destination.strides
         ):
@@ -423,11 +450,14 @@ def execute_or_fallback(entry, src, symbols, device, *, non_blocking=False, decl
                 f"does not match the compiled {entry.direction} descriptor "
                 f"{destination.shape}/{destination.strides}"
             )
+        options = {"non_blocking": non_blocking}
+        if typed:
+            options["parameters"] = dict(zip(names, parameters))
         try:
             with _counting_binds(entry.diagnostics):
-                call = entry.runtime.preflight(entry.compiled, src, device, non_blocking=non_blocking)
+                call = entry.runtime.preflight(entry.compiled, src, device, **options)
         except UnsupportedRecipe as error:
-            return _fallback(entry, src, symbols, error.reason, promised)
+            return _fallback(entry, src, symbols, error.reason, promised, parameters)
         if call.bindings != bindings or tuple(call.destination.shape) != destination.shape:
             raise RuntimeError("runtime adapter disagreed with the frontend binding")
         call.recheck()
@@ -442,6 +472,8 @@ def execute_or_fallback(entry, src, symbols, device, *, non_blocking=False, decl
                 direction=entry.direction,
                 handle=entry.handle,
             ) from error
+        if getattr(call, "report", None) is not None:
+            entry.diagnostics.record_dispatch(call.report)
         return verify_result(result, src, promised)
 
 

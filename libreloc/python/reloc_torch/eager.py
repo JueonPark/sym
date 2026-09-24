@@ -76,6 +76,10 @@ def decide(func, args, kwargs):
         # Same-device casts and copies are the common ineligible case; decide
         # them before any storage query.
         return Decision("typed_transform_unavailable" if dtype != src.dtype else "same_device_copy")
+    if dtype != src.dtype:
+        # Eager transfers stay layout-only: the identity recipe cannot carry a
+        # cast, and typed programs enter through the compile path (C4).
+        return Decision("typed_transform_unavailable")
     source = compat.tensor_metadata(src)
     if source.requires_grad and not torch.is_grad_enabled():
         # Gradient-requiring only while autograd could record; under no_grad a

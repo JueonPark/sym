@@ -1,0 +1,246 @@
+{
+  "bindings": [
+    {
+      "capability": {
+        "cuda": {
+          "d2h": [
+            "cpu_reference",
+            "cuda_stages_then_cpu@1"
+          ],
+          "h2d": [
+            "cpu_reference"
+          ]
+        },
+        "host": {
+          "d2h": [
+            "cpu_reference"
+          ],
+          "h2d": [
+            "cpu_reference"
+          ]
+        }
+      },
+      "expected": {
+        "bits": [
+          "1",
+          "1",
+          "2",
+          "fe",
+          "4",
+          "80",
+          "7f",
+          "1"
+        ],
+        "dtype": "int8",
+        "sha256": "07c8bb66be0e93d715862881c3088184a4ef6889a1e9cad51f2024e6a14f5214",
+        "shape": [
+          8
+        ]
+      },
+      "footprints": {
+        "d2h": {
+          "destination_bytes": 8,
+          "parameter_bytes": 4,
+          "source_bytes": 24,
+          "wire_boundary": 0,
+          "wire_bytes": 24
+        },
+        "h2d": {
+          "destination_bytes": 8,
+          "parameter_bytes": 4,
+          "source_bytes": 24,
+          "wire_boundary": 1,
+          "wire_bytes": 8
+        }
+      },
+      "source": {
+        "bits": [
+          "3e99999a",
+          "3f400000",
+          "bf400000",
+          "40000000",
+          "c3000000",
+          "42c80000"
+        ],
+        "dtype": "float32",
+        "shape": [
+          6
+        ]
+      },
+      "symbols": {}
+    }
+  ],
+  "description": "pad order witness: quantize at scale 0.5, then pad the s8 result with code 1 (stays 1)",
+  "generator_seed": 20260923,
+  "manifest": {
+    "constraints": {
+      "divisibility": []
+    },
+    "fills": [
+      {
+        "bits": "1",
+        "dst_axis": 0,
+        "dtype": "int8",
+        "stage": 1
+      }
+    ],
+    "input_sha256": "e29bf37ed9f3c2f91ac8507d29891b41eebe142193509440a9e8f4e0f1d2fb3d",
+    "logical_destination": {
+      "dtype": "int8",
+      "offset": [
+        "const",
+        0
+      ],
+      "shape": [
+        [
+          "const",
+          8
+        ]
+      ],
+      "strides": [
+        [
+          "const",
+          1
+        ]
+      ]
+    },
+    "logical_source": {
+      "dtype": "float32",
+      "offset": [
+        "const",
+        0
+      ],
+      "shape": [
+        [
+          "const",
+          6
+        ]
+      ],
+      "strides": [
+        [
+          "const",
+          1
+        ]
+      ]
+    },
+    "parameters": [],
+    "plan_count": 1,
+    "plan_sha256": "d38c5b5b7631d2b6a0e4204728c948b6784c07b240d83684b1443048455f0e1e",
+    "schema_version": 2,
+    "stages": [
+      {
+        "axis": -1,
+        "channel": null,
+        "input_dtype": "float32",
+        "output_dtype": "int8",
+        "policy": "symmetric_rne",
+        "scale": {
+          "bits": [
+            "3f000000"
+          ],
+          "dtype": "float32",
+          "kind": "inline",
+          "shape": []
+        },
+        "shape": [
+          [
+            "const",
+            6
+          ]
+        ],
+        "transform": "quantize",
+        "zero_point": null
+      }
+    ],
+    "status": "ok",
+    "symbols": [],
+    "wire_version": 1
+  },
+  "mlir": "func.func @torch_relocation(%x: !sym.tensor<[6], f32>) -> !sym.tensor<[8], i8> {\n  %v0 = reloc.quantize %x scale(dense<0x3F000000> : tensor<f32>) policy symmetric_rne : !sym.tensor<[6], f32> -> !sym.tensor<[6], i8>\n  %v1 = reloc.pad %v0 axis 0 lo 1 hi 1 value (1 : i8) : !sym.tensor<[6], i8> -> !sym.tensor<[8], i8>\n  return %v1 : !sym.tensor<[8], i8>\n}\n",
+  "name": "quantize_then_pad",
+  "parameters": {},
+  "plan_sha256": "d38c5b5b7631d2b6a0e4204728c948b6784c07b240d83684b1443048455f0e1e",
+  "recipe": {
+    "destination": {
+      "dtype": "int8",
+      "offset": [
+        "const",
+        0
+      ],
+      "shape": [
+        [
+          "const",
+          8
+        ]
+      ],
+      "strides": [
+        [
+          "const",
+          1
+        ]
+      ]
+    },
+    "direction": "h2d",
+    "operations": [
+      {
+        "axis": null,
+        "dtype": "int8",
+        "kind": "quantize",
+        "policy": "symmetric_rne",
+        "scale": {
+          "bits": [
+            1056964608
+          ],
+          "dtype": "float32",
+          "kind": "inline",
+          "shape": []
+        },
+        "zero_point": null
+      },
+      {
+        "axis": 0,
+        "fill": {
+          "bits": 1,
+          "dtype": "int8"
+        },
+        "hi": [
+          "const",
+          1
+        ],
+        "kind": "pad",
+        "lo": [
+          "const",
+          1
+        ]
+      }
+    ],
+    "source": {
+      "dtype": "float32",
+      "offset": [
+        "const",
+        0
+      ],
+      "shape": [
+        [
+          "const",
+          6
+        ]
+      ],
+      "strides": [
+        [
+          "const",
+          1
+        ]
+      ]
+    }
+  },
+  "stages": [
+    {
+      "input_dtype": "float32",
+      "output_dtype": "int8",
+      "policy": "symmetric_rne",
+      "transform": "quantize"
+    }
+  ],
+  "symbols": []
+}

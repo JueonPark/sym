@@ -187,9 +187,12 @@ backend.close()
   / `execute_typed_transfer` run a typed recipe through the qualified rows of
   [runtime-dispatch.md](runtime-dispatch.md) (`original_cpu` forces the CPU
   reference pipeline; `auto` consults an optional calibration) and return the
-  tensor with a scalar report. C4 owns the conformance corpus and the FX
-  import gate, so the FX importer still emits no typed recipe and float
-  weight loading always keeps dtype and values.
+  tensor with a scalar report. C4 ([typed-relocation-support.md](typed-relocation-support.md))
+  imports the proved Torch forms (f32 <-> f16 casts on `_to_copy`,
+  `quantized_decomposed.dequantize_*`) into typed recipes that the guarded
+  custom-op route executes through R3; `quantize_*` captures and every other
+  dtype change keep the original region with a reason, and float weight
+  loading always keeps dtype and values.
 - **Core stays Torch-free.** `import pyreloc` and the transfer/prefold bindings
   load without Torch; the runtime library is MLIR/LLVM/Torch-free by CTest.
 

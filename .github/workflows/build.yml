@@ -231,7 +231,9 @@ jobs:
               lit -sv build/sym/test && \
               PYTHONPATH=/workspace/build/sym/python python3 -c "import sys, pyreloc; pyreloc.make_transfer; pyreloc.BufferView; assert \"torch\" not in sys.modules" && \
               test -x build/sym/sym/tools/sym-reloc-export && \
-              SYM_RELOC_EXPORT=/workspace/build/sym/sym/tools/sym-reloc-export PYTHONPATH=/workspace/build/sym/python python3 -m pytest libreloc/python/tests --ignore=libreloc/python/tests/torch_frontend -q
+              SYM_RELOC_EXPORT=/workspace/build/sym/sym/tools/sym-reloc-export PYTHONPATH=/workspace/build/sym/python python3 -m pytest libreloc/python/tests --ignore=libreloc/python/tests/torch_frontend -q && \
+              SYM_RELOC_EXPORT=/workspace/build/sym/sym/tools/sym-reloc-export PYTHONPATH=/workspace/build/sym/python python3 libreloc/test/corpus/typed/generate_typed_corpus.py --check && \
+              SYM_RELOC_EXPORT=/workspace/build/sym/sym/tools/sym-reloc-export PYTHONPATH=/workspace/build/sym/python python3 libreloc/python/examples/torch_typed_relocation.py
             '
 
   torch-cpu-cp314:

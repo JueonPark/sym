@@ -190,7 +190,9 @@ are implemented in the compiler; C3's versioned typed artifact and binding
 [reloc-export.md](../reloc-export.md)) are implemented; R3's plan-driven
 typed dispatch ([runtime-dispatch.md](../runtime-dispatch.md): scalar
 reference, qualified CUDA rows, `original_cpu`/`auto` policies, byte
-reports, `reloc_torch.dispatch`) is implemented; C4 and R4 remain.
+reports, `reloc_torch.dispatch`) is implemented; C4's conformance corpus and
+gated frontend import ([typed-relocation-support.md](../typed-relocation-support.md))
+are implemented; R4 remains.
 
 ```bash
 export TORCH_PYTHON=/tmp/sym-torch-cpu/bin/python

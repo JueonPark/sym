@@ -387,8 +387,12 @@ the fused kernels stay excluded on padded plans); 4 remains an exclusion
 7. A PyTorch-style affine quantize (nonzero zero point, `NaN → qmax`) only as a
    new, separately named policy, if ever needed.
 
-**Frontend.** `.to(float16)` stays `typed_transform_unavailable` and
-`prepare_weights` stays gated by `typed_artifacts_unavailable`
-([torch-support.md](torch-support.md)); the layout-only regression corpus,
-T2's same-dtype artifact checks and the v0 exporter behavior are unchanged
-by C1.
+**Frontend.** C4 ([typed-relocation-support.md](typed-relocation-support.md))
+imports the casts of §3.1/§3.2 and the `quantized_decomposed.dequantize_*`
+operators (audited to be §3.4 bit for bit) into typed recipes and executes
+them through R3; `quantized_decomposed.quantize_*` stays excluded
+(`quantize_semantics_unproved`: double-rounded reciprocal, platform NaN
+conversion), and `prepare_weights` stays gated by
+`typed_artifacts_unavailable` ([torch-support.md](torch-support.md)). The
+layout-only regression corpus, T2's same-dtype artifact checks and the v0
+exporter behavior are unchanged by C1–C4.

@@ -2,12 +2,25 @@
 
 Candidates are provisional recipes: compiler folding is a separate acceptance
 gate, and neither discovery nor normalization enables runtime execution.
+
+C4 (issue #144) admits the value transforms C1 defines and Torch 2.14.0's
+audited operators implement bit for bit: casts between f32 and f16 carried by
+``aten._to_copy`` (``ieee_rne`` narrowing, ``exact`` widening) and
+``quantized_decomposed.dequantize_per_tensor`` / ``dequantize_per_channel``
+(C1 ``affine``). Scale and zero-point operands stay what the graph supplies:
+Python scalars become exact inline bits, tensor inputs become runtime
+parameters bound by name at execution. ``quantized_decomposed.quantize_*``
+is excluded with ``quantize_semantics_unproved`` (double-rounded reciprocal,
+platform NaN conversion); a float -> int ``.to()`` is not a quantization and
+stays ``typed_transform_unavailable``.
 """
 from dataclasses import dataclass
+import math
 import struct
 
 from . import compat
-from .recipe import Fill, Pad, Recipe, Reshape, TensorSpec, Transpose
+from .recipe import (BindingParam, Cast, Dequantize, Fill, InlineParam, Pad, Recipe, Reshape,
+                     TensorSpec, Transpose)
 from .symbolic import (Const, SymbolSource, UnsupportedSymbolicExpr, dense_strides,
                        expression, infer_reshape, operation_shape)
 
@@ -37,12 +50,20 @@ class Candidate:
     # fake metadata so a rewrite never depends on metadata being present on
     # the caller's original graph nodes.
     device: object = None
+    # C4: graph nodes (placeholders or attributes) whose tensor values are the
+    # recipe's runtime parameters, in the recipe's declaration order; the
+    # original callable takes them after the scalar placeholders.
+    parameters: tuple = ()
 
 
 @dataclass(frozen=True)
 class ImportReport:
     candidates: tuple[Candidate, ...]
     exclusions: tuple[Exclusion, ...]
+
+
+# C1 §3.1 / §3.2: the only casts with a numerical contract.
+_CASTS = {('float32', 'float16'): Cast('float16', 'ieee_rne'), ('float16', 'float32'): Cast('float32', 'exact')}
 
 
 def normalize_graph(gm, example_inputs=None):
@@ -134,6 +155,22 @@ def _transfer(node):
     return compat.fx_kind(node) == 'transfer'
 
 
+def _typed(node):
+    return compat.fx_kind(node) in {'dequantize', 'quantize'}
+
+
+def _moves_device(node):
+    """A transfer-kind node that changes the device; without metadata on both
+    ends it is treated as a device move (the recipe then rejects it precisely)."""
+    if not _transfer(node):
+        return False
+    before = compat.graph_value(_tensor_input(node)) if _tensor_input(node) is not None else None
+    after = compat.graph_value(node)
+    if not (compat.is_tensor(before) and compat.is_tensor(after)):
+        return True
+    return before.device != after.device
+
+
 class _Reject(Exception):
     def __init__(self, reason):
         self.reason = reason
@@ -145,7 +182,9 @@ def _require(condition, reason):
 
 
 def _safety(nodes, root, members):
-    """Known aliases form a conservative closure, including external views."""
+    """Known aliases form a conservative closure, including external views.
+    Parameter inputs need no entry here: a write to one between the root and
+    the tail is an unknown side effect in the scan below."""
     involved = {root, *members}
     aliases = set(involved)
     edges = []
@@ -192,6 +231,67 @@ def _constant_fold(expr):
         return expr
 
 
+def _cast(before, after):
+    op = _CASTS.get((compat.dtype_name(before), compat.dtype_name(after)))
+    _require(op is not None, 'typed_transform_unavailable')
+    return op
+
+
+def _parameter(value, role, per_channel, extent, context, parameters):
+    """A dequantize operand as the recipe records it: exact inline bits for a
+    Python scalar, a named runtime binding for a tensor-valued graph node."""
+    import torch
+    if hasattr(value, 'op'):
+        tensor = compat.graph_value(value)
+        _require(compat.is_tensor(tensor), 'metadata_unavailable')
+        _require(value.op in ('placeholder', 'get_attr'), 'unsupported_parameter')
+        if role == 'scale':
+            _require(tensor.dtype == torch.float32, 'parameter_dtype_unsupported')
+            dtype = 'float32'
+        else:
+            _require(tensor.dtype in (torch.int32, torch.int64, torch.int8), 'parameter_dtype_unsupported')
+            dtype = 'int32'
+        if per_channel:
+            _require(len(tensor.shape) == 1, 'unsupported_parameter')
+            length = context.expression(tensor.shape[0])
+            _require(length == extent, 'unsupported_parameter')
+            extents = (length,)
+        else:
+            _require(len(tensor.shape) == 0, 'unsupported_parameter')
+            extents = ()
+        parameters.setdefault(value.name, value)
+        return BindingParam(value.name, dtype, extents)
+    _require(not per_channel, 'unsupported_parameter')
+    if role == 'scale':
+        _require(type(value) in (float, int) and math.isfinite(value) and value > 0, 'unsupported_parameter')
+        bits = struct.unpack('<I', struct.pack('<f', float(value)))[0]
+        return InlineParam('float32', (), (bits,))
+    _require(type(value) is int and -128 <= value <= 127, 'unsupported_parameter')
+    return InlineParam('int32', (), (value & 0xFFFFFFFF,))
+
+
+def _dequantize(node, value, current_dtype, shape, context, parameters):
+    import torch
+    opts = _options(node)
+    _require(current_dtype == 'int8' and value.dtype == torch.float32, 'typed_transform_unavailable')
+    _require(opts.get('dtype') == torch.int8, 'unsupported_dtype')
+    _require(opts.get('quant_min') == -128 and opts.get('quant_max') == 127, 'unsupported_quantization_range')
+    _require(opts.get('out_dtype') in (None, torch.float32), 'typed_transform_unavailable')
+    per_channel = 'scales' in opts
+    axis = None
+    extent = None
+    if per_channel:
+        axis = opts.get('axis')
+        _require(type(axis) is int and 0 <= axis < len(shape), 'unsupported_channel_axis')
+        extent = expression(shape[axis])
+    scale = _parameter(opts['scales' if per_channel else 'scale'], 'scale', per_channel, extent, context, parameters)
+    raw_zero_point = opts.get('zero_points' if per_channel else 'zero_point')
+    zero_point = None
+    if raw_zero_point is not None:
+        zero_point = _parameter(raw_zero_point, 'zero_point', per_channel, extent, context, parameters)
+    return Dequantize('float32', scale, zero_point, axis, 'affine')
+
+
 def _recipe(root, members):
     import torch
     from torch.fx import map_arg
@@ -211,13 +311,14 @@ def _recipe(root, members):
     _require(src.dtype in {'float32', 'float16', 'int8'}, 'unsupported_dtype')
     operations, shape, direction = [], src.shape, None
     strides, offset = src.strides, src.offset
+    current_dtype = src.dtype
+    parameters = {}
     extent_guards = []
     for node in members:
         _require('reloc_reason' not in node.meta, node.meta.get('reloc_reason'))
         value = compat.graph_value(node)
         _require(compat.is_tensor(value), 'metadata_unavailable')
         _require(not value.requires_grad or not torch.is_grad_enabled(), 'requires_grad')
-        _require(value.dtype == source.dtype, 'typed_transform_unavailable')
         kind = compat.fx_kind(node)
         opts = _options(node)
         def scalar(n):
@@ -228,18 +329,40 @@ def _recipe(root, members):
         opts = map_arg(opts, scalar) if kind in {'reshape', 'pad'} else opts
         # Do not resolve the tensor self argument as a scalar.
         if kind == 'transfer':
-            _require(opts.get('non_blocking', False) is False, 'nonblocking_unavailable')
             before = compat.graph_value(_tensor_input(node))
-            devices = before.device.type, value.device.type
-            _require(devices in {('cpu', 'cuda'), ('cuda', 'cpu')}, 'unsupported_device' if devices[0] != devices[1] else 'same_device_transfer')
-            direction = 'h2d' if devices[0] == 'cpu' else 'd2h'
-            _require(opts.get('pin_memory') in (None, False), 'pinned_transfer_unavailable')
+            moves = before.device != value.device
+            if moves:
+                _require(direction is None, 'multiple_transfers')
+                _require(opts.get('non_blocking', False) is False, 'nonblocking_unavailable')
+                devices = before.device.type, value.device.type
+                _require(devices in {('cpu', 'cuda'), ('cuda', 'cpu')}, 'unsupported_device')
+                direction = 'h2d' if devices[0] == 'cpu' else 'd2h'
+                _require(opts.get('pin_memory') in (None, False), 'pinned_transfer_unavailable')
+            else:
+                # A same-device copy relocates nothing; a same-device cast is
+                # a typed stage of the region that carries the transfer.
+                _require(before.dtype != value.dtype, 'same_device_transfer')
             memory_format = opts.get('memory_format')
             _require(memory_format in (None, torch.preserve_format, torch.contiguous_format), 'unsupported_memory_format')
-            if memory_format == torch.contiguous_format:
-                strides = dense_strides(shape)
-            offset = Const(0)
+            if before.dtype != value.dtype:
+                op = _cast(before.dtype, value.dtype)
+                _require(compat.dtype_name(before.dtype) == current_dtype, 'typed_transform_unavailable')
+                operations.append(op)
+                current_dtype = op.dtype
+            if memory_format == torch.contiguous_format or moves:
+                # _to_copy materializes densely across devices; a same-device
+                # cast keeps the requested format.
+                if memory_format == torch.contiguous_format or strides == dense_strides(shape):
+                    strides = dense_strides(shape)
+                    offset = Const(0)
+        elif kind == 'dequantize':
+            op = _dequantize(node, value, current_dtype, shape, context, parameters)
+            operations.append(op)
+            current_dtype = op.dtype
+        elif kind == 'quantize':
+            raise _Reject('quantize_semantics_unproved')
         elif kind in {'permute', 'transpose'}:
+            _require(compat.dtype_name(value.dtype) == current_dtype, 'typed_transform_unavailable')
             rank = len(shape)
             if kind == 'permute':
                 perm = tuple(opts['dims'])
@@ -256,6 +379,7 @@ def _recipe(root, members):
             shape = operation_shape(shape, op)
             strides = tuple(strides[d] for d in perm) if strides is not None else None
         elif kind == 'reshape':
+            _require(compat.dtype_name(value.dtype) == current_dtype, 'typed_transform_unavailable')
             target = opts.get('shape', opts.get('size'))
             op = Reshape(tuple(_constant_fold(d) for d in infer_reshape(shape, tuple(context.expression(d) for d in target))))
             operations.append(op)
@@ -272,15 +396,17 @@ def _recipe(root, members):
                 except UnsupportedSymbolicExpr:
                     strides = None
         elif kind == 'pad':
+            _require(compat.dtype_name(value.dtype) == current_dtype, 'typed_transform_unavailable')
             widths = opts['pad']
             _require(len(widths) % 2 == 0 and len(widths) <= 2 * len(shape) and all(type(w) is int and w >= 0 for w in widths), 'unsupported_padding')
-            fill = _fill(src.dtype, opts.get('value', 0))
+            fill = _fill(current_dtype, opts.get('value', 0))
             for i in range(len(widths) // 2):
                 op = Pad(len(shape) - 1 - i, Const(widths[2*i]), Const(widths[2*i+1]), fill)
                 operations.append(op)
                 shape = operation_shape(shape, op)
             strides, offset = dense_strides(shape), Const(0)
         elif kind == 'materialize':
+            _require(compat.dtype_name(value.dtype) == current_dtype, 'typed_transform_unavailable')
             _require(opts.get('memory_format') in (None, torch.contiguous_format), 'unsupported_memory_format')
             # clone(None) preserves format, unlike contiguous's default.
             if node.target == torch.ops.aten.contiguous.default:
@@ -299,6 +425,7 @@ def _recipe(root, members):
                 strides, offset = actual.strides, actual.offset
             elif opts.get('memory_format') == torch.contiguous_format:
                 strides, offset = dense_strides(shape), Const(0)
+    _require(direction is not None, 'same_device_transfer')
     _require(offset == Const(0) and strides == dense_strides(shape), 'destination_layout')
     # Shape/stride provenance follows exact operator arguments. FakeTensor may
     # rewrite a positive extent N into Max(1,N) in dense strides; positivity is
@@ -306,21 +433,30 @@ def _recipe(root, members):
     actual = context.tensor_spec(compat.graph_value(members[-1]), require_dense=False, positive_shape=shape)
     _require(actual.shape == shape, 'unsupported_symbolic_expr')
     _require(actual.strides == strides and actual.offset == offset, 'destination_layout')
-    destination = TensorSpec(shape, strides, offset, src.dtype)
-    return Recipe(src, tuple(operations), destination, direction), context, tuple(dict.fromkeys(extent_guards))
+    _require(actual.dtype == current_dtype, 'typed_transform_unavailable')
+    destination = TensorSpec(shape, strides, offset, current_dtype)
+    recipe = Recipe(src, tuple(operations), destination, direction)
+    ordered = tuple(parameters[binding.name] for binding in recipe.parameter_bindings)
+    return recipe, context, tuple(dict.fromkeys(extent_guards)), ordered
 
 
-def _extract(gm, root, members, context):
-    """node_copy retains exact raw call targets, options and exception behavior."""
+def _extract(gm, root, members, context, parameters):
+    """node_copy retains exact raw call targets, options and exception behavior.
+
+    The extracted callable takes the source, then every scalar placeholder in
+    graph order, then every runtime parameter in recipe declaration order.
+    """
     from torch.fx import Graph, GraphModule
     graph = Graph()
     mapping = {root: graph.placeholder('src')}
+    parameter_set = set(parameters)
     external, dependencies = [], set()
     def visit(node):
-        if node in mapping or node in dependencies:
+        if node in mapping or node in dependencies or node in parameter_set:
             return
         if node.op == 'placeholder':
             value = compat.graph_value(node)
+            _require(not compat.is_tensor(value), 'unsupported_symbolic_expr')
             expression = context.expression(value)
             external.append((node, expression))
             return
@@ -337,6 +473,8 @@ def _extract(gm, root, members, context):
         if found is not None:
             mapping[node] = graph.placeholder(node.name)
             bindings.append((node.name, found))
+    for node in parameters:
+        mapping[node] = graph.placeholder(node.name)
     for node in gm.graph.nodes:
         if node in dependencies:
             mapping[node] = graph.node_copy(node, lambda n: mapping[n])
@@ -367,31 +505,31 @@ def import_graph(gm, example_inputs=None):
             adjacent = [u for u in current.users if _tensor_input(u) is current]
             if parent is not None:
                 adjacent.append(parent)
-            pending.extend(n for n in adjacent if n not in component and (_layout(n) or _transfer(n)))
-        transfers = [n for n in nodes if n in component and _transfer(n)]
+            pending.extend(n for n in adjacent if n not in component and (_layout(n) or _transfer(n) or _typed(n)))
+        transfers = [n for n in nodes if n in component and _moves_device(n)]
         if len(transfers) > 1:
             exclusions.extend(Exclusion(n.name, 'multiple_transfers') for n in transfers)
-            seen.update(transfers)
+            seen.update(n for n in component if _transfer(n))
             continue
         members = [transfer]
         root = _tensor_input(transfer)
-        while root is not None and (_layout(root) or _transfer(root)):
+        while root is not None and (_layout(root) or _transfer(root) or _typed(root)):
             members.insert(0, root)
             root = _tensor_input(root)
         while True:
-            following = [u for u in members[-1].users if (_layout(u) or _transfer(u)) and _tensor_input(u) is members[-1]]
+            following = [u for u in members[-1].users if (_layout(u) or _transfer(u) or _typed(u)) and _tensor_input(u) is members[-1]]
             if len(following) != 1:
                 break
             members.append(following[0])
         seen.update(n for n in members if _transfer(n))
         try:
             _require(root is not None, 'metadata_unavailable')
-            _require(sum(_transfer(n) for n in members) == 1, 'multiple_transfers')
             _safety(nodes, root, members)
-            recipe, context, extent_guards = _recipe(root, members)
-            original, bindings = _extract(gm, originals[root.name], [originals[n.name] for n in members], context)
+            recipe, context, extent_guards, parameters = _recipe(root, members)
+            original, bindings = _extract(gm, originals[root.name], [originals[n.name] for n in members], context,
+                                          [originals[p.name] for p in parameters])
             candidates.append(Candidate(root.name, members[-1].name, tuple(n.name for n in members), recipe, context.sources, bindings, original, extent_guards,
-                                        compat.graph_value(members[-1]).device))
+                                        compat.graph_value(members[-1]).device, tuple(p.name for p in parameters)))
         except (_Reject, UnsupportedSymbolicExpr) as error:
             exclusions.append(Exclusion(transfer.name, error.reason))
     return ImportReport(tuple(candidates), tuple(dict.fromkeys(exclusions)))
