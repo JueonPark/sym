@@ -154,7 +154,8 @@ def child(command, *, timeout=CHILD_TIMEOUT, expect_zero=True):
 
 
 def child_json(stdout, where):
-    """The last JSON document a child printed; malformed output is a failure."""
+    """The JSON object that ends a child's output (everything from its first
+    ``{``); missing, malformed or non-object output is a failure."""
     text = stdout.strip()
     start = text.find("{")
     check(start >= 0, f"{where} printed no JSON result")
@@ -454,8 +455,11 @@ def _median_ms(fn, sync, warmup=3, repeats=15):
 
 def s_latency(ctx):
     """Descriptive end-to-end latency: original PyTorch vs the selected path.
-    Includes neither compilation nor preparation (both happen in warmup);
-    each sample ends with torch.cuda.synchronize(). No threshold is applied."""
+    Compilation happens before or during warmup and is excluded. The layout
+    rows time the compiled region's call (bind, validation and the blocking
+    transfer); the typed row times preparation plus execution per call
+    (``includes_preparation``). Each sample ends with
+    torch.cuda.synchronize(). No threshold is applied."""
     import torch
     from reloc_torch import RelocBackend, dispatch
     from reloc_torch.compiler import CompilerClient

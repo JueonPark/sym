@@ -54,8 +54,11 @@ export SYM_RELOC_EXPORT="$BUILD/sym/tools/sym-reloc-export"
 ```
 
 A fresh copy of the committed tree (tracked files only, new build and
-artifact directories) was configured, built and validated with exactly
-these commands; section 6 records the result.
+artifact directories) was configured, built and validated with the `cmake`
+and `export` commands above against an already installed CPU venv (the
+toolchain lines were not rerun); section 6 records the result. A tree
+exported without `.git` should set `SYM_SOURCE_REVISION` so the runner can
+record which revision it validated.
 
 ## 2. Public paths
 
@@ -193,10 +196,12 @@ ctest --test-dir "$BUILD" --output-on-failure
 /tmp/sym-torch-cuda/bin/python libreloc/python/examples/compiler_runtime_handoff.py --device cuda --output runtime-cuda.json
 ```
 
-Fresh-checkout run (tracked files of `1580e97` extracted with `git archive`
-into a new directory, new build tree, the CPU commands above): configure
-and build succeeded, check-sym 40/40, CTest 11/11, pytest 598 passed / 1
-skipped, runner 9/9 passed.
+Fresh-checkout run (tracked files of `6593d1d` extracted with `git archive`
+into a new directory, new build tree, the CPU commands above with
+`SYM_SOURCE_REVISION` set): configure and build succeeded, check-sym 39/39,
+CTest 11/11, pytest 598 passed / 1 skipped / 142 deselected (the gpu
+selection), runner 9/9 passed with exit 0. Later commits change only
+documentation, runner docstrings and the evidence files.
 
 ## 7. Project disposition
 
