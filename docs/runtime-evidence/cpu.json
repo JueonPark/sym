@@ -18,7 +18,7 @@
     "pythonpath": "/home/jueonpark/sym/.claude/worktrees/t3-custom-op/build/torch-cpu/python:/home/jueonpark/sym/.claude/worktrees/t3-custom-op/libreloc/python",
     "run_artifact": "/home/jueonpark/sym/.claude/worktrees/t3-custom-op/build/torch-cpu/libreloc/examples/reloc-run-artifact",
     "source_dirty": false,
-    "source_revision": "0349804447e0a9b13e6529d01573e70ad48c5a79",
+    "source_revision": "e337d53385661b2c90987469baba2af4d18b8d38",
     "torch": "2.14.0+cpu",
     "torch_cuda": null
   },
@@ -72,7 +72,7 @@
                 "symbols": 1,
                 "verification_readback_bytes": 0
               },
-              "seconds": 0.0029,
+              "seconds": 0.003,
               "symbols": {
                 "s0": 64
               }
@@ -185,7 +185,7 @@
       },
       "name": "portable_artifact_fresh_process",
       "required": true,
-      "seconds": 0.2,
+      "seconds": 0.199,
       "status": "passed"
     },
     {
@@ -205,7 +205,7 @@
       },
       "name": "typed_corpus_fresh",
       "required": true,
-      "seconds": 0.279,
+      "seconds": 0.276,
       "status": "passed"
     },
     {
@@ -219,11 +219,11 @@
           "dequantize_layout B=4: OK via cpu_reference (source 12 B, wire 48 B, destination 48 B, parameters 24 B); rows a CUDA device end would offer: ['cpu_reference']",
           "dequantize_layout B=9: OK via cpu_reference (source 27 B, wire 108 B, destination 108 B, parameters 24 B); rows a CUDA device end would offer: ['cpu_reference']"
         ],
-        "seconds": 0.219
+        "seconds": 0.252
       },
       "name": "typed_example",
       "required": true,
-      "seconds": 0.219,
+      "seconds": 0.252,
       "status": "passed"
     },
     {
@@ -253,7 +253,7 @@
       },
       "name": "weight_loading",
       "required": true,
-      "seconds": 3.015,
+      "seconds": 3.119,
       "status": "passed"
     },
     {
@@ -265,7 +265,7 @@
       },
       "name": "expected_exclusion_quantize_import",
       "required": true,
-      "seconds": 1.401,
+      "seconds": 1.386,
       "status": "passed"
     }
   ],

@@ -23,7 +23,7 @@
     "pythonpath": "/home/jueonpark/sym/.claude/worktrees/t3-custom-op/build/torch-cuda/python:/home/jueonpark/sym/.claude/worktrees/t3-custom-op/libreloc/python",
     "run_artifact": "/home/jueonpark/sym/.claude/worktrees/t3-custom-op/build/torch-cuda/libreloc/examples/reloc-run-artifact",
     "source_dirty": false,
-    "source_revision": "0349804447e0a9b13e6529d01573e70ad48c5a79",
+    "source_revision": "e337d53385661b2c90987469baba2af4d18b8d38",
     "torch": "2.14.0+cu126",
     "torch_cuda": "12.6"
   },
@@ -60,7 +60,7 @@
       },
       "name": "export_example_recipes",
       "required": true,
-      "seconds": 0.009,
+      "seconds": 0.008,
       "status": "passed"
     },
     {
@@ -77,7 +77,7 @@
                 "symbols": 1,
                 "verification_readback_bytes": 0
               },
-              "seconds": 0.0041,
+              "seconds": 0.004,
               "symbols": {
                 "s0": 64
               }
@@ -91,7 +91,7 @@
                 "symbols": 1,
                 "verification_readback_bytes": 0
               },
-              "seconds": 0.004,
+              "seconds": 0.0038,
               "symbols": {
                 "s0": 128
               }
@@ -105,7 +105,7 @@
                 "symbols": 1,
                 "verification_readback_bytes": 0
               },
-              "seconds": 0.0038,
+              "seconds": 0.0037,
               "symbols": {
                 "s0": 192
               }
@@ -124,7 +124,7 @@
                 "symbols": 0,
                 "verification_readback_bytes": 0
               },
-              "seconds": 0.0036,
+              "seconds": 0.0035,
               "symbols": {}
             }
           ]
@@ -160,7 +160,7 @@
       },
       "name": "cpp_rejections",
       "required": true,
-      "seconds": 0.017,
+      "seconds": 0.016,
       "status": "passed"
     },
     {
@@ -190,7 +190,7 @@
       },
       "name": "portable_artifact_fresh_process",
       "required": true,
-      "seconds": 0.21,
+      "seconds": 0.202,
       "status": "passed"
     },
     {
@@ -210,7 +210,7 @@
       },
       "name": "typed_corpus_fresh",
       "required": true,
-      "seconds": 0.291,
+      "seconds": 0.276,
       "status": "passed"
     },
     {
@@ -230,11 +230,11 @@
           "dequantize_layout B=9 policy=original_cpu: OK via cpu_reference (forced; wire 108 B, payload 108 B)",
           "dequantize_layout B=9 policy=auto: OK via cpu_reference (only_qualified_path; wire 108 B, payload 108 B)"
         ],
-        "seconds": 2.746
+        "seconds": 2.73
       },
       "name": "typed_example",
       "required": true,
-      "seconds": 2.746,
+      "seconds": 2.73,
       "status": "passed"
     },
     {
@@ -264,7 +264,7 @@
       },
       "name": "weight_loading",
       "required": true,
-      "seconds": 3.971,
+      "seconds": 3.991,
       "status": "passed"
     },
     {
@@ -276,7 +276,7 @@
       },
       "name": "expected_exclusion_quantize_import",
       "required": true,
-      "seconds": 1.478,
+      "seconds": 1.476,
       "status": "passed"
     },
     {
@@ -293,7 +293,7 @@
                 "symbols": 1,
                 "verification_readback_bytes": 0
               },
-              "seconds": 0.3691,
+              "seconds": 0.3737,
               "symbols": {
                 "s0": 64
               }
@@ -307,7 +307,7 @@
                 "symbols": 1,
                 "verification_readback_bytes": 0
               },
-              "seconds": 0.3838,
+              "seconds": 0.4209,
               "symbols": {
                 "s0": 128
               }
@@ -321,7 +321,7 @@
                 "symbols": 1,
                 "verification_readback_bytes": 0
               },
-              "seconds": 0.4208,
+              "seconds": 0.4167,
               "symbols": {
                 "s0": 192
               }
@@ -340,7 +340,7 @@
                 "symbols": 1,
                 "verification_readback_bytes": 256
               },
-              "seconds": 0.4179,
+              "seconds": 0.4214,
               "symbols": {
                 "s0": 64
               }
@@ -354,7 +354,7 @@
                 "symbols": 1,
                 "verification_readback_bytes": 512
               },
-              "seconds": 0.4225,
+              "seconds": 0.4201,
               "symbols": {
                 "s0": 128
               }
@@ -368,7 +368,7 @@
                 "symbols": 1,
                 "verification_readback_bytes": 768
               },
-              "seconds": 0.3697,
+              "seconds": 0.4215,
               "symbols": {
                 "s0": 192
               }
@@ -387,7 +387,7 @@
                 "symbols": 0,
                 "verification_readback_bytes": 0
               },
-              "seconds": 0.3697,
+              "seconds": 0.4191,
               "symbols": {}
             }
           ]
@@ -404,7 +404,7 @@
                 "symbols": 0,
                 "verification_readback_bytes": 192
               },
-              "seconds": 0.3732,
+              "seconds": 0.412,
               "symbols": {}
             }
           ]
@@ -412,7 +412,7 @@
       },
       "name": "cpp_cuda_layout",
       "required": true,
-      "seconds": 3.13,
+      "seconds": 3.309,
       "status": "passed"
     },
     {
@@ -452,7 +452,7 @@
       },
       "name": "dynamic_transfers",
       "required": true,
-      "seconds": 9.367,
+      "seconds": 9.344,
       "status": "passed"
     },
     {
@@ -488,7 +488,7 @@
       },
       "name": "dynamic_extent_one_boundary",
       "required": true,
-      "seconds": 9.577,
+      "seconds": 9.487,
       "status": "passed"
     },
     {
@@ -502,7 +502,7 @@
       },
       "name": "expected_exclusion_nonblocking",
       "required": true,
-      "seconds": 0.28,
+      "seconds": 0.286,
       "status": "passed"
     },
     {
@@ -517,8 +517,8 @@
           {
             "elements": 65536,
             "implementation": "R2 forward H2D (compiled region)",
-            "pytorch_ms": 0.159,
-            "reloc_ms": 4.1767,
+            "pytorch_ms": 0.1577,
+            "reloc_ms": 4.2675,
             "scenario": "layout_h2d_split_transpose",
             "source_bytes": 262144,
             "wire_bytes": 262144
@@ -526,8 +526,8 @@
           {
             "elements": 1048576,
             "implementation": "R2 forward H2D (compiled region)",
-            "pytorch_ms": 1.936,
-            "reloc_ms": 31.3081,
+            "pytorch_ms": 1.949,
+            "reloc_ms": 31.2331,
             "scenario": "layout_h2d_split_transpose",
             "source_bytes": 4194304,
             "wire_bytes": 4194304
@@ -535,8 +535,8 @@
           {
             "elements": 4194304,
             "implementation": "R2 forward H2D (compiled region)",
-            "pytorch_ms": 8.803,
-            "reloc_ms": 76.8321,
+            "pytorch_ms": 8.8242,
+            "reloc_ms": 74.6697,
             "scenario": "layout_h2d_split_transpose",
             "source_bytes": 16777216,
             "wire_bytes": 16777216
@@ -547,8 +547,8 @@
             "includes_preparation": true,
             "payload_bytes_transferred": 2097152,
             "placement_reason": "forced",
-            "pytorch_ms": 3.9902,
-            "reloc_ms": 39.6159,
+            "pytorch_ms": 3.9933,
+            "reloc_ms": 39.5377,
             "scenario": "typed_h2d_transpose_cast_f16",
             "source_bytes": 4194304,
             "wire_bytes": 2097152
@@ -557,7 +557,7 @@
       },
       "name": "descriptive_latency",
       "required": true,
-      "seconds": 3.264,
+      "seconds": 3.23,
       "status": "passed"
     },
     {
@@ -584,7 +584,7 @@
           "errors": 0,
           "executed": 140,
           "failures": 0,
-          "seconds": 15.28,
+          "seconds": 15.44,
           "skipped": 2,
           "skipped_by_design": {
             "libreloc.python.tests.torch_frontend.test_transport::test_default_stream_forward_d2h_matches_the_cuda_source_function[permute_120-float16]": "permutation witness is float32",
@@ -595,7 +595,7 @@
       },
       "name": "gpu_test_selection",
       "required": true,
-      "seconds": 28.187,
+      "seconds": 28.328,
       "status": "passed"
     }
   ],

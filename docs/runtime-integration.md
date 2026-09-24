@@ -155,7 +155,7 @@ reason.
 
 | File | Produced by | Device | Result |
 | --- | --- | --- | --- |
-| [runtime-evidence/cpu.json](runtime-evidence/cpu.json) | `compiler_runtime_handoff.py --device cpu` on a clean tree at `0349804` (`environment.source_revision`) | CPU (torch 2.14.0+cpu, CPython 3.14.7) | 9/9 scenarios passed |
+| [runtime-evidence/cpu.json](runtime-evidence/cpu.json) | `compiler_runtime_handoff.py --device cpu` on a clean tree at `e337d53` (`environment.source_revision`) | CPU (torch 2.14.0+cpu, CPython 3.14.7) | 9/9 scenarios passed |
 | [runtime-evidence/cuda.json](runtime-evidence/cuda.json) | `compiler_runtime_handoff.py --device cuda` on the same clean tree | RTX 2080 Ti, driver 595.71.05, torch 2.14.0+cu126, CUDA 12.6 | 15/15 passed; 140 of 142 gpu-marked pytest cases and 18 CUDA gtests (12 suites) executed, 0 failed; 2 by-design skips (float32-only witness parametrization) |
 | [typed-evidence/c4-cuda-run.txt](typed-evidence/c4-cuda-run.txt) | C4 GPU conformance | same device | 17 passed |
 | CI | `.github/workflows/build.yml` | CPU | `build`/`Run Tests` (lit, CTest, Torch-free pytest, typed corpus check, typed example), `Torch inventory CPU cp314` (CTest, full CPU pytest, examples, the runner) |
@@ -173,10 +173,10 @@ samples after 3 warmup calls, each sample ending in
 
 | Scenario | Source bytes | Wire bytes | libreloc path | PyTorch | Path |
 | --- | --- | --- | --- | --- | --- |
-| layout H2D split+transpose, 2^16 elements | 262,144 | 262,144 | 4.18 ms | 0.159 ms | R2 forward H2D via the compiled region |
-| same, 2^20 | 4,194,304 | 4,194,304 | 31.3 ms | 1.94 ms | same |
-| same, 2^22 | 16,777,216 | 16,777,216 | 76.8 ms | 8.80 ms | same |
-| typed H2D transpose+cast to f16, 2^20 (preparation included) | 4,194,304 | 2,097,152 | 39.6 ms | 3.99 ms | R3 `cpu_reference` (forced by `original_cpu`) |
+| layout H2D split+transpose, 2^16 elements | 262,144 | 262,144 | 4.27 ms | 0.158 ms | R2 forward H2D via the compiled region |
+| same, 2^20 | 4,194,304 | 4,194,304 | 31.2 ms | 1.95 ms | same |
+| same, 2^22 | 16,777,216 | 16,777,216 | 74.7 ms | 8.82 ms | same |
+| typed H2D transpose+cast to f16, 2^20 (preparation included) | 4,194,304 | 2,097,152 | 39.5 ms | 3.99 ms | R3 `cpu_reference` (forced by `original_cpu`) |
 
 The supported path is correct but slower than PyTorch's own copy at every
 measured size in this configuration. Every blocking call binds the symbols
@@ -199,12 +199,13 @@ ctest --test-dir "$BUILD" --output-on-failure
 /tmp/sym-torch-cuda/bin/python libreloc/python/examples/compiler_runtime_handoff.py --device cuda --output runtime-cuda.json
 ```
 
-Fresh-checkout run (tracked files of `6593d1d` extracted with `git archive`
+Fresh-checkout run (tracked files of `e337d53` extracted with `git archive`
 into a new directory, new build tree, the CPU commands above with
 `SYM_SOURCE_REVISION` set): configure and build succeeded, check-sym 39/39,
-CTest 11/11, pytest 598 passed / 1 skipped / 142 deselected (the gpu
-selection), runner 9/9 passed with exit 0. Later commits change only
-documentation, runner docstrings and the evidence files.
+CTest 11/11, pytest 599 passed / 1 skipped / 142 deselected (the gpu
+selection), runner 9/9 passed with exit 0. Its JSON records the declared
+revision and `source_dirty: null`, because an exported tree has no `.git`
+to inspect. Later commits change only documentation and the evidence files.
 
 ## 7. Project disposition
 
