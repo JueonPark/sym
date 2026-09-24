@@ -278,6 +278,8 @@ jobs:
               /tmp/sym-torch-cpu/bin/python libreloc/python/examples/torch_transfer_inventory.py --device cpu --output build/torch-cpu-cp314/inventory-cpu.json
               /tmp/sym-torch-cpu/bin/python libreloc/python/examples/torch_weight_loading.py --device cpu --output build/torch-cpu-cp314/weight-loading-cpu.json
               # R4 (#148): every public example as a required scenario; nonzero on any failure.
+              # The container user does not own the mount; let git report its revision and state.
+              git config --global --add safe.directory /workspace
               /tmp/sym-torch-cpu/bin/python libreloc/python/examples/compiler_runtime_handoff.py --device cpu --output build/torch-cpu-cp314/runtime-handoff-cpu.json
             '
       - uses: actions/upload-artifact@v4

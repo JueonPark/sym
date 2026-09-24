@@ -121,10 +121,12 @@ def environment(facts):
         except (OSError, subprocess.CalledProcessError):
             return None
 
+    status = run("git", "status", "--porcelain", "--untracked-files=no")
     env = {
         # A checkout reports its HEAD; an exported tree (no .git) may declare it.
         "source_revision": run("git", "rev-parse", "HEAD") or os.environ.get("SYM_SOURCE_REVISION"),
-        "source_dirty": bool(run("git", "status", "--porcelain", "--untracked-files=no")),
+        # None when git cannot inspect the tree: unknown, never assumed clean.
+        "source_dirty": None if status is None else bool(status),
         "python": platform.python_version(),
         "python_build": sys.implementation.name + " " + (sys.implementation.cache_tag or ""),
         "platform": platform.platform(),

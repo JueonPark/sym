@@ -73,6 +73,22 @@ def test_malformed_child_output_is_a_failure():
             module.child_json(text, "child")
 
 
+def test_a_tree_git_cannot_read_reports_unknown_state_not_clean(monkeypatch):
+    """Without a usable git (an exported tree, or a container refusing the
+    mount) the revision comes from SYM_SOURCE_REVISION and the dirty state is
+    unknown, never a claimed clean tree."""
+    module = runner_module()
+
+    def no_git(*args, **kwargs):
+        raise FileNotFoundError(args[0][0] if args else "git")
+
+    monkeypatch.setattr(module.subprocess, "run", no_git)
+    monkeypatch.setenv("SYM_SOURCE_REVISION", "0123abc")
+    env = module.environment({})
+    assert env["source_revision"] == "0123abc"
+    assert env["source_dirty"] is None
+
+
 def test_the_cpp_consumer_runs_generated_plans_and_rejects_bad_input(tmp_path):
     """The public C++ path on the host: export -> reloc-run-artifact -> numpy
     replay, rebinding one artifact at 64/128/192; unknown symbols, guard
