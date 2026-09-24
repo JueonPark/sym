@@ -154,6 +154,14 @@ them; it is the runtime half of the compiler → runtime handoff.
   async, caller synchronizes (`libreloc/test/CudaKernelsTest.cpp`, local
   GPU only, never CI).
 
+## Standalone C++ consumer
+
+`libreloc/examples/RunArtifact.cpp` builds `reloc-run-artifact`, the whole
+public C++ path for a compiler-generated layout plan (decode, bind, validate,
+transfer; host, or H2D/D2H on a CUDA build). It links only this runtime (plus
+the CUDA runtime when enabled), which CTest checks. Usage and the checked-in
+recipes it consumes: [docs/runtime-integration.md](../docs/runtime-integration.md).
+
 ## Python bindings (pyreloc)
 
 The optional Torch frontend (`reloc_torch`: `torch.compile` backend, eager

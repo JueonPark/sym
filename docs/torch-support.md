@@ -1,5 +1,9 @@
 # Torch transfer inventory, compiler artifacts, guarded replacement, transport and weight lifecycle (T1–T4/R2, issues #134–#137/#146)
 
+The combined entry point, examples and CPU/CUDA integration evidence are
+[runtime-integration.md](runtime-integration.md) (R4, issue #148); typed rows
+are [typed-relocation-support.md](typed-relocation-support.md).
+
 T1 observes eager dispatch and inventories FX graphs. T2 now imports conservative
 layout/transfer regions, preserves symbolic guards, emits reloc IR, and accepts
 only artifacts verified through the public `sym-reloc-export` interface. The

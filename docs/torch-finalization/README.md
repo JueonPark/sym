@@ -5,15 +5,19 @@ documented in [Torch support](../torch-support.md). Child issues
 [#134](https://github.com/JueonPark/sym/issues/134) (T1),
 [#135](https://github.com/JueonPark/sym/issues/135) (T2),
 [#136](https://github.com/JueonPark/sym/issues/136) (T3), and
-[#137](https://github.com/JueonPark/sym/issues/137) (T4) are open.
+[#137](https://github.com/JueonPark/sym/issues/137) (T4) are closed, as is
+their parent [#131](https://github.com/JueonPark/sym/issues/131).
 T2 and its R1 compiler-artifact prerequisite are implemented. T3's custom op,
 graph replacement, eager routing, cache and fallback are implemented, and R2's
 `reloc_torch.transport` adapter now executes real blocking H2D and forward D2H
 transfers behind them; the T3 CUDA acceptance suite passes on real hardware
 (see [Torch support](../torch-support.md)). T4's dynamic-reuse evidence,
 prepared inference weights, examples and [installation guide](../torch-integration.md)
-are implemented; its quantized-prefold acceptance waits for C3/C4/R3 under
-[#131](https://github.com/JueonPark/sym/issues/131).
+are implemented. C3/C4/R3 have since delivered the typed contract,
+conformance and dispatch; quantized weight preparation remains gated
+(`typed_artifacts_unavailable`) until T4 wires `pyreloc.typed_prefold_spec`
+behind its freshness key. The combined handoff is
+[runtime-integration.md](../runtime-integration.md).
 
 These plans expand section 1 of [the project finalization plan](../project-finalization-plan.md).
 T1–T4 are work identifiers corresponding to those child issues. Each linked document
@@ -192,7 +196,8 @@ typed dispatch ([runtime-dispatch.md](../runtime-dispatch.md): scalar
 reference, qualified CUDA rows, `original_cpu`/`auto` policies, byte
 reports, `reloc_torch.dispatch`) is implemented; C4's conformance corpus and
 gated frontend import ([typed-relocation-support.md](../typed-relocation-support.md))
-are implemented; R4 remains.
+are implemented; R4's integration validation and handoff
+([runtime-integration.md](../runtime-integration.md)) is implemented.
 
 ```bash
 export TORCH_PYTHON=/tmp/sym-torch-cpu/bin/python
