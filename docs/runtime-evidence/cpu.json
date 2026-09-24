@@ -1,0 +1,279 @@
+{
+  "device": "cpu",
+  "environment": {
+    "cuda_devices": [],
+    "exporter": "/home/jueonpark/sym/.claude/worktrees/t3-custom-op/build/torch-cpu/sym/tools/sym-reloc-export",
+    "numpy": "2.5.3",
+    "nvidia_smi": [
+      "NVIDIA GeForce RTX 2080 Ti, 595.71.05",
+      "NVIDIA GeForce RTX 2080 Ti, 595.71.05",
+      "NVIDIA GeForce RTX 2080 Ti, 595.71.05",
+      "NVIDIA GeForce RTX 2080 Ti, 595.71.05"
+    ],
+    "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.35",
+    "pyreloc": "/home/jueonpark/sym/.claude/worktrees/t3-custom-op/build/torch-cpu/python/pyreloc/__init__.py",
+    "pyreloc_cuda_enabled": false,
+    "python": "3.14.7",
+    "python_build": "cpython cpython-314",
+    "pythonpath": "/home/jueonpark/sym/.claude/worktrees/t3-custom-op/build/torch-cpu/python:/home/jueonpark/sym/.claude/worktrees/t3-custom-op/libreloc/python",
+    "run_artifact": "/home/jueonpark/sym/.claude/worktrees/t3-custom-op/build/torch-cpu/libreloc/examples/reloc-run-artifact",
+    "source_dirty": false,
+    "source_revision": "0349804447e0a9b13e6529d01573e70ad48c5a79",
+    "torch": "2.14.0+cpu",
+    "torch_cuda": null
+  },
+  "prerequisites": [],
+  "scenarios": [
+    {
+      "details": {
+        "split_transpose": {
+          "constraints": {
+            "divisibility": [
+              {
+                "divisor": 64,
+                "expr": [
+                  "symbol",
+                  "s0"
+                ]
+              }
+            ]
+          },
+          "plan_bytes": 292,
+          "plan_sha256": "dd01f280fc85d3caff4f1092ff6c717084768a384da5f88747284159ec752def",
+          "symbols": [
+            "s0"
+          ]
+        },
+        "transpose_pad": {
+          "constraints": {
+            "divisibility": []
+          },
+          "plan_bytes": 396,
+          "plan_sha256": "9804e15a52f9939bf23112b64ad0a3cd2f218dc84c04e9b4ca5a1369c884c9f8",
+          "symbols": []
+        }
+      },
+      "name": "export_example_recipes",
+      "required": true,
+      "seconds": 0.057,
+      "status": "passed"
+    },
+    {
+      "details": {
+        "split_transpose_rebind": {
+          "artifact": "plan.bin",
+          "cases": [
+            {
+              "report": {
+                "destination_bytes": 256,
+                "direction": "host",
+                "requested_transfer_bytes": 256,
+                "source_bytes": 256,
+                "symbols": 1,
+                "verification_readback_bytes": 0
+              },
+              "seconds": 0.0029,
+              "symbols": {
+                "s0": 64
+              }
+            },
+            {
+              "report": {
+                "destination_bytes": 512,
+                "direction": "host",
+                "requested_transfer_bytes": 512,
+                "source_bytes": 512,
+                "symbols": 1,
+                "verification_readback_bytes": 0
+              },
+              "seconds": 0.0027,
+              "symbols": {
+                "s0": 128
+              }
+            },
+            {
+              "report": {
+                "destination_bytes": 768,
+                "direction": "host",
+                "requested_transfer_bytes": 768,
+                "source_bytes": 768,
+                "symbols": 1,
+                "verification_readback_bytes": 0
+              },
+              "seconds": 0.0027,
+              "symbols": {
+                "s0": 192
+              }
+            }
+          ]
+        },
+        "transpose_pad": {
+          "artifact": "plan.bin",
+          "cases": [
+            {
+              "report": {
+                "destination_bytes": 192,
+                "direction": "host",
+                "requested_transfer_bytes": 192,
+                "source_bytes": 96,
+                "symbols": 0,
+                "verification_readback_bytes": 0
+              },
+              "seconds": 0.0027,
+              "symbols": {}
+            }
+          ]
+        }
+      },
+      "name": "cpp_host_layout",
+      "required": true,
+      "seconds": 0.013,
+      "status": "passed"
+    },
+    {
+      "details": {
+        "guard_violation": {
+          "diagnostic": "reloc-run-artifact: bind error: divisibility violated: value 100 not divisible by 64",
+          "exit": 1
+        },
+        "malformed_plan": {
+          "diagnostic": "reloc-run-artifact: decode error at byte offset 288: truncated: expected u32",
+          "exit": 1
+        },
+        "short_input": {
+          "diagnostic": "reloc-run-artifact: input holds 512 bytes but the plan's source descriptor needs 768",
+          "exit": 1
+        },
+        "typed_plan_refused": {
+          "diagnostic": "reloc-run-artifact: typed (wire v1) artifact: run it through pyreloc.prepare_dispatch or reloc_torch.dispatch (docs/runtime-dispatch.md); this example executes layout-only (wire v0) plans",
+          "exit": 1
+        },
+        "unknown_symbol": {
+          "diagnostic": "reloc-run-artifact: bind error: unknown symbol in binding: bogus",
+          "exit": 1
+        }
+      },
+      "name": "cpp_rejections",
+      "required": true,
+      "seconds": 0.012,
+      "status": "passed"
+    },
+    {
+      "details": {
+        "bindings": [
+          {
+            "exact": true,
+            "n": 64,
+            "total_bytes": 256
+          },
+          {
+            "exact": true,
+            "n": 128,
+            "total_bytes": 512
+          },
+          {
+            "exact": true,
+            "n": 192,
+            "total_bytes": 768
+          }
+        ],
+        "format_version": 1,
+        "symbols": [
+          "s0"
+        ],
+        "wire_version": 0
+      },
+      "name": "portable_artifact_fresh_process",
+      "required": true,
+      "seconds": 0.2,
+      "status": "passed"
+    },
+    {
+      "details": {
+        "pre_c3_runtime": "rejects every v1 blob at byte offset 4 (recorded baseline, docs/reloc-export.md)",
+        "v0_plans": 17,
+        "v1_plans": 13
+      },
+      "name": "wire_version_compatibility",
+      "required": true,
+      "seconds": 0.002,
+      "status": "passed"
+    },
+    {
+      "details": {
+        "fixtures": 13
+      },
+      "name": "typed_corpus_fresh",
+      "required": true,
+      "seconds": 0.279,
+      "status": "passed"
+    },
+    {
+      "details": {
+        "mode": "host",
+        "rows": [
+          "layout_cast B=4: OK via cpu_reference (source 96 B, wire 48 B, destination 48 B, parameters 0 B); rows a CUDA device end would offer: ['cpu_reference']",
+          "layout_cast B=9: OK via cpu_reference (source 216 B, wire 108 B, destination 108 B, parameters 0 B); rows a CUDA device end would offer: ['cpu_reference']",
+          "layout_quantize B=4: OK via cpu_reference (source 48 B, wire 12 B, destination 12 B, parameters 12 B); rows a CUDA device end would offer: ['cpu_reference', 'cpu_stages_cuda_stages@0', 'cuda_relocate_f32']",
+          "layout_quantize B=9: OK via cpu_reference (source 108 B, wire 27 B, destination 27 B, parameters 12 B); rows a CUDA device end would offer: ['cpu_reference', 'cpu_stages_cuda_stages@0', 'cuda_relocate_f32']",
+          "dequantize_layout B=4: OK via cpu_reference (source 12 B, wire 48 B, destination 48 B, parameters 24 B); rows a CUDA device end would offer: ['cpu_reference']",
+          "dequantize_layout B=9: OK via cpu_reference (source 27 B, wire 108 B, destination 108 B, parameters 24 B); rows a CUDA device end would offer: ['cpu_reference']"
+        ],
+        "seconds": 0.219
+      },
+      "name": "typed_example",
+      "required": true,
+      "seconds": 0.219,
+      "status": "passed"
+    },
+    {
+      "details": {
+        "checks": {
+          "eager_module_to_values": true,
+          "observation_keeps_values": true,
+          "quantized_gate_reported": true,
+          "stable_preparation_values": true
+        },
+        "counters": {
+          "dynamo_compiles": 0,
+          "exclusions": {},
+          "fallbacks": {},
+          "plan_compiles": 1,
+          "redispatches": {},
+          "runtime_executions": 0,
+          "symbol_binds": 4,
+          "weight_invalidations": 2,
+          "weight_preparations": 4
+        },
+        "device": "cpu",
+        "quantized_preparation": {
+          "reason": "typed_artifacts_unavailable",
+          "status": "gated"
+        }
+      },
+      "name": "weight_loading",
+      "required": true,
+      "seconds": 3.015,
+      "status": "passed"
+    },
+    {
+      "details": {
+        "outcome": "fallback",
+        "reasons": [
+          "quantize_semantics_unproved"
+        ]
+      },
+      "name": "expected_exclusion_quantize_import",
+      "required": true,
+      "seconds": 1.401,
+      "status": "passed"
+    }
+  ],
+  "schema": 1,
+  "summary": {
+    "failed": 0,
+    "passed": 9,
+    "prerequisites_failed": 0,
+    "required_failed": 0
+  }
+}

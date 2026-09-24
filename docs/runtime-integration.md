@@ -155,8 +155,8 @@ reason.
 
 | File | Produced by | Device | Result |
 | --- | --- | --- | --- |
-| [runtime-evidence/cpu.json](runtime-evidence/cpu.json) | `compiler_runtime_handoff.py --device cpu` on a clean tree (revision in `environment.source_revision`) | CPU (torch 2.14.0+cpu, CPython 3.14.7) | 9/9 scenarios passed |
-| [runtime-evidence/cuda.json](runtime-evidence/cuda.json) | `compiler_runtime_handoff.py --device cuda` on a clean tree (same field) | RTX 2080 Ti, driver 595.71.05, torch 2.14.0+cu126, CUDA 12.6 | 15/15 passed; 140 gpu-marked pytest cases and 18 CUDA gtests executed, 0 failed; 2 by-design skips (float32-only witness parametrization) |
+| [runtime-evidence/cpu.json](runtime-evidence/cpu.json) | `compiler_runtime_handoff.py --device cpu` on a clean tree at `0349804` (`environment.source_revision`) | CPU (torch 2.14.0+cpu, CPython 3.14.7) | 9/9 scenarios passed |
+| [runtime-evidence/cuda.json](runtime-evidence/cuda.json) | `compiler_runtime_handoff.py --device cuda` on the same clean tree | RTX 2080 Ti, driver 595.71.05, torch 2.14.0+cu126, CUDA 12.6 | 15/15 passed; 140 of 142 gpu-marked pytest cases and 18 CUDA gtests (12 suites) executed, 0 failed; 2 by-design skips (float32-only witness parametrization) |
 | [typed-evidence/c4-cuda-run.txt](typed-evidence/c4-cuda-run.txt) | C4 GPU conformance | same device | 17 passed |
 | CI | `.github/workflows/build.yml` | CPU | `build`/`Run Tests` (lit, CTest, Torch-free pytest, typed corpus check, typed example), `Torch inventory CPU cp314` (CTest, full CPU pytest, examples, the runner) |
 
@@ -171,16 +171,17 @@ samples after 3 warmup calls, each sample ending in
 
 | Scenario | Source bytes | Wire bytes | libreloc path | PyTorch | Path |
 | --- | --- | --- | --- | --- | --- |
-| layout H2D split+transpose, 2^16 elements | 262,144 | 262,144 | 4.19 ms | 0.16 ms | R2 forward H2D via the compiled region |
-| same, 2^20 | 4,194,304 | 4,194,304 | 30.2 ms | 1.94 ms | same |
-| same, 2^22 | 16,777,216 | 16,777,216 | 74.8 ms | 9.11 ms | same |
-| typed H2D transpose+cast to f16, 2^20 (preparation included) | 4,194,304 | 2,097,152 | 39.5 ms | 4.04 ms | R3 `cpu_reference` |
+| layout H2D split+transpose, 2^16 elements | 262,144 | 262,144 | 4.18 ms | 0.159 ms | R2 forward H2D via the compiled region |
+| same, 2^20 | 4,194,304 | 4,194,304 | 31.3 ms | 1.94 ms | same |
+| same, 2^22 | 16,777,216 | 16,777,216 | 76.8 ms | 8.80 ms | same |
+| typed H2D transpose+cast to f16, 2^20 (preparation included) | 4,194,304 | 2,097,152 | 39.6 ms | 3.99 ms | R3 `cpu_reference` (forced by `original_cpu`) |
 
 The supported path is correct but slower than PyTorch's own copy at every
-measured size in this configuration. The per-call path constructs a
-`CudaBackend`, allocates pinned staging and re-validates the request on
-every blocking call; this was not profiled further, and no optimization or
-threshold is part of this handoff. The research measurements of the
+measured size in this configuration. Every blocking call binds the symbols
+(`backend_counters`: one plan compile, 54 binds for 54 executions),
+re-validates the request, constructs a `CudaBackend` and allocates its
+pinned staging ring; none of this was profiled further, and no optimization
+or threshold is part of this handoff. The research measurements of the
 underlying transfer methods remain those of the claim ledger.
 
 ## 6. Reproduction
