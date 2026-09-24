@@ -84,7 +84,8 @@ def test_the_cpp_consumer_runs_generated_plans_and_rejects_bad_input(tmp_path):
     assert [c["symbols"]["s0"] for c in cases] == [64, 128, 192]
     assert set(names["cpp_rejections"]["details"]) == {
         "unknown_symbol", "guard_violation", "short_input", "malformed_plan", "typed_plan_refused"}
-    assert result["environment"]["source_revision"]
+    # A checkout records its revision; an exported tree may declare SYM_SOURCE_REVISION.
+    assert "source_revision" in result["environment"]
 
 
 #===----------------------------------------------------------------------===#

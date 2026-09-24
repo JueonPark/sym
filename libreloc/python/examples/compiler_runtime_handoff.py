@@ -122,7 +122,8 @@ def environment(facts):
             return None
 
     env = {
-        "source_revision": run("git", "rev-parse", "HEAD"),
+        # A checkout reports its HEAD; an exported tree (no .git) may declare it.
+        "source_revision": run("git", "rev-parse", "HEAD") or os.environ.get("SYM_SOURCE_REVISION"),
         "source_dirty": bool(run("git", "status", "--porcelain", "--untracked-files=no")),
         "python": platform.python_version(),
         "python_build": sys.implementation.name + " " + (sys.implementation.cache_tag or ""),
