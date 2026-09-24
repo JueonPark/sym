@@ -272,9 +272,13 @@ jobs:
               export SYM_RELOC_EXPORT=/workspace/build/torch-cpu-cp314/sym/tools/sym-reloc-export
               test -x "$SYM_RELOC_EXPORT"
               /tmp/sym-torch-cpu/bin/python -c "import torch, reloc_torch, pyreloc, pyreloc._pyreloc as ext; import reloc_torch.transport, reloc_torch.backend, reloc_torch.weights, reloc_torch.prefold; reloc_torch.check_version(); assert \"cpython-314\" in ext.__file__"
+              test -x build/torch-cpu-cp314/libreloc/examples/reloc-run-artifact
+              ctest --test-dir build/torch-cpu-cp314 --output-on-failure
               /tmp/sym-torch-cpu/bin/python -m pytest libreloc/python/tests -m "not gpu" -q
               /tmp/sym-torch-cpu/bin/python libreloc/python/examples/torch_transfer_inventory.py --device cpu --output build/torch-cpu-cp314/inventory-cpu.json
               /tmp/sym-torch-cpu/bin/python libreloc/python/examples/torch_weight_loading.py --device cpu --output build/torch-cpu-cp314/weight-loading-cpu.json
+              # R4 (#148): every public example as a required scenario; nonzero on any failure.
+              /tmp/sym-torch-cpu/bin/python libreloc/python/examples/compiler_runtime_handoff.py --device cpu --output build/torch-cpu-cp314/runtime-handoff-cpu.json
             '
       - uses: actions/upload-artifact@v4
         with:
@@ -286,3 +290,5 @@ jobs:
             build/torch-cpu-cp314/libreloc/libreloc_runtime.so
             build/torch-cpu-cp314/inventory-cpu.json
             build/torch-cpu-cp314/weight-loading-cpu.json
+            build/torch-cpu-cp314/runtime-handoff-cpu.json
+            build/torch-cpu-cp314/libreloc/examples/reloc-run-artifact
