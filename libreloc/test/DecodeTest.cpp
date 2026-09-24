@@ -813,4 +813,76 @@ TEST(Decode, FuzzTruncationAndBitFlipsNoCrash) {
   }
 }
 
+//===----------------------------------------------------------------------===//
+// Issue #55: structural rank checks at the trust boundary.
+//===----------------------------------------------------------------------===//
+
+// Header + src desc + dst desc of the given ranks (constant extents 1,
+// dense strides omitted) + perm + axes, with every axis extent 1.
+std::vector<uint8_t> rankPlan(uint32_t srcRank, uint32_t dstRank,
+                              uint32_t axes) {
+  std::vector<uint8_t> bytes = buildHeader();
+  auto putConst = [&bytes](int64_t value) {
+    putU32(bytes, 1);
+    bytes.push_back(0x01);
+    putI64(bytes, value);
+  };
+  auto putDesc = [&](uint32_t rank) {
+    putU32(bytes, rank);
+    for (uint32_t i = 0; i < rank; ++i)
+      putConst(1);
+    putU32(bytes, 0);      // stride_count 0 (dense)
+    putConst(0);           // offset
+    bytes.push_back(0x02); // int
+    putU32(bytes, 32);
+  };
+  putDesc(srcRank);
+  putDesc(dstRank);
+  putU32(bytes, axes); // perm
+  for (uint32_t i = 0; i < axes; ++i)
+    putU32(bytes, i);
+  putU32(bytes, axes); // axes
+  for (uint32_t i = 0; i < axes; ++i) {
+    putU32(bytes, 1);
+    bytes.push_back('x');
+    putConst(1);
+    putConst(1);
+    putConst(1);
+  }
+  return bytes;
+}
+
+TEST(Decode, RejectsRankZeroPlanAtTheAxesSection) {
+  std::vector<uint8_t> bytes = rankPlan(0, 0, 0);
+  // header 12 + two rank-0 descs (4 + 4 + 13 + 5 = 26 each) + perm count 4.
+  const size_t axesAt = 12 + 26 + 26 + 4;
+  auto result = reloc::decodePlan(bytes.data(), bytes.size());
+  ASSERT_TRUE(std::holds_alternative<DecodeError>(result));
+  const DecodeError &error = std::get<DecodeError>(result);
+  EXPECT_EQ(error.offset, axesAt);
+  EXPECT_NE(error.message.find("axis count must be >= 1"), std::string::npos)
+      << error.message;
+}
+
+TEST(Decode, RejectsDestinationRankDifferentFromTheAxisCount) {
+  // A pad-free plan: before #55 only bind()'s runtime pad check could
+  // notice, and only when a pad existed.
+  std::vector<uint8_t> bytes = rankPlan(1, 2, 1);
+  const size_t dstAt = 12 + (4 + 13 + 4 + 13 + 5); // header + rank-1 src
+  auto result = reloc::decodePlan(bytes.data(), bytes.size());
+  ASSERT_TRUE(std::holds_alternative<DecodeError>(result));
+  const DecodeError &error = std::get<DecodeError>(result);
+  EXPECT_EQ(error.offset, dstAt);
+  EXPECT_NE(error.message.find("dst rank must equal the axis count"),
+            std::string::npos)
+      << error.message;
+  // The matching rank passes this check (and fails later only because the
+  // hand-built buffer ends after the axes section).
+  std::vector<uint8_t> ok = rankPlan(1, 1, 1);
+  auto later = reloc::decodePlan(ok.data(), ok.size());
+  ASSERT_TRUE(std::holds_alternative<DecodeError>(later));
+  EXPECT_EQ(std::get<DecodeError>(later).message.find("dst rank"),
+            std::string::npos);
+}
+
 } // namespace

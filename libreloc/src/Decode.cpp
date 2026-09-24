@@ -256,6 +256,7 @@ bool parseLayoutBody(ByteReader &reader, RelocationPlan &plan) {
   // 3-4: src, dst descriptors.
   if (!parseTensorDesc(reader, symbolCount, plan.src))
     return false;
+  const size_t dstAt = reader.offset();
   if (!parseTensorDesc(reader, symbolCount, plan.dst))
     return false;
 
@@ -273,9 +274,15 @@ bool parseLayoutBody(ByteReader &reader, RelocationPlan &plan) {
   }
 
   // 6: axes.
+  const size_t axesAt = reader.offset();
   uint32_t axisCount;
   if (!reader.readCount(axisCount, "axes count"))
     return false;
+  // Issue #55: structural well-formedness belongs at the trust boundary. A
+  // rank-0 plan has nothing for the executors to walk (bind() keeps its own
+  // guard as defense in depth).
+  if (axisCount < 1)
+    return reader.fail(axesAt, "axis count must be >= 1");
   plan.axes.reserve(axisCount);
   for (uint32_t i = 0; i < axisCount; ++i) {
     Axis axis;
@@ -305,6 +312,12 @@ bool parseLayoutBody(ByteReader &reader, RelocationPlan &plan) {
       seen[value] = true;
     }
   }
+
+  // Issue #55: the destination descriptor's rank is the plan's axis count
+  // (axes are in destination order). Previously only bind()'s runtime pad
+  // check noticed a mismatch, and only for padded plans.
+  if (plan.dst.extents.size() != plan.axes.size())
+    return reader.fail(dstAt, "dst rank must equal the axis count");
 
   // 7: pad_fill.
   uint32_t padCount;
