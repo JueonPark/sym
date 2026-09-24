@@ -128,19 +128,19 @@ Each row names its evidence; "runner" rows are scenarios of
 | Extent-one boundary | first capture at `s0 // 64 == 1` | that capture keeps the original region (`conditional_materialization`), later sizes run on the runtime, all exact | runner `dynamic_extent_one_boundary` |
 | Guard-invalid shapes, invalid bindings | divisibility, extents, repeated symbols | original region once, zero launches | `test_transfers_gpu.py::test_invalid_bindings_and_unsupported_sources_fall_back_with_zero_launches`, `test_backend.py::test_cpu_region_executes_through_the_adapter_and_replays_only_itself_on_guard_miss` |
 | Default and non-default streams, immediate consumers, allocation reuse | layout H2D/D2H | R2 stream ordering | `test_transfers_gpu.py::test_side_stream_d2h_producer_and_immediate_cpu_consumer`, `::test_h2d_on_nondefault_caller_stream_is_consumed_there_and_on_the_default_stream`, `::test_repeated_transfers_with_dropped_inputs_and_reallocation`, `test_transport.py::test_d2h_orders_after_a_delayed_producer_on_a_nondefault_stream` |
-| Execution failure propagation | injected copy failure | error, no second execution, resources released | `test_transfers_gpu.py::test_execution_errors_clean_up_and_do_not_retry`, `test_runtime.py`, `DispatchTest.BackendFailuresPropagateWithoutASecondPath` |
+| Execution failure propagation | injected copy failure | error, no second execution, resources released | `test_transfers_gpu.py::test_execution_errors_clean_up_and_do_not_retry`, `test_runtime.py`, `Dispatch.BackendFailuresPropagateWithoutASecondPath` |
 | Invalid, malformed, stale artifacts | truncated plans, mutated manifests, v0/v1 swaps | rejection before execution | runner `cpp_rejections`, `wire_version_compatibility`; `test_compiler.py` (mutating exporter), `test_typed_artifact.py::test_stale_or_foreign_typed_artifacts_are_rejected` |
 | Artifact compatibility | v0 layout, v1 typed; portable format 1/2 | each loader accepts only its version; the pre-C3 runtime rejects v1 at byte offset 4 (recorded baseline) | runner `wire_version_compatibility`, `portable_artifact_fresh_process`; [reloc-export.md](reloc-export.md) |
 | Typed mixed programs | layout+cast, layout+quantize/dequantize; H2D and D2H | R3 rows; forced `original_cpu` and `auto` with recorded reasons; exact source/wire/destination/parameter bytes | runner `typed_example`, `typed_corpus_fresh`, `gpu_test_selection` (`test_typed_conformance_gpu.py`, `test_dispatch.py`); [typed-relocation-support.md](typed-relocation-support.md) |
 | Typed D2H cast via T3 | `x.t().contiguous().to("cpu", f16)` | forward program, `cpu_reference` (no GPU narrowing kernel) | `test_runtime_integration.py::test_typed_d2h_cast_runs_the_forward_program_through_torch_compile` |
-| Unsupported optimized kernel | nonzero-zero-point dequantize, f32→f16 on the GPU | the qualified CPU reference row, never a substitute | `DispatchTest.CapabilityListsOnlyImplementedRows`, `test_typed_dispatch.py` |
-| Missing calibration | `auto` without a model | CPU reference, `no_calibration` | `test_dispatch.py`, runner `typed_example` |
+| Unsupported optimized kernel | nonzero-zero-point dequantize, f32→f16 on the GPU | the qualified CPU reference row, never a substitute | `Dispatch.CapabilityListsOnlyImplementedRows`, `test_typed_dispatch.py` |
+| Missing calibration | `auto` without a model, several eligible rows | CPU reference, `no_calibration` | `test_dispatch.py`, runner `typed_example` (CUDA; the host-mode example has one row) |
 | Non-blocking, empty, rank-0, offset, overlapping sources | any | original PyTorch with reason | runner `expected_exclusion_nonblocking`; `test_transfers_gpu.py::test_nonblocking_transfers_use_original_pytorch_with_a_reason`; `test_transport.py` |
 | Quantize import | `quantized_decomposed.quantize_*` | original PyTorch, `quantize_semantics_unproved` | runner `expected_exclusion_quantize_import`; `test_typed_import.py` |
 | Weight lifecycle | parameters/buffers, `load_state_dict`, in-place mutation, storage replacement, ties, close, collection | fresh results, reprepare or fallback, no stale data | runner `weight_loading`; `test_weights.py` (T4) |
 | Typed parameter changes | runtime scales/zero points mutated between calls | stale request refused; re-preparation gives fresh results; invalid values fail preflight | `test_dispatch.py::test_parameter_values_are_snapshotted_and_rechecked`, `test_typed_import.py` |
 | Prefold ownership | S8 prefolder | artifact keeps its backend alive until staging is freed; typed capability `typed_prefold_spec` | `PrefoldArtifactTest.SharedBackendOutlivesTheCallerReference`, `test_typed_dispatch.py` |
-| Multi-GPU current-device mismatch | two devices | not qualified on this evidence | skipped by design (`needs two devices`), recorded in `cuda.json` |
+| Non-current CUDA target (multi-GPU host) | H2D to `cuda:1` while `cuda:0` is current, then D2H back | the transfer runs on its target device and leaves the current device unchanged | `test_transport.py::test_transfers_target_a_noncurrent_device_when_available`, executed on the four-device evidence host inside `gpu_test_selection`; a one-device host skips it with its reason |
 
 **Semantics.** Transfers are blocking: every call returns after its own work
 completed and orders after the caller's current CUDA stream; `non_blocking`
@@ -161,9 +161,11 @@ reason.
 | CI | `.github/workflows/build.yml` | CPU | `build`/`Run Tests` (lit, CTest, Torch-free pytest, typed corpus check, typed example), `Torch inventory CPU cp314` (CTest, full CPU pytest, examples, the runner) |
 
 The earlier T1 inventory evidence ([torch-evidence](torch-evidence)) is
-observation only and is not execution evidence. The CUDA evidence covers one
-Turing device; Ada (sm_89) is compiled but not measured here, and nothing is
-claimed for other wheels, architectures, or multi-GPU configurations.
+observation only and is not execution evidence. The CUDA evidence comes from
+one Turing model (RTX 2080 Ti) on a four-device host, where the
+non-current-device test above uses a second device; Ada (sm_89) is compiled
+but not measured here, and nothing is claimed for other wheels,
+architectures, or multi-GPU use beyond that test.
 
 **Descriptive latency** (`cuda.json`, `descriptive_latency`; median of 15
 samples after 3 warmup calls, each sample ending in
@@ -220,8 +222,8 @@ marked excluded above and in the linked matrices.
 
 | Issue | Disposition | Evidence |
 | --- | --- | --- |
-| [#55](https://github.com/JueonPark/sym/issues/55) decoder rank checks | **Done here.** The layout decoder (v0 and v1) rejects an axis count of zero and a destination rank different from the axis count, at their byte offsets; bind() keeps its guards | `DecodeTest.RejectsRankZeroPlanAtTheAxesSection`, `.RejectsDestinationRankDifferentFromTheAxisCount` |
-| [#56](https://github.com/JueonPark/sym/issues/56) non-zero fill golden | **Done here.** `pad_nonzero` (fill bits 0x11223344) is pinned in `serialize.mlir` and driven decode → bind → execute | `ExecuteTest.NonZeroFillGoldenRoundTripsEndToEnd` |
+| [#55](https://github.com/JueonPark/sym/issues/55) decoder rank checks | **Done here.** The layout decoder (v0 and v1) rejects an axis count of zero and a destination rank different from the axis count, at their byte offsets; bind() keeps its guards | `Decode.RejectsRankZeroPlanAtTheAxesSection`, `.RejectsDestinationRankDifferentFromTheAxisCount` |
+| [#56](https://github.com/JueonPark/sym/issues/56) non-zero fill golden | **Done here.** `pad_nonzero` (fill bits 0x11223344) is pinned in `serialize.mlir` and driven decode → bind → execute | `Execute.NonZeroFillGoldenRoundTripsEndToEnd` |
 | [#57](https://github.com/JueonPark/sym/issues/57) shared padded-extent helper | **Open, deferred.** A cosmetic refactor with no behavior change; not needed for any acceptance above | — |
 | [#71](https://github.com/JueonPark/sym/issues/71) ASan/TSan CI | **Open, deferred.** Not implemented; the runtime's tests would be the primary target. No sanitizer result is claimed | — |
 | [#88](https://github.com/JueonPark/sym/issues/88) R7 end-to-end overlap | **Closed earlier; unchanged.** Its research result stays `narrowed` in the claim ledger. The weight-loading scenario reused here is functional (correctness, lifecycle), not an overlap measurement | [claim-ledger.md](claim-ledger.md), [r7-e2e-overlap.md](r7-e2e-overlap.md) |
