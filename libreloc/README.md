@@ -1,8 +1,10 @@
 # libreloc
 
-The standalone runtime for `#reloc.plan` execution (project phase P2).
-Consumes wire-format-v0 plans (`docs/reloc-plan-format.md`) and executes
-them; it is the runtime half of the compiler → runtime handoff.
+The standalone tensor relocation runtime. It loads, binds, and executes
+compiler-generated layout plans (wire v0) and typed plans with value
+conversions (wire v1), using CPU execution and optional CUDA transfers.
+Start with the [getting-started guide](../docs/getting-started.md) for a
+complete example; this document describes the lower-level APIs.
 
 ## Linkage contract
 

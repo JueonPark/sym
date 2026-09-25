@@ -6,9 +6,11 @@ The supported surface is opt-in inference relocation of dense CPU↔CUDA
 transfers and their adjacent layout operations (transpose/permute,
 reshape/view, materialization, constant pad), with dynamic shapes, guarded
 fallback to PyTorch, and explicit inference weight preparation. Typed value
-transforms (cast/quantize/dequantize) wait for C1–C4/R3; the prefold bridge
-exists but is gated. Evidence, counts and the support matrix live in
-[Torch support](torch-support.md); this guide records how to reproduce them.
+transforms execute through the typed compiler/runtime path; automatic capture
+accepts the casts and dequantization forms listed in the
+[typed support matrix](typed-relocation-support.md). Quantize import and
+typed weight preparation remain gated. Evidence, counts and the support matrix
+live in [Torch support](torch-support.md); this guide records how to reproduce them.
 
 The end-to-end handoff (build from a fresh checkout, every named example,
 CPU and CUDA evidence) is [runtime-integration.md](runtime-integration.md).
@@ -174,8 +176,8 @@ backend.close()
 - **Gradients.** `requires_grad` excludes a source only while grad mode is
   enabled; under `torch.no_grad()` parameters and buffers are ordinary inputs.
 - **Exclusions with reasons.** Mutation (`copy_`, `load_state_dict`),
-  subclasses, nonzero offsets, non-dense sources, casts, unsupported memory
-  formats, empty or rank-0 tensors, other devices, and regions the importer
+  subclasses, nonzero offsets, non-dense sources, unsupported dtype changes,
+  unsupported memory formats, empty or rank-0 tensors, other devices, and regions the importer
   does not accept (for example a `contiguous()` after a derived extent that no
   guard bounds) run on PyTorch and appear in the counters.
 - **Quantization.** Only explicitly requested. The prefold bridge
