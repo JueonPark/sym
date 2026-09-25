@@ -1,4 +1,4 @@
-# Compiler-to-runtime integration: entry point and handoff (R4, issue #148)
+# Compiler-to-runtime integration: entry point and handoff (R4, issue [#148](https://github.com/JueonPark/sym/issues/148))
 
 This is the one place to start. It says how to build the stack from a fresh
 checkout, how to drive it from C++ and Python, what is supported, how to

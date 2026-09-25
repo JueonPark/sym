@@ -17,7 +17,7 @@ complete example; this document describes the lower-level APIs.
   infrastructure — the contract binds the library, not its tests.
 - Include paths: the repository's root CMake globally injects MLIR include
   directories; this is include-path-only pollution, tolerated for v0
-  (issue #41). Do not include MLIR headers from libreloc sources.
+  (issue [#41](https://github.com/JueonPark/sym/issues/41)). Do not include MLIR headers from libreloc sources.
 - `reloc_runtime` is a plain `add_library`, so it does not go through
   `llvm_update_compile_flags`: only the repository's global
   warning/codegen flags are inherited, and **exceptions and RTTI stay ON**
@@ -34,7 +34,7 @@ complete example; this document describes the lower-level APIs.
   an allocation, and hostile inputs are rejected by construction and
   fuzz-tested (`libreloc/test/DecodeTest.cpp`).
 - `reloc::peekWireVersion` / `reloc::decodeTypedPlan` (`reloc/Decode.h`) —
-  C3's versioned contract (issue #143): `decodePlan` stays v0-only and
+  C3's versioned contract (issue [#143](https://github.com/JueonPark/sym/issues/143)): `decodePlan` stays v0-only and
   rejects a v1 header at offset 4 exactly like the pre-C3 runtime did;
   `decodeTypedPlan` reads wire format v1 (`TypedRelocationPlan`: source and
   result descriptors, the v0 layout body verbatim with fused fills, the
@@ -57,7 +57,7 @@ complete example; this document describes the lower-level APIs.
   contract and what binding does not certify
   (`libreloc/test/TypedBindTest.cpp`).
 - `reloc::typed::prepareProgram` / `executeHost` (`reloc/TypedExecute.h`) —
-  R3's scalar reference for typed plans (issue #147): every stage's C1
+  R3's scalar reference for typed plans (issue [#147](https://github.com/JueonPark/sym/issues/147)): every stage's C1
   arithmetic with the reciprocal scale formed once, the layout, the pad
   fills folded to any stage boundary, and execution of any contiguous stage
   range from the dense source layout into the dense padded result layout
@@ -92,7 +92,7 @@ complete example; this document describes the lower-level APIs.
   `executeD2H` (`libreloc/test/PipelineTest.cpp`, `CudaPipelineTest.cpp`).
 - `reloc::validateTransferSource` / `validateTransfer` / `executeTransfer`
   (`reloc/Transfer.h`) — R2's validated forward transfer requests (issue
-  #146). A `BufferView` declares a framework buffer as its allocation (base,
+  [#146](https://github.com/JueonPark/sym/issues/146)). A `BufferView` declares a framework buffer as its allocation (base,
   capacity) plus the logical view (byte offset, extents, element strides,
   element size, host/CUDA kind, device ordinal). Validation proves, with
   overflow-checked arithmetic, that the view is nonempty, non-negative-stride
@@ -110,7 +110,7 @@ complete example; this document describes the lower-level APIs.
   producer stream), a sticky `failed()`/`error()` state, and `device()`;
   `CudaBackend` checks every CUDA status and works under its own device.
 - `reloc::GatherPool` (`reloc/GatherPool.h`) — D1's persistent worker pool
-  (issue #65): the pipeline partitions each chunk's valid outer rows across
+  (issue [#65](https://github.com/JueonPark/sym/issues/65)): the pipeline partitions each chunk's valid outer rows across
   the pool's threads (`gatherThreads` argument or a caller-owned pool), with
   a per-worker byte floor (`kMinGatherBytesPerWorker`) so tiny chunks stay
   inline, and a counting barrier before `copyAsync` / staging reuse.
@@ -121,12 +121,12 @@ complete example; this document describes the lower-level APIs.
   for pybind, dispatches and `close()` are serialized internally, so
   concurrent use from multiple threads is safe (`libreloc/test/GatherPoolTest.cpp`).
 - `reloc::quant` (`reloc/Quant.h`) — R0.1's CPU transform kernels
-  (issue #74): contiguous per-channel int8 quantize
+  (issue [#74](https://github.com/JueonPark/sym/issues/74)): contiguous per-channel int8 quantize
   (`quantizePackF32S8`), the fused strided-gather + quantize Case-1a
   kernel over a `BoundPlan` (`gatherQuantizeF32S8`, chunk form mirroring
   `gatherChunk`), int4 nibble pack (`packS8S4`), and fp32→fp16 convert
   (`convertF32F16`). Every kernel has a scalar reference variant plus
-  SIMD tiers (AVX2 and/or AVX-512, per issue #74's variant table) behind
+  SIMD tiers (AVX2 and/or AVX-512, per issue [#74](https://github.com/JueonPark/sym/issues/74)'s variant table) behind
   runtime dispatch (`Variant`, `cpuSupports`, `resolveFor`), bit-identical
   across variants by contract, and a
   `*Parallel` wrapper that partitions over a caller-owned `GatherPool`
@@ -143,7 +143,7 @@ complete example; this document describes the lower-level APIs.
   C4/R3 and does not exist yet. The scalar references behind the decoder's
   fill re-verification are public here too: `quantizeOneF32S8`,
   `narrowF32F16`, `widenF16F32`.
-- `reloc::cuda` (`reloc/CudaKernels.h`) — R0.2's GPU kernels (issue #75),
+- `reloc::cuda` (`reloc/CudaKernels.h`) — R0.2's GPU kernels (issue [#75](https://github.com/JueonPark/sym/issues/75)),
   compiled for sm_75 + sm_89 under `RELOC_ENABLE_CUDA`: the JustCopy
   ceiling (`copyF32`), plan-driven strided relocate in naive
   (`relocateNaiveF32`) and SMEM-tiled 32×32 forms (`relocateF32`, tiled
@@ -172,7 +172,7 @@ transfer scope, prepared inference weights) is documented in
 [docs/torch-support.md](../docs/torch-support.md).
 
 `libreloc/python/` builds a pybind11 extension exposing the runtime to
-Python (issue #46): `load_plan(bytes) -> PlanHandle`,
+Python (issue [#46](https://github.com/JueonPark/sym/issues/46)): `load_plan(bytes) -> PlanHandle`,
 `bind(plan, {symbol: value}, strategy="auto") -> BoundPlan`,
 `relocate` / `relocate_inverse` (host CPU strategies), and `h2d` / `d2h`
 (the C5 pinned/stream pipeline, `RELOC_ENABLE_CUDA` builds only;
@@ -180,7 +180,7 @@ Python (issue #46): `load_plan(bytes) -> PlanHandle`,
 `relocate`/`h2d`/`d2h` accept `gather_threads=` (0 = all cores) or a
 reusable `gather_pool=pyreloc.GatherPool(threads)` — a context manager
 whose `close()` joins its workers deterministically, so no pool threads
-outlive the interpreter (issue #65).
+outlive the interpreter (issue [#65](https://github.com/JueonPark/sym/issues/65)).
 Buffers are passed as
 `(pointer, nbytes)` integer pairs — design decision 2;
 `pyreloc.torch_interop.as_ptr` maps torch tensors / numpy arrays without
@@ -194,7 +194,7 @@ caller has queued on other streams — synchronize first (e.g.
 async fill or kernel. The validated transfer API below carries that ordering
 itself.
 
-### Validated forward transfers (R2, issue #146)
+### Validated forward transfers (R2, issue [#146](https://github.com/JueonPark/sym/issues/146))
 
 `pyreloc.BufferView(base, capacity_bytes, offset_bytes, extents, strides,
 element_size, kind, device=-1)` describes a buffer by its allocation and
@@ -255,7 +255,7 @@ pybind11 discoverable, then point `PYTHONPATH` at the build tree —
 Without pybind11 the target is skipped with a notice and everything else
 still builds.
 
-### Typed plans (C3, issue #143)
+### Typed plans (C3, issue [#143](https://github.com/JueonPark/sym/issues/143))
 
 A typed plan is the folded form of a chain that contains value transforms
 (`reloc.cast`, `reloc.quantize`, `reloc.dequantize`;
@@ -309,7 +309,7 @@ rather than copying source-width bytes into a destination-width allocation:
 `validate_transfer_source`/`make_transfer` raise
 `TransferError("typed_unsupported: ...")`, and the C++ executors assert.
 
-### Typed dispatch (R3, issue #147)
+### Typed dispatch (R3, issue [#147](https://github.com/JueonPark/sym/issues/147))
 
 ```python
 rows = pyreloc.query_capability(bound, "h2d", device="cuda")   # pure: eligible rows + stable exclusions

@@ -1,4 +1,4 @@
-# Nsight Systems overlap-trace evidence v2 (issue #67, D3 re-measurement, criterion 1)
+# Nsight Systems overlap-trace evidence v2 (issue [#67](https://github.com/JueonPark/sym/issues/67), D3 re-measurement, criterion 1)
 
 Supersedes (does not edit) `poc_overlap_summary.md`. That v1 capture was taken
 against a `-O0` build (`build/cuda`) with 256 MiB chunks, before D1 (parallel
@@ -95,7 +95,7 @@ are excluded.
 > slack, i.e. the copy — not the gather — is the long pole (in v1 gather was
 > ~43 ms vs ~10.6 ms copies; the flip means the period collapses to ≈ the
 > copy duration). If either fails → STOP after committing the summary:
-> criterion 1 failed, no headline is quoted, #67 goes back to design.
+> criterion 1 failed, no headline is quoted, [#67](https://github.com/JueonPark/sym/issues/67) goes back to design.
 
 Applying the rule to the v2 numbers:
 
@@ -113,7 +113,7 @@ Both (a) and (b) fail.
 
 No headline speedup is quoted from this trace. The bottleneck has **not**
 flipped from CPU-gather-bound to PCIe-copy-bound. Per the pre-registered
-rule, #67 goes back to design.
+rule, [#67](https://github.com/JueonPark/sym/issues/67) goes back to design.
 
 ## Interpretation
 
@@ -143,7 +143,7 @@ until the gather itself is faster, or gather and copy are truly comparable
 in duration.
 
 Per the global constraint, this verdict is committed as-is: criterion 1
-**FAILS**, and issue #67 goes back to design rather than proceeding to a
+**FAILS**, and issue [#67](https://github.com/JueonPark/sym/issues/67) goes back to design rather than proceeding to a
 headline "bottleneck flipped" claim.
 
 ## Local artifacts (not committed)

@@ -1,4 +1,4 @@
-# R2 / EXP-2 — Gen4 repeat + crossover figure (issue #83)
+# R2 / EXP-2 — Gen4 repeat + crossover figure (issue [#83](https://github.com/JueonPark/sym/issues/83))
 
 **Verdict: R2-G2 PASS — the dtype-reduction crossover reproduces on Gen4
 (quant A/B 2.1–4.2× at every N). But R2-G1 and R2-G4 FAIL and R2-G5
@@ -21,7 +21,7 @@ caveats): cpufreq governors unreadable on WSL2 → CPU governor
 uncontrollable; `nvidia-smi -lgc` refused (no root) → GPU clocks unlocked;
 persistence mode already on; nvbandwidth not installed → the calibration
 JSON carries no `h2d_gbps` and the pinned-H2D number below is derived from
-Method-B `h2d_ms` rows. Bare-metal control is the W7 item per issue #83;
+Method-B `h2d_ms` rows. Bare-metal control is the W7 item per issue [#83](https://github.com/JueonPark/sym/issues/83);
 the Gen3 report remains the clean bare-metal headline point.
 
 Raw data (all committed):
@@ -77,7 +77,7 @@ family: blocked_transpose **FAIL** (measured r\* 0.499 vs predicted 0.143);
 quant **FAIL** (0.992 vs 0.132); nchw_nhwc_quant **PASS** (both: no in-range
 crossover); transpose_quant **PASS** (both: no in-range crossover).
 
-> **Restated against the fair baseline (issue #95).** The G4 and G5
+> **Restated against the fair baseline (issue [#95](https://github.com/JueonPark/sym/issues/95)).** The G4 and G5
 > verdicts above were measured against the staged Method B that the V1
 > audit later found INADMISSIBLE on this box. The V1 Gen4 re-run (see
 > [V1 restatement](#v1-restatement-issue-95--the-fair-baseline-resolves-g4s-direction)
@@ -292,13 +292,13 @@ serial per family. Unstable matrix bars in Figure 1 are hatched; the r\*
 figure separately tags its unstable r-sweep points, including the
 borderline T1b r=0.25 method a that stays flagged after rerun.
 
-## sym#63 anchor re-baseline (R0 exit criterion)
+## [sym#63](https://github.com/JueonPark/sym/issues/63) anchor re-baseline (R0 exit criterion)
 
 - **Blocked gather (Method A CPU stage).** T1b method-a `cpu_stage_ms` at
-  N=16384 best chunk gives 14.92 GB/s (1 GiB / 71.98 ms). sym#63 quoted
+  N=16384 best chunk gives 14.92 GB/s (1 GiB / 71.98 ms). [sym#63](https://github.com/JueonPark/sym/issues/63) quoted
   ~14 GB/s; within 10%. Re-anchored.
 - **Pinned H2D peak.** From Method-B `h2d_ms` rows, 26.79 GB/s (Gen4 x16).
-  sym#63 quoted ~24 GB/s; this is the DMA-leg-only rate and re-baselines
+  [sym#63](https://github.com/JueonPark/sym/issues/63) quoted ~24 GB/s; this is the DMA-leg-only rate and re-baselines
   slightly higher on Gen4. Note this is *not* Method B's throughput — see
   below.
 - **Method-B effective throughput** is flat across N (13.6 / 16.4 / 16.1 /
@@ -325,7 +325,7 @@ GB/s. G1 FAILs on both counts: the number is outside the bar, and the claim
   refused (no root) so GPU clocks are unlocked; nvbandwidth is not installed
   so the pinned-H2D figure is derived from Method-B `h2d_ms` rows rather
   than a dedicated micro-benchmark. Persistence mode was already on.
-  **Bare-metal control (a T3/T1 subset) is deferred to W7 per issue #83**;
+  **Bare-metal control (a T3/T1 subset) is deferred to W7 per issue [#83](https://github.com/JueonPark/sym/issues/83)**;
   the Gen3 bare-metal report stays the clean headline point and this Gen4
   report carries the WSL2 caveat.
 - **Staging-copy bound is the load-bearing finding and is WSL2-tinged.** The
@@ -334,7 +334,7 @@ GB/s. G1 FAILs on both counts: the number is outside the bar, and the claim
   is not the PCIe link, which measures 24.6–26.8 GB/s.
 - **Instability.** Unstable-row (IQR > 5%) share: nsweep 59/146, tsweep
   98/180, rsweep 129/235 — concentrated at small N (N=2048) and 4 MiB
-  chunks, the known WSL2 dispatch-noise pattern (D3 ledger; sym#63
+  chunks, the known WSL2 dispatch-noise pattern (D3 ledger; [sym#63](https://github.com/JueonPark/sym/issues/63)
   addendum). At the analysis points (best-chunk, N=16384) only 2/12 matrix
   and 4/20 rsweep rows remain unstable after rerun, all 5.0–7.1% IQR. Every
   hatched Figure-1 bar traces to one of the 2/12 matrix points; among the
@@ -348,9 +348,9 @@ GB/s. G1 FAILs on both counts: the number is outside the bar, and the claim
 - The Gen3 comparison bars in Figure 1 are the R1 bare-metal EPYC/2080 Ti
   numbers (`r1_gen3_nsweep_epyc_2080ti.csv`); they are not re-measured here.
 
-## V1 restatement (issue #95) — the fair baseline resolves G4's direction
+## V1 restatement (issue [#95](https://github.com/JueonPark/sym/issues/95)) — the fair baseline resolves G4's direction
 
-*Added 2026-07-28, after #90 merged. Session: same box, fresh calibration
+*Added 2026-07-28, after [#90](https://github.com/JueonPark/sym/pull/90) merged. Session: same box, fresh calibration
 (`v1_gen4_calibration_7800x3d_4070tis.json` — driver 595.79, PCIe gen4 x16
 under load, triad 36.59 GB/s vs the R2 session's 35.86), R1/R2 protocol
 (5+30, T=8, chunks 4/16/64/256), `--method all` so `a`, `b` (staged) and
@@ -359,7 +359,7 @@ under load, triad 36.59 GB/s vs the R2 session's 35.86), R1/R2 protocol
 bit-exact verified; unstable analysis points re-measured under this report's
 pre-declared stabler-preference rule (`*_rerun_*.csv`: 5 matrix
 transform×N points, 11 rsweep points at N=16384). Expectations were posted
-to issue #83 before the data was taken.*
+to issue [#83](https://github.com/JueonPark/sym/issues/83) before the data was taken.*
 
 ### Admissibility (`gates.py --exp v1`)
 
@@ -373,7 +373,7 @@ Pinned H2D (DMA leg) reproduces at **26.86 GB/s** (R2: 26.79) → bar =
 | b_fair | blocked_transpose | 21.15 | 23.60 | **24.37** | **24.59** | INADMISSIBLE (strict); passes at N ≥ 8192 |
 | b_fair | transpose | 21.68 | 23.46 | 23.98 | **24.36** | INADMISSIBLE (strict); passes at N = 16384 |
 
-The staged baseline sits at the ~16 GB/s ceiling at every N — the #90
+The staged baseline sits at the ~16 GB/s ceiling at every N — the [#90](https://github.com/JueonPark/sym/pull/90)
 finding reproduces. `B_fair` does **not** clear the strict every-N bar on
 this box (unlike Gen3, where it passed at every N). The stage split says
 why, with no host overhead left to remove:
@@ -387,10 +387,10 @@ why, with no host overhead left to remove:
 The DMA leg runs at the link at every N and `host_stage_ms = 0`; the
 shortfall is (i) ~0.05–0.16 ms of fixed dispatch/sync overhead, visible
 only at small N (the known WSL2 pattern), and (ii) the baseline's own
-**receive kernel, run serially after the full transfer** per the sym#63
+**receive kernel, run serially after the full transfer** per the [sym#63](https://github.com/JueonPark/sym/issues/63)
 Method-B semantics — ~9% of wall at N=16384. On Gen3 the same kernel was a
 smaller fraction of a 2× slower link, so the bar passed there. Consequence
-for the cost model (#97): on a fast link, `BW_B = H2D` overstates B even
+for the cost model ([#97](https://github.com/JueonPark/sym/issues/97)): on a fast link, `BW_B = H2D` overstates B even
 with a perfect host path; B's measured cost is serial `S/BW_pcie +
 kernel`, and the admissibility bar exposes kernel placement, not just
 staging copies.
@@ -408,7 +408,7 @@ A/B at r=1.0, best chunk per method, stabler-preference applied:
 Against the fair baseline the G4 direction reverses: **pure relocation
 loses on Gen4 too**, 0.647–0.874×, entering the pre-registered
 [0.40, 0.80] band at N ≥ 8192 (0.798, 0.647) and converging into it with
-N. The #90 "A ties/wins even at r = 1.0" reading is withdrawn as a
+N. The [#90](https://github.com/JueonPark/sym/pull/90) "A ties/wins even at r = 1.0" reading is withdrawn as a
 staging artifact; what survives is a near-tie at small N that fades as
 the transfer amortizes. (Strictly: N=2048/4096 sit 0.005–0.07 above the
 band — small-N cells, where the same fixed-dispatch overhead that keeps
@@ -422,7 +422,7 @@ band — small-N cells, where the same fixed-dispatch overhead that keeps
 | quant | **A/B_fair** | 2.20× | 2.60× | **1.46×** | 1.54× |
 | convert_f16 | A/B_fair | 1.48× | 1.39× | 1.22× | 1.26× |
 
-Same shape as Gen3 (#95): the dtype-reduction win **survives in every
+Same shape as Gen3 ([#95](https://github.com/JueonPark/sym/issues/95)): the dtype-reduction win **survives in every
 cell** (A beats a link-rate baseline), but the strict ≥1.5× bar grazes
 below once, at N=8192 (1.4643). As on Gen3, the recommended headline
 quotes `A/B_fair` — dtype reduction wins 1.46–2.60× on Gen4 — noting the
@@ -444,18 +444,18 @@ the R2 session rooflines (same box, triad within 2%).
 
 Both measured crossovers move substantially toward the model once the
 baseline is fair — and the **post-hoc `BW_B ≈ 16` correction of this
-report is now unnecessary**, as predicted in #95: `b_fair` lands at
+report is now unnecessary**, as predicted in [#95](https://github.com/JueonPark/sym/issues/95): `b_fair` lands at
 0.91× link directly. The R2-G5 2× criterion restated against `b_fair`:
 nchw and transpose_quant PASS (both-none agree), blocked_transpose
 2.07× (marginal FAIL), quant 3.30× (FAIL). The residual right-shift is
 consistent with the serial receive kernel documented above (the model
-assumes `BW_B = H2D`); folding that term into the B cost is #97's job.
+assumes `BW_B = H2D`); folding that term into the B cost is [#97](https://github.com/JueonPark/sym/issues/97)'s job.
 Two session-variance notes, disclosed not tuned: this session's *staged*
 quant curve never crosses 1.0 (R2's 0.992 was grazing), and staged
 blocked moved 0.499 → 0.604 — the staged baseline is noisy on WSL2,
 which is itself an argument for gating on `b_fair`.
 
-### Verdict on the #90 provisional scope
+### Verdict on the [#90](https://github.com/JueonPark/sym/pull/90) provisional scope
 
 - **Withdrawn**: "Method A ties/wins pure relocation at r = 1.0 on Gen4"
   (R2-G4's unexpected direction) — baseline artifact, reversed by
@@ -466,12 +466,12 @@ which is itself an argument for gating on `b_fair`.
   the Gen3↔Gen4 crossover framing; all WSL2 caveats, which now also
   cover the small-N `b_fair` admissibility misses.
 
-## BP restatement (issue #117) — the pipelined baseline
+## BP restatement (issue [#117](https://github.com/JueonPark/sym/issues/117)) — the pipelined baseline
 
 Measured history above is never edited (the staged table and the V1
 restatement both stand as recorded); this section restates against
-`b_pipelined` (#108/#114). Data/merge/convention: as in the R1 BP
-restatement (BP3 session #116/#124; stabler-preference merge; A/B = best
+`b_pipelined` ([#108](https://github.com/JueonPark/sym/issues/108)/[#114](https://github.com/JueonPark/sym/issues/114)). Data/merge/convention: as in the R1 BP
+restatement (BP3 session [#116](https://github.com/JueonPark/sym/issues/116)/[#124](https://github.com/JueonPark/sym/pull/124); stabler-preference merge; A/B = best
 effective-input GB/s ratio; gates.py --exp bp differs in some cells via
 its best-of-max merge — e.g. quant N=2048 reads 2.09 there vs 1.94 here).
 
@@ -489,7 +489,7 @@ spec for this part; box confirmed via
 "AMD Ryzen 7 7800X3D 8-Core Processor"`, which does not itself record
 cache size): the quant source tensor is 1 GiB and even the s8 output is
 256 MiB, both far past the cache. That cell lands at 1.42×, on the
-boundary-law prediction (≈1.43, #108's pre-registered arithmetic;
+boundary-law prediction (≈1.43, [#108](https://github.com/JueonPark/sym/issues/108)'s pre-registered arithmetic;
 docs/claim-ledger.md §Boundary law). At N=8192 the 256 MiB source already
 spills the V-cache, but the 64 MiB s8 output still fits — consistent with
 the intermediate 1.52× measured there, which sits ~+6% above the ≈1.43
@@ -499,7 +499,7 @@ source tensor is fully V-cache-resident there (N=2048: 16 MiB, N=4096:
 64 MiB vs 96 MB L3 — source bytes = N×N×4 per
 `bench/rtrack/figure_rstar.py:155,159` and
 `bench/results/cm4_registered_predictions.json`), so effective BW_cpu far
-exceeds the DDR5 roofline. This discharges #108's "above 1.5× despite the
+exceeds the DDR5 roofline. This discharges [#108](https://github.com/JueonPark/sym/issues/108)'s "above 1.5× despite the
 arithmetic → investigate, not celebrate" obligation for the explained
 part — N=2048/4096's elevation is accounted for by full cache residency;
 N=8192's +6% above the law is noted here, not decomposed.
@@ -528,4 +528,4 @@ only to mark it withdrawn (docs/claim-ledger.md).
 
 Columns are different datasets (R2 → V1 → BP rsweeps), labeled per the
 ledger's dataset note. The quant one-sided mismatch and blocked Δ are
-CM5's recorded RSTAR findings (#113).
+CM5's recorded RSTAR findings ([#113](https://github.com/JueonPark/sym/issues/113)).

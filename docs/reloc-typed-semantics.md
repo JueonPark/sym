@@ -1,4 +1,4 @@
-# Reloc typed relocation semantics (C1, issue #141)
+# Reloc typed relocation semantics (C1, issue [#141](https://github.com/JueonPark/sym/issues/141))
 
 Normative contract for the typed value transforms of the `reloc` dialect:
 `reloc.cast`, `reloc.quantize`, `reloc.dequantize`. It is the single authority
@@ -21,7 +21,7 @@ keeps reporting `typed_transform_unavailable` and `typed_artifacts_unavailable`
 **Versioning rule.** Every policy name below is bound to exactly one table.
 A different rounding, saturation, NaN or parameter interpretation is a new
 policy with its own name and reference; an existing name is never
-reinterpreted (Global Constraints of #141).
+reinterpreted (Global Constraints of [#141](https://github.com/JueonPark/sym/issues/141)).
 
 ## 1. Vocabulary
 
@@ -341,7 +341,7 @@ rows name their gtest cases.
 | CUDA `dequantS8F32`, `dequantRelocateS8F32` | `affine` with zero point `0` (`q · scale`) | **Directly usable** for zero point 0; **needs a reference/adapter path (R3)** for nonzero zero points and for channel axes other than the outermost | `CudaTypedSemantics.AffineDequantizeWitnessBits`, `CudaDequant.ExactVsHostReference`, `CudaDequantRelocate.MatchesHostOracle` |
 | CPU s8 → f32 | `affine` | **Needs a new reference path (R3)**: no CPU dequantize kernel | reference arithmetic pinned by `TypedSemantics.AffineDequantizeReferenceBits` |
 | Any kernel with `padRegions` | typed stage on a padded plan | **Unsupported** by the fused kernels (asserted); R3 must stage or bail | `Quant.h`, `CudaKernels.h` preconditions |
-| int4 pack/unpack (`packS8S4`, `unpackS4S8`) | — | **Out of scope** (no typed operation; sub-byte storage has no contract) | #132 quantization scope |
+| int4 pack/unpack (`packS8S4`, `unpackS4S8`) | — | **Out of scope** (no typed operation; sub-byte storage has no contract) | [#132](https://github.com/JueonPark/sym/issues/132) quantization scope |
 | PyTorch 2.14.0 `.to(torch.float16)` (CPU and CUDA) | `ieee_rne` | Matches every non-NaN witness bit for bit; NaN payload differs between CPU (truncated) and CUDA (canonical `0x7fff`, sign dropped) | outside conformance by §3.1 |
 | PyTorch `.to(torch.float32)` from f16 | `exact` | Matches | — |
 | PyTorch `torch.round` | `rne` | Matches (`[-2, -2, -0, 0, 2, 2]`) | — |
@@ -369,7 +369,7 @@ parameters and bindings need a new wire version. Until then the exporter
 answers `typed_unsupported` (`test/dialect/reloc/export_check.py`).
 
 **C4 and R3 receive** the witness vectors (§6), the compatibility table (§7)
-and these concrete kernel/reference gaps. R3 (issue #147,
+and these concrete kernel/reference gaps. R3 (issue [#147](https://github.com/JueonPark/sym/issues/147),
 [runtime-dispatch.md](runtime-dispatch.md)) closed 1–3 and 5 with the scalar
 reference (`reloc::typed::executeHost`: `inv` formed once from the declared
 scale, CPU dequantize with any zero point, CPU widening, channel maps over

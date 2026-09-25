@@ -1,13 +1,13 @@
-# V2 — Single-host isolation: link generation vs host ISA (issue #96)
+# V2 — Single-host isolation: link generation vs host ISA (issue [#96](https://github.com/JueonPark/sym/issues/96))
 
 **Status: COMPLETE.** The host-ISA half (sections 1–4) was measured on
 the Gen4 box 2026-07-29; the gen3 half (section 5a) was executed the same
 day on `rebel-gpu1` (bare-metal EPYC 7351 / RTX 2080 Ti — an AVX2-only
 host, so the gen3×avx512 cell is recorded impossible, the case the
 runbook anticipated). Pre-registered expectations and reading rules were
-posted to issue #96 before any data was taken. Final attribution: §6.
+posted to issue [#96](https://github.com/JueonPark/sym/issues/96) before any data was taken. Final attribution: §6.
 
-**Plan change (recorded).** Issue #96's link task asked for a BIOS
+**Plan change (recorded).** Issue [#96](https://github.com/JueonPark/sym/issues/96)'s link task asked for a BIOS
 gen3/x8 downgrade of the Gen4 box (one host, one variable). The owner
 decided to fill the gen3 axis on a 2080 Ti server instead. Consequence,
 stated up front: the link axis is then a **cross-box** comparison (link +
@@ -43,7 +43,7 @@ constrains what an ISA flip can test, and was stated before running:
 | `gather_quantize` (T2/T4, strided \*R025), `pack_s8_s4` (\*R0125) | ✓ | none | excluded from the avx2 arm; EPYC's `Auto` ran these **Scalar** |
 
 `Auto` ≡ AVX512 for every variant kernel on this host (`resolveFor`), so
-the V1 session (#104) doubles as an avx512-arm cross-check.
+the V1 session ([#104](https://github.com/JueonPark/sym/pull/104)) doubles as an avx512-arm cross-check.
 
 ## 2. Results against the pre-registered expectations
 
@@ -79,7 +79,7 @@ T=8, **1.17 at T=1** (avx2 faster). Not ISA-driven.
 (avx512-arm blocked r\* 0.396 also cross-checks V1's 0.374 from the same
 box a day earlier — session variance on a flat crossing.)
 
-## 3. Attribution statement (issue #96 acceptance)
+## 3. Attribution statement (issue [#96](https://github.com/JueonPark/sym/issues/96) acceptance)
 
 - **Supported**: R1/R3's *substantive* claim that a stronger transform
   host flips the CPU-bound outcomes — the 7800X3D really is 1.7–8×
@@ -195,7 +195,7 @@ T=1, where memory latency and per-core width dominate. Combined with the
 within-box ISA null (§2), the attribution closes from both directions:
 same box + different ISA → no gap; same ISA + different box → full gap.
 
-## 6. The 2×2 and final attribution (issue #96 acceptance)
+## 6. The 2×2 and final attribution (issue [#96](https://github.com/JueonPark/sym/issues/96) acceptance)
 
 | r\* (quant / blocked) | AVX-512 dispatch | AVX2 dispatch |
 |---|---|---|

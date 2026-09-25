@@ -1,9 +1,9 @@
-# bench/rtrack — R0.3 pipeline & measurement harness (issue #76)
+# bench/rtrack — R0.3 pipeline & measurement harness (issue [#76](https://github.com/JueonPark/sym/issues/76))
 
 The R-track's Method-A vs Method-B measurement rig over the R0.1 CPU quant
-kernels (#74/#77) and R0.2 GPU kernels (#75/#78).
+kernels ([#74](https://github.com/JueonPark/sym/issues/74)/[#77](https://github.com/JueonPark/sym/pull/77)) and R0.2 GPU kernels ([#75](https://github.com/JueonPark/sym/issues/75)/[#78](https://github.com/JueonPark/sym/pull/78)).
 
-**Isolated metric** (issue #76, verbatim): end-to-end (transform+transfer)
+**Isolated metric** (issue [#76](https://github.com/JueonPark/sym/issues/76), verbatim): end-to-end (transform+transfer)
 latency for one tensor, source in host DRAM (cold pinned staging),
 destination = final layout in GPU global memory.
 
@@ -11,7 +11,7 @@ destination = final layout in GPU global memory.
   `gather_quantize_f32_s8` / `quantize_pack_f32_s8` / `convert_f32_f16`,
   parallelized over a `GatherPool`) into double-buffered pinned staging
   (2 × chunk, event-gated reuse) → `cudaMemcpyAsync` of r·S bytes into the
-  final layout. On the r-sweep rows (issue #83) the wire payload is
+  final layout. On the r-sweep rows (issue [#83](https://github.com/JueonPark/sym/issues/83)) the wire payload is
   compressed and the DMA target is *not* the final artifact, so a real
   in-stream GPU receive kernel runs per chunk to decompress it back to f32
   in the dst layout — `convertF16F32`, `dequantS8F32`, or
@@ -21,8 +21,8 @@ destination = final layout in GPU global memory.
 - **Method B** (`b`, staged): per-chunk pageable→pinned staging copy (same
   thread budget as A's transform) → DMA of S fp32 bytes → R0.2 GPU transform
   kernels (`relocate_f32`, `quantize_f32_s8`, plus a bench-local f32→f16
-  kernel for T5, which issue #75's set does not include).
-- **Method B_fair** (`b_fair`, issue #95): identical to Method B but the
+  kernel for T5, which issue [#75](https://github.com/JueonPark/sym/issues/75)'s set does not include).
+- **Method B_fair** (`b_fair`, issue [#95](https://github.com/JueonPark/sym/issues/95)): identical to Method B but the
   source is resident in pinned memory, so the per-chunk staging memcpy is
   gone and the DMA reads the source directly (`host_stage_ms` = 0). This is
   the admissible baseline — a competent pure-relocation implementation would
@@ -40,7 +40,7 @@ wire).
 | ID | transform | dtype_out | r | A's host read |
 |----|-----------|-----------|---|---------------|
 | T1 | `transpose` | f32 | 1.0 | strided (runs of 1 elem) |
-| T1b | `blocked_transpose` (the sym#63 anchor) | f32 | 1.0 | strided (runs of N elems) |
+| T1b | `blocked_transpose` (the [sym#63](https://github.com/JueonPark/sym/issues/63) anchor) | f32 | 1.0 | strided (runs of N elems) |
 | T2 | `transpose_quant` | s8 | 0.25 | strided, fused gather+quant |
 | T3 | `quant` | s8 | 0.25 | contiguous |
 | T4 | `nchw_nhwc_quant` (B,C,H,W = N/64,64,64,N/64) | s8 | 0.25 | strided, fused |
@@ -67,13 +67,13 @@ Caveats to read T-rows correctly:
 Plans are **hand-authored** in `plans.h` and verified against independent
 index-math oracles + bijectivity in `RtrackTest.cpp`. Do NOT switch them to
 decoding `bench/reference_plan.h`: the frozen golden blob on main still
-carries the non-injective pre-fix strides from issue #63 (the fix lives on
+carries the non-injective pre-fix strides from issue [#63](https://github.com/JueonPark/sym/issues/63) (the fix lives on
 `fix-reference-plan-transpose`), and a decode-then-execute self-check
 cannot catch that class of bug.
 
 ## R2 r-sweep workloads
 
-Issue #83 fixes the final artifact at **f32** and sweeps only the wire
+Issue [#83](https://github.com/JueonPark/sym/issues/83) fixes the final artifact at **f32** and sweeps only the wire
 dtype — the payload Method A actually stages onto the PCIe link — across
 the four T1b/T2/T3/T4 families at r ∈ {1.0, 0.5, 0.25, 0.125} (wire
 f32/f16/s8/s4). 16 rows total, selected with `--transform rsweep` (the
@@ -158,7 +158,7 @@ nvcc -ccbin g++ -O3 -DNDEBUG -std=c++17 -arch=sm_75 \
 
 (`-arch=sm_89` on the Ada box.)
 
-## Session ritual (environment controls, issue #76)
+## Session ritual (environment controls, issue [#76](https://github.com/JueonPark/sym/issues/76))
 
 1. `sudo cpupower frequency-set -g performance` (or the sysfs equivalent).
 2. `sudo nvidia-smi -pm 1` (persistence mode; resets at reboot). Without
@@ -202,7 +202,7 @@ nvcc -ccbin g++ -O3 -DNDEBUG -std=c++17 -arch=sm_75 \
    Best chunk is chosen **per method** (they legitimately differ); bars
    from any `unstable` row (IQR/median > 5%) are hatched.
 
-7. R2 r-sweep figure (issue #83): A/B speedup vs r per family, plus
+7. R2 r-sweep figure (issue [#83](https://github.com/JueonPark/sym/issues/83)): A/B speedup vs r per family, plus
    measured and model-predicted critical r* (the r where A overtakes B):
 
    ```sh
@@ -218,7 +218,7 @@ nvcc -ccbin g++ -O3 -DNDEBUG -std=c++17 -arch=sm_75 \
    1.0]. The model composes stage rooflines (`--rooflines`, effective
    *input* GB/s) with a pipelined (`min(BW_cpu(r), H2D/r)`) and a serial
    (`1/BW_cpu + r/H2D`) variant; `--json` feeds `gates.py --rstar` for
-   R2-G5. `--b-method b|b_fair` (issue #95) selects which Method-B
+   R2-G5. `--b-method b|b_fair` (issue [#95](https://github.com/JueonPark/sym/issues/95)) selects which Method-B
    baseline anchors the speedup curve (default `b`, the staged R2
    figure); the choice is recorded in the JSON as `b_method`.
 
@@ -227,7 +227,7 @@ nvcc -ccbin g++ -O3 -DNDEBUG -std=c++17 -arch=sm_75 \
    `figure_rstar.py` on the two rsweep CSVs (raw + rerun) reproduces the same
    r* values with only ~0.005-level speedup differences at the reran points.
 
-8. Gates:
+8. Gates (BP pre-registration: [#115](https://github.com/JueonPark/sym/issues/115)):
 
    ```sh
    python3 bench/rtrack/gates.py --csv run.csv           # R1/EXP-1 (default)
@@ -237,18 +237,18 @@ nvcc -ccbin g++ -O3 -DNDEBUG -std=c++17 -arch=sm_75 \
    python3 bench/rtrack/gates.py --exp bp --csv bp_run.csv   # BP pre-registered gates (issue #115); --selftest runs without data
    ```
 
-   `--exp v1` (issue #95) checks whether each Method-B baseline reaches
+   `--exp v1` (issue [#95](https://github.com/JueonPark/sym/issues/95)) checks whether each Method-B baseline reaches
    ≥ 0.90 × the box's measured pinned H2D on the r=1.0 workloads; `b`
    (staged) is expected to fail the bar and `b_fair` to pass it. Bars are
    fixed in `gates.py` before the data is read. For the multi-GPU
-   pre-fold path (`bench-multigpu-reloc`, issue #98), `--reuse
+   pre-fold path (`bench-multigpu-reloc`, issue [#98](https://github.com/JueonPark/sym/issues/98)), `--reuse
    1,2,4,16` and `--streaming` sweep the folded artifact's per-load
    amortization against repeated vs. cold single-use loads, and
    `python3 bench/rtrack/exp4v_gate.py --json <run.json ...>` evaluates
    its V4-G1..G3 gates (speedup bar, DMA-leg admissibility, counter-case
    + rule-match) over the resulting JSON.
 
-   `--exp bp` (issue #115) is the two-stream overlap-fair gate set,
+   `--exp bp` (issue [#115](https://github.com/JueonPark/sym/issues/115)) is the two-stream overlap-fair gate set,
    registered before any `bp_*` data exists: BP-G1 checks `b_pipelined`
    effective input bandwidth ≥ 0.95× the box's pinned H2D on r=1.0 rows
    only (machine-conditional strict-N, dispatch-overhead caution); BP-G2
@@ -271,7 +271,7 @@ nvcc -ccbin g++ -O3 -DNDEBUG -std=c++17 -arch=sm_75 \
    machines to 0) and BP-G3 "no data" (no registered prediction row
    matches), so BP3 runs must use the canonical machine tags.
 
-### BP3 Gen4 session runbook (issue #116; run at the home box, then undraft PR)
+### BP3 Gen4 session runbook (issue [#116](https://github.com/JueonPark/sym/issues/116); run at the home box, then undraft PR)
 
 WSL2 caveats are recorded, not controlled (cpufreq unreadable; `nvidia-smi -lgc`
 refused in WSL) — lock clocks from the WINDOWS side first: `nvidia-smi -lgc 2610
@@ -319,7 +319,7 @@ naive-fallback kernel cost noted in `launchBPipeChunkKernel`'s comment,
 whereas `b`/`b_fair` report the single monolithic `kBeg`→`kEnd` span).
 `effective_input_GBps` = S / wall median.
 
-R2 (issue #83) adds four columns: `gpu_recv_ms` (median, summed per-chunk
+R2 (issue [#83](https://github.com/JueonPark/sym/issues/83)) adds four columns: `gpu_recv_ms` (median, summed per-chunk
 in-stream receive-kernel event time — Method A's r-sweep decompress
 stage; 0 on rows with `RecvStage::None`, i.e. all matrix rows and all
 `wire=f32` rsweep rows), `verified` (1/0 — whether the `--no-verify` gate
@@ -333,26 +333,26 @@ matrix T2 row also reports `wire=s8`). Column order in the CSV
 (`bench/rtrack/csv.h::csvHeaderLine`) is: ...,
 `gpu_kernel_ms,gpu_recv_ms,verified,variant,wire,h2d_occupancy`.
 
-BP1 (issue #114) adds `h2d_occupancy`: median over iterations of
+BP1 (issue [#114](https://github.com/JueonPark/sym/issues/114)) adds `h2d_occupancy`: median over iterations of
 sum(per-chunk h2d event time) / (evStart→evStop span); ~1.0 = the
 pipeline is DMA-saturated (kernels fully hidden), lower = exposed kernel
-or gaps. Populated for every method (issue #114).
+or gaps. Populated for every method (issue [#114](https://github.com/JueonPark/sym/issues/114)).
 
 ## R0 exit criteria status
 
 - Kernel correctness: R0.1/R0.2 test suites + this harness's per-config
   bit-exact gates; the quant round-trip max-abs-err bound
   (|x − q·scale| ≤ scale/2) is asserted in `RtrackTest.cpp`.
-- Regression anchor: "reproduces sym#63 numbers on Gen4 (gather ~14, H2D
+- Regression anchor: "reproduces [sym#63](https://github.com/JueonPark/sym/issues/63) numbers on Gen4 (gather ~14, H2D
   ~24, Method B flat) within ±10%" — run T1b/T3 on the 7800X3D + 4070 Ti
   SUPER box and compare `cpu_stage_ms`-derived gather GB/s, `h2d_ms`-derived
-  DMA GB/s, and `gpu_kernel_ms` flatness. **Caveat:** the sym#63 gather
-  figure was measured with the pre-fix reference plan (issue #63); after
+  DMA GB/s, and `gpu_kernel_ms` flatness. **Caveat:** the [sym#63](https://github.com/JueonPark/sym/issues/63) gather
+  figure was measured with the pre-fix reference plan (issue [#63](https://github.com/JueonPark/sym/issues/63)); after
   the fix the blocked-transpose gather pattern changed (runs of N elements
   instead of 1–2 KiB), so re-baseline the anchor on the first post-fix
   Gen4 run rather than treating 14 GB/s as gospel.
 
-## R2 gates (issue #83)
+## R2 gates (issue [#83](https://github.com/JueonPark/sym/issues/83))
 
 ```sh
 python3 bench/rtrack/gates.py --csv r2_gen4_matrix_nsweep.csv --exp r2 \
@@ -364,7 +364,7 @@ Bars are fixed in `gates.py`'s docstring *before* the Gen4 data is read
 wins): R2-G1 Gen4 H2D floor in [20, 26] GB/s; R2-G2 `quant` (T3) A ≥
 1.50x B; R2-G3 `transpose_quant`/`nchw_nhwc_quant` (T2/T4) A/B < 0.95;
 R2-G4 `blocked_transpose` (T1b) A/B in [0.40, 0.80] (barred on T1b, not
-plain T1, per sym#63's blocked-gather anchor); R2-G5 per-family measured
+plain T1, per [sym#63](https://github.com/JueonPark/sym/issues/63)'s blocked-gather anchor); R2-G5 per-family measured
 r* within 2x of the `figure_rstar.py --json` prediction. `load_rows()`
 filters to `variant=matrix` unconditionally, so R2-G1..G4 read the
 output of `configs/r2_gen4_matrix_nsweep.json` /
@@ -375,7 +375,7 @@ rstar.json`, which is then passed back into `gates.py --rstar` for
 R2-G5. All three configs target the 7800X3D + 4070 Ti SUPER (Gen4) box,
 no `numactl` (single-NUMA).
 
-### CM1 Gen4 recv-kernel run (issue #109 runbook)
+### CM1 Gen4 recv-kernel run (issue [#109](https://github.com/JueonPark/sym/issues/109) runbook)
 
 The Gen4 box has no `copy_f32` ceiling measurement and no usable committed
 recv-kernel data (`gpu_recv_ms` in the pipeline CSVs is chunked/overlapped
@@ -425,7 +425,7 @@ an isolated cold run — the two bases differ by ~20% on dequant. CM5's `m_eff`
 composition must first decide on a single measurement basis (warm in-pipeline
 vs. cold isolated) before consuming the `recv.m.*` keys.
 
-## R6 bind demo (issue #87)
+## R6 bind demo (issue [#87](https://github.com/JueonPark/sym/issues/87))
 
 `r6_bind_demo.py` — the cross-box no-recompile bind demo: binds the
 committed MLIR-folded corpus blob (`blocked_transpose_sym.bin`) at
@@ -438,7 +438,7 @@ See `docs/r6-crossbox-bind.md`.
     PYTHONPATH=build/sym/python python3 bench/rtrack/r6_bind_demo.py \
         --machine epyc7351-2080ti
 
-### R6 Gen4 runbook (issue #87; run at the home box, then undraft PR)
+### R6 Gen4 runbook (issue [#87](https://github.com/JueonPark/sym/issues/87); run at the home box, then undraft PR)
 
 No session ritual needed — this writes no measurement; any load state
 is fine.
@@ -454,7 +454,7 @@ is fine.
 CI's byte-equality check (previously skipping with "not committed yet")
 goes live on push; when it is green, undraft the PR.
 
-## R7 e2e overlap (issue #88)
+## R7 e2e overlap (issue [#88](https://github.com/JueonPark/sym/issues/88))
 
 `e2e_overlap.cu` — Regime-5 end-to-end: L-layer weight-loading loop with
 per-layer cuBLAS GEMMs concurrent to the load. Methods: `a` (host
@@ -495,7 +495,7 @@ Commit CSVs + the per-machine gate report
 Gen4-named file, not `bench/results/r7_gate_report.txt`, which is Gen3's
 report and must not be overwritten. The doc's Gen4-pending note flips.
 
-## V3 cost-model tools (issue #97)
+## V3 cost-model tools (issue [#97](https://github.com/JueonPark/sym/issues/97))
 
 - **`make_calibration.py`** — assembles a `calibration/<machine>.cal` flat
   file (the `reloc::costmodel::CostModel` parser's input format) from

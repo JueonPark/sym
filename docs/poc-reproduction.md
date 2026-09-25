@@ -1,4 +1,4 @@
-# PoC reproduction: 32768² fp32 blocked transpose (issue #47)
+# PoC reproduction: 32768² fp32 blocked transpose (issue [#47](https://github.com/JueonPark/sym/issues/47))
 
 **Result: ours 499.31 ms vs baseline 180.95 ms (wall,
 median of 3×50) → 0.36× speedup.** Run-to-run median spread:
@@ -36,7 +36,7 @@ Raw data: `bench/results/poc_transpose_n32768.json`.
 
 **The measured speedup is 0.36×, i.e. ours is roughly 2.8× *slower* than
 the baseline, not ~2× faster.** This is materially below the ~2× PoC
-expectation stated in issue #47. Per the issue's acceptance bar, this is
+expectation stated in issue [#47](https://github.com/JueonPark/sym/issues/47). Per the issue's acceptance bar, this is
 reported as-is and is flagged as a **schedule-discussion trigger**, not
 something silently tuned away: no chunk sizes, buffer counts, iteration
 counts, or method definitions were adjusted in response to this result.
@@ -85,8 +85,8 @@ anomalies were observed (both spreads were far under the 5% bar), though
 WSL2 is noted here as the standing environment caveat for anyone trying
 to reproduce these numbers on bare-metal Linux.
 
-The ~2× PoC figure is the expectation, not the pass bar (issue #47); this
+The ~2× PoC figure is the expectation, not the pass bar (issue [#47](https://github.com/JueonPark/sym/issues/47)); this
 note reports the measured value as-is. Protocol reuse: the same header
 drives `bench/bind_cost.cpp` (#C3 bind cost, `bench/results/
 bind_cost_n4096.json`: median 0.0069 ms). Gather/H2D overlap
-trace: see `bench/results/poc_overlap_summary.md` (issue #47 comment).
+trace: see `bench/results/poc_overlap_summary.md` (issue [#47](https://github.com/JueonPark/sym/issues/47) comment).

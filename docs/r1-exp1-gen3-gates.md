@@ -1,4 +1,4 @@
-# R1 / EXP-1 — Gen3 gate experiment (issue #82) — GO/NO-GO result
+# R1 / EXP-1 — Gen3 gate experiment (issue [#82](https://github.com/JueonPark/sym/issues/82)) — GO/NO-GO result
 
 **Verdict: G2 PASS → win-condition (a). Proceed to R2 (Gen4 crossover).**
 
@@ -34,7 +34,7 @@ required for GO.
 ## Why G3 and G4 fail here (expected, machine-specific)
 
 G3/G4 failing is **not** a model falsification — it is the AVX2-only Zen1
-host hitting a strided-gather wall, exactly the risk the issue-#73 register
+host hitting a strided-gather wall, exactly the risk the issue-[#73](https://github.com/JueonPark/sym/issues/73) register
 flagged for this box. The stage rooflines make the cause explicit:
 
 Strided CPU read bandwidth (GB/s, `bench-cpu-rooflines`, N=8192):
@@ -115,12 +115,12 @@ number (13.08). The link is the floor, as claimed.
 - The r-sweep (critical r\*) and the Gen4 repeat are R2 (issue for the next
   item).
 
-## BP restatement (issue #117) — the pipelined baseline
+## BP restatement (issue [#117](https://github.com/JueonPark/sym/issues/117)) — the pipelined baseline
 
 Measured history above is never edited; this section restates the R1 gates
-against `b_pipelined` (#108/#114) — chunked H2D with the receive/transform
+against `b_pipelined` ([#108](https://github.com/JueonPark/sym/issues/108)/[#114](https://github.com/JueonPark/sym/issues/114)) — chunked H2D with the receive/transform
 kernel issued in-stream, the Method B a competent implementation would ship.
-Data: the BP3 session (#116/#124), stabler-preference merged
+Data: the BP3 session ([#116](https://github.com/JueonPark/sym/issues/116)/[#124](https://github.com/JueonPark/sym/pull/124)), stabler-preference merged
 (docs/r2-exp2-gen4-crossover.md:48-58) via the regen-locked
 bench/results/cm5_eval_report.json machinery. A/B = ratio of best
 effective-input GB/s per method. Note: `gates.py --exp bp` prints slightly
@@ -140,7 +140,7 @@ section's stated 1.74–2.43× range rather than an invented per-N figure.
 
 Every N lands below the strict 1.5× bar; the true range across all four N
 is 1.40–1.48× (the family dips at N=4096, not at an endpoint). This is
-#108's residual risk 1, realized — and its pre-registered handling
+[#108](https://github.com/JueonPark/sym/issues/108)'s residual risk 1, realized — and its pre-registered handling
 governs: "even then the boundary law itself (both-box ratio consistency)
 stands and the claim completes as a when-does-it-win map (Build Doc v3
 §5.2)". The headline moves to the boundary law (docs/claim-ledger.md
@@ -159,12 +159,12 @@ measures A/B_pipelined = 0.0826 / 0.0499 / 0.0505 / 0.0493 at N=2048 / 4096
 sitting inside the staged 0.11–0.33× band above. Both stay far below the
 G3/G4 bars at every N; Method A does not approach parity anywhere.
 `transpose_quant` (T2, also G3) has **no** `b_pipelined` measurement: the
-#114 chunkability audit recorded it N/A by construction — the relocate leg
+[#114](https://github.com/JueonPark/sym/issues/114) chunkability audit recorded it N/A by construction — the relocate leg
 of a column-band chunk is legal, but the per-channel quantize leg cannot
 run per chunk once the source is no longer channel-contiguous, so chunking
 the relocate leg while running quantize as a monolithic tail would not be
 a genuinely pipelined B. The CM5 report's `excluded_cells` list
-(bench/results/cm5_eval_report.json, #113) discloses the same eight
+(bench/results/cm5_eval_report.json, [#113](https://github.com/JueonPark/sym/issues/113)) discloses the same eight
 excluded rows (both boxes × all four N, reason "no measured b_pipelined
 matrix row") rather than approximating a number.
 
@@ -177,6 +177,6 @@ matrix row") rather than approximating a number.
 | nchw_nhwc_quant | none | none | none (agree) |
 | transpose_quant | none | none | none (agree) |
 
-Source: cm5_eval_report.json rstar_rows (CM5, #113); the Δ and the
+Source: cm5_eval_report.json rstar_rows (CM5, [#113](https://github.com/JueonPark/sym/issues/113)); the Δ and the
 one-sided serial mismatch are CM5's recorded RSTAR findings, not new
 results.

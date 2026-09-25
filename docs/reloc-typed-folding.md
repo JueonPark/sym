@@ -1,4 +1,4 @@
-# Reloc typed folding (C2, issue #142)
+# Reloc typed folding (C2, issue [#142](https://github.com/JueonPark/sym/issues/142))
 
 How the compiler folds the typed value transforms of
 [reloc-typed-semantics.md](reloc-typed-semantics.md) (C1) together with the
@@ -164,7 +164,7 @@ A typed plan whose channel map is not a single plan-axis coordinate, or whose
 layout has pads, is representable here and unsupported there until R3 adds a
 reference path.
 
-## 5. Handoff to C3 (implemented, issue #143)
+## 5. Handoff to C3 (implemented, issue [#143](https://github.com/JueonPark/sym/issues/143))
 
 The typed artifact carries exactly what this section asked for: wire format
 v1 ([reloc-plan-format.md, "Wire Format v1"](reloc-plan-format.md#wire-format-v1-typed-plans))

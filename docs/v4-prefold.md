@@ -1,4 +1,4 @@
-# V4 / P4 — Pre-folded transform path (issue #98)
+# V4 / P4 — Pre-folded transform path (issue [#98](https://github.com/JueonPark/sym/issues/98))
 
 **Verdict: gate V4-G1 FAILS on this box (aprefold/B_xK = 2.17x at scatter
 K=4 N=8192, bar 3.0x); V4-G2 PASSES (aprefold's DMA leg reaches 12.86 GB/s,
@@ -25,10 +25,10 @@ against R3's own), so this harness change is a possible-but-unevidenced
 contributor to that cell's draw, not something silently ruled out. Tool:
 `bench-multigpu-reloc`
 (`bench/rtrack/multigpu_reloc.cu`) with the Task 3 `--reuse`/`--streaming`
-flags (issue #98); gate script `bench/rtrack/exp4v_gate.py` (Task 4,
+flags (issue [#98](https://github.com/JueonPark/sym/issues/98)); gate script `bench/rtrack/exp4v_gate.py` (Task 4,
 committed before this data was collected). Data in `bench/results/v4_*`.
 Binary + code at HEAD `8312884` (bench: pre-register V4-G1..G3 gate
-bars, #98).
+bars, [#98](https://github.com/JueonPark/sym/issues/98)).
 
 ## Methods (same three as R3, plus the pre-folded path)
 
@@ -143,7 +143,7 @@ without more reps or a variance-aware bar.
 **G1: scatter K=4 N=8192, aprefold/B_xK = 2.17x < 3.00x → FAIL** on this
 box, for the noisy-B_xK-denominator reason explained above.
 
-This FAIL does not block #94's validity-hardening track: that track
+This FAIL does not block [#94](https://github.com/JueonPark/sym/issues/94)'s validity-hardening track: that track
 depends on prefoldArtifact's correctness properties, not on G1's ratio.
 `prefoldWins` likewise remains consumable by #V3 as-is — its inputs are
 `tTransformMs`/`tPrefoldMs`/`penaltyMs` (transform and fold times), none
@@ -272,7 +272,7 @@ with the reuse GPU work.
   (currently n_reuse ≈ 4-16) and how much of `t_prefold_cold_ms` is fold
   vs. `allocStaging` (see below). Every "X ms" number in this doc is this
   box's, not a portable constant.
-- **Shared-root K=2 contention** (M0/#99's territory, not re-attributed
+- **Shared-root K=2 contention** (M0/[#99](https://github.com/JueonPark/sym/issues/99)'s territory, not re-attributed
   here): `nvidia-smi topo -m` confirms GPU0+GPU1 share a PHB (PCIe host
   bridge); K=2 in every table above lands on that contended pair, so its
   numbers conflate GPU-count scaling with shared-root contention exactly

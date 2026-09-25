@@ -1,4 +1,4 @@
-# R4 / EXP-4 — Hiding-ratio model validation on Turing (issue #85)
+# R4 / EXP-4 — Hiding-ratio model validation on Turing (issue [#85](https://github.com/JueonPark/sym/issues/85))
 
 **Verdict: model validated. On the 2080 Ti under Gen3 PCIe, every kernel in
 the R0.2 transform set hides under the transfer (predicted and observed),
@@ -65,7 +65,7 @@ Measured `ratio = 544 / 13.06 ≈ 41.7` (theoretical `616 / 13.06 ≈ 47.2`).
 scatter at `m = 26.8`, still below the ratio of ~42. So on Turing under a
 Gen3 link, the GPU-side transform is *never* the bottleneck — the transfer
 always dominates. This is the quantitative explanation of the "Method B is
-flat" observation from sym#63: the hiding ratio is large enough (~42) that
+flat" observation from [sym#63](https://github.com/JueonPark/sym/issues/63): the hiding ratio is large enough (~42) that
 the entire R0.2 kernel set, up to and including a maximally-uncoalesced
 random scatter, is absorbed under the PCIe transfer. The model also says
 where hiding *would* break: a kernel above ~42 copy-passes, which none of

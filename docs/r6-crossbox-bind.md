@@ -1,4 +1,4 @@
-# R6 — cross-box no-recompile bind demo (issue #87)
+# R6 — cross-box no-recompile bind demo (issue [#87](https://github.com/JueonPark/sym/issues/87))
 
 **Claim demonstrated**: the same MLIR-folded symbolic relocation plan
 (`libreloc/test/corpus/blocked_transpose_sym.bin`, the V3 wire-row plan:
@@ -9,9 +9,9 @@ bind time — and the choice is correct on both boxes, with zero per-box
 recompilation or refitting. Cross-box generalization of V3's wire row
 (`docs/v3-costmodel.md` §6: one box, one decision).
 
-Narrowing provenance: issue #107 "Reconciliation with #87" — the
-held-out prediction-accuracy half of #87 went to CM4 (#112/#121) and
-CM5 (#113/#126); this demo is the remaining half.
+Narrowing provenance: issue [#107](https://github.com/JueonPark/sym/issues/107) "Reconciliation with [#87](https://github.com/JueonPark/sym/issues/87)" — the
+held-out prediction-accuracy half of [#87](https://github.com/JueonPark/sym/issues/87) went to CM4 ([#112](https://github.com/JueonPark/sym/issues/112)/[#121](https://github.com/JueonPark/sym/pull/121)) and
+CM5 ([#113](https://github.com/JueonPark/sym/issues/113)/[#126](https://github.com/JueonPark/sym/pull/126)); this demo is the remaining half.
 
 ## Setup
 
@@ -92,12 +92,12 @@ CM5 (#113/#126); this demo is the remaining half.
 | 1.0 | 8192 | 13.955 | 9.537 | b | b | 3.38132e+06 | match |
 | 1.0 | 16384 | 56.986 | 36.380 | b | b | 3.38132e+06 | match |
 
-## Why there is no #73 gate registration for this demo
+## Why there is no [#73](https://github.com/JueonPark/sym/issues/73) gate registration for this demo
 
 Nothing here is a new stochastic measurement. The decision tables are
 deterministic functions of committed calibrations + committed code; the
-measured winners were committed by BP3 (#116/#124) and merged by the
-CM5 rule (#113/#126). The acceptance bars (23/24 with the pinned miss;
+measured winners were committed by BP3 ([#116](https://github.com/JueonPark/sym/issues/116)/[#124](https://github.com/JueonPark/sym/pull/124)) and merged by the
+CM5 rule ([#113](https://github.com/JueonPark/sym/issues/113)/[#126](https://github.com/JueonPark/sym/pull/126)). The acceptance bars (23/24 with the pinned miss;
 artifact byte-equality) are enforced continuously in CI, which is
 stronger than a one-shot pre-registered run. The expected outcomes were
 still written into the spec before the code existed
@@ -114,7 +114,7 @@ Gen4 session: see "R6 Gen4 runbook" in `bench/rtrack/README.md`.
 
 ## Cross-links
 
-#87 (this demo) · #107 reconciliation (scope split) · CM4/CM5 (held-out
+[#87](https://github.com/JueonPark/sym/issues/87) (this demo) · [#107](https://github.com/JueonPark/sym/issues/107) reconciliation (scope split) · CM4/CM5 (held-out
 model-quality gates, `bench/results/cm5_eval_report.json`) · V3 §6 wire
 row (single-box precedent) · BP3 (`bp_rsweep*` ground truth) ·
 `docs/claim-ledger.md` "Machinery" row.

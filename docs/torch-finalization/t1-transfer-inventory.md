@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Account for the eager and FX CPU–GPU transfers relevant to #131,
+**Goal:** Account for the eager and FX CPU–GPU transfers relevant to [#131](https://github.com/JueonPark/sym/issues/131),
 and publish a tested, reason-coded eligibility contract.
 
 **Architecture:** Add an optional sibling `reloc_torch` package containing

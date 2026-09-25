@@ -162,7 +162,7 @@ decoders must reject unknown versions rather than attempt partial reads.
 | Version | Content | Encoder | Decoder |
 | --- | --- | --- | --- |
 | `0` | layout-only `#reloc.plan` (this document above); frozen, byte-identical goldens | `encodePlan` | `decodePlan` (v0 only) |
-| `1` | typed `#reloc.typed_plan` (C3, issue #143; below) | `encodeTypedPlan` | `decodeTypedPlan` (v1 only) |
+| `1` | typed `#reloc.typed_plan` (C3, issue [#143](https://github.com/JueonPark/sym/issues/143); below) | `encodeTypedPlan` | `decodeTypedPlan` (v1 only) |
 
 `decodePlan` never accepts v1 and `decodeTypedPlan` never accepts v0: a
 runtime built before v1 rejects a v1 blob with `unsupported wire format

@@ -1,7 +1,7 @@
-# Torch transfer inventory, compiler artifacts, guarded replacement, transport and weight lifecycle (T1–T4/R2, issues #134–#137/#146)
+# Torch transfer inventory, compiler artifacts, guarded replacement, transport and weight lifecycle (T1–T4/R2, issues [#134](https://github.com/JueonPark/sym/issues/134)–[#137](https://github.com/JueonPark/sym/issues/137)/[#146](https://github.com/JueonPark/sym/issues/146))
 
 The combined entry point, examples and CPU/CUDA integration evidence are
-[runtime-integration.md](runtime-integration.md) (R4, issue #148); typed rows
+[runtime-integration.md](runtime-integration.md) (R4, issue [#148](https://github.com/JueonPark/sym/issues/148)); typed rows
 are [typed-relocation-support.md](typed-relocation-support.md).
 
 T1 observes eager dispatch and inventories FX graphs. T2 now imports conservative
@@ -47,7 +47,7 @@ bound = pyreloc.bind(plan, compiled.bind_values(source_tensor))
 This surface prepares and binds a host relocation plan only; the sections
 below describe execution.
 
-## R2: tensor, stream and lifetime adapter (#146)
+## R2: tensor, stream and lifetime adapter ([#146](https://github.com/JueonPark/sym/issues/146))
 
 `reloc_torch.transport.prepare_transfer(compiled, source, device, *,
 non_blocking=False)` validates without allocating or launching: frontend
@@ -71,7 +71,7 @@ forward host gather); it never routes through the inverse-scatter `d2h`. The
 `(2, 3, 4) -> permute(1, 2, 0)` witness and the transpose/pad recipes compare
 against independently constructed CPU results, not round trips.
 
-## T3: guarded custom op, graph replacement and eager routing (#136)
+## T3: guarded custom op, graph replacement and eager routing ([#136](https://github.com/JueonPark/sym/issues/136))
 
 `reloc_torch.RelocBackend(compiler=..., runtime=...)` is a callable
 `torch.compile` backend and `reloc_torch.eager_transfers(backend=...)` is a
@@ -160,7 +160,7 @@ regions (`copy_`, mutation through a view, returned/shared intermediates, two
 transfers, noncontiguous results, view-only functions) show zero replacement and
 identical values, aliases and version counters.
 
-| Gate (T3 #136, R2 #146, T4 #137) | Status on 2026-09-23 |
+| Gate (T3 [#136](https://github.com/JueonPark/sym/issues/136), R2 [#146](https://github.com/JueonPark/sym/issues/146), T4 [#137](https://github.com/JueonPark/sym/issues/137)) | Status on 2026-09-23 |
 | --- | --- |
 | Registration, fake metadata, opcheck (CPU and CUDA sources) | Passed |
 | Graph safety, fallback before launch, handle lifetime, close | Passed |
@@ -201,7 +201,7 @@ CUDA environment: the same interpreter and dependency versions with PyTorch
 The pre-R2 counts (244/454 CPU, 272 passed + 44 R2 skips CUDA) and the pre-T4
 counts (471 CPU, 373 CUDA) are recorded in the git history of this file.
 
-## T4: dynamic inputs and weight lifecycle (#137)
+## T4: dynamic inputs and weight lifecycle ([#137](https://github.com/JueonPark/sym/issues/137))
 
 The installation, activation and boundary guide is
 [Torch integration](torch-integration.md). T4 adds:

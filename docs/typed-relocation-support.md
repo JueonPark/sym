@@ -1,6 +1,6 @@
-# Typed relocation support (C4, issue #144)
+# Typed relocation support (C4, issue [#144](https://github.com/JueonPark/sym/issues/144))
 
-The typed relocation track (issues #132 and #133) is complete end to end:
+The typed relocation track (issues [#132](https://github.com/JueonPark/sym/issues/132) and [#133](https://github.com/JueonPark/sym/issues/133)) is complete end to end:
 C1 defines the value transforms ([reloc-typed-semantics.md](reloc-typed-semantics.md)),
 C2 folds them with layouts ([reloc-typed-folding.md](reloc-typed-folding.md)),
 C3 ships them as wire v1 artifacts ([reloc-export.md](reloc-export.md)), R3
