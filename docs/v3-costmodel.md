@@ -1,4 +1,4 @@
-# V3 — P3b cost-model component (issue #97)
+# V3 — P3b cost-model component (issue [#97](https://github.com/JueonPark/sym/issues/97))
 
 **Verdicts: V3-MISCLASS 8/60 = 0.133 PASS (bar ≤ 0.15, cushion is 2 cells,
 not the 1.7-point gap it looks like — 9/60 = 0.150 would still PASS, only
@@ -201,7 +201,7 @@ same degenerate cluster:
   (9/60 = 0.150 still PASSes on the inclusive boundary; 10/60 = 0.167
   fails), not the visually larger 1.7-point gap between 13.3% and 15%.
   Note the pre-registered gate implements this as an *inclusive* `<=`
-  comparison (`rate <= MISCLASS_BAR` in `v3_gate.py`), while issue #97's
+  comparison (`rate <= MISCLASS_BAR` in `v3_gate.py`), while issue [#97](https://github.com/JueonPark/sym/issues/97)'s
   own prose states the bar as strict ("winner misclassification **< 15
   %**"). The two readings agree on the actual result (0.133 clears both),
   but the 9/60 = 0.150 boundary case above is exactly where they would
@@ -423,11 +423,11 @@ header note).
 `bench-rtrack`'s `--plan-wire` flag are documented in
 `bench/rtrack/README.md`.
 
-## v1 — CM5 gate re-run on the BP dataset (issue #113)
+## v1 — CM5 gate re-run on the BP dataset (issue [#113](https://github.com/JueonPark/sym/issues/113))
 
 **Verdicts (bars fixed pre-data; rule v1 per CM4):**
 
-| gate | universe | b_fair (Serial) | b_pipelined (Overlapped) | v0 (in-sample, #97) |
+| gate | universe | b_fair (Serial) | b_pipelined (Overlapped) | v0 (in-sample, [#97](https://github.com/JueonPark/sym/issues/97)) |
 |---|---|---|---|---|
 | MISCLASS ≤ 0.15 | all cells (48/40) | 2/48 = 0.0417 PASS | 2/40 = 0.0500 PASS | 8/60 = 0.133 PASS |
 | MISCLASS ≤ 0.15 | held-out test-N (24/20) | 1/24 = 0.0417 PASS | 1/20 = 0.0500 PASS | none (v0 evaluated in-sample only, no held-out split) |
@@ -442,11 +442,11 @@ the same v0 figure appears in both the b_fair and b_pipelined rows' place (one
 column, not two) per spec S3's "side-by-side with v0" (not a re-run: v0's own
 bars and cells are untouched by this evaluation).
 
-Data: BP3 (#116/#124), stabler-preference merged (merge_audit in the report).
+Data: BP3 ([#116](https://github.com/JueonPark/sym/issues/116)/[#124](https://github.com/JueonPark/sym/pull/124)), stabler-preference merged (merge_audit in the report).
 Predictions: cm4_registered_predictions.json only. Held-out caveat re-quoted:
 "the committed calibrations' overhead.{a,b}_ms intercepts were two-point-fit
 on N in {2048, 16384} endpoints, so test-N data touched calibration inputs;
-the split stratifies evaluation (per #87's reconciliation in #107), not
+the split stratifies evaluation (per [#87](https://github.com/JueonPark/sym/issues/87)'s reconciliation in [#107](https://github.com/JueonPark/sym/issues/107)), not
 calibration -- recorded, not fixed; bars unchanged". No held-out RSTAR
 (r-sweep is N=16384-only — already all-test-N). v0 verdicts above stand as
 recorded.
@@ -460,7 +460,7 @@ recorded.
 | always-B | 0.1502 (0.5073) | 0.1597 (0.5073) | 0.1640 (0.4817) | 0.1706 (0.4230) |
 | oracle | 0 | 0 | 0 | 0 |
 
-### Ablation, per box (all-cells scope; issue #113, spec §2 "per box and pooled")
+### Ablation, per box (all-cells scope; issue [#113](https://github.com/JueonPark/sym/issues/113), spec §2 "per box and pooled")
 
 | policy | b_fair epyc all | b_fair gen4 all | b_pipelined epyc all | b_pipelined gen4 all |
 |---|---|---|---|---|
@@ -534,9 +534,9 @@ pre-registered predictions and break CM4-REGEN. CM1's "the key lands in CM5"
 is superseded; all three land in the CM6 follow-up issue (filed with this
 PR), motivated by the miss table above.
 
-## v2 — CM6 post-hoc refinement re-run (issue #125)
+## v2 — CM6 post-hoc refinement re-run (issue [#125](https://github.com/JueonPark/sym/issues/125))
 
-**Post-hoc refinement, not a pre-registration** — the BP dataset (#124)
+**Post-hoc refinement, not a pre-registration** — the BP dataset ([#124](https://github.com/JueonPark/sym/pull/124))
 pre-existed this model revision. Defense: zero tuning freedom (the
 chunks key is a code constant; recv keys follow CM1's pre-declared cold
 derivations; Gen4 hbm values are CM1-measurement re-derivations). Bars
@@ -661,7 +661,7 @@ and `recv.m.dequant_s8_f32` move from 1.05/1.07 to 1.06/1.28. v1's values
 were ratios read off `v2_isa_gen3_rsweep_avx2_epyc7351-2080ti.csv`'s
 r-sweep; v2 re-derives them from
 `bench/results/cm1_recv_kernel_bw_epyc_2080ti.json`'s CM1 targeted run
-(issue #109) — `copy_f32`/kernel same-run ceiling at N=16384 — the
+(issue [#109](https://github.com/JueonPark/sym/issues/109)) — `copy_f32`/kernel same-run ceiling at N=16384 — the
 pre-declared cold basis CM1 committed to, not a new fit against the BP
 dataset.
 

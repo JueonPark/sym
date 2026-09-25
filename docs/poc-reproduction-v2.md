@@ -1,6 +1,6 @@
-# PoC re-measurement v2: 32768² fp32 blocked transpose — criterion-1 failure report (issue #67)
+# PoC re-measurement v2: 32768² fp32 blocked transpose — criterion-1 failure report (issue [#67](https://github.com/JueonPark/sym/issues/67))
 
-**Acceptance-criteria verdicts (issue #67, pre-registered, priority order):**
+**Acceptance-criteria verdicts (issue [#67](https://github.com/JueonPark/sym/issues/67), pre-registered, priority order):**
 
 1. **Criterion 1 (bottleneck flip): FAIL — the pipeline remains gather-bound.**
    The Nsight trace shows H2D copy-engine utilization 39.2% (up from v1's
@@ -17,9 +17,9 @@
    baseline, not faster.
 
 **Because criterion 1 failed, no speedup number is blessed as "the" v2
-headline.** Per issue #67's pre-registration, a criterion-1 failure means the
-speedup is not quoted as a headline and the design (#67) goes back to the
-board; #63 is **not** closed. The pre-registered "genuine crossover / E4–E5
+headline.** Per issue [#67](https://github.com/JueonPark/sym/issues/67)'s pre-registration, a criterion-1 failure means the
+speedup is not quoted as a headline and the design ([#67](https://github.com/JueonPark/sym/issues/67)) goes back to the
+board; [#63](https://github.com/JueonPark/sym/issues/63) is **not** closed. The pre-registered "genuine crossover / E4–E5
 input" framing does **not** apply here — that clause required criteria 1 and 2
 to hold, and criterion 1 did not.
 
@@ -30,10 +30,10 @@ untouched for archaeology. The v1↔v2 comparison spans a build-config change
 
 ## What changed since v1
 
-- **D1 — parallel per-chunk gather** (#65, merged via #68): the pipeline's
+- **D1 — parallel per-chunk gather** ([#65](https://github.com/JueonPark/sym/issues/65), merged via [#68](https://github.com/JueonPark/sym/pull/68)): the pipeline's
   per-chunk gather now runs on a persistent worker pool rather than one CPU
   thread. This benchmark ran with `threads_multi = 16`.
-- **D2 — chunk-size heuristic** (#66, merged via #69): the default chunk shrank
+- **D2 — chunk-size heuristic** ([#66](https://github.com/JueonPark/sym/issues/66), merged via [#69](https://github.com/JueonPark/sym/pull/69)): the default chunk shrank
   from 256 MiB to 64 MiB at N = 32768. Confirmed live in every v2 JSON:
   `chunk_bytes` is 4 / 16 / 64 / 64 MiB at N = 4096 / 8192 / 16384 / 32768
   (v1's N = 32768 run used 256 MiB).
@@ -175,7 +175,7 @@ Raw data: `bench/results/gather_bw_n32768_v2.json`.
 - **No tuning.** Nothing was adjusted in response to any result: no chunk
   sizes, buffer counts, stream counts, thread counts, iteration counts, or
   method definitions were changed after seeing a number. The D2 heuristic and
-  D1 pool were as merged in #69/#68; the instability was reported, not tuned
+  D1 pool were as merged in [#69](https://github.com/JueonPark/sym/pull/69)/[#68](https://github.com/JueonPark/sym/pull/68); the instability was reported, not tuned
   away.
 - **Verification.** Every committed transpose JSON is `"verified": true` —
   byte-exact `--verify` against the CPU reference passed in the same invocation

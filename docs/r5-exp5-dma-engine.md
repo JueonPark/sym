@@ -1,4 +1,4 @@
-# R5 / EXP-5 — DMA-engine negative result (issue #86)
+# R5 / EXP-5 — DMA-engine negative result (issue [#86](https://github.com/JueonPark/sym/issues/86))
 
 **Neither the copy engine's 2-D path nor UVA zero-copy is a viable
 substitute for the CPU-staged gather + pinned H2D. Zero-copy strided pull

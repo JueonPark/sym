@@ -1,4 +1,4 @@
-# Nsight Systems overlap-trace evidence (issue #47, C7)
+# Nsight Systems overlap-trace evidence (issue [#47](https://github.com/JueonPark/sym/issues/47), C7)
 
 ## Capture command
 

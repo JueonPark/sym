@@ -181,14 +181,14 @@ backend.close()
   does not accept (for example a `contiguous()` after a derived extent that no
   guard bounds) run on PyTorch and appear in the counters.
 - **Quantization.** Only explicitly requested. The prefold bridge
-  (`pyreloc.prefold_s8`) is validated and Torch-free. C3 (issue #143) defines
+  (`pyreloc.prefold_s8`) is validated and Torch-free. C3 (issue [#143](https://github.com/JueonPark/sym/issues/143)) defines
   the typed recipe and parameter contract: `reloc_torch.recipe.Cast`,
   `Quantize` and `Dequantize` with `InlineParam` / `BindingParam` parameters
   compile through `sym-reloc-export --typed` into a wire v1 typed plan with a
   schema-2 manifest ([reloc-export.md](reloc-export.md)), portable as
   `format_version` 2, loaded with `pyreloc.load_typed_plan` and bound with
   `pyreloc.bind_typed` ([libreloc/README.md](../libreloc/README.md#typed-plans-c3-issue-143)).
-  R3 (issue #147) executes them: `reloc_torch.dispatch.prepare_typed_transfer`
+  R3 (issue [#147](https://github.com/JueonPark/sym/issues/147)) executes them: `reloc_torch.dispatch.prepare_typed_transfer`
   / `execute_typed_transfer` run a typed recipe through the qualified rows of
   [runtime-dispatch.md](runtime-dispatch.md) (`original_cpu` forces the CPU
   reference pipeline; `auto` consults an optional calibration) and return the

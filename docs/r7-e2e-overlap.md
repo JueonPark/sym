@@ -1,10 +1,10 @@
-# R7 — End-to-end overlap, Regime 5 (issue #88)
+# R7 — End-to-end overlap, Regime 5 (issue [#88](https://github.com/JueonPark/sym/issues/88))
 
 **POST-FREEZE ADDENDUM.** Measured 2026-09-22, after the 2026-09-02 eval
-freeze, per #73's own W8 placement of R7 ("Writing + R7 if time"). Every R7
+freeze, per [#73](https://github.com/JueonPark/sym/issues/73)'s own W8 placement of R7 ("Writing + R7 if time"). Every R7
 CSV row carries `post_freeze=1`; no frozen CSV or figure was touched; the
 paper's main eval quotes pre-freeze data only. Gates (`gates.py --exp r7`)
-were committed and registered on #73 before this data existed — commit
+were committed and registered on [#73](https://github.com/JueonPark/sym/issues/73) before this data existed — commit
 order on branch `r7-e2e-overlap`: `843a567` (gates) precedes `db3fc35`
 (this session's CSVs + gate report).
 
@@ -309,7 +309,7 @@ python3 bench/rtrack/gates.py --exp r7 \
 
 ## Cross-links
 
-#88 (this track), #73 (post-freeze W8 registration comment),
+[#88](https://github.com/JueonPark/sym/issues/88) (this track), [#73](https://github.com/JueonPark/sym/issues/73) (post-freeze W8 registration comment),
 `docs/r4-exp4-hiding-ratio.md` (the idle-GPU hiding-ratio model this
 track extends to a loaded GPU), `docs/claim-ledger.md` (Post-freeze
 addenda row below; boundary-law and BP-pipelined ratio rows this doc

@@ -1,4 +1,4 @@
-# CM3 — one cost-model implementation (issue #111)
+# CM3 — one cost-model implementation (issue [#111](https://github.com/JueonPark/sym/issues/111))
 
 `bench/rtrack/figure_rstar.py`'s standalone roofline model is retired; predictions now
 come exclusively from `pyreloc.predict` (`reloc::costmodel`, the implementation
@@ -11,7 +11,7 @@ files — conflating them would misattribute the change:
 ## Axis 1 — V3-era implementation divergence (the issue's "1.6–2.9×")
 
 `figure_rstar.py`'s internal model had no intercepts (`overhead.{a,b}_ms`), no B-side
-HBM term (`hbm.m.*`, CM1 #109), and no K/broadcast handling. Documented at
+HBM term (`hbm.m.*`, CM1 [#109](https://github.com/JueonPark/sym/issues/109)), and no K/broadcast handling. Documented at
 `docs/v3-costmodel.md` "Two-sided implementation note": stored gen4
 `rstar_predicted` 0.1807 (blocked_transpose) / 0.1640 (quant) vs the V3-era
 `pyreloc.predict` 0.2914 / 0.4806 on the same family/box.

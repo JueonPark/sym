@@ -3,7 +3,7 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Demonstrate symbolic plan reuse and safe repeated parameter/buffer
-relocation, with reproducible installation and usage examples for #131.
+relocation, with reproducible installation and usage examples for [#131](https://github.com/JueonPark/sym/issues/131).
 
 **Architecture:** Exercise T3's backend across valid dynamic bindings and add
 an explicit weight-preparation owner that resolves live module slots on every
@@ -257,7 +257,7 @@ this file map/interface instead of adding a duplicate binding.
 ## Task 4: Publish supported usage and final integration evidence
 
 **Interfaces:** Ship the two runnable examples, `docs/torch-integration.md`,
-and the final support matrix. Share these commands/results with R4; #131
+and the final support matrix. Share these commands/results with R4; [#131](https://github.com/JueonPark/sym/issues/131)
 completion requires all T1–T4 acceptance, not just documentation presence.
 
 - [ ] Make `torch_weight_loading.py` demonstrate a parameter, a buffer, and

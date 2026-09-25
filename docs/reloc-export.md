@@ -1,6 +1,7 @@
 # Supported plan export (interface 1)
 
-Build the compiler target `sym-reloc-export`, then invoke:
+Build the compiler target `sym-reloc-export`, then invoke either form below.
+The typed form uses the artifact contract from [C3 / #143](https://github.com/JueonPark/sym/issues/143).
 
 ```sh
 # Layout-only chain: wire format v0 plan, manifest schema 1 (R1).
@@ -75,9 +76,9 @@ transform (`reloc.cast`, `reloc.quantize`, `reloc.dequantize`) submitted
 never encodes a value transform, so an R1 consumer that does not know the flag
 keeps receiving exactly the manifests it always did. Their semantics are
 defined in [reloc-typed-semantics.md](reloc-typed-semantics.md) (C1, issue
-#141), their folded representation `#reloc.typed_plan` in
-[reloc-typed-folding.md](reloc-typed-folding.md) (C2, issue #142), and the
-artifact in the schema 2 section below (C3, issue #143). Under `--typed`,
+[#141](https://github.com/JueonPark/sym/issues/141)), their folded representation `#reloc.typed_plan` in
+[reloc-typed-folding.md](reloc-typed-folding.md) (C2, issue [#142](https://github.com/JueonPark/sym/issues/142)), and the
+artifact in the schema 2 section below (C3, issue [#143](https://github.com/JueonPark/sym/issues/143)). Under `--typed`,
 `unsupported_expression` additionally covers parameter binding extents and
 channel maps outside the manifest vocabularies.
 

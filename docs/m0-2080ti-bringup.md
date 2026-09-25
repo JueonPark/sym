@@ -1,4 +1,4 @@
-# M0 — 2080 Ti machine bring-up (issue #73)
+# M0 — 2080 Ti machine bring-up (issue [#73](https://github.com/JueonPark/sym/issues/73))
 
 Measured 2026-07-20 on `rebel-gpu1`. Reproduce with
 `bench-multigpu-h2d` (bench/rtrack/multigpu_h2d.cu, this PR) plus
@@ -83,7 +83,7 @@ Found empirically (see PR discussion; reproducible with taskset):
   rtrack_smoke_n8192_epyc_2080ti.csv), i.e. the CPU transform roughly
   MATCHES the 13.1 GB/s gen3 link rather than exceeding it as on the
   7800X3D. G2/G3 bars must be re-derived from these measured rooflines
-  before EXP-1 runs, per the issue-#73 risk register.
+  before EXP-1 runs, per the issue-[#73](https://github.com/JueonPark/sym/issues/73) risk register.
 - G1 (Gen3 link floor 11–14 GB/s): satisfied — 13.08 pinned H2D.
 - Strided-gather roofline (T1b Method A): ~7 GB/s at any thread count
-  (memory-bound), consistent with the post-#63-fix figure.
+  (memory-bound), consistent with the post-[#63](https://github.com/JueonPark/sym/issues/63)-fix figure.

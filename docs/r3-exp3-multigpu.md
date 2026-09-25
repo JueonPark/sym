@@ -1,4 +1,4 @@
-# R3 / EXP-3 — Multi-GPU amortization (issue #84)
+# R3 / EXP-3 — Multi-GPU amortization (issue [#84](https://github.com/JueonPark/sym/issues/84))
 
 **Verdict: gate G5 FAILS on this box (scatter int8 K=4: A/B_xK = 0.92×,
 bar 1.30×). Method A wins at K=1 (1.18–1.20×), ties at K=2, loses at K=4 —
@@ -116,7 +116,7 @@ result.
 - 4-GPU concurrency noise controlled by the barrier start + 20 reps; IQR/
   median stayed low (JSON `iqr_over_median_pct`).
 
-## V5 addendum (issue #99) — pre-registered expectations
+## V5 addendum (issue [#99](https://github.com/JueonPark/sym/issues/99)) — pre-registered expectations
 
 *This section is committed BEFORE the V5 data is taken (the `gates.py`
 discipline, `a051a5a`). Measured results land in a follow-up commit below
@@ -198,6 +198,6 @@ uncontended single-source K=2 needs NUMA-interleaved or per-die
 replicated source allocation (`numactl` is not installed on this box);
 recorded as a follow-up, out of V5's scope.
 
-*Bonus row*: `aprefold` (P4, PR #101) held 2.9-4.4x over B_xK across
+*Bonus row*: `aprefold` (P4, PR [#101](https://github.com/JueonPark/sym/pull/101)) held 2.9-4.4x over B_xK across
 every V5 cell, including the remote-NUMA pair — pre-folding is robust to
 the placement effect because it ships r*S bytes over the same paths.

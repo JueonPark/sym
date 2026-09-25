@@ -1,4 +1,4 @@
-# Plan-driven typed dispatch (R3, issue #147)
+# Plan-driven typed dispatch (R3, issue [#147](https://github.com/JueonPark/sym/issues/147))
 
 R3 executes C3's typed bound plans ([reloc-export.md](reloc-export.md),
 [libreloc/README.md](../libreloc/README.md#typed-plans-c3-issue-143)) through
@@ -11,7 +11,7 @@ qualified paths and reports what it did. Three questions are kept apart:
 2. **Policy** (`prepareDispatch` / `selectImplementation`, `pyreloc.select_dispatch`):
    `original_cpu` forces the CPU reference pipeline, `auto` consults the
    central cost model ([CostModel.h](../libreloc/include/reloc/CostModel.h),
-   issue #111) when a calibration is given and translates its advice to an
+   issue [#111](https://github.com/JueonPark/sym/issues/111)) when a calibration is given and translates its advice to an
    eligible row or falls back with a recorded reason; an explicit row label
    is for tests and conformance evidence. Cost estimates rank; they never
    grant capability.
