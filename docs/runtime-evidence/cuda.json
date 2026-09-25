@@ -1,0 +1,609 @@
+{
+  "device": "cuda",
+  "environment": {
+    "cuda_devices": [
+      "NVIDIA GeForce RTX 2080 Ti",
+      "NVIDIA GeForce RTX 2080 Ti",
+      "NVIDIA GeForce RTX 2080 Ti",
+      "NVIDIA GeForce RTX 2080 Ti"
+    ],
+    "exporter": "/home/jueonpark/sym/.claude/worktrees/t3-custom-op/build/torch-cuda/sym/tools/sym-reloc-export",
+    "numpy": "2.5.3",
+    "nvidia_smi": [
+      "NVIDIA GeForce RTX 2080 Ti, 595.71.05",
+      "NVIDIA GeForce RTX 2080 Ti, 595.71.05",
+      "NVIDIA GeForce RTX 2080 Ti, 595.71.05",
+      "NVIDIA GeForce RTX 2080 Ti, 595.71.05"
+    ],
+    "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.35",
+    "pyreloc": "/home/jueonpark/sym/.claude/worktrees/t3-custom-op/build/torch-cuda/python/pyreloc/__init__.py",
+    "pyreloc_cuda_enabled": true,
+    "python": "3.14.7",
+    "python_build": "cpython cpython-314",
+    "pythonpath": "/home/jueonpark/sym/.claude/worktrees/t3-custom-op/build/torch-cuda/python:/home/jueonpark/sym/.claude/worktrees/t3-custom-op/libreloc/python",
+    "run_artifact": "/home/jueonpark/sym/.claude/worktrees/t3-custom-op/build/torch-cuda/libreloc/examples/reloc-run-artifact",
+    "source_dirty": false,
+    "source_revision": "e337d53385661b2c90987469baba2af4d18b8d38",
+    "torch": "2.14.0+cu126",
+    "torch_cuda": "12.6"
+  },
+  "prerequisites": [],
+  "scenarios": [
+    {
+      "details": {
+        "split_transpose": {
+          "constraints": {
+            "divisibility": [
+              {
+                "divisor": 64,
+                "expr": [
+                  "symbol",
+                  "s0"
+                ]
+              }
+            ]
+          },
+          "plan_bytes": 292,
+          "plan_sha256": "dd01f280fc85d3caff4f1092ff6c717084768a384da5f88747284159ec752def",
+          "symbols": [
+            "s0"
+          ]
+        },
+        "transpose_pad": {
+          "constraints": {
+            "divisibility": []
+          },
+          "plan_bytes": 396,
+          "plan_sha256": "9804e15a52f9939bf23112b64ad0a3cd2f218dc84c04e9b4ca5a1369c884c9f8",
+          "symbols": []
+        }
+      },
+      "name": "export_example_recipes",
+      "required": true,
+      "seconds": 0.008,
+      "status": "passed"
+    },
+    {
+      "details": {
+        "split_transpose_rebind": {
+          "artifact": "plan.bin",
+          "cases": [
+            {
+              "report": {
+                "destination_bytes": 256,
+                "direction": "host",
+                "requested_transfer_bytes": 256,
+                "source_bytes": 256,
+                "symbols": 1,
+                "verification_readback_bytes": 0
+              },
+              "seconds": 0.004,
+              "symbols": {
+                "s0": 64
+              }
+            },
+            {
+              "report": {
+                "destination_bytes": 512,
+                "direction": "host",
+                "requested_transfer_bytes": 512,
+                "source_bytes": 512,
+                "symbols": 1,
+                "verification_readback_bytes": 0
+              },
+              "seconds": 0.0038,
+              "symbols": {
+                "s0": 128
+              }
+            },
+            {
+              "report": {
+                "destination_bytes": 768,
+                "direction": "host",
+                "requested_transfer_bytes": 768,
+                "source_bytes": 768,
+                "symbols": 1,
+                "verification_readback_bytes": 0
+              },
+              "seconds": 0.0037,
+              "symbols": {
+                "s0": 192
+              }
+            }
+          ]
+        },
+        "transpose_pad": {
+          "artifact": "plan.bin",
+          "cases": [
+            {
+              "report": {
+                "destination_bytes": 192,
+                "direction": "host",
+                "requested_transfer_bytes": 192,
+                "source_bytes": 96,
+                "symbols": 0,
+                "verification_readback_bytes": 0
+              },
+              "seconds": 0.0035,
+              "symbols": {}
+            }
+          ]
+        }
+      },
+      "name": "cpp_host_layout",
+      "required": true,
+      "seconds": 0.017,
+      "status": "passed"
+    },
+    {
+      "details": {
+        "guard_violation": {
+          "diagnostic": "reloc-run-artifact: bind error: divisibility violated: value 100 not divisible by 64",
+          "exit": 1
+        },
+        "malformed_plan": {
+          "diagnostic": "reloc-run-artifact: decode error at byte offset 288: truncated: expected u32",
+          "exit": 1
+        },
+        "short_input": {
+          "diagnostic": "reloc-run-artifact: input holds 512 bytes but the plan's source descriptor needs 768",
+          "exit": 1
+        },
+        "typed_plan_refused": {
+          "diagnostic": "reloc-run-artifact: typed (wire v1) artifact: run it through pyreloc.prepare_dispatch or reloc_torch.dispatch (docs/runtime-dispatch.md); this example executes layout-only (wire v0) plans",
+          "exit": 1
+        },
+        "unknown_symbol": {
+          "diagnostic": "reloc-run-artifact: bind error: unknown symbol in binding: bogus",
+          "exit": 1
+        }
+      },
+      "name": "cpp_rejections",
+      "required": true,
+      "seconds": 0.016,
+      "status": "passed"
+    },
+    {
+      "details": {
+        "bindings": [
+          {
+            "exact": true,
+            "n": 64,
+            "total_bytes": 256
+          },
+          {
+            "exact": true,
+            "n": 128,
+            "total_bytes": 512
+          },
+          {
+            "exact": true,
+            "n": 192,
+            "total_bytes": 768
+          }
+        ],
+        "format_version": 1,
+        "symbols": [
+          "s0"
+        ],
+        "wire_version": 0
+      },
+      "name": "portable_artifact_fresh_process",
+      "required": true,
+      "seconds": 0.202,
+      "status": "passed"
+    },
+    {
+      "details": {
+        "pre_c3_runtime": "rejects every v1 blob at byte offset 4 (recorded baseline, docs/reloc-export.md)",
+        "v0_plans": 17,
+        "v1_plans": 13
+      },
+      "name": "wire_version_compatibility",
+      "required": true,
+      "seconds": 0.002,
+      "status": "passed"
+    },
+    {
+      "details": {
+        "fixtures": 13
+      },
+      "name": "typed_corpus_fresh",
+      "required": true,
+      "seconds": 0.276,
+      "status": "passed"
+    },
+    {
+      "details": {
+        "mode": "cuda",
+        "rows": [
+          "layout_cast B=4 policy=original_cpu: OK via cpu_reference (forced; wire 48 B, payload 48 B)",
+          "layout_cast B=4 policy=auto: OK via cpu_reference (only_qualified_path; wire 48 B, payload 48 B)",
+          "layout_cast B=9 policy=original_cpu: OK via cpu_reference (forced; wire 108 B, payload 108 B)",
+          "layout_cast B=9 policy=auto: OK via cpu_reference (only_qualified_path; wire 108 B, payload 108 B)",
+          "layout_quantize B=4 policy=original_cpu: OK via cpu_reference (forced; wire 12 B, payload 12 B)",
+          "layout_quantize B=4 policy=auto: OK via cpu_reference (no_calibration; wire 12 B, payload 12 B)",
+          "layout_quantize B=9 policy=original_cpu: OK via cpu_reference (forced; wire 27 B, payload 27 B)",
+          "layout_quantize B=9 policy=auto: OK via cpu_reference (no_calibration; wire 27 B, payload 27 B)",
+          "dequantize_layout B=4 policy=original_cpu: OK via cpu_reference (forced; wire 48 B, payload 48 B)",
+          "dequantize_layout B=4 policy=auto: OK via cpu_reference (only_qualified_path; wire 48 B, payload 48 B)",
+          "dequantize_layout B=9 policy=original_cpu: OK via cpu_reference (forced; wire 108 B, payload 108 B)",
+          "dequantize_layout B=9 policy=auto: OK via cpu_reference (only_qualified_path; wire 108 B, payload 108 B)"
+        ],
+        "seconds": 2.73
+      },
+      "name": "typed_example",
+      "required": true,
+      "seconds": 2.73,
+      "status": "passed"
+    },
+    {
+      "details": {
+        "checks": {
+          "eager_module_to_values": true,
+          "observation_keeps_values": true,
+          "quantized_gate_reported": true,
+          "stable_preparation_values": true
+        },
+        "counters": {
+          "dynamo_compiles": 0,
+          "exclusions": {},
+          "fallbacks": {},
+          "plan_compiles": 3,
+          "redispatches": {},
+          "runtime_executions": 9,
+          "symbol_binds": 13,
+          "weight_invalidations": 2,
+          "weight_preparations": 4
+        },
+        "device": "cuda:0",
+        "quantized_preparation": {
+          "reason": "typed_artifacts_unavailable",
+          "status": "gated"
+        }
+      },
+      "name": "weight_loading",
+      "required": true,
+      "seconds": 3.991,
+      "status": "passed"
+    },
+    {
+      "details": {
+        "outcome": "fallback",
+        "reasons": [
+          "quantize_semantics_unproved"
+        ]
+      },
+      "name": "expected_exclusion_quantize_import",
+      "required": true,
+      "seconds": 1.476,
+      "status": "passed"
+    },
+    {
+      "details": {
+        "split_transpose_d2h": {
+          "artifact": "plan.bin",
+          "cases": [
+            {
+              "report": {
+                "destination_bytes": 256,
+                "direction": "d2h",
+                "requested_transfer_bytes": 256,
+                "source_bytes": 256,
+                "symbols": 1,
+                "verification_readback_bytes": 0
+              },
+              "seconds": 0.3737,
+              "symbols": {
+                "s0": 64
+              }
+            },
+            {
+              "report": {
+                "destination_bytes": 512,
+                "direction": "d2h",
+                "requested_transfer_bytes": 512,
+                "source_bytes": 512,
+                "symbols": 1,
+                "verification_readback_bytes": 0
+              },
+              "seconds": 0.4209,
+              "symbols": {
+                "s0": 128
+              }
+            },
+            {
+              "report": {
+                "destination_bytes": 768,
+                "direction": "d2h",
+                "requested_transfer_bytes": 768,
+                "source_bytes": 768,
+                "symbols": 1,
+                "verification_readback_bytes": 0
+              },
+              "seconds": 0.4167,
+              "symbols": {
+                "s0": 192
+              }
+            }
+          ]
+        },
+        "split_transpose_h2d": {
+          "artifact": "plan.bin",
+          "cases": [
+            {
+              "report": {
+                "destination_bytes": 256,
+                "direction": "h2d",
+                "requested_transfer_bytes": 256,
+                "source_bytes": 256,
+                "symbols": 1,
+                "verification_readback_bytes": 256
+              },
+              "seconds": 0.4214,
+              "symbols": {
+                "s0": 64
+              }
+            },
+            {
+              "report": {
+                "destination_bytes": 512,
+                "direction": "h2d",
+                "requested_transfer_bytes": 512,
+                "source_bytes": 512,
+                "symbols": 1,
+                "verification_readback_bytes": 512
+              },
+              "seconds": 0.4201,
+              "symbols": {
+                "s0": 128
+              }
+            },
+            {
+              "report": {
+                "destination_bytes": 768,
+                "direction": "h2d",
+                "requested_transfer_bytes": 768,
+                "source_bytes": 768,
+                "symbols": 1,
+                "verification_readback_bytes": 768
+              },
+              "seconds": 0.4215,
+              "symbols": {
+                "s0": 192
+              }
+            }
+          ]
+        },
+        "transpose_pad_d2h": {
+          "artifact": "plan.bin",
+          "cases": [
+            {
+              "report": {
+                "destination_bytes": 192,
+                "direction": "d2h",
+                "requested_transfer_bytes": 96,
+                "source_bytes": 96,
+                "symbols": 0,
+                "verification_readback_bytes": 0
+              },
+              "seconds": 0.4191,
+              "symbols": {}
+            }
+          ]
+        },
+        "transpose_pad_h2d": {
+          "artifact": "plan.bin",
+          "cases": [
+            {
+              "report": {
+                "destination_bytes": 192,
+                "direction": "h2d",
+                "requested_transfer_bytes": 192,
+                "source_bytes": 96,
+                "symbols": 0,
+                "verification_readback_bytes": 192
+              },
+              "seconds": 0.412,
+              "symbols": {}
+            }
+          ]
+        }
+      },
+      "name": "cpp_cuda_layout",
+      "required": true,
+      "seconds": 3.309,
+      "status": "passed"
+    },
+    {
+      "details": {
+        "d2h": {
+          "counters": {
+            "cache_hits": 0,
+            "dynamo_compiles": 1,
+            "plan_compiles": 1,
+            "replaced_regions": 1,
+            "runtime_executions": 3,
+            "symbol_binds": 3
+          },
+          "fallbacks": {},
+          "sizes": [
+            128,
+            192,
+            256
+          ]
+        },
+        "h2d": {
+          "counters": {
+            "cache_hits": 0,
+            "dynamo_compiles": 1,
+            "plan_compiles": 1,
+            "replaced_regions": 1,
+            "runtime_executions": 3,
+            "symbol_binds": 3
+          },
+          "fallbacks": {},
+          "sizes": [
+            128,
+            192,
+            256
+          ]
+        }
+      },
+      "name": "dynamic_transfers",
+      "required": true,
+      "seconds": 9.344,
+      "status": "passed"
+    },
+    {
+      "details": {
+        "d2h": {
+          "counters": {
+            "cache_hits": 0,
+            "dynamo_compiles": 2,
+            "plan_compiles": 1,
+            "replaced_regions": 1,
+            "runtime_executions": 2,
+            "symbol_binds": 2
+          },
+          "exclusions": {
+            "conditional_materialization": 1
+          },
+          "outcome": "fallback for s0 // 64 == 1, runtime otherwise"
+        },
+        "h2d": {
+          "counters": {
+            "cache_hits": 0,
+            "dynamo_compiles": 2,
+            "plan_compiles": 1,
+            "replaced_regions": 1,
+            "runtime_executions": 2,
+            "symbol_binds": 2
+          },
+          "exclusions": {
+            "conditional_materialization": 1
+          },
+          "outcome": "fallback for s0 // 64 == 1, runtime otherwise"
+        }
+      },
+      "name": "dynamic_extent_one_boundary",
+      "required": true,
+      "seconds": 9.487,
+      "status": "passed"
+    },
+    {
+      "details": {
+        "exclusions": {
+          "nonblocking_unavailable": 1
+        },
+        "fallbacks": {},
+        "outcome": "fallback",
+        "runtime_executions": 0
+      },
+      "name": "expected_exclusion_nonblocking",
+      "required": true,
+      "seconds": 0.286,
+      "status": "passed"
+    },
+    {
+      "details": {
+        "backend_counters": {
+          "plan_compiles": 1,
+          "runtime_executions": 54,
+          "symbol_binds": 54
+        },
+        "note": "descriptive only; no speedup gate",
+        "rows": [
+          {
+            "elements": 65536,
+            "implementation": "R2 forward H2D (compiled region)",
+            "pytorch_ms": 0.1577,
+            "reloc_ms": 4.2675,
+            "scenario": "layout_h2d_split_transpose",
+            "source_bytes": 262144,
+            "wire_bytes": 262144
+          },
+          {
+            "elements": 1048576,
+            "implementation": "R2 forward H2D (compiled region)",
+            "pytorch_ms": 1.949,
+            "reloc_ms": 31.2331,
+            "scenario": "layout_h2d_split_transpose",
+            "source_bytes": 4194304,
+            "wire_bytes": 4194304
+          },
+          {
+            "elements": 4194304,
+            "implementation": "R2 forward H2D (compiled region)",
+            "pytorch_ms": 8.8242,
+            "reloc_ms": 74.6697,
+            "scenario": "layout_h2d_split_transpose",
+            "source_bytes": 16777216,
+            "wire_bytes": 16777216
+          },
+          {
+            "elements": 1048576,
+            "implementation": "cpu_reference",
+            "includes_preparation": true,
+            "payload_bytes_transferred": 2097152,
+            "placement_reason": "forced",
+            "pytorch_ms": 3.9933,
+            "reloc_ms": 39.5377,
+            "scenario": "typed_h2d_transpose_cast_f16",
+            "source_bytes": 4194304,
+            "wire_bytes": 2097152
+          }
+        ]
+      },
+      "name": "descriptive_latency",
+      "required": true,
+      "seconds": 3.23,
+      "status": "passed"
+    },
+    {
+      "details": {
+        "gtest_cuda": {
+          "executed": 18,
+          "failures": 0,
+          "suites": [
+            "CudaConvertF16F32",
+            "CudaCopy",
+            "CudaDequant",
+            "CudaDequantRelocate",
+            "CudaDispatch",
+            "CudaPipeline",
+            "CudaQuantize",
+            "CudaRelocateNaive",
+            "CudaRelocateTiled",
+            "CudaScatterRandom",
+            "CudaTypedSemantics",
+            "CudaUnpack"
+          ]
+        },
+        "pytest_gpu": {
+          "errors": 0,
+          "executed": 140,
+          "failures": 0,
+          "seconds": 15.44,
+          "skipped": 2,
+          "skipped_by_design": {
+            "libreloc.python.tests.torch_frontend.test_transport::test_default_stream_forward_d2h_matches_the_cuda_source_function[permute_120-float16]": "permutation witness is float32",
+            "libreloc.python.tests.torch_frontend.test_transport::test_default_stream_forward_d2h_matches_the_cuda_source_function[permute_120-int8]": "permutation witness is float32"
+          },
+          "tests": 142
+        }
+      },
+      "name": "gpu_test_selection",
+      "required": true,
+      "seconds": 28.328,
+      "status": "passed"
+    }
+  ],
+  "schema": 1,
+  "summary": {
+    "failed": 0,
+    "passed": 15,
+    "prerequisites_failed": 0,
+    "required_failed": 0
+  }
+}

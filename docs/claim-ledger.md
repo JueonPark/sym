@@ -71,6 +71,17 @@ the track's closing claim, in contrast to the narrowed G2 rows above.
 |---|---|---|---|---|
 | Same folded plan, runtime symbol-bind, bind-time auto-placement — correct choice on both boxes, no recompilation | Gen3 + Gen4 | 23/24 decisions match measured winners (1 small-N miss disclosed); r=0.25 row flips correctly (Gen3 `b` ×4, Gen4 `a` ×4); artifacts byte-equal CI regeneration | survives | `docs/r6-crossbox-bind.md`; `bench/results/r6_bind_demo_*.json` (#87) |
 
+## Engineering completion is not a research claim
+
+The finalization (issues #131–#133, completed 2026-09-24,
+[runtime-integration.md](runtime-integration.md)) delivers a correct,
+reproducible compiler-to-runtime path. It adds no row above and changes no
+status: #63's performance criterion stays unmet, #73's withdrawn and
+narrowed claims stand, and #88's regime-5 result stays `narrowed`. The
+integration's own end-to-end latency is recorded descriptively in
+`runtime-evidence/cuda.json`; in that configuration the supported blocking
+path is slower than PyTorch's copy, and no claim is made from it.
+
 ## Post-freeze addenda (measured after the 2026-09-02 freeze; never quoted in the main eval)
 
 | claim | box | result | status | authoritative source |

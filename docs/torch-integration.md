@@ -10,6 +10,9 @@ transforms (cast/quantize/dequantize) wait for C1–C4/R3; the prefold bridge
 exists but is gated. Evidence, counts and the support matrix live in
 [Torch support](torch-support.md); this guide records how to reproduce them.
 
+The end-to-end handoff (build from a fresh checkout, every named example,
+CPU and CUDA evidence) is [runtime-integration.md](runtime-integration.md).
+
 ## 1. Qualified environments
 
 One baseline is qualified: CPython 3.14.7 (regular GIL build,

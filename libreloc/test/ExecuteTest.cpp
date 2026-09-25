@@ -17,6 +17,7 @@
 #include <cstring>
 #include <numeric>
 #include <string>
+#include <variant>
 #include <vector>
 
 namespace {
@@ -383,6 +384,54 @@ TEST(Execute, D2HRank1RoundTripsH2D) {
   reloc::executeD2H(b, dst.data(), back.data());
   EXPECT_EQ(back, src);
   EXPECT_EQ(back, referenceD2H(b, dst));
+}
+
+//===----------------------------------------------------------------------===//
+// Issue #56: a non-zero fill through the whole public pipeline.
+//===----------------------------------------------------------------------===//
+
+// Copied verbatim from serialize.mlir's `plan_hex(pad_nonzero):` CHECK line.
+const char *kPadNonzeroHex =
+    "52504c4e0000000000000000020000000100000001020000000000000001000000010300"
+    "000000000000000000000100000001000000000000000000200000000200000001000000"
+    "010400000000000000010000000103000000000000000000000001000000010000000000"
+    "000000002000000002000000000000000100000002000000010000007201000000010200"
+    "000000000000010000000103000000000000000100000001030000000000000001000000"
+    "630100000001030000000000000001000000010100000000000000010000000101000000"
+    "000000000100000000000000010000000101000000000000000100000001010000000000"
+    "000000200000004433221100000000000000000000000000000000000002000000020000"
+    "00010000000700000000010000000701000000";
+
+TEST(Execute, NonZeroFillGoldenRoundTripsEndToEnd) {
+  std::vector<uint8_t> blob;
+  for (const char *p = kPadNonzeroHex; p[0] && p[1]; p += 2) {
+    auto nibble = [](char c) {
+      return static_cast<uint8_t>(c <= '9' ? c - '0' : 10 + (c - 'a'));
+    };
+    blob.push_back(static_cast<uint8_t>(nibble(p[0]) << 4 | nibble(p[1])));
+  }
+  auto decoded = reloc::decodePlan(blob.data(), blob.size());
+  ASSERT_TRUE(std::holds_alternative<reloc::RelocationPlan>(decoded))
+      << std::get<reloc::DecodeError>(decoded).message;
+  const auto &plan = std::get<reloc::RelocationPlan>(decoded);
+  ASSERT_EQ(plan.padFill.size(), 1u);
+  EXPECT_EQ(plan.padFill[0].fillBits, 0x11223344u);
+  auto bound = reloc::bind(plan, {});
+  ASSERT_TRUE(std::holds_alternative<reloc::BoundPlan>(bound))
+      << std::get<reloc::BindError>(bound).message;
+  const auto &b = std::get<reloc::BoundPlan>(bound);
+  ASSERT_EQ(b.padRegions.size(), 1u);
+  EXPECT_EQ(b.padRegions[0].fillBits, 0x11223344u);
+  ASSERT_EQ(b.totalBytes, 4 * 3 * 4);
+  std::vector<uint32_t> src = {1, 2, 3, 4, 5, 6};
+  std::vector<uint32_t> dst(12, 0xDEADBEEFu);
+  reloc::executeH2D(b, src.data(), dst.data());
+  const std::vector<uint32_t> expected = {
+      0x11223344u, 0x11223344u, 0x11223344u,          // lo pad row
+      1,           2,           3,           4, 5, 6, // the two valid rows
+      0x11223344u, 0x11223344u, 0x11223344u,          // hi pad row
+  };
+  EXPECT_EQ(dst, expected);
 }
 
 } // namespace

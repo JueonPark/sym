@@ -206,6 +206,17 @@ PyTorch. Installation, activation and boundaries:
 [docs/torch-integration.md](docs/torch-integration.md); support matrix and
 evidence: [docs/torch-support.md](docs/torch-support.md).
 
+### Compiler-to-runtime integration
+
+Start at [docs/runtime-integration.md](docs/runtime-integration.md): the
+fresh-checkout build, the public C++ (`reloc-run-artifact`) and Python paths,
+named input/output/weight/typed examples, the combined support matrix, the
+CPU and CUDA evidence (`docs/runtime-evidence/`), and the disposition of every
+remaining historical issue. Typed value transforms (cast, quantize,
+dequantize) are specified in
+[docs/reloc-typed-semantics.md](docs/reloc-typed-semantics.md) and supported
+as listed in [docs/typed-relocation-support.md](docs/typed-relocation-support.md).
+
 ## Supported External Operations
 
 The `SymbolicShapeOpInterface` is attached to the following `arith` dialect operations:

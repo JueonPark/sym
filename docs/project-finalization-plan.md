@@ -1,6 +1,6 @@
 # Project finalization: high-level plan
 
-Date: 2026-09-09. Status: proposed scope and issue breakdown; parent issues #131–#133 are filed, and detailed Torch subissue plans are available below. Implementation acceptance remains open.
+Date: 2026-09-09. Status (updated 2026-09-24): implemented. Every child (T1–T4, C1–C4, R1–R4) is delivered; [#131](https://github.com/JueonPark/sym/issues/131) is closed and [#132](https://github.com/JueonPark/sym/issues/132)/[#133](https://github.com/JueonPark/sym/issues/133) meet their functional acceptance. The acceptance entry point, evidence and historical dispositions are [runtime-integration.md](runtime-integration.md); the text below is the original plan, preserved.
 
 ## Objective and boundaries
 
@@ -132,3 +132,5 @@ During M3, review the remaining historical issues rather than automatically inhe
 The final documentation should link the published [claim ledger](claim-ledger.md). Historical source records—the patent description, initial motivation, 0704 proposal/plan, and 0730 proposal/plan—remain local files under `human_history/` and are not part of this documentation set. Decide whether to publish those records during the final handoff; add links once they have repository locations. Preserve historical text and add current interpretation separately.
 
 **Project completion:** All three parent issues satisfy their functional acceptance criteria, the documented examples run from a fresh checkout, unsupported cases have defined behavior, and the remaining historical issues have an explicit disposition. Performance measurements describe the resulting implementation; they do not determine whether it is finished.
+
+**Completion record (2026-09-24):** met. Evidence: [runtime-integration.md](runtime-integration.md) (fresh-checkout run, combined matrix, `runtime-evidence/cpu.json` and `cuda.json`), [typed-relocation-support.md](typed-relocation-support.md), [torch-support.md](torch-support.md). Historical dispositions: #55 and #56 done in R4; #57 and #71 open and deferred; #88 and #73 closed with their ledger standing unchanged; #63's research criterion was not met and stays recorded as such. The measured end-to-end latency of the supported path is slower than PyTorch's own copy in the recorded configuration; this is reported, not gated.
