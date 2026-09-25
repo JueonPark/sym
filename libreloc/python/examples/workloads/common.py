@@ -149,6 +149,13 @@ class Clock:
                 torch.cuda.synchronize(device)
 
 
+def _bits(tensor):
+    """The tensor's raw bytes in logical order (signed zeros and NaN payloads included)."""
+    import torch
+
+    return tensor.contiguous().reshape(-1).view(torch.uint8)
+
+
 def same_tensor(actual, expected):
     """Bit-identical values plus the same shape, dtype, device and strides
     (strides of extent-1 dimensions are ignored)."""
@@ -158,16 +165,21 @@ def same_tensor(actual, expected):
         return False
     if any(extent > 1 and a != b for extent, a, b in zip(actual.shape, actual.stride(), expected.stride())):
         return False
-    return bool(torch.equal(actual, expected))
+    return bool(torch.equal(_bits(actual), _bits(expected)))
 
 
 def difference(actual, expected):
     """One line describing how two tensors differ (a failed check's detail)."""
+    import torch
+
     if (actual.shape, actual.dtype, actual.device) != (expected.shape, expected.dtype, expected.device):
         return (f"metadata differs: {tuple(actual.shape)} {actual.dtype} {actual.device} vs "
                 f"{tuple(expected.shape)} {expected.dtype} {expected.device}")
     gap = (actual.double() - expected.double()).abs().max().item() if actual.numel() else 0.0
-    return f"max abs diff {gap:.6g}; strides {actual.stride()} vs {expected.stride()}"
+    detail = f"max abs diff {gap:.6g}"
+    if gap == 0 and not torch.equal(_bits(actual), _bits(expected)):
+        detail += " but bit patterns differ (signed zeros or NaN payloads)"
+    return f"{detail}; strides {actual.stride()} vs {expected.stride()}"
 
 
 def mib(count):

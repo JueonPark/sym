@@ -118,6 +118,13 @@ def test_same_tensor_compares_values_and_metadata():
     assert common.same_tensor(torch.zeros(1, 4), torch.zeros(4, 1).t())   # extent-1 strides are ignored
 
 
+def test_same_tensor_compares_bit_patterns_not_just_values():
+    for dtype in (torch.float32, torch.float16):
+        assert not common.same_tensor(torch.tensor([0.0], dtype=dtype), torch.tensor([-0.0], dtype=dtype))
+    nan = torch.tensor([float("nan"), 1.0])
+    assert common.same_tensor(nan, nan.clone())                    # identical bits, even though NaN != NaN
+    assert "bit patterns differ" in common.difference(torch.tensor([0.0]), torch.tensor([-0.0]))
+
 def test_calibration_is_chosen_by_gpu_name():
     assert common.calibration_path("NVIDIA GeForce RTX 2080 Ti").name == "epyc7351-2080ti.cal"
     assert common.calibration_path("NVIDIA GeForce RTX 4070 Ti SUPER").name == "7800x3d-4070tis.cal"
