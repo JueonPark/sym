@@ -137,7 +137,8 @@ def main():
                                    possible_expert_count=possible, fetches_per_device=fetches)
     report.note(f"{active} of {possible} expert slots were active, and only those experts' weights moved")
     report.note("routing, token dispatch, GPU-to-GPU token moves and the combine are PyTorch in both passes")
-    report.note("several GPUs show placement and correctness only: R3 refuted the multi-GPU throughput claim")
+    report.note("several GPUs show placement and correctness only: the multi-GPU throughput gate failed on this "
+                "box (R3)")
     report.note("transfers are blocking; every Sym call includes per-call runtime setup")
     return report.finish(args.output)
 
