@@ -19,10 +19,10 @@ from __future__ import annotations
 
 import argparse
 
-import torch
-import torch.nn.functional as F
-
 import common
+
+torch = common.import_torch()          # exits 2 with a one-line message when torch is missing
+F = torch.nn.functional
 
 FEATURES = 128
 HIDDEN = 128

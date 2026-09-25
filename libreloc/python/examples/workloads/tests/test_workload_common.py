@@ -1,5 +1,6 @@
 """Unit tests for the workload examples' shared helpers (common.py)."""
 import json
+import sys
 
 import pytest
 import torch
@@ -143,6 +144,11 @@ def test_check_environment_reports_every_problem(monkeypatch):
     assert any("cuda:99" in p or "no CUDA device" in p for p in problems)
     assert any("not-a-device" in p or "no CUDA device" in p for p in problems)
 
+
+def test_check_environment_reports_a_missing_torch_instead_of_raising(monkeypatch):
+    monkeypatch.setitem(sys.modules, "torch", None)       # `import torch` now raises ImportError
+    problems = common.check_environment(["cuda:0"])
+    assert len(problems) == 1 and "torch is not importable" in problems[0]
 
 def test_run_example_turns_a_prerequisite_error_into_exit_two(capsys):
     def main():
