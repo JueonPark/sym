@@ -19,6 +19,9 @@ EXPECTED_CHECKS = {
              "one_execution_per_batch", "cpu_reference_row", "observed_payload_matches_wire", "no_fallbacks"},
     "gnn": {"node_features_equal", "logits_equal", "one_plan_for_every_row_count", "rows_change_between_batches",
             "one_execution_per_batch", "cpu_reference_row", "observed_payload_matches_wire", "no_fallbacks"},
+    "llm": {"weights_equal", "kv_evict_equal", "kv_restore_equal", "tokens_equal", "logits_equal",
+            "one_weight_artifact_for_every_matrix_shape", "one_kv_plan_per_direction",
+            "one_kv_execution_per_transfer", "no_fallbacks"},
 }
 
 
@@ -50,3 +53,11 @@ def test_each_example_passes_its_checks_at_quick_size(tmp_path, name):
     assert report["ok"] is True
     assert EXPECTED_CHECKS[name] <= set(report["checks"]), sorted(report["checks"])
     assert report["summary"]["checks_passed"] == report["summary"]["checks_total"]
+
+
+@pytest.mark.skipif(torch.cuda.device_count() < 2, reason="needs two GPUs")
+def test_llm_runs_on_a_device_that_is_not_the_default(tmp_path):
+    proc, output = run_runner(tmp_path, "--quick", "--only", "llm", "--devices", "cuda:1")
+    assert proc.returncode == 0, output
+    report = load(tmp_path, "llm")
+    assert report["ok"] is True and report["devices"] == ["cuda:1"]
