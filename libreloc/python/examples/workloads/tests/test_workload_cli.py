@@ -16,6 +16,17 @@ def test_an_example_without_the_build_environment_exits_two(tmp_path):
                           capture_output=True, text=True, timeout=300)
     assert proc.returncode == 2, proc.stdout + proc.stderr
     assert "prerequisite: reloc_torch is not importable" in proc.stderr
+    assert "Traceback" not in proc.stderr
+
+
+@pytest.mark.parametrize("script", ["dlrm_embeddings.py", "gnn_minibatch.py", "llm_offload.py", "moe_experts.py"])
+def test_an_example_under_an_interpreter_without_torch_exits_two(script):
+    # -S skips site-packages, so torch is unimportable while the stdlib still loads.
+    proc = subprocess.run([sys.executable, "-S", str(WORKLOADS / script), "--quick"],
+                          capture_output=True, text=True, timeout=300)
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "prerequisite: torch is not importable" in proc.stderr
+    assert "Traceback" not in proc.stderr
 
 
 @pytest.mark.parametrize("devices, message", [

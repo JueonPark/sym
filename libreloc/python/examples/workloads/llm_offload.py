@@ -22,10 +22,10 @@ from __future__ import annotations
 
 import argparse
 
-import torch
-import torch.nn.functional as F
-
 import common
+
+torch = common.import_torch()          # exits 2 with a one-line message when torch is missing
+F = torch.nn.functional
 
 SIZES = {
     "default": {"vocab": 8192, "d_model": 1024, "heads": 16, "layers": 8, "d_ff": 4096, "prompt": 32,

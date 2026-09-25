@@ -25,6 +25,7 @@ CALIBRATIONS = (
 )
 _BACKEND_COUNTERS = ("dynamo_compiles", "plan_compiles", "symbol_binds", "runtime_executions", "typed_executions",
                      "typed_payload_bytes")
+_TORCH_HINT = "run with the qualified interpreter (/tmp/sym-torch-cuda/bin/python or $SYM_PYTHON)"
 
 
 class PrerequisiteError(RuntimeError):
@@ -38,6 +39,17 @@ def run_example(main):
     except PrerequisiteError as error:
         print(f"prerequisite: {error}", file=sys.stderr)
         return EXIT_PREREQUISITE
+
+
+def import_torch():
+    """Import torch for an example module, or exit 2 with a one-line
+    prerequisite message instead of an ImportError traceback."""
+    try:
+        import torch
+    except ImportError as error:
+        print(f"prerequisite: torch is not importable ({error}); {_TORCH_HINT}", file=sys.stderr)
+        raise SystemExit(EXIT_PREREQUISITE) from None
+    return torch
 
 
 #===----------------------------------------------------------------------===#
@@ -56,6 +68,10 @@ def exporter_path(environ=None):
 def check_environment(devices):
     """Every problem that prevents running on ``devices`` (empty when ready)."""
     try:
+        import torch
+    except ImportError as error:
+        return [f"torch is not importable ({error}); {_TORCH_HINT}"]
+    try:
         from reloc_torch import CompatibilityError, check_version
     except ImportError as error:
         return [f"reloc_torch is not importable ({error}); put $SYM_BUILD/python and libreloc/python on PYTHONPATH"]
@@ -64,8 +80,6 @@ def check_environment(devices):
         check_version()
     except CompatibilityError as error:
         problems.append(f"unsupported Python/PyTorch: {error}")
-    import torch
-
     try:
         import pyreloc
     except ImportError as error:
