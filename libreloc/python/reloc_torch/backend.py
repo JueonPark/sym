@@ -76,8 +76,8 @@ class GraphCallable:
 class RelocBackend:
     """``RelocBackend(compiler=..., runtime=...)`` is a Dynamo backend callable.
 
-    Default construction resolves the R1 exporter from ``SYM_RELOC_EXPORT`` /
-    ``SYM_OPT`` and the R2 transport bridge lazily. ``stats()`` returns a plain
+    Default construction resolves the bundled R1 exporter (or explicit
+    ``SYM_RELOC_EXPORT`` / ``SYM_OPT`` override) and R2 transport lazily. ``stats()`` returns a plain
     snapshot; ``close()`` invalidates every live handle and later use.
     """
 

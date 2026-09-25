@@ -1,0 +1,64 @@
+name: Installation candidates
+on:
+  pull_request:
+    paths:
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - 'libreloc/**'
+      - 'sym/**'
+      - 'pyproject.toml'
+      - 'build_tools/**'
+      - 'release/**'
+      - 'install.sh'
+      - 'tests/packaging/**'
+      - '.github/workflows/packages.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: read
+jobs:
+  cpu-wheel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Select existing pinned LLVM build image
+        id: image
+        shell: bash
+        run: |
+          revision=$(tr -d '[:space:]' < build_tools/llvm_version.txt)
+          echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/sym:${revision:0:12}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and exercise installed CPU candidate
+        run: |
+          docker run --rm -v "$PWD:/workspace" -w /workspace \
+            '${{ steps.image.outputs.name }}' bash -eu -o pipefail -c '
+              pip3 install uv==0.12.11
+              uv python install 3.14.7
+              uv venv --python 3.14.7 /tmp/sym-package
+              uv pip sync --python /tmp/sym-package/bin/python --require-hashes --only-binary=:all: release/locks/cpu.txt
+              uv pip install --python /tmp/sym-package/bin/python -r build_tools/release/requirements-build.txt
+              export MLIR_DIR=/opt/llvm/lib/cmake/mlir CMAKE_BUILD_PARALLEL_LEVEL=2
+              /tmp/sym-package/bin/python -m build --wheel --no-isolation
+              uv pip install --python /tmp/sym-package/bin/python --no-deps dist/*.whl
+              cmake -G Ninja -S . -B build/sdk -DCMAKE_BUILD_TYPE=Release \
+                -DMLIR_DIR="$MLIR_DIR" -DSYM_BUILD_TESTS=OFF -DSYM_BUILD_BENCHMARKS=OFF -DSYM_BUILD_PYTHON=OFF
+              cmake --build build/sdk --target sym-opt sym-reloc-export reloc-run-artifact -j2
+              export SYM_INSTALLED_PYTHON=/tmp/sym-package/bin/python
+              export SYM_PACKAGING_BUILD=/workspace/build/sdk
+              bash -n install.sh
+              /tmp/sym-package/bin/python -m pytest tests/packaging -q
+              cd /tmp
+              /tmp/sym-package/bin/sym-doctor --require-torch --json > /workspace/build/doctor.json
+              /tmp/sym-package/bin/sym-demo --device cpu --json > /workspace/build/demo.json
+            '
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unqualified-linux-cpu-candidate
+          path: |
+            dist/*.whl
+            build/doctor.json
+            build/demo.json

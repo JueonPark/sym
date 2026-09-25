@@ -1,5 +1,11 @@
 # libreloc
 
+For complete compiler/runtime/Python installation, see
+[Installation](../docs/installation.md). Installed wheels discover their bundled
+compiler and runtime libraries automatically. The build-tree `PYTHONPATH` steps
+below remain useful for development. CMake also installs a native SDK exporting
+`SymReloc::runtime` for independent C++ applications.
+
 The standalone tensor relocation runtime. It loads, binds, and executes
 compiler-generated layout plans (wire v0) and typed plans with value
 conversions (wire v1), using CPU execution and optional CUDA transfers.
@@ -241,14 +247,15 @@ logical view (`kind` is `"host"` or `"cuda"`). Torch callers read `base`,
 The Python caller retains every owner (source, destination, request) for the
 duration of the blocking call; only the GIL is released around native work.
 
-Wheel-less install (packaging is out of scope for v0): build with
-pybind11 discoverable, then point `PYTHONPATH` at the build tree —
+For an installed package, use the [complete wheel](../docs/installation.md).
+For runtime development, build with pybind11 discoverable and point
+`PYTHONPATH` at the build tree:
 
-    uv venv --python /usr/bin/python3.10 .venv
-    uv pip install --python .venv/bin/python pybind11 pytest numpy
+    uv venv --python 3.14.7 build/runtime-dev
+    uv pip install --python build/runtime-dev/bin/python pybind11==3.0.4 pytest numpy
     cmake -B build/sym \
-      -Dpybind11_DIR=$(.venv/bin/python -m pybind11 --cmakedir) \
-      -DPython_EXECUTABLE=$PWD/.venv/bin/python
+      -Dpybind11_DIR=$(build/runtime-dev/bin/python -m pybind11 --cmakedir) \
+      -DPython_EXECUTABLE=$PWD/build/runtime-dev/bin/python
     ninja -C build/sym pyreloc_ext
     export PYTHONPATH=$PWD/build/sym/python
 

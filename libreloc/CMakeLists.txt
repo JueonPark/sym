@@ -31,7 +31,8 @@ add_library(reloc_runtime SHARED
 target_compile_features(reloc_runtime PUBLIC cxx_std_17)
 
 target_include_directories(reloc_runtime PUBLIC
-  ${CMAKE_CURRENT_SOURCE_DIR}/include
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
 )
 
 # R0.1 SIMD variants (issue #74): per-TU ISA flags + runtime dispatch via
@@ -65,6 +66,12 @@ if(RELOC_ENABLE_CUDA)
   target_link_libraries(reloc_runtime PRIVATE CUDA::cudart)
 endif()
 
-add_subdirectory(test)
-add_subdirectory(examples)
-add_subdirectory(python)
+if(SYM_BUILD_TESTS)
+  add_subdirectory(test)
+endif()
+if(SYM_BUILD_EXAMPLES)
+  add_subdirectory(examples)
+endif()
+if(SYM_BUILD_PYTHON)
+  add_subdirectory(python)
+endif()

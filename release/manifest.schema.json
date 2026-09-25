@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/JueonPark/sym/release/manifest.schema.json",
+  "title": "Sym installation manifest v1",
+  "description": "Structural contract. make_manifest.validate_manifest additionally enforces cross-field version/variant/URL identity.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "installer_protocol",
+    "python_version",
+    "python_abi",
+    "glibc_min",
+    "llvm_revision",
+    "release_version",
+    "source_revision",
+    "variants"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "installer_protocol": {
+      "const": 1
+    },
+    "python_version": {
+      "const": "3.14.7"
+    },
+    "python_abi": {
+      "const": "cp314-cp314"
+    },
+    "glibc_min": {
+      "const": "2.28"
+    },
+    "llvm_revision": {
+      "const": "2078da43e25a4623cab2d0d60decddf709aaea28"
+    },
+    "release_version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+    },
+    "source_revision": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "variants": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "cpu": {
+          "$ref": "#/$defs/variant"
+        },
+        "cu126": {
+          "$ref": "#/$defs/variant"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "asset": {
+      "type": "object",
+      "required": [
+        "filename",
+        "url",
+        "size",
+        "sha256"
+      ],
+      "properties": {
+        "filename": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[^/\\\\]+$"
+        },
+        "url": {
+          "type": "string",
+          "pattern": "^https://github\\.com/JueonPark/sym/releases/download/v[0-9]+\\.[0-9]+\\.[0-9]+/"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "variant": {
+      "type": "object",
+      "required": [
+        "package_version",
+        "torch_version",
+        "cuda",
+        "assets"
+      ],
+      "properties": {
+        "package_version": {
+          "type": "string"
+        },
+        "torch_version": {
+          "type": "string"
+        },
+        "cuda": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "assets": {
+          "type": "object",
+          "required": [
+            "wheel",
+            "sdk",
+            "lock",
+            "helper"
+          ],
+          "additionalProperties": {
+            "$ref": "#/$defs/asset"
+          }
+        }
+      }
+    }
+  }
+}

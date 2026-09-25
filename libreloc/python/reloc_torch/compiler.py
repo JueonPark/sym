@@ -23,20 +23,25 @@ class CompilerClient:
 
     @classmethod
     def from_environment(cls, environ=None):
-        """Resolve the documented exporter configuration: ``SYM_RELOC_EXPORT``,
-        else the ``sym-reloc-export`` sibling of ``SYM_OPT``."""
+        """Resolve explicit overrides first, then this installation's exporter."""
         environ = os.environ if environ is None else environ
         configured = environ.get("SYM_RELOC_EXPORT")
         if configured is None:
             sym_opt = environ.get("SYM_OPT")
-            if sym_opt is None:
-                raise RuntimeError(
-                    "SYM_RELOC_EXPORT or SYM_OPT must select the R1 exporter"
-                )
-            configured = Path(sym_opt).with_name("sym-reloc-export")
+            if sym_opt is not None:
+                configured = Path(sym_opt).with_name("sym-reloc-export")
+            else:
+                try:
+                    from sym_reloc.tools import native_tool
+                except ImportError as error:
+                    raise RuntimeError(
+                        "SYM_RELOC_EXPORT or SYM_OPT must select the R1 exporter; "
+                        "no bundled compiler is installed"
+                    ) from error
+                configured = native_tool("sym-reloc-export")
         client = cls(configured)
-        if not client.executable.is_file():
-            raise RuntimeError(f"configured R1 exporter is absent: {client.executable}")
+        if not client.executable.is_file() or not os.access(client.executable, os.X_OK):
+            raise RuntimeError(f"configured R1 exporter is absent or not executable: {client.executable}")
         return client
 
     @property

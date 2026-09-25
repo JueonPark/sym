@@ -1,5 +1,11 @@
 # Torch integration: install, activate, boundaries and reproduction
 
+For a complete installed environment, see [Installation](installation.md).
+The commands below describe developer source builds. A complete installed wheel
+includes its exporter and discovers it automatically; use `SYM_RELOC_EXPORT` or
+`SYM_OPT` only when intentionally selecting a different build. CPU/CUDA package
+variants retain the exact qualification contract below.
+
 Status: T1–T4 of [#131](https://github.com/JueonPark/sym/issues/131) and
 R1/R2 of [#133](https://github.com/JueonPark/sym/issues/133) are implemented.
 The supported surface is opt-in inference relocation of dense CPU↔CUDA
@@ -124,7 +130,7 @@ or changes PyTorch behavior.
 import torch
 from reloc_torch import RelocBackend, eager_transfers, prepare_weights
 
-backend = RelocBackend()                      # exporter from SYM_RELOC_EXPORT / SYM_OPT, R2 transport
+backend = RelocBackend()                      # bundled exporter (or explicit override), R2 transport
 compiled = torch.compile(fn, backend=backend, dynamic=True)
 with torch.no_grad():
     y = compiled(x)                           # accepted regions run reloc_torch::transfer

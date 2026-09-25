@@ -1,0 +1,36 @@
+[build-system]
+requires = ["scikit-build-core==1.0.3", "pybind11==3.0.4"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "sym-reloc"
+dynamic = ["version"]
+description = "Symbolic tensor relocation compiler and standalone runtime"
+readme = "README.md"
+requires-python = ">=3.14,<3.15"
+license = "Apache-2.0"
+dependencies = ["numpy>=2.3.3,<3"]
+
+[project.scripts]
+sym-opt = "sym_reloc.tools:sym_opt_main"
+sym-reloc-export = "sym_reloc.tools:export_main"
+reloc-run-artifact = "sym_reloc.tools:run_artifact_main"
+sym-doctor = "sym_reloc.doctor:main"
+sym-demo = "sym_reloc.demo:main"
+
+[tool.scikit-build]
+minimum-version = "1.0"
+wheel.packages = ["libreloc/python/pyreloc", "libreloc/python/reloc_torch", "libreloc/python/sym_reloc"]
+build.targets = ["sym-opt", "sym-reloc-export", "reloc-run-artifact", "pyreloc_ext"]
+install.components = ["Runtime", "Tools", "Python"]
+build-dir = "build/wheel/{wheel_tag}"
+
+[tool.scikit-build.cmake.define]
+SYM_BUILD_TESTS = "OFF"
+SYM_BUILD_BENCHMARKS = "OFF"
+SYM_BUILD_EXAMPLES = "ON"
+SYM_BUILD_PYTHON = "ON"
+
+[tool.scikit-build.metadata.version]
+provider = "scikit_build_core.metadata.regex"
+input = "libreloc/python/sym_reloc/_version.py"

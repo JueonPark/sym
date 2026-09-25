@@ -14,9 +14,15 @@ MLIR developers.
 
 ## Quick start
 
-Start with the [getting-started guide](docs/getting-started.md) to build Sym
-and run a complete CPU example. For PyTorch CPU–GPU transfers, follow its
-[PyTorch setup](docs/getting-started.md#use-with-pytorch), then try:
+Start with the [installation guide](docs/installation.md). A complete Sym wheel
+installs the compiler, runtime, and Python APIs together and discovers its tools
+automatically. The guide includes a source-wheel route available now and the
+binary installer interface for qualified releases; release binaries are not yet
+published. After installation, run `sym-doctor --require-torch` and
+`sym-demo --device cpu`.
+
+For PyTorch CPU–GPU transfers, install a qualified CUDA variant using the
+[CUDA source setup](docs/torch-integration.md#2-build-the-compiler-tools-and-the-cp314-extension), then try:
 
 ```python
 import torch
@@ -57,6 +63,7 @@ establish a speed advantage over PyTorch.
 
 | I want to… | Guide |
 | --- | --- |
+| Install the complete compiler/runtime/Python package | [Installation](docs/installation.md) |
 | Build Sym and execute my first plan | [Getting started](docs/getting-started.md) |
 | Use compiled/eager PyTorch transfers or prepare inference weights | [PyTorch integration](docs/torch-integration.md) |
 | Write recipes, save artifacts, and use the Python/C++ runtime | [Plan export](docs/reloc-export.md) · [Runtime APIs](libreloc/README.md) |
