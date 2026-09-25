@@ -1,6 +1,12 @@
 cmake_minimum_required(VERSION 3.20)
 project(sym)
 
+option(SYM_BUILD_TESTS "Build tests and generate conformance corpora" ON)
+option(SYM_BUILD_BENCHMARKS "Build benchmarks" ON)
+option(SYM_BUILD_EXAMPLES "Build installed artifact consumer" ON)
+option(SYM_BUILD_PYTHON "Build optional Python bindings" ON)
+set(SYM_SOURCE_REVISION "" CACHE STRING "Release source revision override")
+
 # 1. Find the package (The script ensures this works)
 find_package(MLIR REQUIRED CONFIG)
 
@@ -32,8 +38,15 @@ add_subdirectory(sym)
 # when add_subdirectory() processed them, so it must come after
 # enable_testing() and before test/ (whose SYM_TEST_DEPENDS references
 # the libreloc-test target).
-enable_testing()
+if(SYM_BUILD_TESTS)
+  enable_testing()
+endif()
 add_subdirectory(libreloc)
-add_subdirectory(bench)
-add_subdirectory(unittest)
-add_subdirectory(test)
+if(SYM_BUILD_BENCHMARKS)
+  add_subdirectory(bench)
+endif()
+if(SYM_BUILD_TESTS)
+  add_subdirectory(unittest)
+  add_subdirectory(test)
+endif()
+include(cmake/SymInstall.cmake)

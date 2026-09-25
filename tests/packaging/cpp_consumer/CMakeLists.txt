@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.20)
+project(sym_sdk_consumer LANGUAGES CXX)
+find_package(SymReloc CONFIG REQUIRED)
+add_executable(consumer main.cpp)
+target_link_libraries(consumer PRIVATE SymReloc::runtime)

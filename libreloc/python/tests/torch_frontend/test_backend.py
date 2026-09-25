@@ -279,9 +279,13 @@ def test_graph_callable_owns_handles_and_survives_cache_eviction(compiler, count
         compiled16(x.half())
 
 
-def test_default_construction_resolves_compiler_and_transport_lazily(monkeypatch):
+def test_default_construction_resolves_compiler_and_transport_lazily(monkeypatch, tmp_path):
     from reloc_torch.runtime import TransportAdapter
 
+    # Simulate a developer tree without bundled binaries even when this suite
+    # runs against a complete installed wheel.
+    import sym_reloc.tools
+    monkeypatch.setattr(sym_reloc.tools, "__file__", str(tmp_path / "tools.py"))
     monkeypatch.delenv("SYM_RELOC_EXPORT", raising=False)
     monkeypatch.delenv("SYM_OPT", raising=False)
     backend = backend_module().RelocBackend()
@@ -399,7 +403,11 @@ def test_eager_scope_is_thread_local_and_suspension_blocks_interception(cpu_back
     assert cpu_backend.stats()["redispatches"] == {"same_device_copy": 1}
 
 
-def test_eager_activation_fails_early_on_unresolvable_configuration(monkeypatch, counting_runtime):
+def test_eager_activation_fails_early_on_unresolvable_configuration(monkeypatch, counting_runtime, tmp_path):
+    # Simulate a developer tree without bundled binaries even when this suite
+    # runs against a complete installed wheel.
+    import sym_reloc.tools
+    monkeypatch.setattr(sym_reloc.tools, "__file__", str(tmp_path / "tools.py"))
     monkeypatch.delenv("SYM_RELOC_EXPORT", raising=False)
     monkeypatch.delenv("SYM_OPT", raising=False)
     backend = backend_module().RelocBackend(runtime=counting_runtime)

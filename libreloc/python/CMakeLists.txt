@@ -1,5 +1,5 @@
 # Pure observation is available even when pybind11/runtime bindings are absent.
-foreach(package pyreloc reloc_torch)
+foreach(package pyreloc reloc_torch sym_reloc)
   file(GLOB sources CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${package}/*.py)
   foreach(src ${sources})
     get_filename_component(fname ${src} NAME)
@@ -13,7 +13,11 @@ set(PYBIND11_FINDPYTHON ON)
 # test job runs an explicit `python3 -c "import pyreloc"` gate before
 # pytest, so a missing module fails CI loudly instead of converting the
 # suite (which importorskips pyreloc) into silent skips.
-find_package(pybind11 CONFIG QUIET)
+if(SKBUILD)
+  find_package(pybind11 CONFIG REQUIRED)
+else()
+  find_package(pybind11 CONFIG QUIET)
+endif()
 if(NOT pybind11_FOUND)
   message(STATUS
     "pyreloc: pybind11 not found -- Python bindings disabled "

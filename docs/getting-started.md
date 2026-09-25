@@ -1,5 +1,11 @@
 # Getting started with Sym
 
+For application use, start with the [installation guide](installation.md):
+the complete wheel installs both compiler tools and Python APIs with automatic
+discovery. This page remains the detailed **source-build** walkthrough and works
+without published binary releases. A source build uses the environment overrides
+shown below; an installed wheel does not need them.
+
 Sym describes tensor preparation as a **recipe**: a sequence of layout
 operations and, when requested, value conversions. The compiler turns a
 supported recipe into a **plan**. The runtime binds its symbolic dimensions

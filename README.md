@@ -12,11 +12,40 @@ standalone `libreloc` runtime does not depend on MLIR, LLVM, or PyTorch.
 The project also provides symbolic tensor types and shape inference for
 MLIR developers.
 
+## Installation
+
+For a CPU installation on **Linux x86_64**, you need Git, uv, a C++17 compiler,
+CMake 3.20+, Ninja, and **LLVM/MLIR 21.1.8**. If LLVM/MLIR is missing, follow the
+[compiler build instructions](docs/getting-started.md#build-the-compiler-and-cpu-runtime)
+first. Prebuilt releases are not available yet; these commands build and install
+a complete wheel containing Sym's compiler, runtime, and Python APIs.
+
+```bash
+git clone https://github.com/JueonPark/sym.git
+cd sym
+uv python install 3.14.7
+uv venv --python 3.14.7 build/install-cpu
+export SYM_PYTHON="$PWD/build/install-cpu/bin/python"
+uv pip sync --python "$SYM_PYTHON" --require-hashes --only-binary=:all: release/locks/cpu.txt
+uv pip install --python "$SYM_PYTHON" -r build_tools/release/requirements-build.txt
+export MLIR_DIR=/absolute/path/to/llvm/lib/cmake/mlir  # Replace with your LLVM/MLIR path.
+CMAKE_BUILD_PARALLEL_LEVEL=2 "$SYM_PYTHON" -m build --wheel --no-isolation
+uv pip install --python "$SYM_PYTHON" --no-deps \
+  dist/sym_reloc-0.1.0+cpu-cp314-cp314-linux_x86_64.whl
+source build/install-cpu/bin/activate
+sym-doctor --require-torch  # Check the installation.
+sym-demo --device cpu      # Run and verify the CPU examples.
+```
+
+The dependency lock installs the qualified CPU PyTorch version. Installed Sym
+finds its compiler and runtime libraries automatically. See the
+[installation guide](docs/installation.md) for details and the native C++ SDK,
+and the [PyTorch guide](docs/torch-integration.md) for CUDA setup.
+
 ## Quick start
 
-Start with the [getting-started guide](docs/getting-started.md) to build Sym
-and run a complete CPU example. For PyTorch CPU–GPU transfers, follow its
-[PyTorch setup](docs/getting-started.md#use-with-pytorch), then try:
+For PyTorch CPU–GPU transfers, install a qualified CUDA variant using the
+[CUDA source setup](docs/torch-integration.md#2-build-the-compiler-tools-and-the-cp314-extension), then try:
 
 ```python
 import torch
@@ -57,6 +86,7 @@ establish a speed advantage over PyTorch.
 
 | I want to… | Guide |
 | --- | --- |
+| Install the complete compiler/runtime/Python package | [Installation](docs/installation.md) |
 | Build Sym and execute my first plan | [Getting started](docs/getting-started.md) |
 | Use compiled/eager PyTorch transfers or prepare inference weights | [PyTorch integration](docs/torch-integration.md) |
 | Write recipes, save artifacts, and use the Python/C++ runtime | [Plan export](docs/reloc-export.md) · [Runtime APIs](libreloc/README.md) |
