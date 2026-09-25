@@ -118,15 +118,15 @@ staging (per-call amortization is deferred).
 
 ### Sample run
 
-`run_workloads.py` at default sizes on the development box (2026-09-25, commit e10fccb):
+`run_workloads.py` at default sizes on the development box (2026-09-25, commit 4ee147d):
 
 ```
 example  result  checks  plans  sym transfers  wire/dest MiB  steady sym/torch ms  fallbacks
 -------  ------  ------  -----  -------------  -------------  -------------------  ---------
-dlrm     pass    7/7     1      4              19.5/19.5      237.7/4.8            0
-gnn      pass    8/8     1      5              43.5/43.5      570.3/6.6            0
-llm      pass    9/9     3      480            798.6/3102.6   5087.1/182.5         0
-moe      pass    6/6     1      170            340.0/1360.0   2313.0/76.6          0
+dlrm     pass    7/7     1      4              19.5/19.5      235.6/5.6            0
+gnn      pass    8/8     1      5              43.5/43.5      569.6/6.9            0
+llm      pass    9/9     3      480            798.6/3102.6   5137.7/178.8         0
+moe      pass    6/6     1      170            340.0/1360.0   2363.0/76.0          0
 ```
 
 ## Limitations
