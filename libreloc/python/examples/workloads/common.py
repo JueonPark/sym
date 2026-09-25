@@ -344,3 +344,70 @@ def quantize_per_channel(weight):
     scale = (weight.abs().amax(dim=0) / 127.0).clamp_min(torch.finfo(torch.float32).tiny)
     q = torch.round(weight / scale).clamp_(-127, 127).to(torch.int8)
     return q.contiguous(), scale.to(torch.float32).contiguous()
+
+
+#===----------------------------------------------------------------------===#
+# Offloaded int8 weights through one symbolic typed recipe.
+#===----------------------------------------------------------------------===#
+
+class WeightFetcher:
+    """int8 ``[in, out]`` weight + float32 per-output-channel scales on the
+    CPU -> float32 ``[out, in]`` (the ``nn.Linear`` layout) on a GPU.
+
+    One symbolic typed recipe, compiled once, is bound for every matrix
+    shape: ``int8[s0, s1] -> dequantize(scale[s1], axis 1) -> transpose ->
+    float32[s1, s0]``. ``policy="auto"`` with a calibration lets the
+    runtime's cost model choose where the dequantize runs; without one the
+    runtime records ``no_calibration`` and takes the ``cpu_reference`` row.
+    Bytes are recorded under ``kind``; ``implementation`` forces a row (tests)."""
+
+    def __init__(self, report, calibration=None, kind="weights", implementation=""):
+        from reloc_torch.compiler import CompilerClient
+        from reloc_torch.recipe import BindingParam, Dequantize, Recipe, TensorSpec, Transpose
+        from reloc_torch.symbolic import Const, Symbol, dense_strides
+
+        rows, cols = Symbol("s0"), Symbol("s1")
+
+        def spec(shape, dtype):
+            return TensorSpec(shape, dense_strides(shape), Const(0), dtype)
+
+        recipe = Recipe(
+            spec((rows, cols), "int8"),
+            (Dequantize("float32", BindingParam("scale", "float32", (cols,)), None, 1, "affine"), Transpose((1, 0))),
+            spec((cols, rows), "float32"),
+            "h2d",
+        )
+        self.compiled = CompilerClient.from_environment().compile(recipe)
+        self.compiles = 1
+        self.shapes = set()
+        self.report = report
+        self.calibration = calibration
+        self.kind = kind
+        self.implementation = implementation
+        report.add_plan_compiles(1)
+
+    def fetch(self, q, scale, device):
+        import torch
+        from reloc_torch import dispatch
+
+        device = torch.device(device)
+        request = dispatch.prepare_typed_transfer(
+            self.compiled, q, device, parameters={"scale": scale}, policy="auto",
+            calibration=self.calibration, implementation=self.implementation)
+        # Workaround for a runtime bug: typed dispatch launches its CUDA
+        # kernels on the caller's current device (libreloc/src/Dispatch.cpp has
+        # no device scope around the launches), so a GPU row targeting another
+        # device fails with "invalid resource handle". Remove once fixed.
+        with torch.cuda.device(device):
+            result = dispatch.execute_typed_transfer(request)
+        report = result.report
+        self.shapes.add(tuple(q.shape))
+        self.report.add_dispatch(report["implementation"])
+        self.report.add_bytes(self.kind, report["source_bytes"], report["wire_bytes"], report["destination_bytes"],
+                              payload=report["payload_bytes_transferred"])
+        return result.tensor
+
+    @staticmethod
+    def reference(q, scale, device):
+        """The same conversion in PyTorch: move the int8 weight, dequantize and transpose on the GPU."""
+        return (q.to(device).float() * scale.to(device)).t().contiguous()

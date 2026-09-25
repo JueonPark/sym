@@ -151,3 +151,43 @@ def test_run_example_turns_a_prerequisite_error_into_exit_two(capsys):
     assert common.run_example(main) == 2
     assert "prerequisite: no GPU here" in capsys.readouterr().err
     assert common.run_example(lambda: 0) == 0
+
+
+needs_cuda = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable")
+needs_two_gpus = pytest.mark.skipif(not torch.cuda.is_available() or torch.cuda.device_count() < 2,
+                                    reason="needs two GPUs")
+
+
+@pytest.mark.gpu
+@needs_cuda
+def test_weight_fetcher_matches_pytorch_for_every_shape_with_one_artifact():
+    report = common.Report("fetch")
+    fetcher = common.WeightFetcher(report)
+    generator = torch.Generator().manual_seed(1)
+    for rows, cols in ((64, 96), (96, 64), (128, 128)):
+        q, scale = common.quantize_per_channel(torch.randn(rows, cols, generator=generator))
+        actual = fetcher.fetch(q, scale, "cuda:0")
+        assert actual.shape == (cols, rows) and actual.dtype == torch.float32
+        assert common.same_tensor(actual, common.WeightFetcher.reference(q, scale, "cuda:0"))
+    assert fetcher.compiles == 1 and fetcher.shapes == {(64, 96), (96, 64), (128, 128)}
+    assert report.data["plan_compiles"] == 1
+    weights = report.data["bytes"]["weights"]
+    assert weights["transfers"] == 3 and weights["payload"] >= weights["wire"] == weights["destination"]
+    assert report.data["dispatches"] == {"cpu_reference": 3}              # no calibration -> the reference row
+
+
+@pytest.mark.gpu
+@needs_two_gpus
+@pytest.mark.parametrize("row", ["cpu_stages_cuda_stages@0", "cuda_dequant_relocate"])
+def test_weight_fetcher_reaches_a_device_that_is_not_current(row):
+    """Pins the workaround for the runtime's missing device scope around typed
+    kernel launches: GPU rows alternate between the current device and another."""
+    report = common.Report("fetch")
+    fetcher = common.WeightFetcher(report, implementation=row, kind="expert_weights")
+    q, scale = common.quantize_per_channel(torch.randn(512, 256, generator=torch.Generator().manual_seed(2)))
+    torch.cuda.set_device(0)
+    for device in ("cuda:0", "cuda:1", "cuda:0", "cuda:1"):
+        actual = fetcher.fetch(q, scale, device)
+        assert common.same_tensor(actual, common.WeightFetcher.reference(q, scale, device))
+    assert report.data["dispatches"] == {row: 4}
+    assert report.data["bytes"]["expert_weights"]["transfers"] == 4
