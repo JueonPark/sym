@@ -1,232 +1,70 @@
 # Sym
 
-A symbolic, algebraic type inference engine built on MLIR.
+Sym is a compiler and runtime for **changing tensor layouts and values while
+moving data between the CPU and GPU**. For example, it can turn a sequence
+of reshapes, transposes, padding, and supported data-type conversions into a
+reusable execution plan. Tensor dimensions can remain symbolic, so the same
+plan can run on different input sizes after checking their constraints.
 
-## Overview
+Use Sym through an opt-in **PyTorch backend**, or compile plans explicitly
+and execute them from **Python or C++**. The compiler uses MLIR; the
+standalone `libreloc` runtime does not depend on MLIR, LLVM, or PyTorch.
+The project also provides symbolic tensor types and shape inference for
+MLIR developers.
 
-Sym is an MLIR dialect that enables symbolic shape tracking and inference for tensor operations. It provides:
+## Quick start
 
-- **Symbolic Tensor Types**: Tensors with symbolic dimension expressions (e.g., `!sym.tensor<[s0, s1], f32>`)
-- **Symbolic Expressions**: Rich expression language including symbols, constants, and binary operations
-- **Automatic Simplification**: Algebraic simplification of symbolic expressions (e.g., `x + 0 → x`, `x * 1 → x`)
-- **Broadcasting Unification**: NumPy-style broadcasting semantics for symbolic shapes
-- **Dialect-Agnostic Interface**: Attach symbolic shape inference to any MLIR dialect
+Start with the [getting-started guide](docs/getting-started.md) to build Sym
+and run a complete CPU example. For PyTorch CPU–GPU transfers, follow its
+[PyTorch setup](docs/getting-started.md#use-with-pytorch), then try:
 
-## Key Features
+```python
+import torch
+from reloc_torch import RelocBackend
 
-### Symbolic Types
+# Reshape and transpose a CPU tensor, then transfer the result to the GPU.
+def prepare_input(x):
+    return x.reshape(x.shape[0] // 64, 64).t().contiguous().to("cuda")
 
-```mlir
-// Symbolic tensor with symbolic dimensions s0 and s1
-!sym.tensor<[s0, s1], f32>
+backend = RelocBackend()
+compiled = torch.compile(prepare_input, backend=backend, dynamic=True)
 
-// Mixed symbolic and concrete dimensions
-!sym.tensor<[s0, 64, s1], i32>
+with torch.no_grad():
+    for n in (128, 192, 256):
+        result = compiled(torch.arange(n, dtype=torch.float32))
+        print(result.shape, result.device)  # [64, n // 64] on cuda:0
 
-// Symbolic expressions as dimensions
-!sym.tensor<[s0 * s1, s0 + 1], f64>
+print(backend.stats())  # Executed plans, shape bindings, and fallback reasons.
+backend.close()
 ```
 
-### Symbolic Expressions
+Sym compiles supported regions and binds their symbolic dimensions for each
+call. Unsupported regions retain their original PyTorch behavior. The
+integration targets inference and blocking transfers; nonblocking requests
+and unsupported tensor layouts use PyTorch. The qualified frontend baseline
+is Linux x86_64, regular-GIL **Python 3.14.7**, and **PyTorch 2.14.0**
+(`+cpu` / `+cu126`); GPU execution also requires a CUDA-enabled Sym build.
 
-- **Symbols**: Named symbolic values (e.g., `s0`, `batch_size`)
-- **Constants**: Integer constants (e.g., `1`, `64`, `256`)
-- **Binary Operations**: `add`, `sub`, `mul`, `div`, `mod`
+For explicit recipes, Sym supports float32/float16 casts and signed-int8
+quantization/dequantization with supplied parameters. Automatic PyTorch
+capture supports a narrower set; see the
+[typed support matrix](docs/typed-relocation-support.md). Precision changes
+are always explicit. Performance depends on the workload; the current
+[integration measurements](docs/runtime-integration.md#5-evidence) do not
+establish a speed advantage over PyTorch.
 
-### Operations
+## Learn more
 
-| Operation | Description |
-|-----------|-------------|
-| `sym.constant` | Create a symbolic tensor constant |
-| `sym.change_type` | Convert a tensor to a symbolic tensor type |
-
-### Passes
-
-| Pass | Description |
-|------|-------------|
-| `--symbolic-shape-inference` | Propagate symbolic shapes through operations |
-
-### Reloc Dialect (P1a)
-
-The `reloc` dialect provides `#reloc.plan`, a serializable symbolic
-representation of folded layout-transform chains. Plans are structurally
-verified at construction time; undecidable pad ranges degrade to a
-`runtime_pad_check` flag instead of being rejected.
-Plans serialize to an MLIR-free binary format for the runtime handoff —
-see [docs/reloc-plan-format.md](docs/reloc-plan-format.md). The typed value
-transforms (`reloc.cast`, `reloc.quantize`, `reloc.dequantize`) and their
-numerical contract are defined in
-[docs/reloc-typed-semantics.md](docs/reloc-typed-semantics.md), and
-`--reloc-fold` folds them with the layout chain into `#reloc.typed_plan`
-([docs/reloc-typed-folding.md](docs/reloc-typed-folding.md)); their artifact
-encoding and execution are still in progress (C3–C4, R3).
-
-| Attribute | Description |
-|-----------|-------------|
-| `#reloc.plan` | Full relocation plan: descriptors, perm, axes, pad/constraints, inverse map |
-| `#reloc.tensor_desc` | Symbolic tensor descriptor (extents, strides, offset, element type) |
-| `#reloc.axis_info` | Named axis with extent and src/dst strides |
-| `#reloc.pad_fill` | Pad spec for one destination axis |
-| `#reloc.divisibility` / `#reloc.alignment` | Plan-local constraints |
-
-| Operation | Description |
-|-----------|-------------|
-| `reloc.transpose` | Permute axes: result dim k = operand dim perm[k] |
-| `reloc.reshape` | Row-major reinterpretation to a symbolic target shape |
-| `reloc.pad` | Pad one axis with leading/trailing widths and a fill value |
-
-| Pass | Description |
-|------|-------------|
-| `--test-reloc-utils` | Testing-only: bridge round-trips and structure predicates via remarks |
-
-## Project Structure
-
-```
-sym/
-├── CMakeLists.txt              # Root CMake configuration
-├── sym/
-│   ├── CMakeLists.txt          # Dialect library CMake
-│   ├── dialect/sym/
-│   │   ├── IR/                 # Dialect definitions
-│   │   │   ├── SymDialect.td   # Dialect TableGen definition
-│   │   │   ├── SymTypes.td     # Type definitions
-│   │   │   ├── SymAttrs.td     # Attribute definitions
-│   │   │   ├── SymOps.td       # Operation definitions
-│   │   │   ├── SymInterfaces.td # Interface definitions
-│   │   │   ├── SymDialect.h/cpp # Dialect implementation
-│   │   │   ├── SymUtils.h/cpp  # UnificationSolver utility
-│   │   │   └── SymExtensions.cpp # External models for arith ops
-│   │   └── Transforms/         # Optimization passes
-│   │       ├── SymPasses.td    # Pass TableGen definitions
-│   │       ├── SymPasses.h     # Pass declarations
-│   │       └── SymbolicShapeInference.cpp # Shape inference pass
-│   └── dialect/reloc/          # RelocationPlan IR dialect (P1a)
-│       ├── IR/
-│       │   ├── RelocDialect.td # Dialect TableGen definition
-│       │   ├── RelocAttrs.td   # Plan attribute definitions
-│       │   ├── RelocDialect.h/cpp # Dialect implementation
-│       │   ├── RelocAttributes.cpp # Attribute assembly + verification
-│       │   └── RelocUtils.h/cpp # Expr syntax, sym<->affine bridge, predicates
-│       └── Transforms/         # Reloc passes
-│           ├── RelocPasses.td  # Pass TableGen definitions
-│           └── TestRelocUtils.cpp # --test-reloc-utils test pass
-├── tools/
-│   └── SymOptMain.cpp          # sym-opt driver tool
-├── test/                       # LIT tests
-└── build_tools/                # Build utilities
-```
-
-## Building
-
-### Prerequisites
-
-- CMake 3.20+
-- Ninja
-- LLVM/MLIR (built from source or pre-built)
-  - Target version: **LLVM/MLIR 21.1.8**. The repo pins commit
-    `2078da43e25a4623cab2d0d60decddf709aaea28` in `build_tools/llvm_version.txt`;
-    this is the version currently used by the project.
-
-### Build Sym with LLVM/MLIR altogether
-
-```bash
-./build_tools/build_mlir.sh
-```
-
-### Build Sym with external MLIR
-
-```bash
-mkdir -p build/sym && cd build/sym
-cmake -G Ninja ../.. \
-  -DMLIR_DIR={YOUR_MLIR_PATH} \
-  -DLLVM_EXTERNAL_LIT={YOUR_LLVM-LIT_PATH}
-ninja
-```
-
-### Run Tests
-
-```bash
-ninja check-sym
-```
-
-## Usage
-
-### Command Line
-
-```bash
-# Parse and verify symbolic types
-./build/sym/sym/tools/sym-opt test/dialect/sym/types.mlir
-
-# Run symbolic shape inference
-./build/sym/sym/tools/sym-opt --symbolic-shape-inference input.mlir
-```
-
-### MLIR Examples
-
-```mlir
-// Define a function with symbolic tensor types
-func.func @matmul(%a: !sym.tensor<[s0, s1], f32>, 
-                  %b: !sym.tensor<[s1, s2], f32>) 
-    -> !sym.tensor<[s0, s2], f32> {
-  // Operations here...
-}
-
-// Use sym.change_type to convert standard tensors
-func.func @convert(%input: tensor<4x8xf32>) -> !sym.tensor<[s0, s1], f32> {
-  %result = sym.change_type %input : tensor<4x8xf32> -> !sym.tensor<[s0, s1], f32>
-  return %result : !sym.tensor<[s0, s1], f32>
-}
-```
-
-### C++ API
-
-```cpp
-#include "sym/dialect/sym/IR/SymDialect.h"
-#include "sym/dialect/sym/IR/SymUtils.h"
-
-// Create symbolic types
-auto s0 = SymbolExprAttr::get(ctx, "s0");
-auto s1 = SymbolExprAttr::get(ctx, "s1");
-auto tensorType = SymbolicTensorType::get(ctx, {s0, s1}, FloatType::getF32(ctx));
-
-// Unify shapes with broadcasting
-SmallVector<Attribute> result;
-auto diag = UnificationSolver::unify(shape1, shape2, result, loc);
-if (failed(diag)) {
-  // Handle unification failure
-}
-```
-
-### PyTorch integration
-
-An opt-in PyTorch frontend (`libreloc/python/reloc_torch`) captures CPU↔CUDA
-transfers and their adjacent layout operations, compiles them to symbolic
-relocation plans and executes them through libreloc with guarded fallback to
-PyTorch. Installation, activation and boundaries:
-[docs/torch-integration.md](docs/torch-integration.md); support matrix and
-evidence: [docs/torch-support.md](docs/torch-support.md).
-
-### Compiler-to-runtime integration
-
-Start at [docs/runtime-integration.md](docs/runtime-integration.md): the
-fresh-checkout build, the public C++ (`reloc-run-artifact`) and Python paths,
-named input/output/weight/typed examples, the combined support matrix, the
-CPU and CUDA evidence (`docs/runtime-evidence/`), and the disposition of every
-remaining historical issue. Typed value transforms (cast, quantize,
-dequantize) are specified in
-[docs/reloc-typed-semantics.md](docs/reloc-typed-semantics.md) and supported
-as listed in [docs/typed-relocation-support.md](docs/typed-relocation-support.md).
-
-## Supported External Operations
-
-The `SymbolicShapeOpInterface` is attached to the following `arith` dialect operations:
-
-**Integer Operations**: `addi`, `subi`, `muli`, `divsi`, `divui`, `remsi`, `remui`, `andi`, `ori`, `xori`, `shli`, `shrsi`, `shrui`, `maxsi`, `maxui`, `minsi`, `minui`, `cmpi`
-
-**Floating-Point Operations**: `addf`, `subf`, `mulf`, `divf`, `remf`, `maximumf`, `minimumf`, `maxnumf`, `minnumf`, `cmpf`
-
-**Conversion Operations**: `extsi`, `extui`, `extf`, `trunci`, `truncf`, `sitofp`, `uitofp`, `fptosi`, `fptoui`
+| I want to… | Guide |
+| --- | --- |
+| Build Sym and execute my first plan | [Getting started](docs/getting-started.md) |
+| Use compiled/eager PyTorch transfers or prepare inference weights | [PyTorch integration](docs/torch-integration.md) |
+| Write recipes, save artifacts, and use the Python/C++ runtime | [Plan export](docs/reloc-export.md) · [Runtime APIs](libreloc/README.md) |
+| Choose typed execution paths and inspect transferred bytes | [Runtime dispatch](docs/runtime-dispatch.md) |
+| Work with symbolic shapes in MLIR | [Symbolic shapes](docs/symbolic-shapes.md) |
+| Reproduce examples, tests, and CPU/CUDA results | [Integration guide](docs/runtime-integration.md) |
+| Read the research results and limitations | [Claim ledger](docs/claim-ledger.md) |
 
 ## License
 
-See [LICENSE](LICENSE) for details.
+See [LICENSE](LICENSE).
