@@ -17,6 +17,8 @@ pytestmark = [pytest.mark.gpu, pytest.mark.skipif(not torch.cuda.is_available(),
 EXPECTED_CHECKS = {
     "dlrm": {"pooled_embeddings_equal", "predictions_equal", "one_plan_for_every_batch_size",
              "one_execution_per_batch", "cpu_reference_row", "observed_payload_matches_wire", "no_fallbacks"},
+    "gnn": {"node_features_equal", "logits_equal", "one_plan_for_every_row_count", "rows_change_between_batches",
+            "one_execution_per_batch", "cpu_reference_row", "observed_payload_matches_wire", "no_fallbacks"},
 }
 
 
