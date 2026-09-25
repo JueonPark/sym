@@ -26,6 +26,8 @@ CALIBRATIONS = (
 _BACKEND_COUNTERS = ("dynamo_compiles", "plan_compiles", "symbol_binds", "runtime_executions", "typed_executions",
                      "typed_payload_bytes")
 _TORCH_HINT = "run with the qualified interpreter (/tmp/sym-torch-cuda/bin/python or $SYM_PYTHON)"
+# Added to every report that records wire bytes (spec: never imply Sym moves fewer bytes than equivalent PyTorch).
+WIRE_CAVEAT = "wire bytes follow from the recipe's dtype choice; equivalent PyTorch code moves the same bytes"
 
 
 class PrerequisiteError(RuntimeError):
@@ -252,6 +254,8 @@ class Report:
                     "count": len(samples), "first_call": round(samples[0], 3),
                     "median": round(statistics.median(rest), 3) if rest else None, "total": round(sum(samples), 3)}
                 steady[path] = round(steady.get(path, 0.0) + sum(rest), 3)
+        if self.data["bytes"] and WIRE_CAVEAT not in self.data["notes"]:
+            self.data["notes"].append(WIRE_CAVEAT)
         counters = self.data["counters"]
         byte_totals = list(self.data["bytes"].values())
         self.data["timings_ms"] = timings

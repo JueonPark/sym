@@ -62,6 +62,16 @@ def test_finish_returns_one_and_names_the_failed_check(capsys):
     assert "FAILED values_equal: 1 of 1 -- batch 3 differs" in out
 
 
+def test_a_report_with_wire_bytes_states_that_equivalent_pytorch_moves_the_same_bytes():
+    report = common.Report("demo")
+    report.check("a", True)
+    report.finish()
+    assert common.WIRE_CAVEAT not in report.data["notes"]           # nothing moved, nothing to qualify
+    report.add_bytes("x", source=400, wire=100, destination=400)
+    report.finish()
+    report.finish()
+    assert report.data["notes"].count(common.WIRE_CAVEAT) == 1
+
 def test_backend_stats_feed_counters_dispatches_and_plan_compiles():
     report = common.Report("demo")
     report.set_backend_stats({

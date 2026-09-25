@@ -200,6 +200,8 @@ def main(argv=None):
     print()
     print(format_table(results))
     print("steady = total transfer time without each transfer kind's first call; timings are descriptive only")
+    print("wire/dest = bytes that crossed the link vs destination bytes; "
+          "equivalent PyTorch code moves the same wire bytes")
     summary = [{key: result[key] for key in ("name", "status", "returncode", "log", "command")}
                | {"summary": (result["report"] or {}).get("summary")} for result in results]
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")

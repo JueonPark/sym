@@ -92,6 +92,7 @@ def test_run_collects_reports_logs_and_the_worst_status(tmp_path, monkeypatch, c
     assert "boom" in (out / "llm.log").read_text()
     table = capsys.readouterr().out
     assert "example" in table and "1/1" in table and "crash" in table
+    assert "equivalent PyTorch code moves the same wire bytes" in table
 
 
 def test_only_runs_the_selected_examples(tmp_path, monkeypatch):
