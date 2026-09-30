@@ -39,8 +39,10 @@ void fillDst(const BoundPlan &bound, void *dstBase);
 /// The primitive: write ONLY the valid dst cells for outer-axis indices
 /// [outerBegin, outerEnd) (does not fill pads — call fillDst first).
 /// `dstBase` is the address at which dst element offset 0 would land
-/// (rebase it for a staging buffer). Scalar inner copy in this task;
-/// Task 2 vectorises the contiguous run.
+/// (rebase it for a staging buffer). Dense unpadded rank-2 transposes of
+/// four-byte elements use a cache-blocked kernel with runtime-dispatched
+/// AVX2 register tiles. Other layouts use the generic stride walker and
+/// contiguous copyRun where applicable.
 void gatherChunk(const BoundPlan &bound, const void *srcBase, void *dstBase,
                  int64_t outerBegin, int64_t outerEnd);
 

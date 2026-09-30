@@ -82,8 +82,15 @@ complete example; this document describes the lower-level APIs.
 - `reloc::executeView` / `executeH2D` / `executeH2DThreaded` / `gatherChunk` /
   `executeD2H` (`reloc/Execute.h`) — CPU relocation executors over a
   `BoundPlan`; `no_copy` view publish, single- and multi-thread strided copy
-  with an AVX2 inner run, and the CPU D2H scatter; the gather primitive is
-  #C5's per-chunk form (`libreloc/test/ExecuteTest.cpp`).
+  with an AVX2 contiguous inner run, and the CPU D2H scatter. The gather
+  primitive is #C5's per-chunk form. Dense, unpadded rank-2 transposes of
+  four-byte elements use 32×32 cache blocks with runtime-dispatched AVX2
+  8×8 register tiles (portable blocked copies on other CPUs). This path
+  preserves bits for both integer and floating-point data, handles unaligned
+  buffers and partial rows, and writes directly into pipeline staging
+  windows. Other element widths, padded/typed layouts and the inverse
+  scatter retain their existing executors (`libreloc/test/ExecuteTest.cpp`,
+  `libreloc/test/TransposeTest.cpp`).
 - `reloc::executeH2DPipelined` / `executeD2HPipelined` (`reloc/Pipeline.h`) —
   Strategy 4: chunked, pinned-staged, event-recycled H2D and its symmetric D2H
   inverse. Written once against the `reloc::CopyBackend` interface
