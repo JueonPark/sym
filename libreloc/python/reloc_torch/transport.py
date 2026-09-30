@@ -18,6 +18,7 @@ Requests are single-use and recheck the source immediately before execution.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from threading import Lock
 
 import pyreloc
 
@@ -73,6 +74,7 @@ class PreparedTransfer:
     request: object = None
     consumed: bool = False
     _snapshot: tuple = field(init=False, repr=False)
+    _execution_lock: object = field(default_factory=Lock, init=False, repr=False, compare=False)
 
     def __post_init__(self):
         self._snapshot = compat.storage_snapshot(self.source)
@@ -135,46 +137,65 @@ def prepare_transfer(compiled, source, device, *, non_blocking=False):
     )
 
 
-def execute_transfer(request, *, n_buffers=4, n_streams=2, gather_threads=1, gather_pool=None):
-    """Allocate the destination, order after the caller stream, run and complete."""
+def execute_transfer(request, *, n_buffers=4, n_streams=2, gather_threads=1,
+                     gather_pool=None, resources=None):
+    """Allocate a fresh output and complete; optionally reuse explicit resources.
+
+    Omission/None uses a fresh native context for this call. In both cases the
+    source and output are strongly owned through cleanup or quarantine.
+    """
+    from .resources import TransferResources
+
+    if resources is not None and not isinstance(resources, TransferResources):
+        raise TypeError("resources must be TransferResources or None")
+    native_resources = None if resources is None else resources.native
     import torch
 
-    if request.consumed:
-        raise RuntimeError("transfer request was already executed")
-    request.recheck()
-    destination = request.destination
-    out = torch.empty_strided(
-        destination.shape, destination.strides,
-        dtype=getattr(torch, destination.dtype), device=destination.device,
-    )
-    if request.direction == "h2d":
-        dst_view = _storage_view(out, "cuda", out.device.index)
-        cuda_device = out.device
-    else:
-        dst_view = _storage_view(out, "host", -1)
-        cuda_device = request.source.device
+    # Guard preflight/output allocation too: those operations can release the
+    # GIL before a native request exists. Distinct requests remain concurrent.
+    if not request._execution_lock.acquire(blocking=False):
+        raise RuntimeError("transfer request was already executed or is executing")
     try:
-        native = pyreloc.make_transfer(request.bound, request.source_view, dst_view, request.direction)
-    except pyreloc.TransferError as error:
-        raise RuntimeError(f"transfer request rejected at execution: {error}") from error
-    request.request = native
-    # Consumed only once work can be launched: an allocation or validation
-    # failure above leaves the request reusable, the native request itself
-    # is single-use, and the source/destination owners stay referenced
-    # through the blocking call.
-    request.consumed = True
-    try:
-        pyreloc.execute_transfer(
-            native,
-            caller_stream=compat.cuda_stream_handle(cuda_device),
-            n_buffers=n_buffers,
-            n_streams=n_streams,
-            gather_threads=gather_threads,
-            gather_pool=gather_pool,
+        if request.consumed:
+            raise RuntimeError("transfer request was already executed")
+        request.recheck()
+        destination = request.destination
+        out = torch.empty_strided(
+            destination.shape, destination.strides,
+            dtype=getattr(torch, destination.dtype), device=destination.device,
         )
-    except pyreloc.TransferError as error:
-        raise RuntimeError(f"{request.direction} transfer failed: {error}") from error
-    return out
+        if request.direction == "h2d":
+            dst_view = _storage_view(out, "cuda", out.device.index)
+            cuda_device = out.device
+        else:
+            dst_view = _storage_view(out, "host", -1)
+            cuda_device = request.source.device
+        try:
+            native = pyreloc.make_transfer(request.bound, request.source_view, dst_view, request.direction)
+        except pyreloc.TransferError as error:
+            raise RuntimeError(f"transfer request rejected at execution: {error}") from error
+        request.request = native
+        # Consumed only once work can be launched: an allocation or validation
+        # failure above leaves the request reusable, the native request itself
+        # is single-use, and the source/destination owners stay referenced
+        # through the blocking call.
+        request.consumed = True
+        try:
+            pyreloc.execute_transfer(
+                native,
+                caller_stream=compat.cuda_stream_handle(cuda_device),
+                n_buffers=n_buffers,
+                n_streams=n_streams,
+                gather_threads=gather_threads,
+                gather_pool=gather_pool,
+                resources=native_resources,
+                owners=(request.source, out),
+            )
+        except pyreloc.TransferError as error:
+            raise RuntimeError(f"{request.direction} transfer failed: {error}") from error
+        return out
+    finally:
+        request._execution_lock.release()
 
 
 __all__ = ("CAPABILITY_IDENTITY", "PreparedTransfer", "execute_transfer", "prepare_transfer")
