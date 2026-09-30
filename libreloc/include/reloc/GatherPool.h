@@ -39,8 +39,9 @@ public:
   bool closed() const { return closed_; }
 
   /// Join every worker. Idempotent, and safe against concurrent close()
-  /// calls or an in-flight parallelFor: it serializes behind them, so
-  /// "close() returned" always means "workers are gone".
+  /// calls or an in-flight dispatch using workers: it serializes behind them,
+  /// so "close() returned" always means "workers are gone". Inline-only work
+  /// does not access workers and may continue during or after close().
   void close();
 
   /// Partition [begin, end) into <= threadCount() contiguous sub-ranges of
@@ -48,13 +49,13 @@ public:
   /// workers; blocks until every sub-range completed. Collapses to a plain
   /// inline fn(begin, end) -- no locks, no worker wakeup -- when only one
   /// sub-range results, so the threads==1 path is bit-identical in behavior
-  /// to calling fn directly. Concurrent dispatches from multiple driver
-  /// threads are serialized internally (each runs to completion before the
-  /// next starts), and a dispatch that loses a race with close() runs fn
+  /// to calling fn directly. Dispatches using workers are serialized across
+  /// driver threads (each finishes before the next starts), and a dispatch
+  /// that loses a race with close() runs fn
   /// inline instead of handing work to joined workers. Not reentrant from
-  /// within fn; fn must not throw. Calling after close() is a contract
-  /// violation (asserted in debug); in release it degrades to the inline
-  /// path.
+  /// within fn; fn must not throw. Calls after close() also run inline in
+  /// debug and release: a borrowed pool may close between transfer chunks.
+  /// Python bindings reject an already-closed pool at initial admission.
   void parallelFor(int64_t begin, int64_t end, int64_t minPerWorker,
                    const std::function<void(int64_t, int64_t)> &fn);
 

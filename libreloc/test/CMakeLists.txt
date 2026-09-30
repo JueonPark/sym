@@ -13,6 +13,7 @@ add_executable(libreloc-test
   ExecuteTest.cpp
   TransposeTest.cpp
   BackendTest.cpp
+  CudaBackendTest.cpp
   PoolTest.cpp
   GatherPoolTest.cpp
   ChunkScheduleTest.cpp

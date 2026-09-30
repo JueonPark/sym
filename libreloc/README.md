@@ -33,6 +33,19 @@ complete example; this document describes the lower-level APIs.
 
 ## Surface
 
+- `reloc::CopyBackend::quiesce()` (`reloc/Backend.h`, issue
+  [#166](https://github.com/JueonPark/sym/issues/166)) — explicitly drain owned
+  queues after stopping submissions, including after a sticky error or a copy
+  without a recorded event. `QueueCompletion::Complete` establishes memory
+  lifetime completion, not operation success; `Unknown` forbids recycling or
+  freeing the buffers touched by that work. The first `error()` is preserved
+  if cleanup also fails. CUDA waits on private streams, never the entire device;
+  HostBackend waits for queued and executing tasks without allocating an event.
+  Ordinary successful transfers retain their existing event-wait path. This new
+  pure virtual method changes the native C++ interface: external backends must
+  implement it, and the runtime and native consumers must be rebuilt together.
+  HostBackend retires successfully waited event records; repeated waits/queries
+  remain complete, and `outstandingEvents()` reports records not yet retired.
 - `reloc::decodePlan` (`reloc/Decode.h`) — wire-format v0 in
   (`docs/reloc-plan-format.md`), `RelocationPlan` out; strict validation
   with byte-offset diagnostics. The decoder is the trust boundary: every
@@ -132,7 +145,12 @@ complete example; this document describes the lower-level APIs.
   D2H — so output stays bit-identical to `executeH2D`/`executeD2H`, and
   `gatherThreads == 1` never constructs a pool. Explicit `close()` lifecycle
   for pybind, dispatches and `close()` are serialized internally, so
-  concurrent use from multiple threads is safe (`libreloc/test/GatherPoolTest.cpp`).
+  concurrent use from multiple threads is safe. Native dispatch after closure
+  runs inline in both debug and release builds so a borrowed pool can close
+  between transfer chunks; Python still rejects an already-closed pool at
+  initial admission. `close()` joins workers and waits for dispatches using
+  them; inline-only work can continue without workers
+  (`libreloc/test/GatherPoolTest.cpp`).
 - `reloc::quant` (`reloc/Quant.h`) — R0.1's CPU transform kernels
   (issue [#74](https://github.com/JueonPark/sym/issues/74)): contiguous per-channel int8 quantize
   (`quantizePackF32S8`), the fused strided-gather + quantize Case-1a

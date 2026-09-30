@@ -22,7 +22,13 @@ namespace reloc {
 /// staging; DeviceToHost swaps the roles.
 enum class CopyDir { HostToDevice, DeviceToHost };
 
+/// Completion of all work previously submitted to the backend's queues.
+/// Unknown never authorizes recycling or freeing memory touched by that work.
+enum class QueueCompletion { Complete, Unknown };
+
 /// Opaque completion handle. 0 means "no event" (waits/queries are no-ops).
+/// A failed recordEvent() can return 0 after a copy was enqueued; it is not
+/// proof that the backend has no outstanding work.
 using EventHandle = uint64_t;
 
 class CopyBackend {
@@ -46,11 +52,21 @@ public:
   /// handle completes once those copies have finished.
   virtual EventHandle recordEvent(int queue) = 0;
 
-  /// Block the calling thread until `ev` completes. ev == 0 returns at once.
+  /// Block until `ev` completes, then retire its tracking record on success.
+  /// Zero and already-retired handles return at once. Check failed() as well:
+  /// a failed wait is not a completion proof, even if the handle was retired.
   virtual void waitEvent(EventHandle ev) = 0;
 
   /// Non-blocking: true iff `ev` has completed (or ev == 0).
   virtual bool queryEvent(EventHandle ev) = 0;
+
+  /// Establish completion without requiring a successfully recorded event.
+  /// Attempt all owned queues despite sticky errors; return Unknown if any
+  /// completion cannot be established. Preserve the first error() separately
+  /// from this result: Complete does not mean the original operation succeeded.
+  /// The caller must stop submissions before calling and throughout cleanup.
+  /// Healthy transfers may use their ordinary event waits instead.
+  virtual QueueCompletion quiesce() = 0;
 
   /// Order every private queue after the work already enqueued on an
   /// external producer stream (a caller's CUDA stream, erased to void*).

@@ -155,6 +155,23 @@ bool CudaBackend::queryEvent(EventHandle ev) {
   return false;
 }
 
+QueueCompletion CudaBackend::quiesce() {
+  // No failed() early return: an error (including failed event recording)
+  // may have been observed after a copy or kernel was already enqueued.
+  DeviceScope scope(device_);
+  if (!check(static_cast<int>(scope.status), "cudaSetDevice(quiesce)"))
+    return QueueCompletion::Unknown;
+  bool complete = true;
+  for (void *s : streams_) {
+    // Null is a construction-failure placeholder, not an owned default stream.
+    // Never short-circuit later streams when an earlier synchronization fails.
+    if (s && !check(cudaStreamSynchronize(asStream(s)),
+                    "cudaStreamSynchronize(quiesce)"))
+      complete = false;
+  }
+  return complete ? QueueCompletion::Complete : QueueCompletion::Unknown;
+}
+
 bool CudaBackend::waitStream(const void *externalStream) {
   if (failed())
     return false;

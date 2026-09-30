@@ -32,7 +32,8 @@ GatherPool::~GatherPool() { close(); }
 void GatherPool::close() {
   // Serialize against other close() calls AND in-flight dispatches (pybind
   // exposes both with the GIL released): once close() returns, every worker
-  // has been joined and no dispatch is running.
+  // has been joined and no dispatch is using workers. Inline calls need no
+  // worker state and can continue after close().
   std::lock_guard<std::mutex> driverLk(driverMu_);
   if (closed_)
     return;
@@ -69,7 +70,6 @@ void GatherPool::workerLoop() {
 
 void GatherPool::parallelFor(int64_t begin, int64_t end, int64_t minPerWorker,
                              const std::function<void(int64_t, int64_t)> &fn) {
-  assert(!closed_ && "parallelFor on a closed GatherPool");
   const int64_t n = end - begin;
   if (n <= 0)
     return;
@@ -92,12 +92,11 @@ void GatherPool::parallelFor(int64_t begin, int64_t end, int64_t minPerWorker,
     return;
   }
   // Serialize whole dispatches against each other and against close():
-  // Python threads may share one pool, and release builds have no asserts
-  // to catch it. Held across the barrier wait below.
+  // Python threads may share one pool. Held across the barrier wait below.
   std::lock_guard<std::mutex> driverLk(driverMu_);
   if (closed_) {
-    // Lost a race with close() (reachable only through the GIL-released
-    // pybind path): the workers are gone, so run the whole range inline
+    // Lost a race with close(), possibly between chunks of a borrowed-pool
+    // transfer: the workers are gone, so run the whole range inline
     // rather than parking work no one will drain.
     fn(begin, end);
     return;
