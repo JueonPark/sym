@@ -41,6 +41,7 @@ public:
   EventHandle recordEvent(int queue) override;
   void waitEvent(EventHandle ev) override;
   bool queryEvent(EventHandle ev) override;
+  QueueCompletion quiesce() override;
   bool waitStream(const void *externalStream) override;
   bool failed() const override { return !error_.empty(); }
   const std::string &error() const override { return error_; }

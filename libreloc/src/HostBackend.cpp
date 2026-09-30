@@ -2,6 +2,7 @@
 
 #include "reloc/HostBackend.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 
@@ -72,8 +73,9 @@ void HostBackend::waitEvent(EventHandle ev) {
   std::unique_lock<std::mutex> lk(mu_);
   cv_.wait(lk, [&] {
     auto it = done_.find(ev);
-    return it != done_.end() && it->second;
+    return it == done_.end() || it->second;
   });
+  done_.erase(ev);
 }
 
 bool HostBackend::queryEvent(EventHandle ev) {
@@ -81,13 +83,25 @@ bool HostBackend::queryEvent(EventHandle ev) {
     return true;
   std::lock_guard<std::mutex> lk(mu_);
   auto it = done_.find(ev);
-  // Unknown handle => complete, mirroring CudaBackend::queryEvent (a handle
-  // absent from the tracking map means there is nothing left to wait on).
-  // A known-but-pending handle still reports its stored (false) flag, so
-  // this only changes behavior for handles queryEvent was never told about.
+  // Consumed or unknown handle => complete, mirroring CudaBackend::queryEvent.
   if (it == done_.end())
     return true;
   return it->second;
+}
+
+QueueCompletion HostBackend::quiesce() {
+  std::unique_lock<std::mutex> lk(mu_);
+  cv_.wait(lk, [&] {
+    return std::all_of(queues_.begin(), queues_.end(), [](const auto &q) {
+      return q->tasks.empty() && !q->executing;
+    });
+  });
+  return QueueCompletion::Complete;
+}
+
+size_t HostBackend::outstandingEvents() const {
+  std::lock_guard<std::mutex> lk(mu_);
+  return done_.size();
 }
 
 void HostBackend::setCopyHook(std::function<void()> hook) {
@@ -105,6 +119,7 @@ void HostBackend::workerLoop(Queue &q) {
         return;
       t = q.tasks.front();
       q.tasks.pop_front();
+      q.executing = true;
     }
     if (t.kind == Task::Copy) {
       std::function<void()> hook;
@@ -115,11 +130,14 @@ void HostBackend::workerLoop(Queue &q) {
       if (hook)
         hook();
       std::memcpy(t.dst, t.src, t.bytes);
-    } else { // Task::Event
-      std::lock_guard<std::mutex> lk(mu_);
-      done_[t.ev] = true;
-      cv_.notify_all();
     }
+    {
+      std::lock_guard<std::mutex> lk(mu_);
+      if (t.kind == Task::Event)
+        done_[t.ev] = true;
+      q.executing = false;
+    }
+    cv_.notify_all();
   }
 }
 

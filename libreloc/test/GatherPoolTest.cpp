@@ -9,10 +9,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "reloc/GatherPool.h"
+#include "BlockingGate.h"
 #include "gtest/gtest.h"
 
 #include <atomic>
 #include <cstdint>
+#include <future>
 #include <mutex>
 #include <set>
 #include <thread>
@@ -115,6 +117,61 @@ TEST(GatherPool, CloseIsIdempotentAndObservable) {
 TEST(GatherPool, ZeroThreadsResolvesToHardwareConcurrency) {
   GatherPool pool(0);
   EXPECT_GE(pool.threadCount(), 1);
+}
+
+TEST(GatherPool, BorrowedPoolClosedAfterAdmissionRunsLaterDispatchInline) {
+  for (unsigned threads : {1u, 4u}) {
+    GatherPool pool(threads);
+    std::promise<void> admitted;
+    BlockingGate resume;
+    auto transfer = std::async(std::launch::async, [&] {
+      // Model the binding's initial closed() check, before it releases the GIL.
+      EXPECT_FALSE(pool.closed());
+      admitted.set_value();
+      resume.arriveAndWait();
+      int calls = 0;
+      auto driver = std::this_thread::get_id();
+      pool.parallelFor(0, 128, 1, [&](int64_t b, int64_t e) {
+        EXPECT_EQ(std::this_thread::get_id(), driver);
+        EXPECT_EQ(b, 0);
+        EXPECT_EQ(e, 128);
+        ++calls;
+      });
+      EXPECT_EQ(calls, 1);
+    });
+    admitted.get_future().wait();
+    pool.close();
+    resume.release();
+    transfer.get();
+  }
+}
+
+TEST(GatherPool, ConcurrentCloseWaitsForRunningWorkers) {
+  GatherPool pool(4);
+  BlockingGate jobs;
+  std::atomic<int> completed{0};
+  auto dispatch = std::async(std::launch::async, [&] {
+    pool.parallelFor(0, 128, 1, [&](int64_t, int64_t) {
+      jobs.arriveAndWait();
+      ++completed;
+    });
+  });
+  EXPECT_TRUE(jobs.waitForArrivals(4));
+  auto closer = [&] {
+    pool.close();
+    EXPECT_EQ(completed.load(), 4);
+  };
+  auto first = std::async(std::launch::async, closer);
+  auto second = std::async(std::launch::async, closer);
+  EXPECT_EQ(first.wait_for(std::chrono::milliseconds(50)),
+            std::future_status::timeout);
+  EXPECT_EQ(second.wait_for(std::chrono::milliseconds(50)),
+            std::future_status::timeout);
+  jobs.release();
+  dispatch.get();
+  first.get();
+  second.get();
+  EXPECT_TRUE(pool.closed());
 }
 
 } // namespace

@@ -40,6 +40,10 @@ public:
   EventHandle recordEvent(int queue) override;
   void waitEvent(EventHandle ev) override;
   bool queryEvent(EventHandle ev) override;
+  QueueCompletion quiesce() override;
+
+  /// Event records still awaiting retirement through waitEvent().
+  size_t outstandingEvents() const;
 
   /// Test hook: invoked on the worker thread at the START of every copy. Used
   /// to artificially slow the backend for the event-gating tests.
@@ -57,12 +61,13 @@ private:
     std::deque<Task> tasks;
     std::thread worker;
     bool stop = false;
+    bool executing = false;
   };
 
   void workerLoop(Queue &q);
 
   std::vector<std::unique_ptr<Queue>> queues_;
-  std::mutex mu_;              // guards every task deque, done_, hook_, stop
+  mutable std::mutex mu_; // guards task queues/executing, done_, hook_, stop
   std::condition_variable cv_; // signals workers and waitEvent waiters
   std::unordered_map<EventHandle, bool> done_; // event -> completed
   std::function<void()> hook_;
