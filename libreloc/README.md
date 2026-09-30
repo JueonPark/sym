@@ -171,8 +171,82 @@ complete example; this document describes the lower-level APIs.
   recovery. `close()` is idempotent and releases healthy idle resources.
   Callers must serialize execution and close; a borrowed `options.gather` must
   live through the blocking call and is never retained or closed by the context.
-  This native primitive does not yet impose a memory budget or change frontend
-  defaults: bounded admission/leases are #168, and Python ownership is #169.
+  This native primitive does not impose a memory budget; the cache below adds
+  bounded admission. Python ownership and frontend defaults follow in #169–#170.
+- `reloc::TransferResourceCache` (`reloc/TransferResources.h`, issue
+  [#168](https://github.com/JueonPark/sym/issues/168)) is a thread-safe native
+  owner of multiple contexts. Keep one cache across calls and use
+  `executeTransferCached(request, cache, options, bufferOwners)` with a fresh
+  request and a token owning both buffers on every call. Construction is lazy:
+
+  ```cpp
+  reloc::TransferResourceLimits limits;
+  limits.maxLiveStagingBytes = size_t(512) << 20; // optional hard live-byte cap
+  reloc::TransferResourceCache resources(limits);
+
+  reloc::CachedTransferOptions options;
+  options.backend = {reloc::MemoryKind::Cuda, deviceOrdinal, 2};
+  options.transfer.nBuffers = 2;
+  options.transfer.gatherThreads = 3; // caller plus two owned gather workers
+  // Set this call's producer stream, when required by the buffer's producer:
+  options.transfer.hasCallerStream = true;
+  options.transfer.callerStream = producerStream;
+  auto outcome = reloc::executeTransferCached(request, resources, options,
+                                               bufferOwners);
+  // Inspect outcome.error and outcome.completion before using the output.
+  // Keep resources alive for the next request; close it when the owner shuts down.
+  ```
+
+  Each execution exclusively leases the smallest compatible sufficient idle
+  context, or grows an idle context while retaining its streams and workers.
+  Compatibility includes backend/device, direction, active slot count, worker
+  mode/count, placement tag, and the caller's actual Linux CPU-affinity mask.
+  Shape, dtype, tensor pointers, plans and caller streams are not cache keys.
+  Staging capacity is rounded up to 256 KiB per slot with checked arithmetic;
+  the current request's schedule, copy lengths and chunk overlap are unchanged.
+
+  Defaults are 256 MiB of retained staging capacity, four contexts, two contexts
+  per backend/device, and 64 owned background gather workers. Retained capacity
+  includes compatible resources during construction and execution, not only
+  idle resources. FIFO admission evicts idle contexts by least recent use when
+  necessary. A request intrinsically larger than the retained budget uses an
+  ephemeral context, still subject to context, worker and optional live-byte
+  limits, and releases it after execution. An impossible request returns
+  `resource_limit` immediately; contention waits unless `acquireTimeout` is set.
+  This timeout bounds admission waiting, not backend construction, cleanup or
+  execution. Requested gather parallelism is never silently reduced.
+
+  `stats()` reports cumulative hit/growth/miss, allocation, stream, worker and
+  event counters, plus current state and per-device gauges. Allocated bytes are
+  storage already obtained; reserved bytes are the additional capacity promised
+  to admitted work. Their sum is the live-byte charge, including retirement and
+  quarantine. Growth reserves the full target before unlocking, frees old idle
+  staging, then allocates its replacement. The same distinction applies to
+  workers. Counters count successfully observed resource creations; factory
+  internals must roll back any partial construction. Host backend queues count
+  in the stream gauges; their copy threads and externally owned gather threads
+  are not included in the owned gather-worker budget. These limits belong to
+  this explicit cache, not to the process or other cache instances.
+
+  `clear()` advances a generation: it retires existing idle resources and makes
+  older building/active contexts retire on return, while allowing new calls.
+  `close()` stops admission, wakes waiters, waits for construction, active leases
+  and normal retirement, and is idempotent. Unknown completion keeps resources
+  and buffer owners quarantined for the process lifetime, charges their budgets,
+  disables new work on that backend/device, and makes `close()` return
+  `completion_unknown`. A fork-inherited cache rejects calls before touching
+  inherited locks and abandons its child-side copy on destruction; construct a
+  fresh cache in the child when the chosen backend permits use after fork.
+  Keep the C++ wrapper alive through every concurrent call, including `close()`.
+
+  For external workers, supply `options.gather` as a `shared_ptr<GatherPool>`;
+  a raw `options.transfer.gather` without the matching owner is rejected.
+  Ownership lasts through admission and execution only. If that pool closes
+  after admission, later gathers execute inline. Recursive execution/lifecycle
+  calls from gather callbacks or the same cache's factory return
+  `resource_reentrant`. Validation failures leave the request unconsumed;
+  admission, construction and execution failures consume it. This native API
+  does not yet enable resource caching in the Python or torch frontends.
 - `reloc::GatherPool` (`reloc/GatherPool.h`) — D1's persistent worker pool
   (issue [#65](https://github.com/JueonPark/sym/issues/65)): the pipeline partitions each chunk's valid outer rows across
   the pool's threads (`gatherThreads` argument or a caller-owned pool), with

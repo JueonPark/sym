@@ -22,6 +22,7 @@ add_executable(libreloc-test
   TransferExecutionTest.cpp
   TransferResourcesTest.cpp
   TransferResourcePolicyTest.cpp
+  TransferResourceCacheTest.cpp
   CudaTransferResourcesTest.cpp
   CudaPipelineTest.cpp
   CudaKernelsTest.cpp
