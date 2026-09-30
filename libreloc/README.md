@@ -146,6 +146,33 @@ complete example; this document describes the lower-level APIs.
   borrowed API returns `completion_unknown`; its caller must retain the backend
   and source/destination owners too. Successful execution adds no queue-wide
   synchronization beyond the existing event drain.
+- `reloc::TransferContext` (`reloc/TransferResources.h`, issue
+  [#167](https://github.com/JueonPark/sym/issues/167)) owns one dedicated backend,
+  a lazily allocated staging ring, and optional gather workers across blocking
+  native calls. Construct it with a fresh backend and call the overload
+  `executeTransfer(request, context, options, bufferOwners)` with a fresh request
+  each time. `bufferOwners` is a `std::shared_ptr<void>` token strongly owning
+  **both** source and destination allocations; an adapter can put their two
+  owners in a small shared bundle. An aliasing pointer without that ownership
+  is insufficient. The token is dropped after established completion and no
+  successful request's plan, tensor pointers, or caller stream is cached.
+  Compatible calls reuse backend streams, staging capacity, and worker threads.
+  Growth releases the idle old staging before allocating its replacement;
+  direction or active-slot-count changes replace the ring. `stats()` exposes
+  retained capacities and resource-creation counts. Every call still computes
+  its schedule from its current plan and configured buffer count, establishes
+  its current caller-stream dependency, and runs the same chunk pipeline.
+  `TransferOutcome` reports the operation error separately from whether work
+  was never launched, completed, or has unknown completion. Execution failures
+  retire the context; preflight rejection leaves a healthy context available.
+  Unknown completion moves the backend, staging, owned workers, and buffer
+  token into persistent process-lifetime quarantine, even if the caller drops
+  the result or destroys the context. Quarantine deliberately has no automatic
+  recovery. `close()` is idempotent and releases healthy idle resources.
+  Callers must serialize execution and close; a borrowed `options.gather` must
+  live through the blocking call and is never retained or closed by the context.
+  This native primitive does not yet impose a memory budget or change frontend
+  defaults: bounded admission/leases are #168, and Python ownership is #169.
 - `reloc::GatherPool` (`reloc/GatherPool.h`) — D1's persistent worker pool
   (issue [#65](https://github.com/JueonPark/sym/issues/65)): the pipeline partitions each chunk's valid outer rows across
   the pool's threads (`gatherThreads` argument or a caller-owned pool), with

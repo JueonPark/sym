@@ -24,6 +24,7 @@ add_library(reloc_runtime SHARED
   src/GatherPool.cpp
   src/Pipeline.cpp
   src/Transfer.cpp
+  src/TransferResources.cpp
   src/Prefold.cpp
   src/CostModel.cpp
   quant/Quant.cpp
