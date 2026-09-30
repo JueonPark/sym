@@ -19,6 +19,8 @@ support rows stay with their owners and are linked, not copied:
 | Torch installation, activation, boundaries (T1–T4) | [torch-integration.md](torch-integration.md) |
 | Torch support rows and evidence (T1–T4, R2) | [torch-support.md](torch-support.md) |
 | Runtime library surface | [libreloc/README.md](../libreloc/README.md) |
+| Proposed transfer resource lifetime and reuse | [transfer-resource-reuse.md](transfer-resource-reuse.md) |
+| Resource reuse implementation subissues and PR order | [transfer-resource-implementation-plan.md](transfer-resource-implementation-plan.md) |
 | Research claims and their standing | [claim-ledger.md](claim-ledger.md) |
 
 ## 1. Build from a fresh checkout
