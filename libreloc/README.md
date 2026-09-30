@@ -172,7 +172,8 @@ complete example; this document describes the lower-level APIs.
   Callers must serialize execution and close; a borrowed `options.gather` must
   live through the blocking call and is never retained or closed by the context.
   This native primitive does not impose a memory budget; the cache below adds
-  bounded admission. Python ownership and frontend defaults follow in #169–#170.
+  bounded admission. Python exposes explicit ownership; compiled/eager sharing
+  and frontend defaults follow in #170 and #173.
 - `reloc::TransferResourceCache` (`reloc/TransferResources.h`, issue
   [#168](https://github.com/JueonPark/sym/issues/168)) is a thread-safe native
   owner of multiple contexts. Keep one cache across calls and use
@@ -245,8 +246,8 @@ complete example; this document describes the lower-level APIs.
   after admission, later gathers execute inline. Recursive execution/lifecycle
   calls from gather callbacks or the same cache's factory return
   `resource_reentrant`. Validation failures leave the request unconsumed;
-  admission, construction and execution failures consume it. This native API
-  does not yet enable resource caching in the Python or torch frontends.
+  admission, construction and execution failures consume it. Python exposes
+  this owner explicitly; compiled/eager sharing and defaults remain #170/#173.
 - `reloc::GatherPool` (`reloc/GatherPool.h`) — D1's persistent worker pool
   (issue [#65](https://github.com/JueonPark/sym/issues/65)): the pipeline partitions each chunk's valid outer rows across
   the pool's threads (`gatherThreads` argument or a caller-owned pool), with
@@ -309,6 +310,15 @@ the CUDA runtime when enabled), which CTest checks. Usage and the checked-in
 recipes it consumes: [docs/runtime-integration.md](../docs/runtime-integration.md).
 
 ## Python bindings (pyreloc)
+
+For direct tensor transfers, use the lazily exported
+`reloc_torch.TransferResources` facade and pass it to
+`reloc_torch.transport.execute_transfer(request, resources=resources)`.
+It provides the same limit keywords, `stats()`, `closed`, `clear()`, `close()`
+and context-manager lifecycle as the native binding below. Every call creates
+a fresh output and supplies strong source/output owners to the native executor.
+Omitting `resources` (or passing `None`) keeps per-call resource allocation.
+See [direct-transfer usage](../docs/torch-integration.md#explicit-resources-for-direct-transfers).
 
 `pyreloc.TransferResourceCache` exposes the native cache's limits as keyword
 arguments: `max_retained_bytes`, `max_contexts`, `max_contexts_per_device`,

@@ -170,6 +170,55 @@ backend.close()
   gradient-requiring source, the recipe is replayed through PyTorch and
   recorded.
 
+### Explicit resources for direct transfers
+
+Direct `prepare_transfer` / `execute_transfer` callers can share a bounded
+resource owner across layout recipes and shapes:
+
+```python
+from reloc_torch import TransferResources
+from reloc_torch.transport import prepare_transfer, execute_transfer
+
+# compiled_recipe is the result of CompilerClient.compile(recipe).
+with TransferResources(max_retained_bytes=256 << 20,
+                       max_live_staging_bytes=512 << 20) as resources:
+    for source in inputs:
+        request = prepare_transfer(compiled_recipe, source, "cuda:0")
+        output = execute_transfer(request, resources=resources, gather_threads=8)
+        consume(output)
+    print(resources.stats())
+```
+
+Construction and inspection do not initialize CUDA, and importing the facade
+does not load Torch or the optional native runtime. Each execution rechecks the
+source, creates an independently owned output, captures the caller's current
+CUDA stream, and completes the existing chunk pipeline. Earlier outputs remain
+valid when staging is reused. Forward D2H retains its download-then-gather
+schedule. Passing `resources=None` or omitting it keeps per-call allocations;
+compiled/eager adapter sharing and automatic defaults are subsequent steps.
+
+The defaults retain at most 256 MiB of staging, four contexts, two contexts per
+backend/device, and 64 owned background gather workers. Optional
+`max_live_staging_bytes` and `acquire_timeout_ms` bound live capacity and admission
+waiting. Limits include reservations and quarantined resources; the timeout
+does not interrupt execution. `stats()` reports allocated and additionally
+reserved capacity, hits/growths/misses, resource-creation counters and devices.
+A supplied `gather_pool` wins over `gather_threads` and remains caller-owned.
+
+Use distinct prepared requests for concurrent calls. Reusing the same request
+while it is allocating output or executing is rejected. A failure before the
+handoff to native execution leaves the prepared request reusable; admission and
+execution errors after handoff consume it and never trigger Torch replay.
+Callers must not mutate or resize participating storage concurrently.
+
+`clear()` retires idle resources and makes older active leases retire on return.
+`close()` stops admission and waits for normal active work while releasing the
+GIL. Successful calls retain no tensor owners through the cache. Unknown
+completion retains both tensors and native resources for the process lifetime;
+execution and close report `completion_unknown` rather than freeing memory
+that a copy might still access. Handles cannot be serialized or reused after
+fork. Prefer context managers or explicit close before interpreter shutdown.
+
 ## 5. Semantics and boundaries
 
 - **Blocking.** Every transfer completes before returning; `non_blocking=True`
