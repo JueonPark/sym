@@ -15,9 +15,24 @@ HostBackend::HostBackend(int numQueues) {
     queues_.push_back(std::make_unique<Queue>());
   // Start workers only after every Queue exists so their addresses are stable
   // (unique_ptr keeps the Queue objects fixed even as the vector grows).
-  for (auto &q : queues_) {
-    Queue *qp = q.get();
-    qp->worker = std::thread([this, qp] { workerLoop(*qp); });
+  try {
+    for (auto &q : queues_) {
+      Queue *qp = q.get();
+      qp->worker = std::thread([this, qp] { workerLoop(*qp); });
+    }
+  } catch (...) {
+    // A cache factory must be able to unwind partial queue construction.
+    // Destroying a Queue containing a joinable thread would terminate instead.
+    {
+      std::lock_guard<std::mutex> lock(mu_);
+      for (auto &q : queues_)
+        q->stop = true;
+    }
+    cv_.notify_all();
+    for (auto &q : queues_)
+      if (q->worker.joinable())
+        q->worker.join();
+    throw;
   }
 }
 

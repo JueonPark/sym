@@ -35,7 +35,7 @@ void CUDART_CB waitForProducer(void *data) {
   static_cast<BlockingGate *>(data)->arriveAndWait();
 }
 
-TEST(CudaTransferResources, ReusePreservesDataAndFreshProducerOrdering) {
+void checkReuse(bool cached) {
   ProducerStreams producers;
   for (auto &stream : producers.streams)
     ASSERT_EQ(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking),
@@ -43,12 +43,20 @@ TEST(CudaTransferResources, ReusePreservesDataAndFreshProducerOrdering) {
   auto b = layout({513, 517}, {1, 513}, {517, 1});
   for (auto direction :
        {TransferDirection::HostToDevice, TransferDirection::DeviceToHost}) {
-    auto backend = std::make_unique<CudaBackend>(2);
-    ASSERT_FALSE(backend->failed()) << backend->error();
-    auto *observed = backend.get();
-    const int device = backend->device();
-    const void *privateStreams[] = {backend->stream(0), backend->stream(1)};
-    TransferContext context(std::move(backend));
+    int device = -1;
+    ASSERT_EQ(cudaGetDevice(&device), cudaSuccess);
+    TransferResourceCache cache;
+    std::unique_ptr<TransferContext> context;
+    CudaBackend *observed = nullptr;
+    const void *privateStreams[2]{};
+    if (!cached) {
+      auto backend = std::make_unique<CudaBackend>(2);
+      ASSERT_FALSE(backend->failed()) << backend->error();
+      observed = backend.get();
+      privateStreams[0] = backend->stream(0);
+      privateStreams[1] = backend->stream(1);
+      context = std::make_unique<TransferContext>(std::move(backend));
+    }
     for (unsigned round = 0; round < 3; ++round) {
       auto bytes = std::make_shared<CudaBuffers>(b, round);
       ASSERT_EQ(cudaMalloc(&bytes->device, b.totalBytes), cudaSuccess);
@@ -85,7 +93,12 @@ TEST(CudaTransferResources, ReusePreservesDataAndFreshProducerOrdering) {
       options.hasCallerStream = true;
       options.callerStream = stream;
       auto run = std::async(std::launch::async, [&] {
-        return executeTransfer(req, context, options, bytes);
+        if (!cached)
+          return executeTransfer(req, *context, options, bytes);
+        CachedTransferOptions cachedOptions;
+        cachedOptions.transfer = options;
+        cachedOptions.backend = {MemoryKind::Cuda, device, 2};
+        return executeTransferCached(req, cache, cachedOptions, bytes);
       });
       EXPECT_EQ(run.wait_for(std::chrono::milliseconds(50)),
                 std::future_status::timeout);
@@ -101,13 +114,34 @@ TEST(CudaTransferResources, ReusePreservesDataAndFreshProducerOrdering) {
       }
       EXPECT_EQ(bytes->dst, expected);
       EXPECT_EQ(bytes.use_count(), 1);
-      EXPECT_EQ(context.stats().stagingPoolCreations, 1u);
-      EXPECT_EQ(context.stats().workerPoolCreations, 1u);
-      EXPECT_EQ(observed->stream(0), privateStreams[0]);
-      EXPECT_EQ(observed->stream(1), privateStreams[1]);
+      if (cached) {
+        const auto stats = cache.stats();
+        EXPECT_EQ(stats.misses, 1u);
+        EXPECT_EQ(stats.hits, round);
+        EXPECT_EQ(stats.stagingAllocations, h2d ? 2u : 1u);
+        EXPECT_EQ(stats.streamCreations, 2u);
+        EXPECT_EQ(stats.workerCreations, 2u);
+        EXPECT_EQ(stats.outstandingEvents, 0u);
+      } else {
+        EXPECT_EQ(context->stats().stagingPoolCreations, 1u);
+        EXPECT_EQ(context->stats().workerPoolCreations, 1u);
+        EXPECT_EQ(observed->stream(0), privateStreams[0]);
+        EXPECT_EQ(observed->stream(1), privateStreams[1]);
+      }
     }
-    EXPECT_EQ(context.close(), TransferCompletion::Complete);
+    if (cached) {
+      EXPECT_FALSE(cache.close());
+      EXPECT_EQ(cache.stats().contexts, 0u);
+    } else {
+      EXPECT_EQ(context->close(), TransferCompletion::Complete);
+    }
   }
+}
+TEST(CudaTransferResources, ReusePreservesDataAndFreshProducerOrdering) {
+  checkReuse(false);
+}
+TEST(CudaTransferResources, CacheReusesAllocationsAndOrdersEveryProducer) {
+  checkReuse(true);
 }
 } // namespace
 #endif
