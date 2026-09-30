@@ -6,6 +6,19 @@
 #include <cassert>
 
 namespace reloc {
+namespace {
+thread_local unsigned callbackDepth = 0;
+void invoke(const std::function<void(int64_t, int64_t)> &fn, int64_t begin,
+            int64_t end) {
+  struct Guard {
+    Guard() { ++callbackDepth; }
+    ~Guard() { --callbackDepth; }
+  } guard;
+  fn(begin, end);
+}
+} // namespace
+
+bool GatherPool::inCallback() { return callbackDepth != 0; }
 
 GatherPool::GatherPool(unsigned threads) {
   if (threads == 0)
@@ -63,7 +76,7 @@ void GatherPool::workerLoop() {
     lk.unlock();
     std::exception_ptr failure;
     try {
-      (*fn)(r.begin, r.end);
+      invoke(*fn, r.begin, r.end);
     } catch (...) {
       failure = std::current_exception();
     }
@@ -95,7 +108,7 @@ void GatherPool::parallelFor(int64_t begin, int64_t end, int64_t minPerWorker,
       rest.push_back({b, e});
   }
   if (rest.empty()) {
-    fn(begin, end); // single sub-range: bit-identical to a direct call
+    invoke(fn, begin, end); // single sub-range: bit-identical to a direct call
     return;
   }
   // Serialize whole dispatches against each other and against close():
@@ -105,7 +118,7 @@ void GatherPool::parallelFor(int64_t begin, int64_t end, int64_t minPerWorker,
     // Lost a race with close(), possibly between chunks of a borrowed-pool
     // transfer: the workers are gone, so run the whole range inline
     // rather than parking work no one will drain.
-    fn(begin, end);
+    invoke(fn, begin, end);
     return;
   }
   {
@@ -118,7 +131,7 @@ void GatherPool::parallelFor(int64_t begin, int64_t end, int64_t minPerWorker,
   cv_.notify_all();
   std::exception_ptr failure;
   try {
-    fn(begin, std::min(begin + per, end));
+    invoke(fn, begin, std::min(begin + per, end));
   } catch (...) {
     failure = std::current_exception();
   }

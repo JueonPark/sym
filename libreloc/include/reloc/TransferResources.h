@@ -4,9 +4,40 @@
 
 #include "reloc/Transfer.h"
 
+#include <chrono>
 #include <memory>
 
 namespace reloc {
+
+namespace detail {
+struct TransferContextAccess;
+}
+
+struct TransferResourceLimits {
+  size_t maxRetainedBytes = size_t(256) << 20;
+  size_t maxContexts = 4;
+  size_t maxContextsPerDevice = 2;
+  size_t maxBackgroundWorkers = 64;
+  std::optional<size_t> maxLiveStagingBytes;
+  std::optional<std::chrono::milliseconds> acquireTimeout;
+};
+
+struct TransferBackendConfig {
+  MemoryKind kind = MemoryKind::Host;
+  int device = -1; // explicit CUDA ordinal; -1 for Host
+  int streams = 2;
+};
+
+struct CachedTransferOptions {
+  TransferOptions transfer;
+  TransferBackendConfig backend;
+  // Strong ownership for the blocking call only. Overrides gatherThreads.
+  // A raw transfer.gather without this matching owner is rejected.
+  std::shared_ptr<GatherPool> gather;
+  // An additional placement-policy identity, not a request to change affinity.
+  // The actual calling thread's Linux CPU-affinity mask is always included.
+  uint64_t placementTag = 0;
+};
 
 struct TransferContextStats {
   size_t stagingBytes = 0;
@@ -40,6 +71,7 @@ private:
   struct Impl;
   std::unique_ptr<Impl> impl_;
   TransferContextStats stats_;
+  friend struct detail::TransferContextAccess;
   friend TransferOutcome executeTransfer(TransferRequest &, TransferContext &,
                                          const TransferOptions &,
                                          std::shared_ptr<void>);
