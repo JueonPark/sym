@@ -32,15 +32,30 @@ public:
   /// report an allocation failure (no exceptions cross CopyBackend), so
   /// callers that must fail by value check this before the first acquire().
   bool valid() const;
+  bool usesBackend(const CopyBackend &backend) const {
+    return &backend_ == &backend;
+  }
 
   /// Next buffer index (round-robin). Blocks until that buffer's pending event
   /// (if any) has completed, then clears it.
   int acquire();
+  /// Checked active prefix for a precomputed schedule. -1 on invalid capacity
+  /// or a failed wait; the caller must stop before writing the returned slot.
+  int acquire(int activeSlots);
 
   void *buffer(int index) { return buffers_[index]; }
 
   /// Record the event that must complete before `index` may be reused.
-  void setEvent(int index, EventHandle ev) { events_[index] = ev; }
+  void setEvent(int index, EventHandle ev) {
+    events_[index] = ev;
+    pending_ = true;
+    missingEvent_ |= ev == 0;
+  }
+
+  /// Mark before submission (copyAsync itself can fail after enqueueing).
+  void markPending() { pending_ = true; }
+  /// Only after event-proven success or explicit successful quiescence.
+  void markComplete() { pending_ = missingEvent_ = false; }
 
   /// Wait for every still-pending event to complete.
   void drain();
@@ -51,6 +66,8 @@ private:
   std::vector<EventHandle> events_; // 0 == no pending event
   size_t bufferBytes_;
   int next_ = -1;
+  bool pending_ = false;
+  bool missingEvent_ = false;
 };
 
 } // namespace reloc

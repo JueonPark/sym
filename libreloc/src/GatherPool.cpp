@@ -61,8 +61,15 @@ void GatherPool::workerLoop() {
     pending_.pop_back();
     const auto *fn = fn_;
     lk.unlock();
-    (*fn)(r.begin, r.end);
+    std::exception_ptr failure;
+    try {
+      (*fn)(r.begin, r.end);
+    } catch (...) {
+      failure = std::current_exception();
+    }
     lk.lock();
+    if (failure && !failure_)
+      failure_ = failure;
     if (--outstanding_ == 0)
       done_.notify_one();
   }
@@ -104,14 +111,26 @@ void GatherPool::parallelFor(int64_t begin, int64_t end, int64_t minPerWorker,
   {
     std::lock_guard<std::mutex> lk(mu_);
     fn_ = &fn;
-    pending_ = rest;
-    outstanding_ = static_cast<int>(rest.size());
+    pending_ = std::move(rest);
+    outstanding_ = static_cast<int>(pending_.size());
+    failure_ = nullptr;
   }
   cv_.notify_all();
-  fn(begin, std::min(begin + per, end));
+  std::exception_ptr failure;
+  try {
+    fn(begin, std::min(begin + per, end));
+  } catch (...) {
+    failure = std::current_exception();
+  }
   std::unique_lock<std::mutex> lk(mu_);
   done_.wait(lk, [&] { return outstanding_ == 0; });
   fn_ = nullptr; // still under mu_: workers only read fn_ under the lock
+  if (!failure)
+    failure = failure_;
+  failure_ = nullptr;
+  lk.unlock();
+  if (failure)
+    std::rethrow_exception(failure);
 }
 
 } // namespace reloc

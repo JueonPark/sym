@@ -48,10 +48,12 @@ void executeH2DPipelined(const BoundPlan &bound, const void *srcBase,
 /// across calls instead of allocated per call, so steady-state latency is
 /// measurable (issue #47's benchmark) and long-lived callers amortize
 /// pinned allocation. Buffer count comes from pool.nBuffers().
-/// Precondition (asserted): pool.bufferBytes() >=
+/// Checked precondition: pool.bufferBytes() >=
 /// planChunks(bound, pool.nBuffers(), chunkSizeOverride).maxChunkBytes,
 /// and `pool` was created against this `backend`. gather == nullptr gathers
 /// inline (single thread). Byte-identical to the pool-per-call overload.
+/// Invalid capacity or execution failure throws std::runtime_error. After
+/// completion_unknown, raw callers must retain the backend and tensor owners.
 /// (No D2H twin yet -- add when a caller needs it.)
 void executeH2DPipelined(const BoundPlan &bound, const void *srcBase,
                          void *deviceDst, CopyBackend &backend,

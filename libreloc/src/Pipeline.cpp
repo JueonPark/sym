@@ -1,6 +1,7 @@
 //===- Pipeline.cpp - Strategy-4 chunked pinned/stream pipeline -----------===//
 
 #include "reloc/Pipeline.h"
+#include "TransferInternal.h"
 
 #include "reloc/ChunkSchedule.h"
 #include "reloc/Execute.h"
@@ -13,6 +14,7 @@
 #include <cstring>
 #include <deque>
 #include <functional>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -92,6 +94,8 @@ void d2hPipelinedImpl(const BoundPlan &bound, const void *deviceSrc,
   ChunkSchedule sched = planChunks(bound, nBuffers, chunkSizeOverride);
   PinnedBufferPool pool(backend, nBuffers, sched.maxChunkBytes);
   const int nStreams = backend.numQueues();
+  if (!pool.valid() || backend.failed() || nStreams < 1)
+    throw std::runtime_error("inverse pipeline staging/backend unavailable");
   const bool parallelSafe = srcRowsWriteDisjoint(bound);
 
   struct InFlight {
@@ -108,6 +112,9 @@ void d2hPipelinedImpl(const BoundPlan &bound, const void *deviceSrc,
   auto scatterOne = [&](const InFlight &f) {
     const Chunk &c = sched.chunks[f.chunk];
     backend.waitEvent(f.ev);
+    if (backend.failed())
+      throw std::runtime_error("inverse copy completion failed: " +
+                               backend.error());
     if (c.validEnd > c.validBegin) {
       const uint8_t *dstBase = rebase(pool.buffer(f.buf), bound, c.paddedBegin);
       dispatchRows(gather, parallelSafe, sched.rowBytes, c.validBegin,
@@ -120,12 +127,19 @@ void d2hPipelinedImpl(const BoundPlan &bound, const void *deviceSrc,
   for (size_t k = 0; k < sched.chunks.size(); ++k) {
     const Chunk &c = sched.chunks[k];
     int i = pool.acquire(); // blocks on this buffer's prior copy event
+    if (i < 0)
+      throw std::runtime_error("inverse staging reuse failed: " +
+                               backend.error());
     int q = static_cast<int>(k % static_cast<size_t>(nStreams));
+    pool.markPending();
     backend.copyAsync(q, pool.buffer(i),
                       static_cast<const uint8_t *>(deviceSrc) + c.byteOffset,
                       c.bytes, CopyDir::DeviceToHost);
     EventHandle ev = backend.recordEvent(q);
     pool.setEvent(i, ev);
+    if (!ev || backend.failed())
+      throw std::runtime_error("inverse copy submission failed: " +
+                               backend.error());
     inflight.push_back({i, ev, k});
     // Keep at most pool.nBuffers() copies outstanding; drain the oldest
     // (which uses the buffer we are about to reuse next) before it is
@@ -145,14 +159,26 @@ void d2hPipelinedImpl(const BoundPlan &bound, const void *deviceSrc,
 
 } // namespace
 
-void executeH2DPipelined(const BoundPlan &bound, const void *srcBase,
-                         void *deviceDst, CopyBackend &backend,
-                         PinnedBufferPool &pool, size_t chunkSizeOverride,
-                         GatherPool *gather) {
-  ChunkSchedule sched = planChunks(bound, pool.nBuffers(), chunkSizeOverride);
-  assert(pool.bufferBytes() >= sched.maxChunkBytes &&
-         "caller-owned staging pool too small for this plan's chunks");
+std::optional<TransferError> detail::executeH2DPrepared(
+    const BoundPlan &bound, const void *srcBase, void *deviceDst,
+    CopyBackend &backend, PinnedBufferPool &pool, const ChunkSchedule &sched,
+    int activeSlots, GatherPool *gather, TransferCompletion &completion) {
+  if (!pool.usesBackend(backend) || !pool.valid() || activeSlots < 1 ||
+      activeSlots > pool.nBuffers() || sched.chunks.empty() ||
+      pool.bufferBytes() < sched.maxChunkBytes)
+    return TransferError{"insufficient_capacity",
+                         "invalid staging for schedule"};
   const int nStreams = backend.numQueues();
+  if (nStreams < 1 || backend.failed())
+    return TransferError{"backend_failure",
+                         "backend unavailable: " + backend.error()};
+  for (const auto &c : sched.chunks)
+    if (c.byteOffset < 0 || size_t(c.byteOffset) > size_t(bound.totalBytes) ||
+        c.bytes > size_t(bound.totalBytes) - size_t(c.byteOffset) ||
+        c.bytes > sched.maxChunkBytes || c.validBegin < 0 ||
+        c.validEnd < c.validBegin || c.validEnd > bound.extents[0])
+      return TransferError{"insufficient_capacity",
+                           "chunk exceeds transfer capacity"};
   // A serialized schedule means outer rows are NOT provably disjoint in dst
   // (see planChunks): partitioning the whole-tensor chunk across workers
   // would race, so gather stays inline -- same fallback executeH2DThreaded
@@ -161,7 +187,10 @@ void executeH2DPipelined(const BoundPlan &bound, const void *srcBase,
 
   for (size_t k = 0; k < sched.chunks.size(); ++k) {
     const Chunk &c = sched.chunks[k];
-    int i = pool.acquire(); // blocks on this buffer's prior copy event
+    int i = pool.acquire(activeSlots); // gate reuse on the prior copy
+    if (i < 0 || backend.failed())
+      return TransferError{"backend_failure",
+                           "staging reuse failed: " + backend.error()};
     void *staging = pool.buffer(i);
 
     fillStagingWindow(bound, staging, c.bytes);
@@ -176,11 +205,60 @@ void executeH2DPipelined(const BoundPlan &bound, const void *srcBase,
     }
 
     int q = static_cast<int>(k % static_cast<size_t>(nStreams));
+    completion = TransferCompletion::Unknown;
+    pool.markPending();
     backend.copyAsync(q, static_cast<uint8_t *>(deviceDst) + c.byteOffset,
                       staging, c.bytes, CopyDir::HostToDevice);
-    pool.setEvent(i, backend.recordEvent(q));
+    if (backend.failed())
+      return TransferError{"backend_failure",
+                           "copy submission failed: " + backend.error()};
+    const EventHandle event = backend.recordEvent(q);
+    pool.setEvent(i, event);
+    if (!event || backend.failed())
+      return TransferError{"backend_failure",
+                           "event recording failed: " + backend.error()};
   }
   pool.drain();
+  if (backend.failed())
+    return TransferError{"backend_failure",
+                         "copy completion failed: " + backend.error()};
+  completion = TransferCompletion::Complete;
+  return std::nullopt;
+}
+
+namespace {
+// Compatibility wrappers use the same loop and error-completion guard. These
+// raw-pointer APIs cannot retain the caller's backend or tensor allocations.
+void runH2DPrepared(const BoundPlan &bound, const void *src, void *dst,
+                    CopyBackend &backend, PinnedBufferPool &pool,
+                    const ChunkSchedule &schedule, GatherPool *gather) {
+  TransferCompletion completion = TransferCompletion::NotLaunched;
+  std::optional<TransferError> error;
+  try {
+    detail::CompletionGuard guard(backend, completion);
+    error = detail::executeH2DPrepared(bound, src, dst, backend, pool, schedule,
+                                       pool.nBuffers(), gather, completion);
+  } catch (...) {
+    if (completion == TransferCompletion::Complete)
+      pool.markComplete();
+    throw;
+  }
+  if (completion == TransferCompletion::Complete)
+    pool.markComplete();
+  if (error)
+    throw std::runtime_error((completion == TransferCompletion::Unknown
+                                  ? "completion_unknown: "
+                                  : "") +
+                             error->message);
+}
+} // namespace
+
+void executeH2DPipelined(const BoundPlan &bound, const void *srcBase,
+                         void *deviceDst, CopyBackend &backend,
+                         PinnedBufferPool &pool, size_t chunkSizeOverride,
+                         GatherPool *gather) {
+  const auto sched = planChunks(bound, pool.nBuffers(), chunkSizeOverride);
+  runH2DPrepared(bound, srcBase, deviceDst, backend, pool, sched, gather);
 }
 
 void executeH2DPipelined(const BoundPlan &bound, const void *srcBase,
@@ -192,13 +270,11 @@ void executeH2DPipelined(const BoundPlan &bound, const void *srcBase,
   if (gatherThreads == 1) {
     // Regression guard (issue #65): threads == 1 must not even construct a
     // GatherPool -- bit-identical behavior to the pre-D1 pipeline.
-    executeH2DPipelined(bound, srcBase, deviceDst, backend, pool,
-                        chunkSizeOverride, /*gather=*/nullptr);
+    runH2DPrepared(bound, srcBase, deviceDst, backend, pool, sched, nullptr);
     return;
   }
   GatherPool gather(gatherThreads);
-  executeH2DPipelined(bound, srcBase, deviceDst, backend, pool,
-                      chunkSizeOverride, &gather);
+  runH2DPrepared(bound, srcBase, deviceDst, backend, pool, sched, &gather);
 }
 
 void executeH2DPipelined(const BoundPlan &bound, const void *srcBase,
@@ -207,8 +283,7 @@ void executeH2DPipelined(const BoundPlan &bound, const void *srcBase,
   assert(nBuffers >= 1 && "nBuffers must be >= 1");
   ChunkSchedule sched = planChunks(bound, nBuffers, chunkSizeOverride);
   PinnedBufferPool pool(backend, nBuffers, sched.maxChunkBytes);
-  executeH2DPipelined(bound, srcBase, deviceDst, backend, pool,
-                      chunkSizeOverride, &gather);
+  runH2DPrepared(bound, srcBase, deviceDst, backend, pool, sched, &gather);
 }
 
 void executeD2HPipelined(const BoundPlan &bound, const void *deviceSrc,

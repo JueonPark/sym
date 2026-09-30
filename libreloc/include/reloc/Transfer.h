@@ -8,7 +8,7 @@
 // pinned/stream pipeline, D2H copies the dense device source into owned
 // pinned staging and applies the same host gather into the destination.
 // The existing inverse-scatter D2H APIs (executeD2H*) are a separate contract.
-// No exceptions cross this interface; failures are reported by value.
+// Ordinary resource/backend failures are reported by value.
 //
 //===----------------------------------------------------------------------===//
 
@@ -59,10 +59,20 @@ struct BufferView {
 ///   invalid_view, unsupported_layout, insufficient_capacity,
 ///   integer_overflow, plan_mismatch, direction_mismatch, already_executed,
 ///   device_mismatch, backend_failure, typed_unsupported (the bound plan is
-///   the layout of a typed plan; C3).
+///   the layout of a typed plan; C3), invalid_options, resources_closed,
+///   completion_unknown.
 struct TransferError {
   std::string code;
   std::string message;
+};
+
+/// Whether submitted work may still access the request's buffers. An error
+/// can have Complete completion; Unknown requires retaining every owner.
+enum class TransferCompletion { NotLaunched, Complete, Unknown };
+
+struct TransferOutcome {
+  std::optional<TransferError> error;
+  TransferCompletion completion = TransferCompletion::NotLaunched;
 };
 
 /// A validated request. Owns copies of the bound plan and both views for the
@@ -113,7 +123,9 @@ struct TransferOptions {
 /// from backend.device() fails with device_mismatch before any work (host
 /// backends, device() < 0, accept every ordinal). Staging allocation and
 /// backend failures surface as backend_failure with the backend's
-/// diagnostic. Never throws.
+/// diagnostic. On completion_unknown, the caller must keep its borrowed
+/// backend and buffer allocations alive; owned staging is quarantined.
+/// Never throws under ordinary resource/backend failures.
 std::optional<TransferError> executeTransfer(TransferRequest &request,
                                              CopyBackend &backend,
                                              const TransferOptions &options);

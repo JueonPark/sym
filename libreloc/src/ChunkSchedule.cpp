@@ -61,16 +61,17 @@ ChunkSchedule planChunks(const BoundPlan &bound, int nBuffers,
                 static_cast<size_t>(bound.totalBytes) /
                     (kChunksPerBuffer * static_cast<size_t>(nBuffers)),
                 kMinChunkBytes, kMaxChunkBytes);
+  // Clamp in the unsigned domain before narrowing (an override can be
+  // SIZE_MAX).
   int64_t rowsPerChunk =
       s.rowBytes > 0
-          ? std::max<int64_t>(1, static_cast<int64_t>(
-                                     target / static_cast<size_t>(s.rowBytes)))
+          ? static_cast<int64_t>(std::min<size_t>(
+                paddedOuter, std::max<size_t>(1, target / size_t(s.rowBytes))))
           : paddedOuter;
-  rowsPerChunk = std::min<int64_t>(rowsPerChunk, paddedOuter);
 
-  for (int64_t pb = 0; pb < paddedOuter; pb += rowsPerChunk) {
-    int64_t pe = std::min<int64_t>(pb + rowsPerChunk, paddedOuter);
-    int64_t vb = std::max<int64_t>(pb - outerLo, 0);
+  for (int64_t pb = 0; pb < paddedOuter;) {
+    int64_t pe = pb + std::min(rowsPerChunk, paddedOuter - pb);
+    int64_t vb = std::min(std::max<int64_t>(pb - outerLo, 0), validOuter);
     int64_t ve = std::min<int64_t>(pe - outerLo, validOuter);
     if (ve < vb)
       ve = vb;
@@ -82,6 +83,7 @@ ChunkSchedule planChunks(const BoundPlan &bound, int nBuffers,
     c.byteOffset = pb * s.rowBytes;
     c.bytes = static_cast<size_t>((pe - pb) * s.rowBytes);
     s.chunks.push_back(c);
+    pb = pe;
   }
   s.maxChunkBytes = static_cast<size_t>(rowsPerChunk * s.rowBytes);
   return s;
