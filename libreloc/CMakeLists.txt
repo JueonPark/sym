@@ -16,6 +16,7 @@ add_library(reloc_runtime SHARED
   src/Dispatch.cpp
   src/Bind.cpp
   src/Execute.cpp
+  src/Transpose.cpp
   src/CopyRun.cpp
   src/HostBackend.cpp
   src/PinnedBufferPool.cpp

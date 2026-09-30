@@ -134,6 +134,14 @@ TEST(Execute, TransposeInt8AndFp16) {
   expectH2DExact(makeBound({32, 64}, {1, 32}, {64, 1}, 2));
 }
 
+TEST(Execute, TransposeWithPaddingUsesGenericWalker) {
+  // Outer-only padding otherwise has exactly the fast transpose strides.
+  PadRegion outer{0, 1, 2, 0x7F800001};
+  expectH2DExact(makeBound({33, 35}, {1, 33}, {35, 1}, 4, {outer}));
+  PadRegion inner{1, 2, 3, 0x7F800001};
+  expectH2DExact(makeBound({33, 35}, {1, 33}, {40, 1}, 4, {outer, inner}));
+}
+
 TEST(Execute, PadFp32FillVerified) {
   // One axis extent 6, padded lo=1 hi=1 -> physical extent 8; fill = the
   // f32 bit pattern for 0.0 is 0; use a nonzero pattern to prove fill.

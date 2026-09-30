@@ -2,6 +2,7 @@
 
 #include "reloc/Execute.h"
 
+#include "Transpose.h"
 #include "reloc/CopyRun.h"
 
 #include <algorithm>
@@ -118,6 +119,9 @@ void gatherChunk(const BoundPlan &bound, const void *srcBaseV, void *dstBaseV,
   auto *dst = static_cast<uint8_t *>(dstBaseV);
   const size_t r = bound.extents.size();
   assert(r >= 1 && "bound plan has no axes");
+
+  if (detail::tryGatherTranspose32(bound, src, dst, outerBegin, outerEnd))
+    return;
 
   std::vector<int64_t> lo(r, 0);
   for (const PadRegion &p : bound.padRegions)
