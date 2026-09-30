@@ -18,6 +18,7 @@ from ._pyreloc import (  # noqa: F401
     PrefoldHandle,
     TransferError,
     TransferRequest,
+    TransferResourceCache,
     TypedBoundPlan,
     TypedPlanHandle,
     bind,
