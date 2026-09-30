@@ -124,6 +124,13 @@ void executeTransferPy(PythonTransferRequest &wrapped,
     checkProcess(*resources); // before any inherited pool locks
   if (wrapped.executing)
     raise({"already_executed", "transfer request is already executing"});
+  // Claim the Python entry before argument conversion can invoke Python (for
+  // example a tuple subclass). Native preflight still controls consumed.
+  wrapped.executing = true;
+  struct ResetEntry {
+    bool &executing;
+    ~ResetEntry() { executing = false; } // after reacquiring the GIL
+  } reset{wrapped.executing};
   if (nBuffers < 1)
     throw py::value_error("n_buffers must be >= 1");
   if (nStreams < 1)
@@ -157,8 +164,7 @@ void executeTransferPy(PythonTransferRequest &wrapped,
                          ? request.source.device
                          : request.destination.device;
   std::optional<reloc::TransferError> error;
-  wrapped.executing = true;
-  try {
+  {
     // Keep our own token reference across the released-GIL scope. Every normal
     // last release therefore occurs with the GIL held, even on an exception.
     // Unknown completion retains its copy in native process-lifetime
@@ -194,11 +200,7 @@ void executeTransferPy(PythonTransferRequest &wrapped,
         error = reloc::executeTransfer(request, *backend, options);
       }
     }
-  } catch (...) {
-    wrapped.executing = false; // GIL has been reacquired before this handler
-    throw;
   }
-  wrapped.executing = false;
   if (error)
     raise(*error);
 }

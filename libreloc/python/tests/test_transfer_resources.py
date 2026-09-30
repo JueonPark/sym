@@ -124,6 +124,21 @@ def test_native_owners_preflight_consumption_and_legacy_ephemeral_calls():
         pickle.dumps(cache)
 
 
+def test_argument_callbacks_cannot_reenter_the_same_native_request():
+    bundle = buffers()
+    request, source, destination, expected = bundle
+    with pyreloc.TransferResourceCache() as cache:
+        class Owners(tuple):
+            def __getitem__(self, index):
+                with pytest.raises(pyreloc.TransferError, match='^already_executed'):
+                    execute(bundle, cache)
+                return super().__getitem__(index)
+
+        pyreloc.execute_transfer(request, resources=cache, owners=Owners((source, destination)))
+        np.testing.assert_array_equal(destination, expected)
+        assert cache.stats()['requests'] == 1
+
+
 def scenario_lifecycle(operation):
     from _reloc_transfer_test import Control
 
