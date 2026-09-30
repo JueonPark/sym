@@ -38,6 +38,9 @@ public:
 
   int threadCount() const { return threads_; }
   bool closed() const { return closed_; }
+  /// True inside any pool callback on this thread, including inline ranges.
+  /// Resource admission/close must reject recursive waits from these callbacks.
+  static bool inCallback();
 
   /// Join every worker. Idempotent, and safe against concurrent close()
   /// calls or an in-flight dispatch using workers: it serializes behind them,
