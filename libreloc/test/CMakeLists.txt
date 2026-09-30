@@ -19,6 +19,7 @@ add_executable(libreloc-test
   ChunkScheduleTest.cpp
   PipelineTest.cpp
   TransferTest.cpp
+  TransferExecutionTest.cpp
   CudaPipelineTest.cpp
   CudaKernelsTest.cpp
   QuantTest.cpp

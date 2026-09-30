@@ -130,11 +130,22 @@ complete example; this document describes the lower-level APIs.
   the pinned/stream pipeline; D2H copies the dense device source into owned
   pinned staging, waits for exactly that copy, then applies the forward host
   gather into the destination. Requests are single-use; failures are reported
-  by value (`TransferError{code, message}`), never thrown
+  by value (`TransferError{code, message}`) for ordinary resource/backend errors
   (`libreloc/test/TransferTest.cpp`). The `CopyBackend` contract gained
   `waitStream(externalStream)` (order every private queue after a caller's
   producer stream), a sticky `failed()`/`error()` state, and `device()`;
   `CudaBackend` checks every CUDA status and works under its own device.
+  Execution rechecks mutable requests, validates staging capacity in release
+  builds, and uses one schedule computed from the configured buffer count.
+  It allocates only `min(configured buffers, chunks)` active slots, each sized
+  for the actual largest chunk (which can exceed 64 MiB for a large row or a
+  serialized schedule). Forward D2H stages the validated source span, including
+  stride gaps, then gathers; it does not use inverse scatter. A failed submission
+  stops new work and quiesces queues before releasing staging. If completion
+  remains unknown, staging is quarantined for the process lifetime and the raw
+  borrowed API returns `completion_unknown`; its caller must retain the backend
+  and source/destination owners too. Successful execution adds no queue-wide
+  synchronization beyond the existing event drain.
 - `reloc::GatherPool` (`reloc/GatherPool.h`) — D1's persistent worker pool
   (issue [#65](https://github.com/JueonPark/sym/issues/65)): the pipeline partitions each chunk's valid outer rows across
   the pool's threads (`gatherThreads` argument or a caller-owned pool), with
@@ -149,7 +160,8 @@ complete example; this document describes the lower-level APIs.
   runs inline in both debug and release builds so a borrowed pool can close
   between transfer chunks; Python still rejects an already-closed pool at
   initial admission. `close()` joins workers and waits for dispatches using
-  them; inline-only work can continue without workers
+  them; inline-only work can continue without workers. If a callback throws,
+  every dispatched range finishes before the driver rethrows the exception
   (`libreloc/test/GatherPoolTest.cpp`).
 - `reloc::quant` (`reloc/Quant.h`) — R0.1's CPU transform kernels
   (issue [#74](https://github.com/JueonPark/sym/issues/74)): contiguous per-channel int8 quantize

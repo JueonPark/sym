@@ -16,6 +16,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
+#include <exception>
 #include <functional>
 #include <mutex>
 #include <thread>
@@ -53,7 +54,9 @@ public:
   /// driver threads (each finishes before the next starts), and a dispatch
   /// that loses a race with close() runs fn
   /// inline instead of handing work to joined workers. Not reentrant from
-  /// within fn; fn must not throw. Calls after close() also run inline in
+  /// within fn. A throwing range is rethrown on the driver only after every
+  /// range finishes, so unwinding cannot release storage still used by workers.
+  /// Calls after close() also run inline in
   /// debug and release: a borrowed pool may close between transfer chunks.
   /// Python bindings reject an already-closed pool at initial admission.
   void parallelFor(int64_t begin, int64_t end, int64_t minPerWorker,
@@ -80,6 +83,7 @@ private:
   std::vector<Range> pending_; // sub-ranges not yet claimed
   int outstanding_ = 0;        // handed to workers, not yet finished
   bool stop_ = false;
+  std::exception_ptr failure_; // first failure in the current dispatch
 };
 
 } // namespace reloc

@@ -17,6 +17,7 @@
 #include <future>
 #include <mutex>
 #include <set>
+#include <stdexcept>
 #include <thread>
 #include <vector>
 
@@ -172,6 +173,34 @@ TEST(GatherPool, ConcurrentCloseWaitsForRunningWorkers) {
   first.get();
   second.get();
   EXPECT_TRUE(pool.closed());
+}
+
+TEST(GatherPool, ThrowingCallerOrWorkerStillCompletesTheOtherRange) {
+  for (bool throwOnCaller : {false, true}) {
+    GatherPool pool(2);
+    BlockingGate otherRange;
+    std::atomic<bool> finished{false};
+    auto run = std::async(std::launch::async, [&] {
+      EXPECT_THROW(pool.parallelFor(0, 128, 1,
+                                    [&](int64_t b, int64_t) {
+                                      if ((b == 0) == throwOnCaller)
+                                        throw std::runtime_error(
+                                            "injected gather failure");
+                                      otherRange.arriveAndWait();
+                                      finished = true;
+                                    }),
+                   std::runtime_error);
+      EXPECT_TRUE(finished);
+    });
+    EXPECT_TRUE(otherRange.waitForArrivals(1));
+    EXPECT_EQ(run.wait_for(std::chrono::milliseconds(50)),
+              std::future_status::timeout);
+    otherRange.release();
+    run.get();
+    std::atomic<int> rows{0};
+    pool.parallelFor(0, 128, 1, [&](int64_t b, int64_t e) { rows += e - b; });
+    EXPECT_EQ(rows, 128); // failure state and job pointers were retired
+  }
 }
 
 } // namespace

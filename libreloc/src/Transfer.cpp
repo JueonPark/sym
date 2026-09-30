@@ -1,6 +1,7 @@
 //===- Transfer.cpp - validated forward transfer requests -----------------===//
 
 #include "reloc/Transfer.h"
+#include "TransferInternal.h"
 
 #include "reloc/ChunkSchedule.h"
 #include "reloc/Execute.h"
@@ -9,6 +10,9 @@
 #include "reloc/Pipeline.h"
 
 #include <algorithm>
+#include <atomic>
+#include <limits>
+#include <thread>
 #include <utility>
 
 namespace reloc {
@@ -305,15 +309,6 @@ void forwardHostGather(const BoundPlan &bound, const void *src, void *dst,
                               });
 }
 
-struct StagingGuard {
-  CopyBackend &backend;
-  void *buffer = nullptr;
-  ~StagingGuard() {
-    if (buffer)
-      backend.freeStaging(buffer);
-  }
-};
-
 std::optional<TransferError> backendFailure(const CopyBackend &backend,
                                             const char *phase) {
   return fail("backend_failure", std::string(phase) + ": " + backend.error());
@@ -335,75 +330,216 @@ std::optional<TransferError> checkDevice(const BufferView &view,
 
 } // namespace
 
-std::optional<TransferError> executeTransfer(TransferRequest &request,
-                                             CopyBackend &backend,
-                                             const TransferOptions &options) {
+namespace detail {
+
+void quarantine(std::unique_ptr<QuarantineNode> resources) noexcept {
+  static std::atomic<QuarantineNode *> head{nullptr};
+  auto *node = resources.release();
+  node->next = head.load(std::memory_order_relaxed);
+  while (!head.compare_exchange_weak(
+      node->next, node, std::memory_order_release, std::memory_order_relaxed)) {
+  }
+}
+
+CompletionGuard::~CompletionGuard() {
+  if (completion_ != TransferCompletion::Unknown)
+    return;
+  try {
+    if (backend_.quiesce() == QueueCompletion::Complete)
+      completion_ = TransferCompletion::Complete;
+  } catch (...) {
+    // A throwing backend violates CopyBackend's contract, but still cannot
+    // authorize releasing possibly in-flight storage during stack unwinding.
+  }
+}
+
+std::optional<TransferError>
+checkTransferBackend(const TransferRequest &request,
+                     const CopyBackend &backend) {
   if (request.consumed)
     return fail("already_executed", "transfer request was already executed");
   if (backend.failed())
     return backendFailure(backend, "backend unusable before launch");
   if (auto error = checkDevice(request.source, backend, "source"))
     return error;
-  if (auto error = checkDevice(request.destination, backend, "destination"))
-    return error;
-  request.consumed = true;
+  return checkDevice(request.destination, backend, "destination");
+}
 
+std::variant<TransferRequirements, TransferError>
+describeTransfer(const TransferRequest &request,
+                 const TransferOptions &options) {
+  if (request.consumed)
+    return fail("already_executed", "transfer request was already executed");
+  // Public request fields can change after validation. Never trust the cached
+  // span or an earlier capacity proof when allocating/reusing staging.
+  auto checked = validateTransfer(request.bound, request.source,
+                                  request.destination, request.direction);
+  if (auto *error = std::get_if<TransferError>(&checked))
+    return *error;
+  TransferRequirements r;
+  r.sourceBytes = std::get<TransferRequest>(checked).sourceSpanBytes;
+  r.gatherThreads = options.gather ? 1 : options.gatherThreads;
+  if (r.gatherThreads == 0)
+    r.gatherThreads = std::max(1u, std::thread::hardware_concurrency());
+  if (r.gatherThreads > unsigned(std::numeric_limits<int>::max()))
+    return fail("invalid_options", "gather thread count exceeds native range");
+
+  const auto &b = request.bound;
+  int64_t rowBytes = 0;
+  if (!mulOk(b.dstStrides[0], int64_t(b.elementSize), rowBytes))
+    return fail("integer_overflow", "destination row size overflows");
+  std::vector<int64_t> padded = b.extents;
+  std::vector<bool> seen(padded.size(), false);
+  for (const auto &p : b.padRegions) {
+    if (seen[p.axis] || b.elementSize > sizeof(uint64_t) ||
+        p.fillBits != b.padRegions.front().fillBits)
+      return fail("unsupported_layout", "unsupported padding representation");
+    seen[p.axis] = true;
+    // validateTransfer already checked each padded extent for overflow.
+    padded[p.axis] += p.lo + p.hi;
+  }
+  int64_t physicalElements = 0, physicalBytes = 0;
+  if (!elementCount(padded, physicalElements) ||
+      !mulOk(physicalElements, int64_t(b.elementSize), physicalBytes))
+    return fail("integer_overflow", "physical destination size overflows");
+  if (physicalBytes != b.totalBytes)
+    return fail("plan_mismatch", "physical destination size differs from plan");
+  BufferView physical = request.destination;
+  physical.extents = padded;
+  physical.strides = b.dstStrides;
+  auto physicalSpan = viewSpanBytes(physical, "plan destination");
+  if (auto *error = std::get_if<TransferError>(&physicalSpan))
+    return *error;
+  if (std::get<size_t>(physicalSpan) != size_t(b.totalBytes))
+    return fail("plan_mismatch",
+                "plan does not cover its physical destination");
+
+  if (request.direction == TransferDirection::HostToDevice) {
+    // Bound destination reach was checked above, including padded inner axes.
+    // Prove row products before the planner evaluates signed byte arithmetic.
+    int64_t innerSpan = 0;
+    for (size_t k = 1; k < padded.size(); ++k)
+      innerSpan += (padded[k] - 1) * b.dstStrides[k];
+    if (b.dstStrides[0] >= innerSpan + 1) {
+      int64_t covered = 0;
+      if (!mulOk(padded[0], rowBytes, covered))
+        return fail("integer_overflow", "chunk coverage overflows");
+      if (covered != b.totalBytes)
+        return fail("plan_mismatch",
+                    "outer-row chunks do not cover destination");
+    }
+    const int configured = std::max(1, options.nBuffers);
+    r.schedule = planChunks(b, configured, options.chunkSizeOverride);
+    r.activeSlots = static_cast<int>(
+        std::min<size_t>(configured, r.schedule.chunks.size()));
+    r.slotBytes = r.schedule.maxChunkBytes;
+  } else {
+    r.slotBytes = r.sourceBytes;
+  }
+  if (r.activeSlots < 1 || r.slotBytes == 0 ||
+      !mulOk(r.slotBytes, size_t(r.activeSlots), r.stagingBytes))
+    return fail("integer_overflow", "staging capacity overflows");
+  return r;
+}
+
+std::optional<TransferError>
+executePreparedTransfer(const TransferRequest &request,
+                        const TransferRequirements &r,
+                        const TransferOptions &options, CopyBackend &backend,
+                        PinnedBufferPool &pool, GatherPool *gather,
+                        TransferCompletion &completion) {
+  CompletionGuard guard(backend, completion);
+  if (!pool.usesBackend(backend) || !pool.valid() ||
+      pool.nBuffers() < r.activeSlots || pool.bufferBytes() < r.slotBytes)
+    return fail("insufficient_capacity", "staging does not cover this request");
   const auto *src = reinterpret_cast<const uint8_t *>(request.source.base) +
                     request.source.offsetBytes;
   auto *dst = reinterpret_cast<uint8_t *>(request.destination.base) +
               request.destination.offsetBytes;
-
-  // Every private queue orders after the caller's producer stream before
-  // touching source or destination storage.
-  if (options.hasCallerStream && !backend.waitStream(options.callerStream))
-    return backendFailure(backend, "ordering after the caller stream failed");
-
-  if (request.direction == TransferDirection::HostToDevice) {
-    // The staging ring is built here, not inside the pipeline, so a failed
-    // pinned allocation is reported by value instead of dereferenced.
-    const int nBuffers = std::max(1, options.nBuffers);
-    ChunkSchedule sched =
-        planChunks(request.bound, nBuffers, options.chunkSizeOverride);
-    PinnedBufferPool pool(backend, nBuffers, sched.maxChunkBytes);
-    if (!pool.valid()) {
-      std::string detail = "pinned staging allocation failed for " +
-                           std::to_string(nBuffers) + " x " +
-                           std::to_string(sched.maxChunkBytes) + " bytes";
-      if (!backend.error().empty())
-        detail += ": " + backend.error();
-      return fail("backend_failure", detail);
-    }
-    if (options.gather != nullptr) {
-      executeH2DPipelined(request.bound, src, dst, backend, pool,
-                          options.chunkSizeOverride, options.gather);
-    } else if (options.gatherThreads == 1) {
-      executeH2DPipelined(request.bound, src, dst, backend, pool,
-                          options.chunkSizeOverride, /*gather=*/nullptr);
-    } else {
-      GatherPool gather(options.gatherThreads);
-      executeH2DPipelined(request.bound, src, dst, backend, pool,
-                          options.chunkSizeOverride, &gather);
-    }
-    if (backend.failed())
-      return backendFailure(backend, "host-to-device pipeline failed");
-    return std::nullopt;
+  if (options.hasCallerStream) {
+    completion = TransferCompletion::Unknown;
+    if (!backend.waitStream(options.callerStream) || backend.failed())
+      return backendFailure(backend, "ordering after the caller stream failed");
   }
+  if (request.direction == TransferDirection::HostToDevice)
+    return executeH2DPrepared(request.bound, src, dst, backend, pool,
+                              r.schedule, r.activeSlots, gather, completion);
 
-  // Forward D2H: land the dense logical source in owned pinned staging, wait
-  // for exactly that copy, then run the same forward gather on the host.
-  StagingGuard staging{backend, backend.allocStaging(request.sourceSpanBytes)};
-  if (staging.buffer == nullptr)
-    return fail("backend_failure", "pinned staging allocation failed for " +
-                                       std::to_string(request.sourceSpanBytes) +
-                                       " bytes");
-  backend.copyAsync(0, staging.buffer, src, request.sourceSpanBytes,
+  // Forward D2H uses the validated source span, not destination size or an
+  // inverse-scatter schedule. Only gather after the download proves complete.
+  completion = TransferCompletion::Unknown;
+  pool.markPending();
+  backend.copyAsync(0, pool.buffer(0), src, r.sourceBytes,
                     CopyDir::DeviceToHost);
-  EventHandle ev = backend.recordEvent(0);
-  backend.waitEvent(ev);
   if (backend.failed())
-    return backendFailure(backend, "device-to-host staging copy failed");
-  forwardHostGather(request.bound, staging.buffer, dst, options);
+    return backendFailure(backend, "device-to-host copy submission failed");
+  EventHandle event = backend.recordEvent(0);
+  if (!event || backend.failed())
+    return backendFailure(backend, "device-to-host event recording failed");
+  pool.setEvent(0, event);
+  pool.drain();
+  if (backend.failed())
+    return backendFailure(backend, "device-to-host copy completion failed");
+  TransferOptions gathering;
+  gathering.gather = gather;
+  forwardHostGather(request.bound, pool.buffer(0), dst, gathering);
+  completion = TransferCompletion::Complete;
   return std::nullopt;
+}
+
+} // namespace detail
+
+std::optional<TransferError> executeTransfer(TransferRequest &request,
+                                             CopyBackend &backend,
+                                             const TransferOptions &options) {
+  struct Ephemeral : detail::QuarantineNode {
+    std::unique_ptr<PinnedBufferPool> pool;
+    std::unique_ptr<GatherPool> workers;
+  };
+  std::unique_ptr<Ephemeral> resources;
+  TransferCompletion completion = TransferCompletion::NotLaunched;
+  struct Retire {
+    std::unique_ptr<Ephemeral> &resources;
+    TransferCompletion &completion;
+    ~Retire() {
+      // Even diagnostic allocation can throw while reporting an earlier
+      // failure. Persistent ownership must not depend on constructing it.
+      if (resources && completion == TransferCompletion::Unknown)
+        detail::quarantine(std::move(resources));
+    }
+  } retire{resources, completion};
+  std::optional<TransferError> error;
+  try {
+    if (auto error = detail::checkTransferBackend(request, backend))
+      return error;
+    auto description = detail::describeTransfer(request, options);
+    if (auto *error = std::get_if<TransferError>(&description))
+      return *error;
+    const auto &r = std::get<detail::TransferRequirements>(description);
+    request.consumed = true;
+    resources = std::make_unique<Ephemeral>();
+    resources->pool =
+        std::make_unique<PinnedBufferPool>(backend, r.activeSlots, r.slotBytes);
+    if (!resources->pool->valid() || backend.failed())
+      return fail("backend_failure",
+                  "pinned staging allocation failed: " + backend.error());
+    if (!options.gather && r.gatherThreads > 1)
+      resources->workers = std::make_unique<GatherPool>(r.gatherThreads);
+    error = detail::executePreparedTransfer(
+        request, r, options, backend, *resources->pool,
+        options.gather ? options.gather : resources->workers.get(), completion);
+  } catch (const std::exception &e) {
+    error = fail("backend_failure", e.what());
+  } catch (...) {
+    error = fail("backend_failure", "unexpected transfer execution failure");
+  }
+  if (completion == TransferCompletion::Unknown) {
+    detail::quarantine(std::move(resources));
+    return fail("completion_unknown", error ? error->message : backend.error());
+  }
+  if (resources && resources->pool)
+    resources->pool->markComplete();
+  return error;
 }
 
 } // namespace reloc
