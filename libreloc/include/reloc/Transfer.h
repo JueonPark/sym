@@ -124,7 +124,8 @@ struct TransferOptions {
 /// backends, device() < 0, accept every ordinal). Staging allocation and
 /// backend failures surface as backend_failure with the backend's
 /// diagnostic. On completion_unknown, the caller must keep its borrowed
-/// backend and buffer allocations alive; owned staging is quarantined.
+/// backend and buffer allocations alive; owned staging is quarantined. Use
+/// TransferContext (TransferResources.h) for automatic exceptional ownership.
 /// Never throws under ordinary resource/backend failures.
 std::optional<TransferError> executeTransfer(TransferRequest &request,
                                              CopyBackend &backend,
