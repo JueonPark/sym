@@ -91,21 +91,39 @@ size_t validateSource(const reloc::BoundPlan &bound,
   return std::get<size_t>(result);
 }
 
-reloc::TransferRequest makeTransfer(const reloc::BoundPlan &bound,
-                                    const reloc::BufferView &source,
-                                    const reloc::BufferView &destination,
-                                    const std::string &direction) {
+struct PythonTransferRequest {
+  reloc::TransferRequest native;
+  // Accessed only under the GIL. Avoid reading native.consumed while native
+  // execution can write it, and reject concurrent use of the same request.
+  bool executing = false;
+};
+
+PythonTransferRequest makeTransfer(const reloc::BoundPlan &bound,
+                                   const reloc::BufferView &source,
+                                   const reloc::BufferView &destination,
+                                   const std::string &direction) {
   auto result = reloc::validateTransfer(bound, source, destination,
                                         parseDirection(direction));
   if (auto *error = std::get_if<reloc::TransferError>(&result))
     raise(*error);
-  return std::get<reloc::TransferRequest>(std::move(result));
+  return {std::get<reloc::TransferRequest>(std::move(result))};
 }
 
-void executeTransferPy(reloc::TransferRequest &request,
+void checkProcess(const reloc::TransferResourceCache &cache) {
+  if (!cache.stats().processValid)
+    raise({"process_mismatch", "resource cache belongs to another process"});
+}
+
+void executeTransferPy(PythonTransferRequest &wrapped,
                        const py::object &callerStream, int nBuffers,
                        int nStreams, int gatherThreads,
-                       std::shared_ptr<reloc::GatherPool> pool) {
+                       std::shared_ptr<reloc::GatherPool> pool,
+                       std::shared_ptr<reloc::TransferResourceCache> resources,
+                       const py::object &owners) {
+  if (resources)
+    checkProcess(*resources); // before any inherited pool locks
+  if (wrapped.executing)
+    raise({"already_executed", "transfer request is already executing"});
   if (nBuffers < 1)
     throw py::value_error("n_buffers must be >= 1");
   if (nStreams < 1)
@@ -114,6 +132,15 @@ void executeTransferPy(reloc::TransferRequest &request,
     throw py::value_error("gather_threads must be >= 0 (0 = all cores)");
   if (pool && pool->closed())
     throw py::value_error("gather_pool is closed");
+  std::shared_ptr<py::object> token;
+  if (resources || !owners.is_none()) {
+    if (!py::isinstance<py::tuple>(owners) || py::len(owners) != 2 ||
+        owners[py::int_(0)].is_none() || owners[py::int_(1)].is_none())
+      throw py::value_error(
+          "owners must be a (source, destination) tuple of strong owners");
+    token = std::make_shared<py::object>(owners);
+  }
+  auto &request = wrapped.native;
   reloc::TransferOptions options;
   options.nBuffers = nBuffers;
   options.gatherThreads = static_cast<unsigned>(gatherThreads);
@@ -125,30 +152,120 @@ void executeTransferPy(reloc::TransferRequest &request,
   }
   const bool cuda = request.source.kind == reloc::MemoryKind::Cuda ||
                     request.destination.kind == reloc::MemoryKind::Cuda;
-  const int device = request.source.kind == reloc::MemoryKind::Cuda
+  const int device = !cuda ? -1
+                     : request.source.kind == reloc::MemoryKind::Cuda
                          ? request.source.device
                          : request.destination.device;
   std::optional<reloc::TransferError> error;
-  {
-    // The Python caller retains every owner (tensors, request) for the
-    // duration of this blocking call; only the GIL is released.
+  wrapped.executing = true;
+  try {
+    // Keep our own token reference across the released-GIL scope. Every normal
+    // last release therefore occurs with the GIL held, even on an exception.
+    // Unknown completion retains its copy in native process-lifetime
+    // quarantine; no Python decref or GIL acquisition is attempted at
+    // interpreter shutdown.
     py::gil_scoped_release release;
-    if (cuda) {
-#ifdef RELOC_ENABLE_CUDA
-      reloc::CudaBackend backend(nStreams, device);
-      error = reloc::executeTransfer(request, backend, options);
-#else
-      (void)device;
-      error = reloc::TransferError{
-          "backend_failure", "pyreloc was built without RELOC_ENABLE_CUDA"};
-#endif
+    if (resources) {
+      reloc::CachedTransferOptions cached;
+      cached.transfer = options;
+      cached.backend = {cuda ? reloc::MemoryKind::Cuda
+                             : reloc::MemoryKind::Host,
+                        device, nStreams};
+      cached.gather = pool;
+      error = reloc::executeTransferCached(request, *resources, cached, token)
+                  .error;
     } else {
-      reloc::HostBackend backend(nStreams);
-      error = reloc::executeTransfer(request, backend, options);
+      std::unique_ptr<reloc::CopyBackend> backend;
+      if (cuda) {
+#ifdef RELOC_ENABLE_CUDA
+        backend = std::make_unique<reloc::CudaBackend>(nStreams, device);
+#else
+        raise(
+            {"backend_failure", "pyreloc was built without RELOC_ENABLE_CUDA"});
+#endif
+      } else {
+        backend = std::make_unique<reloc::HostBackend>(nStreams);
+      }
+      if (token) {
+        reloc::TransferContext context(std::move(backend));
+        error = reloc::executeTransfer(request, context, options, token).error;
+      } else {
+        // Legacy raw-pointer callers still own exceptional buffer lifetimes.
+        error = reloc::executeTransfer(request, *backend, options);
+      }
     }
+  } catch (...) {
+    wrapped.executing = false; // GIL has been reacquired before this handler
+    throw;
   }
+  wrapped.executing = false;
   if (error)
     raise(*error);
+}
+
+py::dict usageDict(const reloc::TransferResourceUsage &s) {
+  py::dict d;
+#define STAT(name, field) d[name] = s.field
+  STAT("contexts", contexts);
+  STAT("building", building);
+  STAT("leased", leased);
+  STAT("idle", idle);
+  STAT("retiring", retiring);
+  STAT("quarantined", quarantined);
+  STAT("allocated_staging_bytes", allocatedStagingBytes);
+  STAT("reserved_staging_bytes", reservedStagingBytes);
+  STAT("retained_allocated_bytes", retainedAllocatedBytes);
+  STAT("retained_reserved_bytes", retainedReservedBytes);
+  STAT("background_workers", backgroundWorkers);
+  STAT("reserved_workers", reservedWorkers);
+  STAT("streams", streams);
+  STAT("quarantine_bytes", quarantineBytes);
+  STAT("outstanding_events", outstandingEvents);
+#undef STAT
+  return d;
+}
+
+py::dict resourceStats(const reloc::TransferResourceCache &cache) {
+  const auto s = cache.stats();
+  if (!s.processValid)
+    raise({"process_mismatch", "resource cache belongs to another process"});
+  auto d = usageDict(s);
+#define STAT(name, field) d[name] = s.field
+  STAT("requests", requests);
+  STAT("hits", hits);
+  STAT("growths", growths);
+  STAT("misses", misses);
+  STAT("evictions", evictions);
+  STAT("ephemeral", ephemeral);
+  STAT("waits", waits);
+  STAT("timeouts", timeouts);
+  STAT("failures", failures);
+  STAT("quarantines", quarantines);
+  STAT("waiters", waiters);
+  STAT("staging_allocations", stagingAllocations);
+  STAT("staging_frees", stagingFrees);
+  STAT("stream_creations", streamCreations);
+  STAT("stream_destructions", streamDestructions);
+  STAT("worker_creations", workerCreations);
+  STAT("worker_joins", workerJoins);
+  STAT("event_creations", eventCreations);
+  STAT("event_retirements", eventRetirements);
+  STAT("peak_live_staging_bytes", peakLiveStagingBytes);
+  STAT("peak_allocated_staging_bytes", peakAllocatedStagingBytes);
+  STAT("generation", generation);
+  STAT("closed", closed);
+  STAT("process_valid", processValid);
+#undef STAT
+  py::list devices;
+  for (const auto &device : s.devices) {
+    auto entry = usageDict(device);
+    entry["kind"] = kindName(device.kind);
+    entry["device"] = device.device;
+    entry["disabled"] = device.disabled;
+    devices.append(entry);
+  }
+  d["devices"] = devices;
+  return d;
 }
 
 int cudaPointerDevicePy(uintptr_t pointer) {
@@ -192,21 +309,98 @@ void registerTransferBindings(py::module_ &m) {
                              "Checked byte span; raises TransferError for "
                              "empty, overlapping or overflowing views.");
 
-  py::class_<reloc::TransferRequest>(
+  py::class_<PythonTransferRequest>(
       m, "TransferRequest",
       "A validated, single-use forward transfer owning copies of the bound "
       "plan and both views.")
       .def_property_readonly("direction",
-                             [](const reloc::TransferRequest &r) {
-                               return directionName(r.direction);
+                             [](const PythonTransferRequest &r) {
+                               return directionName(r.native.direction);
                              })
-      .def_readonly("source_span_bytes",
-                    &reloc::TransferRequest::sourceSpanBytes)
-      .def_readonly("destination_bytes",
-                    &reloc::TransferRequest::destinationBytes)
-      .def_readonly("consumed", &reloc::TransferRequest::consumed)
-      .def_readonly("source", &reloc::TransferRequest::source)
-      .def_readonly("destination", &reloc::TransferRequest::destination);
+      .def_property_readonly("source_span_bytes",
+                             [](const PythonTransferRequest &r) {
+                               return r.native.sourceSpanBytes;
+                             })
+      .def_property_readonly("destination_bytes",
+                             [](const PythonTransferRequest &r) {
+                               return r.native.destinationBytes;
+                             })
+      .def_property_readonly("consumed",
+                             [](const PythonTransferRequest &r) {
+                               return r.executing || r.native.consumed;
+                             })
+      .def_property_readonly(
+          "source",
+          [](const PythonTransferRequest &r) { return r.native.source; })
+      .def_property_readonly("destination", [](const PythonTransferRequest &r) {
+        return r.native.destination;
+      });
+
+  py::class_<reloc::TransferResourceCache,
+             std::shared_ptr<reloc::TransferResourceCache>>(
+      m, "TransferResourceCache",
+      "Explicit lazy transfer resource cache; no CUDA initialization until "
+      "execution.")
+      .def(py::init([](size_t retained, size_t contexts, size_t perDevice,
+                       size_t workers, std::optional<size_t> live,
+                       std::optional<int64_t> timeout) {
+             reloc::TransferResourceLimits limits;
+             limits.maxRetainedBytes = retained;
+             limits.maxContexts = contexts;
+             limits.maxContextsPerDevice = perDevice;
+             limits.maxBackgroundWorkers = workers;
+             limits.maxLiveStagingBytes = live;
+             if (timeout)
+               limits.acquireTimeout = std::chrono::milliseconds(*timeout);
+             return reloc_python::makeResourceCache(limits);
+           }),
+           py::kw_only(), py::arg("max_retained_bytes") = size_t(256) << 20,
+           py::arg("max_contexts") = 4, py::arg("max_contexts_per_device") = 2,
+           py::arg("max_background_workers") = 64,
+           py::arg("max_live_staging_bytes") = py::none(),
+           py::arg("acquire_timeout_ms") = py::none())
+      .def("stats", &resourceStats)
+      .def(
+          "close",
+          [](reloc::TransferResourceCache &c) {
+            if (auto e = c.close())
+              raise(*e);
+          },
+          py::call_guard<py::gil_scoped_release>())
+      .def(
+          "clear",
+          [](reloc::TransferResourceCache &c) {
+            if (auto e = c.clear())
+              raise(*e);
+          },
+          py::call_guard<py::gil_scoped_release>())
+      .def_property_readonly("closed",
+                             [](const reloc::TransferResourceCache &c) {
+                               checkProcess(c);
+                               return c.stats().closed;
+                             })
+      .def("__enter__",
+           [](std::shared_ptr<reloc::TransferResourceCache> c) {
+             checkProcess(*c);
+             if (c->stats().closed)
+               raise({"resources_closed", "resource cache is closed"});
+             return c;
+           })
+      .def("__exit__",
+           [](reloc::TransferResourceCache &c, py::object, py::object,
+              py::object) {
+             std::optional<reloc::TransferError> error;
+             {
+               py::gil_scoped_release release;
+               error = c.close();
+             }
+             if (error)
+               raise(*error);
+             return false;
+           })
+      .def("__reduce_ex__", [](const reloc::TransferResourceCache &, int) {
+        throw py::type_error("transfer resources cannot be serialized");
+      });
 
   m.def("validate_transfer_source", &validateSource, py::arg("bound"),
         py::arg("source"), py::arg("direction"),
@@ -218,15 +412,22 @@ void registerTransferBindings(py::module_ &m) {
         py::arg("destination"), py::arg("direction"),
         "Full validation with the dense destination view; returns the "
         "single-use TransferRequest.");
-  m.def("execute_transfer", &executeTransferPy, py::arg("request"),
-        py::kw_only(), py::arg("caller_stream") = py::none(),
-        py::arg("n_buffers") = 4, py::arg("n_streams") = 2,
-        py::arg("gather_threads") = 1, py::arg("gather_pool") = nullptr,
-        "Run the forward transfer and block until this request's work has "
-        "completed. caller_stream (a cudaStream_t handle; 0 is the legacy "
-        "default stream, None means no producer to order after) is recorded "
-        "before any private stream touches shared storage. Raises "
-        "TransferError on a consumed request or a backend failure.");
+  m.def(
+      "execute_transfer", &executeTransferPy, py::arg("request"), py::kw_only(),
+      py::arg("caller_stream") = py::none(), py::arg("n_buffers") = 4,
+      py::arg("n_streams") = 2, py::arg("gather_threads") = 1,
+      py::arg("gather_pool") = nullptr, py::arg("resources") = nullptr,
+      py::arg("owners") = py::none(),
+      "Run the forward transfer and block until this request's work has "
+      "completed. caller_stream (a cudaStream_t handle; 0 is the legacy "
+      "default stream, None means no producer to order after) is recorded "
+      "before any private stream touches shared storage. Raises "
+      "TransferError on a consumed request or a backend failure. Cached calls "
+      "require owners=(source_owner, destination_owner); successful calls "
+      "release them and unknown completion quarantines them. Supplying owners "
+      "without resources uses the same ownership protection with ephemeral "
+      "resources. Raw callers omitting owners must retain buffers themselves "
+      "on completion_unknown.");
   m.def("cuda_pointer_device", &cudaPointerDevicePy, py::arg("pointer"),
         "CUDA device ordinal owning `pointer` (cudaPointerGetAttributes); "
         "raises TransferError for host/unknown memory or CUDA-less builds.");

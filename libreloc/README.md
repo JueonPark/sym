@@ -310,6 +310,34 @@ recipes it consumes: [docs/runtime-integration.md](../docs/runtime-integration.m
 
 ## Python bindings (pyreloc)
 
+`pyreloc.TransferResourceCache` exposes the native cache's limits as keyword
+arguments: `max_retained_bytes`, `max_contexts`, `max_contexts_per_device`,
+`max_background_workers`, `max_live_staging_bytes` and `acquire_timeout_ms`.
+Construction and `stats()` do not initialize CUDA or import Torch. Use
+`close()` or a context manager for deterministic shutdown; `clear()` retires
+idle resources and older active generations. Statistics use snake_case names
+and include a `devices` list. Handles reject serialization and inherited use
+after fork; construct fresh owners in spawned processes.
+
+The low-level `pyreloc.execute_transfer` accepts `resources=cache` together
+with `owners=(source_owner, destination_owner)`. These must strongly own the
+allocations described by the request; the runtime cannot infer Python ownership
+from integer addresses. The binding creates a strong token before releasing
+the GIL and retains its own copy until the GIL is reacquired. Normal calls and
+established-completion failures drop these references; unknown completion keeps
+them in native process-lifetime quarantine independently of the exception or
+cache wrapper. Quarantined tokens are never decref'd at interpreter shutdown.
+Native fault-injection subprocess tests cover cleanup, quarantine and shutdown;
+they do not simulate recovery from an actual failed CUDA device.
+
+Admission, execution, clear, close and native-owner destruction release the GIL
+while blocking. Concurrent execution of the same Python request is rejected;
+use one fresh request per call. A borrowed `gather_pool` is strongly held through
+the call and is not closed or retained by the cache. Supplying `owners` with
+`resources=None` uses a fresh native context with the same exceptional lifetime
+protection. Omitting both keywords preserves the legacy raw-pointer API, whose
+caller remains responsible for buffer lifetime on `completion_unknown`.
+
 The optional Torch frontend (`reloc_torch`: `torch.compile` backend, eager
 transfer scope, prepared inference weights) is documented in
 [docs/torch-integration.md](../docs/torch-integration.md) with its evidence in
