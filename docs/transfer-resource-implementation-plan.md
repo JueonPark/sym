@@ -1,12 +1,15 @@
 # Transfer resource reuse implementation plan
 
-Status: planned, tracked by [#165](https://github.com/JueonPark/sym/issues/165).
+Status: R1–R7 merged; R8 default enablement is implemented in this change,
+tracked by [#165](https://github.com/JueonPark/sym/issues/165).
 This plan divides the [resource retention design](transfer-resource-reuse.md)
 into eight implementation subissues. The subissues contain the working
-checklists, file scopes, acceptance checks, and progress records. No runtime
-implementation is included in this planning change.
+checklists, file scopes, acceptance checks, and progress records. The
+[enablement record](transfer-resource-enablement.md) lists delivered PRs and
+maps the parent acceptance checks to evidence. The estimates and delivery
+instructions below preserve the original plan; they are not outstanding work.
 
-Start from `main`, which includes the CPU transpose kernel merged in
+The original plan started from `main`, including the CPU transpose kernel merged in
 [PR #164](https://github.com/JueonPark/sym/pull/164) as `13d3447`. The resource
 work preserves that kernel and its dispatch. The
 [estimated diff](transfer-resource-reuse-diff.md) describes the expected total

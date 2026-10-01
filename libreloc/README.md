@@ -311,6 +311,15 @@ recipes it consumes: [docs/runtime-integration.md](../docs/runtime-integration.m
 
 ## Python bindings (pyreloc)
 
+`reloc_torch.RelocBackend()` now retains layout-transfer resources by default
+through its lazy adapter-owned cache. `transfer_resources=None` selects per-call
+resources; an explicit `TransferResources` is borrowed and can be shared across
+backends and direct transfers. Close owners explicitly when finished. See
+[frontend ownership and limits](../docs/torch-integration.md#shared-resources-for-compiled-and-eager-calls)
+and the [enablement evidence](../docs/transfer-resource-enablement.md).
+Typed dispatch and blocking transfer semantics are unchanged. A standalone
+`TransportAdapter()` retains its explicit opt-in policy.
+
 For direct tensor transfers, use the lazily exported
 `reloc_torch.TransferResources` facade and pass it to
 `reloc_torch.transport.execute_transfer(request, resources=resources)`.

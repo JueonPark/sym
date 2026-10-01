@@ -4,7 +4,8 @@
 `torch.compile(..., backend=RelocBackend(...))`. It compares explicit retained
 resources with `None` using identical buffers, streams, gather budgets, recipes
 and native scheduling. Every call binds/validates its current input, allocates a
-fresh output and completes before the timer stops. Resource retention is opt-in.
+fresh output and completes before the timer stops. This harness selects each
+resource policy explicitly, independent of the frontend default.
 
 The [EPYC 7351 / RTX 2080 Ti report](results/transfer-resource-reuse-171/README.md)
 records the reference matrix, raw samples, resource counters and CPU/GPU captures.

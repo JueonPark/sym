@@ -1,16 +1,18 @@
 # Retaining transfer resources across frontend calls
 
-Status: proposed design for [issue #165](https://github.com/JueonPark/sym/issues/165).
-This document specifies new APIs and behavior; they are not implemented yet.
-It is based on the transfer code merged into `main` as `13d3447`, including
+Status: implemented for [issue #165](https://github.com/JueonPark/sym/issues/165).
+The [enablement record](transfer-resource-enablement.md) maps acceptance checks
+to merged work and qualification evidence; the [user guide](torch-integration.md#shared-resources-for-compiled-and-eager-calls)
+documents the current API. This document retains the design rationale and
+original implementation sequence. Its original baseline was `13d3447`, including
 the CPU transpose kernel in [PR #164](https://github.com/JueonPark/sym/pull/164).
 That committed tree is identical to the original kernel commit `d019d1b`.
-See [the estimated implementation diff](transfer-resource-reuse-diff.md) for
-the anticipated code footprint and representative changes, and the
+See [the historical implementation estimate](transfer-resource-reuse-diff.md) for
+the planned code footprint and schematic changes, and the
 [implementation plan](transfer-resource-implementation-plan.md) for tracked
 subissues, dependencies, and the PR workflow.
 
-Sym should retain the pinned host buffers, CUDA streams, and CPU workers used
+Sym retains the pinned host buffers, CUDA streams, and CPU workers used
 by repeated layout transfers in an explicitly owned, bounded resource cache.
 One request exclusively leases each context until its work completes. The
 compiled and eager frontends share this cache through their runtime adapter;
@@ -30,17 +32,18 @@ prepare another. Pinned memory is host memory allocated for GPU transfers;
 a stream is an ordered queue of GPU operations. A gather pool owns the CPU
 threads preparing the chunks.
 
-The frontend currently creates these resources for each request, executes the
-pipeline, waits, and destroys them. The proposed change keeps the resources
+The original frontend created these resources for each request, executed the
+pipeline, waited, and destroyed them. The implemented cache keeps the resources
 after completion and overwrites staging with the next request's data.
 Compiled plans, request objects, tensor values, and reusable execution
 resources have different lifetimes.
 
-Evidence recorded in #165 on EPYC 7351 / RTX 2080 Ti / PCIe Gen3 x16:
+Original prototype evidence recorded in #165 on EPYC 7351 / RTX 2080 Ti / PCIe
+Gen3 x16 (superseded for enablement by the [completed frontend measurements](../bench/results/transfer-resource-reuse-171/README.md)):
 
 | Completed 4096 x 1024 FP32 transfer | Median latency |
 | --- | ---: |
-| Current Sym frontend | 27.919 ms |
+| Original Sym frontend | 27.919 ms |
 | Sym native pipeline with resources and output preallocated | 3.503 ms |
 | CPU Inductor plus H2D with staging and output preallocated | 4.693 ms |
 | H2D plus Torch GPU transpose with buffers preallocated | 1.740 ms |
@@ -57,24 +60,25 @@ Resource reuse must be evaluated through the actual frontend, including its
 fresh outputs and completed transfers. GPU placement remains a relevant
 comparison.
 
-## Current code and required changes
+## Implementation sites
 
-| Current owner or operation | Consequence for this design |
+| Owner or operation | Implemented change |
 | --- | --- |
-| [`PyTransfer.cpp`](../libreloc/python/PyTransfer.cpp) creates `CudaBackend` per execution | Move backend ownership into a retained context. |
-| [`Transfer.cpp`](../libreloc/src/Transfer.cpp) creates H2D staging and optional workers per call | Add an execution path receiving a resource lease. |
-| Forward D2H in `Transfer.cpp` allocates `sourceSpanBytes` of staging | Retain a separate single-buffer context for this capacity requirement. |
-| [`Pipeline.cpp`](../libreloc/src/Pipeline.cpp) accepts caller-owned staging and workers | Reuse this implementation, with a checked entry point accepting the already-computed schedule. |
-| [`TransportAdapter`](../libreloc/python/reloc_torch/runtime.py) invokes both compiled and eager transfers | Put default frontend resource ownership here, shared across recipes and shapes. |
-| [`RelocBackend.close`](../libreloc/python/reloc_torch/backend.py) invalidates graph entries | Extend it to close an adapter it owns, after stopping new execution. |
-| [`CudaBackend`](../libreloc/cuda/CudaBackend.cu) retains its first error | Failed contexts cannot return to the available cache. |
-| [`HostBackend`](../libreloc/src/HostBackend.cpp) retains completed event records | Retire those records to keep a persistent host backend bounded. |
+| [`PyTransfer.cpp`](../libreloc/python/PyTransfer.cpp) | Optional cached execution retains backend ownership in a context. |
+| [`Transfer.cpp`](../libreloc/src/Transfer.cpp) | H2D execution uses staging and workers from an exclusive lease. |
+| Forward D2H in `Transfer.cpp` | A separate single-buffer context covers `sourceSpanBytes`. |
+| [`Pipeline.cpp`](../libreloc/src/Pipeline.cpp) | The checked entry point accepts the already-computed schedule and caller-owned resources. |
+| [`TransportAdapter`](../libreloc/python/reloc_torch/runtime.py) | One owner serves compiled/eager calls across recipes and shapes. |
+| [`RelocBackend.close`](../libreloc/python/reloc_torch/backend.py) | Stops new entry execution, then closes its owned adapter. |
+| [`CudaBackend`](../libreloc/cuda/CudaBackend.cu) | Failed contexts retire instead of returning to reuse. |
+| [`HostBackend`](../libreloc/src/HostBackend.cpp) | Completed event records retire, bounding persistent metadata. |
 
-Two existing behaviors need explicit attention. A zero event handle means
+Two failure boundaries require particular care. A zero event handle means
 "no event", but CUDA event creation/recording can fail after a copy was queued.
-Waiting on zero cannot prove completion. Also, the staging-pool destructor
-frees buffers without draining them. A cache must establish completion before
-reuse, eviction, growth, or destruction, including exceptional exits.
+Waiting on zero cannot prove completion. Cleanup establishes backend quiescence
+before freeing staging. If completion cannot be established, the cache retains
+resources and tensor ownership in charged quarantine rather than reusing or
+freeing them. This applies to exceptional exits as well as normal retirement.
 
 ## Ownership and public interface
 
@@ -102,12 +106,12 @@ flowchart TD
     L --> X
 ```
 
-Expose a Python `TransferResources` facade in a new `reloc_torch/resources.py`,
+The Python `TransferResources` facade lives in `reloc_torch/resources.py`,
 backed by `pyreloc.TransferResourceCache`. The facade handles Python ownership
 and context-manager lifecycle. Neither native objects nor package imports
 introduce a Torch dependency into `reloc_runtime`.
 
-The proposed native boundary is:
+The native boundary is:
 
 ```cpp
 TransferOutcome executeTransferCached(
@@ -125,7 +129,7 @@ and owns both buffer allocations through any exceptional completion path.
 native cleanup or quarantine has taken ownership. A backend factory injected
 at cache construction supplies instrumented HostBackends for native tests.
 
-Proposed direct-call usage:
+Direct-call usage:
 
 ```python
 from reloc_torch import TransferResources
@@ -140,11 +144,12 @@ with TransferResources(max_retained_bytes=256 << 20) as resources:
         consume(output)
 ```
 
-`execute_transfer` gains an optional `resources` keyword. Omission retains
-the current ephemeral behavior for direct callers. All existing buffer,
+`execute_transfer` accepts an optional `resources` keyword. Omission retains
+ephemeral behavior for direct callers. All existing buffer,
 stream, worker, and external-pool keywords keep their meanings.
 
-`RelocBackend` gains `transfer_resources=AUTO` and `transfer_options=None`.
+Omitted `RelocBackend.transfer_resources` selects `AUTO` for its owned adapter;
+`transfer_options` defaults to `None`.
 `AUTO` lazily creates an adapter-owned cache, so ordinary repeated compiled
 and eager layout transfers benefit without changing each invocation. `None`
 explicitly selects the old resource policy for comparison. Passing a
@@ -152,11 +157,13 @@ explicitly selects the old resource policy for comparison. Passing a
 mapping of the existing execution knobs; defaults remain four buffers, two
 streams, and one gather participant.
 
-When a caller supplies a custom `runtime`, nondefault transfer-resource or
-transfer-option arguments are rejected as ambiguous. The custom runtime owns
-its policy. A default `TransportAdapter` owns its internally created cache;
-an injected adapter or cache remains caller-owned. Record ownership explicitly
-rather than inferring it from reference counts.
+When a caller supplies a custom `runtime`, omitted or explicit `None` resource
+policy leaves it unchanged; explicit `AUTO`, a resource owner, or non-None
+transfer options are rejected as ambiguous. The custom runtime owns its policy.
+A `RelocBackend`-created adapter owns its lazy AUTO cache; a standalone
+`TransportAdapter()` still defaults to ephemeral resources. An injected adapter
+or cache remains caller-owned. Ownership is explicit rather than inferred from
+reference counts.
 
 Closing an individual execution entry releases no shared transfer resources.
 Closing the backend stops new entry execution, then closes its owned adapter
@@ -215,7 +222,7 @@ gather. This design does not substitute inverse scatter or introduce D2H
 chunk overlap.
 
 Round allocation capacity up to 256 KiB with checked arithmetic. This is a
-proposed allocation granularity, not a measured optimum. It never changes copy
+policy granularity, not a measured optimum. It never changes copy
 lengths, padding, or the chunk schedule. Every execution performs a release-build
 check that its allocation covers the required bytes. Row sizes can exceed
 the chunk target, and serialized schedules can require whole-tensor staging;
@@ -234,9 +241,10 @@ both allocations. A failed growth retires the context and fails the request.
 
 ## Limits and admission
 
-The following are initial policy defaults, subject to the benchmark gate:
+The following defaults were retained after the R6/R7 review; see the
+[budget decision](transfer-resource-enablement.md#budget-decision):
 
-| Limit | Proposed default | Meaning |
+| Limit | Default | Meaning |
 | --- | ---: | --- |
 | `max_retained_bytes` | 256 MiB | Sum of reserved and allocated cacheable staging, including leased contexts. |
 | `max_contexts` | 4 | All contexts owned by this cache, including construction, retirement, and quarantine. |

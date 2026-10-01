@@ -1,0 +1,48 @@
+{
+  "source_revision": "fe28fa85b05122818c7e8ec4e645fb7c5c6bfc32",
+  "base_revision": "f0f3137998de5ca036c2bc01aa1f709655e4dd56",
+  "worktree_note": "Full frontend suites tested the code committed as source_revision; the extended run started after that commit. Only documentation was uncommitted during the extended run.",
+  "source_sha256": {
+    "libreloc/python/reloc_torch/backend.py": "0eff5564ab5c30bba649cf2a5cab6177a400e8dfae79e054ffbfc20ce1ac23de",
+    "libreloc/python/tests/torch_frontend/test_backend_resources.py": "0fb9d036eb71dc270d0c6bc23b17190682a47055c90e7e3e5b88ac8d304d1487",
+    "libreloc/python/tests/torch_frontend/test_resources.py": "815378aa145379a73146a10a2e32402add13e4b46748490f5327b0ad0fe9c051",
+    "libreloc/python/tests/torch_frontend/test_resource_qualification.py": "1a479bbefee323691c910e07e6285debbac2aa48b99568a0015c5e9d01912ef3",
+    "libreloc/python/tests/torch_frontend/test_typed_import.py": "80392fdadf25e824ef316c036ca96b749c83603395c756f8aa9d659902095e8a"
+  },
+  "built_backend_sha256": {
+    "torch-cuda": "0eff5564ab5c30bba649cf2a5cab6177a400e8dfae79e054ffbfc20ce1ac23de",
+    "torch-cpu-resources": "0eff5564ab5c30bba649cf2a5cab6177a400e8dfae79e054ffbfc20ce1ac23de"
+  },
+  "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.35",
+  "cpu": "AMD EPYC 7351, 32 logical CPUs",
+  "gpu": "index, name, driver_version\n0, NVIDIA GeForce RTX 2080 Ti, 595.71.05\n1, NVIDIA GeForce RTX 2080 Ti, 595.71.05\n2, NVIDIA GeForce RTX 2080 Ti, 595.71.05\n3, NVIDIA GeForce RTX 2080 Ti, 595.71.05",
+  "python": "Python 3.14.7",
+  "torch": "2.14.0+cu126",
+  "build_flags": {
+    "cuda_release": {
+      "cuda": true,
+      "nvtx": false
+    },
+    "cpu_release": {
+      "cuda": false,
+      "python_refcount_checks": "PYBIND11_ASSERT_GIL_HELD_INCREF_DECREF"
+    }
+  },
+  "runtime_sha256": {
+    "torch-cuda": "c29a3337656afcd7dc9307f869094ec419837f3440a9d69bc31a1dd25cceaea6",
+    "torch-cpu-resources": "7b91b3ed5786e9e9c223c9c26153eced1007adefb1d26f71bac339c8eeadc36b"
+  },
+  "stress_rounds": 100,
+  "stress_calls": 5200,
+  "borrower_survival_calls": 2,
+  "tested_devices": [
+    0,
+    1
+  ],
+  "reproduction_commands": {
+    "frontend-cuda.log": "PYTHONPATH=$PWD/build/torch-cuda/python SYM_RELOC_EXPORT=$PWD/build/torch-cuda/sym/tools/sym-reloc-export SYM_OPT=$PWD/build/torch-cuda/sym/tools/sym-opt /tmp/sym-torch-cuda/bin/python -m pytest -q -rs libreloc/python/tests/torch_frontend",
+    "frontend-cpu.log": "PYTHONPATH=$PWD/build/torch-cpu-resources/python SYM_RELOC_EXPORT=$PWD/build/torch-cpu-resources/sym/tools/sym-reloc-export SYM_OPT=$PWD/build/torch-cpu-resources/sym/tools/sym-opt /tmp/sym-torch-cuda/bin/python -m pytest -q -rs -m 'not gpu' libreloc/python/tests/torch_frontend",
+    "gpu-stress.log": "PYTHONPATH=$PWD/build/torch-cuda/python SYM_RELOC_EXPORT=$PWD/build/torch-cuda/sym/tools/sym-reloc-export SYM_OPT=$PWD/build/torch-cuda/sym/tools/sym-opt SYM_RESOURCE_STRESS_ROUNDS=100 /tmp/sym-torch-cuda/bin/python -m pytest -q -rs libreloc/python/tests/torch_frontend/test_resource_qualification.py"
+  },
+  "sanitizers": "Reuses the unchanged native runtime qualification in transfer-resources-172; ASan+UBSan passed, TSan unavailable. Not rerun for this Python default-selection change."
+}

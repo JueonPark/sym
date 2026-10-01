@@ -220,20 +220,21 @@ fork. Prefer context managers or explicit close before interpreter shutdown.
 
 ### Shared resources for compiled and eager calls
 
-Reuse is opt-in while performance and lifecycle qualification continue (#170,
-#171, #172). `RelocBackend` and `TransportAdapter` accept `transfer_resources`
-and `transfer_options`. The default `None` keeps ephemeral execution; explicit
-`AUTO` creates one adapter-owned cache on its first layout execution. Import,
+`RelocBackend()` now selects `AUTO` when it creates its own transport adapter.
+The adapter creates one owned resource cache on its first layout execution and
+shares it across compiled and eager layout calls. Explicit `AUTO` selects the
+same behavior; `transfer_resources=None` opts out and allocates resources per
+call. A standalone `TransportAdapter()` still defaults to per-call resources;
+configure it explicitly when injecting it into a backend. Import,
 backend construction, compilation, preflight, fake execution, and stats do not
 materialize that cache. Typed transfers use their existing dispatch path and
 do not populate these resource counters.
 
 ```python
 import torch
-from reloc_torch import AUTO, RelocBackend, eager_transfers
+from reloc_torch import RelocBackend, eager_transfers
 
-backend = RelocBackend(transfer_resources=AUTO,
-                       transfer_options={"gather_threads": 8})
+backend = RelocBackend(transfer_options={"gather_threads": 8})
 transpose_to_gpu = torch.compile(
     lambda x: x.t().contiguous().to("cuda"), backend=backend, dynamic=True,
 )
@@ -252,13 +253,18 @@ One adapter shares its cache across graph entries, layout recipes and shapes;
 compatible requests reuse native contexts. Artifact eviction and individual
 entry closure do not close the cache. Fresh outputs, current-stream ordering,
 blocking completion and the CPU-gather/PCIe chunk pipeline remain unchanged.
+Leaving `eager_transfers` stops interception but leaves the backend and its
+resources alive. Keep the same backend for calls that should share resources,
+and close it when those calls are finished.
 
 `transfer_options` is a copied mapping accepting `n_buffers` (default 4),
 `n_streams` (2), `gather_threads` (1; 0 means all cores), and `gather_pool`
 (None). A supplied pool remains borrowed and overrides the gather count.
-Invalid keys/types/ranges fail at configuration time. Custom runtime injection
-requires leaving both backend configuration arguments at None; configure the
-injected adapter itself instead.
+Invalid keys/types/ranges fail at configuration time. When injecting a custom
+`runtime`, omit the backend's resource/options arguments (explicit None is also
+accepted) and configure the injected runtime itself. Explicit AUTO or a resource
+owner alongside a custom runtime is rejected as ambiguous; omission never
+overrides the injected runtime's policy.
 
 Passing an explicit `TransferResources` borrows it, allowing multiple backends
 and direct transfers to share one budget. Backend close stops new entry
@@ -270,10 +276,51 @@ leased requests finish; racing requests that lose admission fail without Torch
 replay. Inherited backend/adapter use after fork is rejected before their locks;
 construct new owners in the child process.
 
+For shared budgets or `clear()` without closing the backend, supply an owner:
+
+```python
+from reloc_torch import RelocBackend, TransferResources
+
+with TransferResources(max_retained_bytes=64 << 20,
+                       max_live_staging_bytes=128 << 20,
+                       acquire_timeout_ms=1000) as resources:
+    backend = RelocBackend(transfer_resources=resources)
+    try:
+        compiled = torch.compile(fn, backend=backend)
+        output = compiled(source)
+        resources.clear()  # earlier outputs stay valid; active leases retire on return
+        output = compiled(next_source)
+    finally:
+        backend.close()  # the enclosing owner remains usable until its own close
+```
+
+Limits are per owner, not process-wide. AUTO uses the same defaults as
+`TransferResources`: 256 MiB retained staging, four contexts total/two per device,
+and 64 owned background workers. These are admission limits, not allocations at
+construction. The default one-participant gather creates no background workers.
+The retained-byte limit includes cacheable construction and active leases as
+well as idle capacity. A request larger than that budget can use an ephemeral
+context; context/worker limits and any `max_live_staging_bytes` still apply.
+There is **no hard live-byte cap by default**. Supply an explicit owner when an
+aggregate live staging cap or admission timeout is needed. The live-byte limit
+includes allocations, additional reservations and quarantine, but not Torch
+input/output storage. Admission waits do not time out by default; a configured
+timeout does not cancel a transfer that has already started.
+
 `backend.stats()["transfer_resources"]` is a native cache snapshot when its
 adapter has an owner, otherwise None (including other custom adapters).
 Inspection never creates resources. Native counters remain inspectable after
-closure. Automatic default enablement is tracked separately in #173.
+closure. For successful repeated compatible calls, `staging_allocations`,
+`stream_creations` and `worker_creations` stop increasing after warmup;
+`outstanding_events` returns to zero at completion. Shape/configuration changes
+can require growth or another context. Explicit `None` has no cache counters;
+None is not a measurement of zero allocations.
+
+The [enablement record](transfer-resource-enablement.md) maps the acceptance
+checks to completed performance and lifecycle evidence, including TSan's
+unavailable coverage. It also records why the existing default limits remain.
+Native consumers and external `CopyBackend` implementations must be rebuilt
+together for the added `quiesce()` interface; plan wire formats are unchanged.
 
 ## 5. Semantics and boundaries
 
