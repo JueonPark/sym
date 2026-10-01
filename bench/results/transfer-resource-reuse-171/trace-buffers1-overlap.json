@@ -1,0 +1,718 @@
+{
+  "schema_version": 1,
+  "status": "qualified",
+  "sqlite_sha256": "b64e1aa0e26b1d49f41173ba03942b15bab43389ae418a4c700684d0996420d8",
+  "timestamp_tolerance_ns": 1000,
+  "requests": [
+    {
+      "request": 0,
+      "buffers": 1,
+      "start_ns": 14699932,
+      "end_ns": 20894694,
+      "chunks": [
+        {
+          "chunk": 0,
+          "bytes": 4194304,
+          "stream": 16,
+          "correlation_id": 29,
+          "dma_start_ns": 17388599,
+          "dma_end_ns": 17711576,
+          "submit_start_ns": 17343268,
+          "submit_end_ns": 17390157,
+          "gather": [
+            {
+              "start_ns": 15781763,
+              "end_ns": 16099949,
+              "thread": 286710810592016
+            },
+            {
+              "start_ns": 15795118,
+              "end_ns": 17057714,
+              "thread": 286710810592097
+            },
+            {
+              "start_ns": 15795238,
+              "end_ns": 16643865,
+              "thread": 286710810592095
+            },
+            {
+              "start_ns": 15798024,
+              "end_ns": 17311557,
+              "thread": 286710810592096
+            }
+          ],
+          "next_chunk_work_overlap_ns": 0
+        },
+        {
+          "chunk": 1,
+          "bytes": 4194304,
+          "stream": 17,
+          "correlation_id": 37,
+          "dma_start_ns": 18594458,
+          "dma_end_ns": 18916859,
+          "submit_start_ns": 18577399,
+          "submit_end_ns": 18593930,
+          "gather": [
+            {
+              "start_ns": 17728502,
+              "end_ns": 18063229,
+              "thread": 286710810592016
+            },
+            {
+              "start_ns": 17734112,
+              "end_ns": 18242912,
+              "thread": 286710810592095
+            },
+            {
+              "start_ns": 17735124,
+              "end_ns": 18237752,
+              "thread": 286710810592098
+            },
+            {
+              "start_ns": 17735856,
+              "end_ns": 18562881,
+              "thread": 286710810592100
+            }
+          ],
+          "next_chunk_work_overlap_ns": 0
+        },
+        {
+          "chunk": 2,
+          "bytes": 4194304,
+          "stream": 16,
+          "correlation_id": 45,
+          "dma_start_ns": 19474396,
+          "dma_end_ns": 19796893,
+          "submit_start_ns": 19459459,
+          "submit_end_ns": 19473716,
+          "gather": [
+            {
+              "start_ns": 18933327,
+              "end_ns": 19262775,
+              "thread": 286710810592016
+            },
+            {
+              "start_ns": 18935822,
+              "end_ns": 19287973,
+              "thread": 286710810592097
+            },
+            {
+              "start_ns": 18936874,
+              "end_ns": 19446424,
+              "thread": 286710810592096
+            },
+            {
+              "start_ns": 18937294,
+              "end_ns": 19404695,
+              "thread": 286710810592098
+            }
+          ],
+          "next_chunk_work_overlap_ns": 0
+        },
+        {
+          "chunk": 3,
+          "bytes": 4194304,
+          "stream": 17,
+          "correlation_id": 53,
+          "dma_start_ns": 20386782,
+          "dma_end_ns": 20709119,
+          "submit_start_ns": 20371056,
+          "submit_end_ns": 20386455,
+          "gather": [
+            {
+              "start_ns": 19820988,
+              "end_ns": 20142110,
+              "thread": 286710810592016
+            },
+            {
+              "start_ns": 19828492,
+              "end_ns": 20337622,
+              "thread": 286710810592100
+            },
+            {
+              "start_ns": 19828933,
+              "end_ns": 20358753,
+              "thread": 286710810592097
+            },
+            {
+              "start_ns": 19830697,
+              "end_ns": 20161777,
+              "thread": 286710810592095
+            }
+          ],
+          "next_chunk_work_overlap_ns": 0
+        }
+      ],
+      "observed_overlap": false,
+      "gate_passed": true
+    },
+    {
+      "request": 1,
+      "buffers": 1,
+      "start_ns": 35564402,
+      "end_ns": 43700613,
+      "chunks": [
+        {
+          "chunk": 0,
+          "bytes": 4194304,
+          "stream": 16,
+          "correlation_id": 106,
+          "dma_start_ns": 40381258,
+          "dma_end_ns": 40704810,
+          "submit_start_ns": 40338197,
+          "submit_end_ns": 40381329,
+          "gather": [
+            {
+              "start_ns": 39070682,
+              "end_ns": 39398767,
+              "thread": 286710810592016
+            },
+            {
+              "start_ns": 39093626,
+              "end_ns": 40326645,
+              "thread": 286710810592099
+            },
+            {
+              "start_ns": 39093636,
+              "end_ns": 39950097,
+              "thread": 286710810592101
+            },
+            {
+              "start_ns": 39191051,
+              "end_ns": 39528113,
+              "thread": 286710810592098
+            }
+          ],
+          "next_chunk_work_overlap_ns": 0
+        },
+        {
+          "chunk": 1,
+          "bytes": 4194304,
+          "stream": 17,
+          "correlation_id": 114,
+          "dma_start_ns": 41335883,
+          "dma_end_ns": 41658284,
+          "submit_start_ns": 41315499,
+          "submit_end_ns": 41335777,
+          "gather": [
+            {
+              "start_ns": 40722339,
+              "end_ns": 41110228,
+              "thread": 286710810592016
+            },
+            {
+              "start_ns": 40730124,
+              "end_ns": 41252018,
+              "thread": 286710810592101
+            },
+            {
+              "start_ns": 40730194,
+              "end_ns": 41305850,
+              "thread": 286710810592099
+            },
+            {
+              "start_ns": 40730264,
+              "end_ns": 41235837,
+              "thread": 286710810592095
+            }
+          ],
+          "next_chunk_work_overlap_ns": 0
+        },
+        {
+          "chunk": 2,
+          "bytes": 4194304,
+          "stream": 16,
+          "correlation_id": 122,
+          "dma_start_ns": 42219853,
+          "dma_end_ns": 42542222,
+          "submit_start_ns": 42201206,
+          "submit_end_ns": 42219621,
+          "gather": [
+            {
+              "start_ns": 41673992,
+              "end_ns": 42000123,
+              "thread": 286710810592016
+            },
+            {
+              "start_ns": 41675084,
+              "end_ns": 42002488,
+              "thread": 286710810592100
+            },
+            {
+              "start_ns": 41679883,
+              "end_ns": 42191307,
+              "thread": 286710810592101
+            },
+            {
+              "start_ns": 41680885,
+              "end_ns": 42165077,
+              "thread": 286710810592099
+            }
+          ],
+          "next_chunk_work_overlap_ns": 0
+        },
+        {
+          "chunk": 3,
+          "bytes": 4194304,
+          "stream": 17,
+          "correlation_id": 130,
+          "dma_start_ns": 43122415,
+          "dma_end_ns": 43444784,
+          "submit_start_ns": 43102583,
+          "submit_end_ns": 43122221,
+          "gather": [
+            {
+              "start_ns": 42558787,
+              "end_ns": 42907041,
+              "thread": 286710810592016
+            },
+            {
+              "start_ns": 42564078,
+              "end_ns": 42859039,
+              "thread": 286710810592097
+            },
+            {
+              "start_ns": 42564619,
+              "end_ns": 43052789,
+              "thread": 286710810592101
+            },
+            {
+              "start_ns": 42565831,
+              "end_ns": 43092464,
+              "thread": 286710810592099
+            }
+          ],
+          "next_chunk_work_overlap_ns": 0
+        }
+      ],
+      "observed_overlap": false,
+      "gate_passed": true
+    },
+    {
+      "request": 2,
+      "buffers": 1,
+      "start_ns": 58001599,
+      "end_ns": 63077669,
+      "chunks": [
+        {
+          "chunk": 0,
+          "bytes": 4194304,
+          "stream": 16,
+          "correlation_id": 179,
+          "dma_start_ns": 59771348,
+          "dma_end_ns": 60093876,
+          "submit_start_ns": 59726495,
+          "submit_end_ns": 59772913,
+          "gather": [
+            {
+              "start_ns": 59127223,
+              "end_ns": 59515413,
+              "thread": 286710810592016
+            },
+            {
+              "start_ns": 59132914,
+              "end_ns": 59535481,
+              "thread": 286710810592096
+            },
+            {
+              "start_ns": 59133325,
+              "end_ns": 59704042,
+              "thread": 286710810592100
+            },
+            {
+              "start_ns": 59134978,
+              "end_ns": 59701808,
+              "thread": 286710810592095
+            }
+          ],
+          "next_chunk_work_overlap_ns": 0
+        },
+        {
+          "chunk": 1,
+          "bytes": 4194304,
+          "stream": 17,
+          "correlation_id": 187,
+          "dma_start_ns": 60719382,
+          "dma_end_ns": 61041878,
+          "submit_start_ns": 60697765,
+          "submit_end_ns": 60719737,
+          "gather": [
+            {
+              "start_ns": 60116658,
+              "end_ns": 60661787,
+              "thread": 286710810592016
+            },
+            {
+              "start_ns": 60118031,
+              "end_ns": 60684831,
+              "thread": 286710810592101
+            },
+            {
+              "start_ns": 60120065,
+              "end_ns": 60482936,
+              "thread": 286710810592099
+            },
+            {
+              "start_ns": 60120596,
+              "end_ns": 60447799,
+              "thread": 286710810592098
+            }
+          ],
+          "next_chunk_work_overlap_ns": 0
+        },
+        {
+          "chunk": 2,
+          "bytes": 4194304,
+          "stream": 16,
+          "correlation_id": 195,
+          "dma_start_ns": 61670168,
+          "dma_end_ns": 61992504,
+          "submit_start_ns": 61653286,
+          "submit_end_ns": 61669777,
+          "gather": [
+            {
+              "start_ns": 61058342,
+              "end_ns": 61386497,
+              "thread": 286710810592016
+            },
+            {
+              "start_ns": 61065185,
+              "end_ns": 61415913,
+              "thread": 286710810592099
+            },
+            {
+              "start_ns": 61065185,
+              "end_ns": 61637325,
+              "thread": 286710810592096
+            },
+            {
+              "start_ns": 61066137,
+              "end_ns": 61640551,
+              "thread": 286710810592100
+            }
+          ],
+          "next_chunk_work_overlap_ns": 0
+        },
+        {
+          "chunk": 3,
+          "bytes": 4194304,
+          "stream": 17,
+          "correlation_id": 203,
+          "dma_start_ns": 62524346,
+          "dma_end_ns": 62846810,
+          "submit_start_ns": 62498065,
+          "submit_end_ns": 62524345,
+          "gather": [
+            {
+              "start_ns": 62008933,
+              "end_ns": 62496422,
+              "thread": 286710810592016
+            },
+            {
+              "start_ns": 62012841,
+              "end_ns": 62354462,
+              "thread": 286710810592099
+            },
+            {
+              "start_ns": 62014073,
+              "end_ns": 62470172,
+              "thread": 286710810592101
+            },
+            {
+              "start_ns": 62017600,
+              "end_ns": 62329183,
+              "thread": 286710810592096
+            }
+          ],
+          "next_chunk_work_overlap_ns": 0
+        }
+      ],
+      "observed_overlap": false,
+      "gate_passed": true
+    },
+    {
+      "request": 3,
+      "buffers": 1,
+      "start_ns": 77458598,
+      "end_ns": 82504992,
+      "chunks": [
+        {
+          "chunk": 0,
+          "bytes": 4194304,
+          "stream": 16,
+          "correlation_id": 252,
+          "dma_start_ns": 79188286,
+          "dma_end_ns": 79510783,
+          "submit_start_ns": 79152936,
+          "submit_end_ns": 79189635,
+          "gather": [
+            {
+              "start_ns": 78561639,
+              "end_ns": 78958685,
+              "thread": 286710810592016
+            },
+            {
+              "start_ns": 78572229,
+              "end_ns": 79137917,
+              "thread": 286710810592095
+            },
+            {
+              "start_ns": 78572239,
+              "end_ns": 79138458,
+              "thread": 286710810592098
+            },
+            {
+              "start_ns": 78572269,
+              "end_ns": 78974355,
+              "thread": 286710810592100
+            }
+          ],
+          "next_chunk_work_overlap_ns": 0
+        },
+        {
+          "chunk": 1,
+          "bytes": 4194304,
+          "stream": 17,
+          "correlation_id": 260,
+          "dma_start_ns": 80112352,
+          "dma_end_ns": 80434721,
+          "submit_start_ns": 80093858,
+          "submit_end_ns": 80112283,
+          "gather": [
+            {
+              "start_ns": 79529353,
+              "end_ns": 80046308,
+              "thread": 286710810592016
+            },
+            {
+              "start_ns": 79534192,
+              "end_ns": 80063801,
+              "thread": 286710810592101
+            },
+            {
+              "start_ns": 79534903,
+              "end_ns": 80082146,
+              "thread": 286710810592097
+            },
+            {
+              "start_ns": 79535354,
+              "end_ns": 80070554,
+              "thread": 286710810592100
+            }
+          ],
+          "next_chunk_work_overlap_ns": 0
+        },
+        {
+          "chunk": 2,
+          "bytes": 4194304,
+          "stream": 16,
+          "correlation_id": 268,
+          "dma_start_ns": 81045570,
+          "dma_end_ns": 81368003,
+          "submit_start_ns": 81027597,
+          "submit_end_ns": 81045421,
+          "gather": [
+            {
+              "start_ns": 80453253,
+              "end_ns": 80909803,
+              "thread": 286710810592016
+            },
+            {
+              "start_ns": 80458463,
+              "end_ns": 81014442,
+              "thread": 286710810592095
+            },
+            {
+              "start_ns": 80459485,
+              "end_ns": 80967142,
+              "thread": 286710810592101
+            },
+            {
+              "start_ns": 80462861,
+              "end_ns": 80955620,
+              "thread": 286710810592100
+            }
+          ],
+          "next_chunk_work_overlap_ns": 0
+        },
+        {
+          "chunk": 3,
+          "bytes": 4194304,
+          "stream": 17,
+          "correlation_id": 276,
+          "dma_start_ns": 81959460,
+          "dma_end_ns": 82281861,
+          "submit_start_ns": 81939214,
+          "submit_end_ns": 81959452,
+          "gather": [
+            {
+              "start_ns": 81384106,
+              "end_ns": 81843502,
+              "thread": 286710810592016
+            },
+            {
+              "start_ns": 81386982,
+              "end_ns": 81771845,
+              "thread": 286710810592099
+            },
+            {
+              "start_ns": 81390599,
+              "end_ns": 81759251,
+              "thread": 286710810592100
+            },
+            {
+              "start_ns": 81392122,
+              "end_ns": 81924215,
+              "thread": 286710810592101
+            }
+          ],
+          "next_chunk_work_overlap_ns": 0
+        }
+      ],
+      "observed_overlap": false,
+      "gate_passed": true
+    },
+    {
+      "request": 4,
+      "buffers": 1,
+      "start_ns": 96945554,
+      "end_ns": 101963273,
+      "chunks": [
+        {
+          "chunk": 0,
+          "bytes": 4194304,
+          "stream": 16,
+          "correlation_id": 325,
+          "dma_start_ns": 98697928,
+          "dma_end_ns": 99020457,
+          "submit_start_ns": 98661913,
+          "submit_end_ns": 98699265,
+          "gather": [
+            {
+              "start_ns": 98062491,
+              "end_ns": 98457925,
+              "thread": 286710810592016
+            },
+            {
+              "start_ns": 98074595,
+              "end_ns": 98478384,
+              "thread": 286710810592097
+            },
+            {
+              "start_ns": 98074625,
+              "end_ns": 98645622,
+              "thread": 286710810592095
+            },
+            {
+              "start_ns": 98074625,
+              "end_ns": 98645592,
+              "thread": 286710810592096
+            }
+          ],
+          "next_chunk_work_overlap_ns": 0
+        },
+        {
+          "chunk": 1,
+          "bytes": 4194304,
+          "stream": 17,
+          "correlation_id": 333,
+          "dma_start_ns": 99598027,
+          "dma_end_ns": 99920363,
+          "submit_start_ns": 99579191,
+          "submit_end_ns": 99597927,
+          "gather": [
+            {
+              "start_ns": 99041557,
+              "end_ns": 99542000,
+              "thread": 286710810592016
+            },
+            {
+              "start_ns": 99045184,
+              "end_ns": 99553071,
+              "thread": 286710810592101
+            },
+            {
+              "start_ns": 99046306,
+              "end_ns": 99546519,
+              "thread": 286710810592097
+            },
+            {
+              "start_ns": 99047147,
+              "end_ns": 99566517,
+              "thread": 286710810592098
+            }
+          ],
+          "next_chunk_work_overlap_ns": 0
+        },
+        {
+          "chunk": 2,
+          "bytes": 4194304,
+          "stream": 16,
+          "correlation_id": 341,
+          "dma_start_ns": 100500685,
+          "dma_end_ns": 100823117,
+          "submit_start_ns": 100477723,
+          "submit_end_ns": 100500226,
+          "gather": [
+            {
+              "start_ns": 99937063,
+              "end_ns": 100416206,
+              "thread": 286710810592016
+            },
+            {
+              "start_ns": 99944086,
+              "end_ns": 100437346,
+              "thread": 286710810592097
+            },
+            {
+              "start_ns": 99945539,
+              "end_ns": 100461853,
+              "thread": 286710810592095
+            },
+            {
+              "start_ns": 99946371,
+              "end_ns": 100465429,
+              "thread": 286710810592101
+            }
+          ],
+          "next_chunk_work_overlap_ns": 0
+        },
+        {
+          "chunk": 3,
+          "bytes": 4194304,
+          "stream": 17,
+          "correlation_id": 349,
+          "dma_start_ns": 101419887,
+          "dma_end_ns": 101742287,
+          "submit_start_ns": 101400661,
+          "submit_end_ns": 101419577,
+          "gather": [
+            {
+              "start_ns": 100838580,
+              "end_ns": 101281404,
+              "thread": 286710810592016
+            },
+            {
+              "start_ns": 100845964,
+              "end_ns": 101315078,
+              "thread": 286710810592097
+            },
+            {
+              "start_ns": 100847447,
+              "end_ns": 101335768,
+              "thread": 286710810592101
+            },
+            {
+              "start_ns": 100847507,
+              "end_ns": 101378299,
+              "thread": 286710810592095
+            }
+          ],
+          "next_chunk_work_overlap_ns": 0
+        }
+      ],
+      "observed_overlap": false,
+      "gate_passed": true
+    }
+  ]
+}

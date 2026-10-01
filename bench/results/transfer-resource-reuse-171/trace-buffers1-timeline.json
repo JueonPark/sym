@@ -1,0 +1,1305 @@
+{
+  "traceEvents": [
+    {
+      "name": "H2D chunk 0",
+      "ph": "X",
+      "ts": 2688.667,
+      "dur": 322.977,
+      "pid": 2,
+      "tid": 16,
+      "args": {
+        "request": 0,
+        "chunk": 0,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 0",
+      "ph": "X",
+      "ts": 1081.831,
+      "dur": 318.186,
+      "pid": 1,
+      "tid": 286710810592016,
+      "args": {
+        "request": 0,
+        "chunk": 0,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 0",
+      "ph": "X",
+      "ts": 1095.186,
+      "dur": 1262.596,
+      "pid": 1,
+      "tid": 286710810592097,
+      "args": {
+        "request": 0,
+        "chunk": 0,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 0",
+      "ph": "X",
+      "ts": 1095.306,
+      "dur": 848.627,
+      "pid": 1,
+      "tid": 286710810592095,
+      "args": {
+        "request": 0,
+        "chunk": 0,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 0",
+      "ph": "X",
+      "ts": 1098.092,
+      "dur": 1513.533,
+      "pid": 1,
+      "tid": 286710810592096,
+      "args": {
+        "request": 0,
+        "chunk": 0,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "H2D chunk 1",
+      "ph": "X",
+      "ts": 3894.526,
+      "dur": 322.401,
+      "pid": 2,
+      "tid": 17,
+      "args": {
+        "request": 0,
+        "chunk": 1,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 1",
+      "ph": "X",
+      "ts": 3028.57,
+      "dur": 334.727,
+      "pid": 1,
+      "tid": 286710810592016,
+      "args": {
+        "request": 0,
+        "chunk": 1,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 1",
+      "ph": "X",
+      "ts": 3034.18,
+      "dur": 508.8,
+      "pid": 1,
+      "tid": 286710810592095,
+      "args": {
+        "request": 0,
+        "chunk": 1,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 1",
+      "ph": "X",
+      "ts": 3035.192,
+      "dur": 502.628,
+      "pid": 1,
+      "tid": 286710810592098,
+      "args": {
+        "request": 0,
+        "chunk": 1,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 1",
+      "ph": "X",
+      "ts": 3035.924,
+      "dur": 827.025,
+      "pid": 1,
+      "tid": 286710810592100,
+      "args": {
+        "request": 0,
+        "chunk": 1,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "H2D chunk 2",
+      "ph": "X",
+      "ts": 4774.464,
+      "dur": 322.497,
+      "pid": 2,
+      "tid": 16,
+      "args": {
+        "request": 0,
+        "chunk": 2,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 2",
+      "ph": "X",
+      "ts": 4233.395,
+      "dur": 329.448,
+      "pid": 1,
+      "tid": 286710810592016,
+      "args": {
+        "request": 0,
+        "chunk": 2,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 2",
+      "ph": "X",
+      "ts": 4235.89,
+      "dur": 352.151,
+      "pid": 1,
+      "tid": 286710810592097,
+      "args": {
+        "request": 0,
+        "chunk": 2,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 2",
+      "ph": "X",
+      "ts": 4236.942,
+      "dur": 509.55,
+      "pid": 1,
+      "tid": 286710810592096,
+      "args": {
+        "request": 0,
+        "chunk": 2,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 2",
+      "ph": "X",
+      "ts": 4237.362,
+      "dur": 467.401,
+      "pid": 1,
+      "tid": 286710810592098,
+      "args": {
+        "request": 0,
+        "chunk": 2,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "H2D chunk 3",
+      "ph": "X",
+      "ts": 5686.85,
+      "dur": 322.337,
+      "pid": 2,
+      "tid": 17,
+      "args": {
+        "request": 0,
+        "chunk": 3,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 3",
+      "ph": "X",
+      "ts": 5121.056,
+      "dur": 321.122,
+      "pid": 1,
+      "tid": 286710810592016,
+      "args": {
+        "request": 0,
+        "chunk": 3,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 3",
+      "ph": "X",
+      "ts": 5128.56,
+      "dur": 509.13,
+      "pid": 1,
+      "tid": 286710810592100,
+      "args": {
+        "request": 0,
+        "chunk": 3,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 3",
+      "ph": "X",
+      "ts": 5129.001,
+      "dur": 529.82,
+      "pid": 1,
+      "tid": 286710810592097,
+      "args": {
+        "request": 0,
+        "chunk": 3,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 3",
+      "ph": "X",
+      "ts": 5130.765,
+      "dur": 331.08,
+      "pid": 1,
+      "tid": 286710810592095,
+      "args": {
+        "request": 0,
+        "chunk": 3,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "H2D chunk 0",
+      "ph": "X",
+      "ts": 25681.326,
+      "dur": 323.552,
+      "pid": 2,
+      "tid": 16,
+      "args": {
+        "request": 1,
+        "chunk": 0,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 0",
+      "ph": "X",
+      "ts": 24370.75,
+      "dur": 328.085,
+      "pid": 1,
+      "tid": 286710810592016,
+      "args": {
+        "request": 1,
+        "chunk": 0,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 0",
+      "ph": "X",
+      "ts": 24393.694,
+      "dur": 1233.019,
+      "pid": 1,
+      "tid": 286710810592099,
+      "args": {
+        "request": 1,
+        "chunk": 0,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 0",
+      "ph": "X",
+      "ts": 24393.704,
+      "dur": 856.461,
+      "pid": 1,
+      "tid": 286710810592101,
+      "args": {
+        "request": 1,
+        "chunk": 0,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 0",
+      "ph": "X",
+      "ts": 24491.119,
+      "dur": 337.062,
+      "pid": 1,
+      "tid": 286710810592098,
+      "args": {
+        "request": 1,
+        "chunk": 0,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "H2D chunk 1",
+      "ph": "X",
+      "ts": 26635.951,
+      "dur": 322.401,
+      "pid": 2,
+      "tid": 17,
+      "args": {
+        "request": 1,
+        "chunk": 1,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 1",
+      "ph": "X",
+      "ts": 26022.407,
+      "dur": 387.889,
+      "pid": 1,
+      "tid": 286710810592016,
+      "args": {
+        "request": 1,
+        "chunk": 1,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 1",
+      "ph": "X",
+      "ts": 26030.192,
+      "dur": 521.894,
+      "pid": 1,
+      "tid": 286710810592101,
+      "args": {
+        "request": 1,
+        "chunk": 1,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 1",
+      "ph": "X",
+      "ts": 26030.262,
+      "dur": 575.656,
+      "pid": 1,
+      "tid": 286710810592099,
+      "args": {
+        "request": 1,
+        "chunk": 1,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 1",
+      "ph": "X",
+      "ts": 26030.332,
+      "dur": 505.573,
+      "pid": 1,
+      "tid": 286710810592095,
+      "args": {
+        "request": 1,
+        "chunk": 1,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "H2D chunk 2",
+      "ph": "X",
+      "ts": 27519.921,
+      "dur": 322.369,
+      "pid": 2,
+      "tid": 16,
+      "args": {
+        "request": 1,
+        "chunk": 2,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 2",
+      "ph": "X",
+      "ts": 26974.06,
+      "dur": 326.131,
+      "pid": 1,
+      "tid": 286710810592016,
+      "args": {
+        "request": 1,
+        "chunk": 2,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 2",
+      "ph": "X",
+      "ts": 26975.152,
+      "dur": 327.404,
+      "pid": 1,
+      "tid": 286710810592100,
+      "args": {
+        "request": 1,
+        "chunk": 2,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 2",
+      "ph": "X",
+      "ts": 26979.951,
+      "dur": 511.424,
+      "pid": 1,
+      "tid": 286710810592101,
+      "args": {
+        "request": 1,
+        "chunk": 2,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 2",
+      "ph": "X",
+      "ts": 26980.953,
+      "dur": 484.192,
+      "pid": 1,
+      "tid": 286710810592099,
+      "args": {
+        "request": 1,
+        "chunk": 2,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "H2D chunk 3",
+      "ph": "X",
+      "ts": 28422.483,
+      "dur": 322.369,
+      "pid": 2,
+      "tid": 17,
+      "args": {
+        "request": 1,
+        "chunk": 3,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 3",
+      "ph": "X",
+      "ts": 27858.855,
+      "dur": 348.254,
+      "pid": 1,
+      "tid": 286710810592016,
+      "args": {
+        "request": 1,
+        "chunk": 3,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 3",
+      "ph": "X",
+      "ts": 27864.146,
+      "dur": 294.961,
+      "pid": 1,
+      "tid": 286710810592097,
+      "args": {
+        "request": 1,
+        "chunk": 3,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 3",
+      "ph": "X",
+      "ts": 27864.687,
+      "dur": 488.17,
+      "pid": 1,
+      "tid": 286710810592101,
+      "args": {
+        "request": 1,
+        "chunk": 3,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 3",
+      "ph": "X",
+      "ts": 27865.899,
+      "dur": 526.633,
+      "pid": 1,
+      "tid": 286710810592099,
+      "args": {
+        "request": 1,
+        "chunk": 3,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "H2D chunk 0",
+      "ph": "X",
+      "ts": 45071.416,
+      "dur": 322.528,
+      "pid": 2,
+      "tid": 16,
+      "args": {
+        "request": 2,
+        "chunk": 0,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 0",
+      "ph": "X",
+      "ts": 44427.291,
+      "dur": 388.19,
+      "pid": 1,
+      "tid": 286710810592016,
+      "args": {
+        "request": 2,
+        "chunk": 0,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 0",
+      "ph": "X",
+      "ts": 44432.982,
+      "dur": 402.567,
+      "pid": 1,
+      "tid": 286710810592096,
+      "args": {
+        "request": 2,
+        "chunk": 0,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 0",
+      "ph": "X",
+      "ts": 44433.393,
+      "dur": 570.717,
+      "pid": 1,
+      "tid": 286710810592100,
+      "args": {
+        "request": 2,
+        "chunk": 0,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 0",
+      "ph": "X",
+      "ts": 44435.046,
+      "dur": 566.83,
+      "pid": 1,
+      "tid": 286710810592095,
+      "args": {
+        "request": 2,
+        "chunk": 0,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "H2D chunk 1",
+      "ph": "X",
+      "ts": 46019.45,
+      "dur": 322.496,
+      "pid": 2,
+      "tid": 17,
+      "args": {
+        "request": 2,
+        "chunk": 1,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 1",
+      "ph": "X",
+      "ts": 45416.726,
+      "dur": 545.129,
+      "pid": 1,
+      "tid": 286710810592016,
+      "args": {
+        "request": 2,
+        "chunk": 1,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 1",
+      "ph": "X",
+      "ts": 45418.099,
+      "dur": 566.8,
+      "pid": 1,
+      "tid": 286710810592101,
+      "args": {
+        "request": 2,
+        "chunk": 1,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 1",
+      "ph": "X",
+      "ts": 45420.133,
+      "dur": 362.871,
+      "pid": 1,
+      "tid": 286710810592099,
+      "args": {
+        "request": 2,
+        "chunk": 1,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 1",
+      "ph": "X",
+      "ts": 45420.664,
+      "dur": 327.203,
+      "pid": 1,
+      "tid": 286710810592098,
+      "args": {
+        "request": 2,
+        "chunk": 1,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "H2D chunk 2",
+      "ph": "X",
+      "ts": 46970.236,
+      "dur": 322.336,
+      "pid": 2,
+      "tid": 16,
+      "args": {
+        "request": 2,
+        "chunk": 2,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 2",
+      "ph": "X",
+      "ts": 46358.41,
+      "dur": 328.155,
+      "pid": 1,
+      "tid": 286710810592016,
+      "args": {
+        "request": 2,
+        "chunk": 2,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 2",
+      "ph": "X",
+      "ts": 46365.253,
+      "dur": 350.728,
+      "pid": 1,
+      "tid": 286710810592099,
+      "args": {
+        "request": 2,
+        "chunk": 2,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 2",
+      "ph": "X",
+      "ts": 46365.253,
+      "dur": 572.14,
+      "pid": 1,
+      "tid": 286710810592096,
+      "args": {
+        "request": 2,
+        "chunk": 2,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 2",
+      "ph": "X",
+      "ts": 46366.205,
+      "dur": 574.414,
+      "pid": 1,
+      "tid": 286710810592100,
+      "args": {
+        "request": 2,
+        "chunk": 2,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "H2D chunk 3",
+      "ph": "X",
+      "ts": 47824.414,
+      "dur": 322.464,
+      "pid": 2,
+      "tid": 17,
+      "args": {
+        "request": 2,
+        "chunk": 3,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 3",
+      "ph": "X",
+      "ts": 47309.001,
+      "dur": 487.489,
+      "pid": 1,
+      "tid": 286710810592016,
+      "args": {
+        "request": 2,
+        "chunk": 3,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 3",
+      "ph": "X",
+      "ts": 47312.909,
+      "dur": 341.621,
+      "pid": 1,
+      "tid": 286710810592099,
+      "args": {
+        "request": 2,
+        "chunk": 3,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 3",
+      "ph": "X",
+      "ts": 47314.141,
+      "dur": 456.099,
+      "pid": 1,
+      "tid": 286710810592101,
+      "args": {
+        "request": 2,
+        "chunk": 3,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 3",
+      "ph": "X",
+      "ts": 47317.668,
+      "dur": 311.583,
+      "pid": 1,
+      "tid": 286710810592096,
+      "args": {
+        "request": 2,
+        "chunk": 3,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "H2D chunk 0",
+      "ph": "X",
+      "ts": 64488.354,
+      "dur": 322.497,
+      "pid": 2,
+      "tid": 16,
+      "args": {
+        "request": 3,
+        "chunk": 0,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 0",
+      "ph": "X",
+      "ts": 63861.707,
+      "dur": 397.046,
+      "pid": 1,
+      "tid": 286710810592016,
+      "args": {
+        "request": 3,
+        "chunk": 0,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 0",
+      "ph": "X",
+      "ts": 63872.297,
+      "dur": 565.688,
+      "pid": 1,
+      "tid": 286710810592095,
+      "args": {
+        "request": 3,
+        "chunk": 0,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 0",
+      "ph": "X",
+      "ts": 63872.307,
+      "dur": 566.219,
+      "pid": 1,
+      "tid": 286710810592098,
+      "args": {
+        "request": 3,
+        "chunk": 0,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 0",
+      "ph": "X",
+      "ts": 63872.337,
+      "dur": 402.086,
+      "pid": 1,
+      "tid": 286710810592100,
+      "args": {
+        "request": 3,
+        "chunk": 0,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "H2D chunk 1",
+      "ph": "X",
+      "ts": 65412.42,
+      "dur": 322.369,
+      "pid": 2,
+      "tid": 17,
+      "args": {
+        "request": 3,
+        "chunk": 1,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 1",
+      "ph": "X",
+      "ts": 64829.421,
+      "dur": 516.955,
+      "pid": 1,
+      "tid": 286710810592016,
+      "args": {
+        "request": 3,
+        "chunk": 1,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 1",
+      "ph": "X",
+      "ts": 64834.26,
+      "dur": 529.609,
+      "pid": 1,
+      "tid": 286710810592101,
+      "args": {
+        "request": 3,
+        "chunk": 1,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 1",
+      "ph": "X",
+      "ts": 64834.971,
+      "dur": 547.243,
+      "pid": 1,
+      "tid": 286710810592097,
+      "args": {
+        "request": 3,
+        "chunk": 1,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 1",
+      "ph": "X",
+      "ts": 64835.422,
+      "dur": 535.2,
+      "pid": 1,
+      "tid": 286710810592100,
+      "args": {
+        "request": 3,
+        "chunk": 1,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "H2D chunk 2",
+      "ph": "X",
+      "ts": 66345.638,
+      "dur": 322.433,
+      "pid": 2,
+      "tid": 16,
+      "args": {
+        "request": 3,
+        "chunk": 2,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 2",
+      "ph": "X",
+      "ts": 65753.321,
+      "dur": 456.55,
+      "pid": 1,
+      "tid": 286710810592016,
+      "args": {
+        "request": 3,
+        "chunk": 2,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 2",
+      "ph": "X",
+      "ts": 65758.531,
+      "dur": 555.979,
+      "pid": 1,
+      "tid": 286710810592095,
+      "args": {
+        "request": 3,
+        "chunk": 2,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 2",
+      "ph": "X",
+      "ts": 65759.553,
+      "dur": 507.657,
+      "pid": 1,
+      "tid": 286710810592101,
+      "args": {
+        "request": 3,
+        "chunk": 2,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 2",
+      "ph": "X",
+      "ts": 65762.929,
+      "dur": 492.759,
+      "pid": 1,
+      "tid": 286710810592100,
+      "args": {
+        "request": 3,
+        "chunk": 2,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "H2D chunk 3",
+      "ph": "X",
+      "ts": 67259.528,
+      "dur": 322.401,
+      "pid": 2,
+      "tid": 17,
+      "args": {
+        "request": 3,
+        "chunk": 3,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 3",
+      "ph": "X",
+      "ts": 66684.174,
+      "dur": 459.396,
+      "pid": 1,
+      "tid": 286710810592016,
+      "args": {
+        "request": 3,
+        "chunk": 3,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 3",
+      "ph": "X",
+      "ts": 66687.05,
+      "dur": 384.863,
+      "pid": 1,
+      "tid": 286710810592099,
+      "args": {
+        "request": 3,
+        "chunk": 3,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 3",
+      "ph": "X",
+      "ts": 66690.667,
+      "dur": 368.652,
+      "pid": 1,
+      "tid": 286710810592100,
+      "args": {
+        "request": 3,
+        "chunk": 3,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 3",
+      "ph": "X",
+      "ts": 66692.19,
+      "dur": 532.093,
+      "pid": 1,
+      "tid": 286710810592101,
+      "args": {
+        "request": 3,
+        "chunk": 3,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "H2D chunk 0",
+      "ph": "X",
+      "ts": 83997.996,
+      "dur": 322.529,
+      "pid": 2,
+      "tid": 16,
+      "args": {
+        "request": 4,
+        "chunk": 0,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 0",
+      "ph": "X",
+      "ts": 83362.559,
+      "dur": 395.434,
+      "pid": 1,
+      "tid": 286710810592016,
+      "args": {
+        "request": 4,
+        "chunk": 0,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 0",
+      "ph": "X",
+      "ts": 83374.663,
+      "dur": 403.789,
+      "pid": 1,
+      "tid": 286710810592097,
+      "args": {
+        "request": 4,
+        "chunk": 0,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 0",
+      "ph": "X",
+      "ts": 83374.693,
+      "dur": 570.997,
+      "pid": 1,
+      "tid": 286710810592095,
+      "args": {
+        "request": 4,
+        "chunk": 0,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 0",
+      "ph": "X",
+      "ts": 83374.693,
+      "dur": 570.967,
+      "pid": 1,
+      "tid": 286710810592096,
+      "args": {
+        "request": 4,
+        "chunk": 0,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "H2D chunk 1",
+      "ph": "X",
+      "ts": 84898.095,
+      "dur": 322.336,
+      "pid": 2,
+      "tid": 17,
+      "args": {
+        "request": 4,
+        "chunk": 1,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 1",
+      "ph": "X",
+      "ts": 84341.625,
+      "dur": 500.443,
+      "pid": 1,
+      "tid": 286710810592016,
+      "args": {
+        "request": 4,
+        "chunk": 1,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 1",
+      "ph": "X",
+      "ts": 84345.252,
+      "dur": 507.887,
+      "pid": 1,
+      "tid": 286710810592101,
+      "args": {
+        "request": 4,
+        "chunk": 1,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 1",
+      "ph": "X",
+      "ts": 84346.374,
+      "dur": 500.213,
+      "pid": 1,
+      "tid": 286710810592097,
+      "args": {
+        "request": 4,
+        "chunk": 1,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 1",
+      "ph": "X",
+      "ts": 84347.215,
+      "dur": 519.37,
+      "pid": 1,
+      "tid": 286710810592098,
+      "args": {
+        "request": 4,
+        "chunk": 1,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "H2D chunk 2",
+      "ph": "X",
+      "ts": 85800.753,
+      "dur": 322.432,
+      "pid": 2,
+      "tid": 16,
+      "args": {
+        "request": 4,
+        "chunk": 2,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 2",
+      "ph": "X",
+      "ts": 85237.131,
+      "dur": 479.143,
+      "pid": 1,
+      "tid": 286710810592016,
+      "args": {
+        "request": 4,
+        "chunk": 2,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 2",
+      "ph": "X",
+      "ts": 85244.154,
+      "dur": 493.26,
+      "pid": 1,
+      "tid": 286710810592097,
+      "args": {
+        "request": 4,
+        "chunk": 2,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 2",
+      "ph": "X",
+      "ts": 85245.607,
+      "dur": 516.314,
+      "pid": 1,
+      "tid": 286710810592095,
+      "args": {
+        "request": 4,
+        "chunk": 2,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 2",
+      "ph": "X",
+      "ts": 85246.439,
+      "dur": 519.058,
+      "pid": 1,
+      "tid": 286710810592101,
+      "args": {
+        "request": 4,
+        "chunk": 2,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "H2D chunk 3",
+      "ph": "X",
+      "ts": 86719.955,
+      "dur": 322.4,
+      "pid": 2,
+      "tid": 17,
+      "args": {
+        "request": 4,
+        "chunk": 3,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 3",
+      "ph": "X",
+      "ts": 86138.648,
+      "dur": 442.824,
+      "pid": 1,
+      "tid": 286710810592016,
+      "args": {
+        "request": 4,
+        "chunk": 3,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 3",
+      "ph": "X",
+      "ts": 86146.032,
+      "dur": 469.114,
+      "pid": 1,
+      "tid": 286710810592097,
+      "args": {
+        "request": 4,
+        "chunk": 3,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 3",
+      "ph": "X",
+      "ts": 86147.515,
+      "dur": 488.321,
+      "pid": 1,
+      "tid": 286710810592101,
+      "args": {
+        "request": 4,
+        "chunk": 3,
+        "bytes": 4194304
+      }
+    },
+    {
+      "name": "gather chunk 3",
+      "ph": "X",
+      "ts": 86147.575,
+      "dur": 530.792,
+      "pid": 1,
+      "tid": 286710810592095,
+      "args": {
+        "request": 4,
+        "chunk": 3,
+        "bytes": 4194304
+      }
+    }
+  ],
+  "displayTimeUnit": "ms"
+}
