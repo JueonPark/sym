@@ -1,4 +1,4 @@
-"""Shared frontend owners, lifecycle races, and opt-in compiled/eager reuse."""
+"""Default and explicit frontend ownership, lifecycle races, and resource reuse."""
 import os
 import queue
 import subprocess
@@ -48,9 +48,49 @@ def test_custom_runtime_owns_its_policy(counting_runtime):
                     {'transfer_resources': TransferResources()}]:
         with pytest.raises(ValueError, match='custom runtime owns its policy'):
             RelocBackend(runtime=counting_runtime, **options)
-    backend = RelocBackend(runtime=counting_runtime)
-    backend.close()
+    for options in [{}, {'transfer_resources': None}]:
+        backend = RelocBackend(runtime=counting_runtime, **options)
+        assert backend.runtime is counting_runtime
+        backend.close()
+        assert backend.stats()['transfer_resources'] is None
+
+
+@pytest.mark.parametrize('options,retained', [({}, True), ({'transfer_resources': AUTO}, True),
+                                            ({'transfer_resources': None}, False)])
+def test_backend_default_reuses_and_none_opts_out(compiler, host_bridge, options, retained):
+    backend = RelocBackend(compiler=compiler, **options)
     assert backend.stats()['transfer_resources'] is None
+    try:
+        source = torch.arange(64, dtype=torch.float32)
+        entry = backend.eager_entry(source, 'cpu', lambda x: pytest.fail('unexpected replay'))
+        assert backend.stats()['transfer_resources'] is None  # compile/preflight are lazy
+        outputs = [execute_or_fallback(entry, source + seed, None, 'cpu') for seed in range(3)]
+        assert len({out.data_ptr() for out in outputs}) == 3
+        for seed, out in enumerate(outputs):
+            assert torch.equal(out, source + seed)
+        stats = backend.stats()['transfer_resources']
+        if retained:
+            assert (stats['misses'], stats['hits'], stats['contexts']) == (1, 2, 1)
+            assert (stats['staging_allocations'], stats['stream_creations'], stats['worker_creations']) == (1, 2, 0)
+        else:
+            assert stats is None
+    finally:
+        backend.close()
+    if retained:
+        assert backend.stats()['transfer_resources']['contexts'] == 0
+
+
+def test_standalone_adapter_keeps_per_call_default(compiler, host_bridge):
+    adapter = TransportAdapter()
+    try:
+        compiled = compiler.compile(transpose())
+        for seed in range(2):
+            source = torch.arange(64, dtype=torch.float32).reshape(8, 8) + seed
+            out = adapter.execute(adapter.preflight(compiled, source, 'cpu'))
+            assert torch.equal(out, source.t().contiguous())
+            assert adapter.resource_stats() is None
+    finally:
+        adapter.close()
 
 
 def test_options_are_copied_and_external_pool_is_borrowed(compiler, host_bridge):
@@ -97,7 +137,7 @@ def test_fake_graph_execution_never_materializes_auto_resources(compiler):
     from torch._subclasses.fake_tensor import FakeTensorMode
     from test_backend import capture, transfer
 
-    backend = RelocBackend(compiler=compiler, transfer_resources=AUTO)
+    backend = RelocBackend(compiler=compiler)
     graph = backend(capture(lambda x: transfer(x.t().contiguous())), None)
     before = backend.stats()
     assert before['replaced_regions'] == 1
@@ -342,11 +382,13 @@ def test_lifecycle_subprocess(scenario):
 
 @pytest.mark.gpu
 @pytest.mark.parametrize('direction', ['h2d', 'd2h'])
-@pytest.mark.parametrize('policy', ['auto', 'borrowed'])
+@pytest.mark.parametrize('policy', ['default', 'auto', 'borrowed', 'ephemeral'])
 @pytest.mark.parametrize('dtype', [torch.float32, torch.float16, torch.int8])
 def test_compiled_and_eager_share_across_recipes_and_shapes(compiler, cuda_device, direction, policy, dtype):
-    resources = AUTO if policy == 'auto' else TransferResources(max_contexts=1)
-    backend = RelocBackend(compiler=compiler, transfer_resources=resources, cache_capacity=1,
+    resources = (TransferResources(max_contexts=1) if policy == 'borrowed'
+                 else AUTO if policy == 'auto' else None)
+    options = {} if policy == 'default' else {'transfer_resources': resources}
+    backend = RelocBackend(compiler=compiler, **options, cache_capacity=1,
                            transfer_options={'n_buffers': 1, 'gather_threads': 3})
     source_device = 'cpu' if direction == 'h2d' else cuda_device
     destination = cuda_device if direction == 'h2d' else 'cpu'
@@ -372,13 +414,17 @@ def test_compiled_and_eager_share_across_recipes_and_shapes(compiler, cuda_devic
                         output = source.to(destination)
                     outputs.append((output, source.cpu()))
             stats = backend.stats()['transfer_resources']
+            if policy == 'ephemeral':
+                assert stats is None
+                continue
             counters = tuple(stats[name] for name in ['contexts', 'staging_allocations',
                                                       'stream_creations', 'worker_creations'])
             if iteration == 0:
                 warmed = counters
             else:
                 assert counters == warmed
-        assert stats['misses'] == 1 and stats['hits'] == 11
+        if policy != 'ephemeral':
+            assert stats['misses'] == 1 and stats['hits'] == 11
         assert backend.stats()['runtime_executions'] == 12
         assert backend.stats()['cache_entries'] == 1
         assert len({out.data_ptr() for out, _ in outputs}) == 12
@@ -389,7 +435,8 @@ def test_compiled_and_eager_share_across_recipes_and_shapes(compiler, cuda_devic
         if policy == 'borrowed':
             assert not resources.closed
             resources.close()
-    assert backend.stats()['transfer_resources']['contexts'] == 0
+    if policy != 'ephemeral':
+        assert backend.stats()['transfer_resources']['contexts'] == 0
 
 
 if __name__ == '__main__':

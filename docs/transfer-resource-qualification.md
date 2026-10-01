@@ -5,13 +5,15 @@ real CUDA streams, two GPUs, changing shapes, concurrent callers, failure
 ownership and close/clear races. Focused host ASan/UBSan checks pass with leak
 detection enabled. **ThreadSanitizer could not start on this host**, so there is
 no passing TSan result or claim that sanitizer coverage proves the absence of
-data races. This limitation remains part of the R8 review.
+data races. The [R8 enablement record](transfer-resource-enablement.md) carries
+this limitation forward and records the default-policy decision.
 
 This report accompanies the R7 tests at
 `54ec674951c35d8b2b0722755c60fe289dd18476`, based on main after #186
 (`64a8387`). The change adds tests and build-only fault modes; production runtime
-and frontend behavior are unchanged. Automatic reuse remains opt-in. R8 (#173)
-owns default enablement, after review of R6 and R7.
+and frontend behavior were unchanged in R7. Automatic reuse was opt-in at that
+revision; R8 (#173) enables it after review of R6 and R7. Counts below describe
+the R7 revision, not the later default-policy regression run.
 
 The [R6 performance report](../bench/results/transfer-resource-reuse-171/README.md)
 separately establishes completed-transfer speedups and CPU–PCIe overlap. These

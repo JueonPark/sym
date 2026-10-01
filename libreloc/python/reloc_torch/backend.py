@@ -21,9 +21,14 @@ from .artifact import UnsupportedRecipe
 from .cache import DEFAULT_CAPACITY, REGISTRY, ArtifactCache, artifact_key
 from .diagnostics import Diagnostics
 from .recipe import Recipe, TensorSpec
-from .resources import _transfer_configuration
+from .resources import AUTO, _transfer_configuration
 from .runtime import ExecutionEntry, TransportAdapter
 from .symbolic import Add, Const, FloorDiv, Mod, Mul, Symbol, dense_strides, expression
+
+
+# Omission selects AUTO only for our own adapter. An injected runtime keeps its
+# policy, while explicitly configuring AUTO alongside it remains ambiguous.
+_UNSPECIFIED_RESOURCES = object()
 
 
 def _tensor_arguments(values):
@@ -81,8 +86,9 @@ class RelocBackend:
     Default construction resolves the bundled R1 exporter (or explicit
     ``SYM_RELOC_EXPORT`` / ``SYM_OPT`` override) and R2 transport lazily. ``stats()`` returns a plain
     snapshot; ``close()`` invalidates every live handle and later use.
-    Opt-in ``transfer_resources=AUTO`` shares a lazy cache across compiled/eager
-    layout calls. Explicit resource owners and injected runtimes are borrowed;
+    Omitted ``transfer_resources`` selects ``AUTO`` for the owned adapter,
+    sharing a lazy cache across compiled/eager layout calls. Explicit ``None``
+    uses per-call resources. Resource owners and injected runtimes are borrowed;
     ``transfer_options`` copies the buffer/stream/gather execution settings.
     """
 
@@ -91,12 +97,14 @@ class RelocBackend:
         *,
         compiler=None,
         runtime=None,
-        transfer_resources=None,
+        transfer_resources=_UNSPECIFIED_RESOURCES,
         transfer_options=None,
         cache_capacity=DEFAULT_CAPACITY,
         importer=None,
         registry=REGISTRY,
     ):
+        if transfer_resources is _UNSPECIFIED_RESOURCES:
+            transfer_resources = AUTO if runtime is None else None
         if runtime is not None and (transfer_resources is not None or transfer_options is not None):
             raise ValueError("custom runtime owns its policy; configure transfer resources/options on it")
         self._transfer_options = _transfer_configuration(transfer_resources, transfer_options)

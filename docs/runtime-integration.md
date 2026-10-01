@@ -19,7 +19,7 @@ support rows stay with their owners and are linked, not copied:
 | Torch installation, activation, boundaries (T1–T4) | [torch-integration.md](torch-integration.md) |
 | Torch support rows and evidence (T1–T4, R2) | [torch-support.md](torch-support.md) |
 | Runtime library surface | [libreloc/README.md](../libreloc/README.md) |
-| Proposed transfer resource lifetime and reuse | [transfer-resource-reuse.md](transfer-resource-reuse.md) |
+| Implemented resource lifetime and default enablement | [transfer-resource-enablement.md](transfer-resource-enablement.md), [design](transfer-resource-reuse.md) |
 | Resource reuse implementation subissues and PR order | [transfer-resource-implementation-plan.md](transfer-resource-implementation-plan.md) |
 | Research claims and their standing | [claim-ledger.md](claim-ledger.md) |
 
@@ -109,6 +109,13 @@ plan compilations, symbol binds, Dynamo callbacks, runtime executions,
 typed dispatches by implementation and bytes, and reason-coded
 fallbacks/exclusions ([torch-integration.md](torch-integration.md)).
 
+`RelocBackend()` retains layout staging, streams and workers through a lazy
+adapter-owned cache by default. Explicit `transfer_resources=None` opts out;
+direct `execute_transfer` calls and standalone `TransportAdapter()` remain
+ephemeral unless configured. Close the backend or explicit owner when finished.
+Resource budgets, shared ownership and the optional hard live-byte cap are
+documented in [Torch resource usage](torch-integration.md#shared-resources-for-compiled-and-eager-calls).
+
 ## 3. Named examples
 
 | Scenario | Command | Expected result |
@@ -173,7 +180,7 @@ non-current-device test above uses a second device; Ada (sm_89) is compiled
 but not measured here, and nothing is claimed for other wheels,
 architectures, or multi-GPU use beyond that test.
 
-**Descriptive latency** (`cuda.json`, `descriptive_latency`; median of 15
+**Historical descriptive latency** (`cuda.json`, `descriptive_latency`; median of 15
 samples after 3 warmup calls, each sample ending in
 `torch.cuda.synchronize()`; compilation excluded):
 
@@ -184,13 +191,15 @@ samples after 3 warmup calls, each sample ending in
 | same, 2^22 | 16,777,216 | 16,777,216 | 74.7 ms | 8.82 ms | same |
 | typed H2D transpose+cast to f16, 2^20 (preparation included) | 4,194,304 | 2,097,152 | 39.5 ms | 3.99 ms | R3 `cpu_reference` (forced by `original_cpu`) |
 
-The supported path is correct but slower than PyTorch's own copy at every
-measured size in this configuration. Every blocking call binds the symbols
+That historical revision was correct but slower than PyTorch's own copy at every
+measured size in its configuration. Every blocking call bound the symbols
 (`backend_counters`: one plan compile, 54 binds for 54 executions),
-re-validates the request, constructs a `CudaBackend` and allocates its
-pinned staging ring; none of this was profiled further, and no optimization
-or threshold is part of this handoff. The research measurements of the
-underlying transfer methods remain those of the claim ledger.
+revalidated the request, constructed a `CudaBackend` and allocated its
+pinned staging ring. These timings predate the tiled transpose kernel and
+frontend resource retention. The [current resource-reuse measurements](../bench/results/transfer-resource-reuse-171/README.md)
+include completed transfers, fresh outputs, Torch baselines and overlap traces;
+the [enablement record](transfer-resource-enablement.md) reviews their limits.
+The historical JSON remains unchanged for reproduction.
 
 ## 6. Reproduction
 

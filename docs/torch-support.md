@@ -4,6 +4,13 @@ The combined entry point, examples and CPU/CUDA integration evidence are
 [runtime-integration.md](runtime-integration.md) (R4, issue [#148](https://github.com/JueonPark/sym/issues/148)); typed rows
 are [typed-relocation-support.md](typed-relocation-support.md).
 
+Layout transfers through `RelocBackend()` now retain staging, streams and
+workers by default; explicit `transfer_resources=None` disables reuse. Direct
+calls remain ephemeral unless configured. The [resource enablement record](transfer-resource-enablement.md)
+links the completed-transfer benchmarks, CPU–PCIe overlap traces and lifecycle
+qualification, with hardware/sanitizer limits. Historical T1–T4/R2 evidence and
+counts below remain attached to their original revisions.
+
 T1 observes eager dispatch and inventories FX graphs. T2 now imports conservative
 layout/transfer regions, preserves symbolic guards, emits reloc IR, and accepts
 only artifacts verified through the public `sym-reloc-export` interface. The

@@ -1,9 +1,11 @@
 # Estimated code changes for transfer resource reuse
 
-This is a change estimate for the [resource retention design](transfer-resource-reuse.md)
+This is the historical change estimate for the [resource retention design](transfer-resource-reuse.md)
 and [issue #165](https://github.com/JueonPark/sym/issues/165). The snippets are
 schematic review examples, not an applied or compilable implementation patch.
-Names of internal helpers may change during implementation.
+Use the [enablement record](transfer-resource-enablement.md) and linked user
+guide for the delivered implementation, current APIs and measured results.
+Names and line counts below describe the original proposal.
 
 ## Compatibility with the merged transpose kernel
 
