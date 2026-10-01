@@ -834,4 +834,88 @@ TEST(TransferResourceCache,
   expectEmpty(cache.stats());
   EXPECT_EQ(factory.physical->bytes, 0u);
 }
+
+TEST(TransferResourceCache, ClearAndCloseDuringGrowthRetireTheOldGeneration) {
+  for (bool close : {false, true}) {
+    Factory factory;
+    TransferResourceLimits limits;
+    limits.maxContexts = 1;
+    TransferResourceCache cache(limits, factory.callback());
+    ASSERT_FALSE(execute(cache, dense(quantum)).error);
+    BlockingGate allocating;
+    factory.backend(0)->beforeAllocation = [&] { allocating.arriveAndWait(); };
+    auto growth = std::async(
+        std::launch::async, [&] { return execute(cache, dense(2 * quantum)); });
+    EXPECT_TRUE(allocating.waitForArrivals(1));
+    EXPECT_EQ(cache.stats().building, 1u);
+    EXPECT_EQ(cache.stats().reservedStagingBytes, 2 * quantum);
+    auto retiring = std::async(std::launch::async, [&] {
+      return close ? cache.close() : cache.clear();
+    });
+    EXPECT_TRUE(until([&] {
+      auto s = cache.stats();
+      return close ? s.closed : s.generation == 1;
+    }));
+    if (close) {
+      EXPECT_EQ(retiring.wait_for(std::chrono::milliseconds(10)),
+                std::future_status::timeout);
+    }
+    allocating.release();
+    auto result = growth.get();
+    EXPECT_FALSE(retiring.get());
+    if (close) {
+      ASSERT_TRUE(result.error);
+      EXPECT_EQ(result.error->code, "resources_closed");
+      EXPECT_EQ(factory.metric(0)->copies, 1); // only the original warmup
+    } else {
+      EXPECT_FALSE(result.error);
+    }
+    expectEmpty(cache.stats());
+    EXPECT_EQ(factory.physical->bytes, 0u);
+    EXPECT_EQ(factory.metric(0)->allocations, factory.metric(0)->frees);
+  }
+}
+
+TEST(TransferResourceCache,
+     WarmedCopyFailuresDrainBeforeRetiringAndNeverReplay) {
+  for (int failure = 0; failure < 4; ++failure) {
+    SCOPED_TRACE(failure);
+    Factory factory;
+    TransferResourceCache cache({}, factory.callback());
+    auto b = layout({17, 43}, {1, 17}, {43, 1});
+    auto options = oneSlot();
+    ASSERT_FALSE(execute(cache, b, options).error);
+    auto *backend = factory.backend(0);
+    backend->failCopy = failure == 0;
+    backend->throwCopy = failure == 1;
+    backend->failEvent = failure == 2;
+    backend->failWait = failure == 3;
+    backend->gateCopies();
+    auto gate = backend->gate;
+    auto bytes = std::make_shared<Buffers>(b, 9);
+    std::weak_ptr<Buffers> owners = bytes;
+    auto req = request(b, bytes->src.data(), bytes->dst.data());
+    auto running =
+        std::async(std::launch::async, [&, bytes = std::move(bytes)]() mutable {
+          return executeTransferCached(req, cache, options, std::move(bytes));
+        });
+    EXPECT_TRUE(gate->waitForArrivals(1));
+    EXPECT_EQ(running.wait_for(std::chrono::milliseconds(10)),
+              std::future_status::timeout);
+    EXPECT_FALSE(owners.expired());
+    EXPECT_EQ(factory.metric(0)->frees, 0);
+    gate->release();
+    auto result = running.get();
+    ASSERT_TRUE(result.error);
+    EXPECT_EQ(result.completion, TransferCompletion::Complete);
+    EXPECT_EQ(factory.metric(0)->copies, 2); // warmup plus one failed call
+    EXPECT_TRUE(owners.expired());
+    expectEmpty(cache.stats());
+    EXPECT_EQ(factory.physical->bytes, 0u);
+    // A fresh healthy context may serve the next request after known
+    // completion.
+    EXPECT_FALSE(execute(cache, b, options, 10).error);
+    EXPECT_EQ(factory.created, 2u);
+  }
+}
 } // namespace
