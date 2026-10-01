@@ -7,6 +7,10 @@
 # reloc-runtime-mlir-free CTest test and the CI assertion step — is on
 # the link interface of the built shared object.
 option(RELOC_ENABLE_CUDA "Build libreloc's CUDA backend (requires the CUDA toolkit)" OFF)
+option(RELOC_ENABLE_NVTX "Annotate H2D gather work for profiling (CUDA builds only)" OFF)
+if(RELOC_ENABLE_NVTX AND NOT RELOC_ENABLE_CUDA)
+  message(FATAL_ERROR "RELOC_ENABLE_NVTX requires RELOC_ENABLE_CUDA")
+endif()
 
 add_library(reloc_runtime SHARED
   src/Version.cpp
@@ -68,6 +72,10 @@ if(RELOC_ENABLE_CUDA)
   # dev box). sm_75 is compile-proof until M0 lands.
   set_target_properties(reloc_runtime PROPERTIES CUDA_ARCHITECTURES "75;89")
   target_link_libraries(reloc_runtime PRIVATE CUDA::cudart)
+  if(RELOC_ENABLE_NVTX)
+    target_compile_definitions(reloc_runtime PRIVATE RELOC_ENABLE_NVTX=1)
+    target_link_libraries(reloc_runtime PRIVATE CUDA::nvtx3)
+  endif()
 endif()
 
 if(SYM_BUILD_TESTS)

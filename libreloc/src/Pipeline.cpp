@@ -1,6 +1,7 @@
 //===- Pipeline.cpp - Strategy-4 chunked pinned/stream pipeline -----------===//
 
 #include "reloc/Pipeline.h"
+#include "Trace.h"
 #include "TransferInternal.h"
 
 #include "reloc/ChunkSchedule.h"
@@ -200,6 +201,7 @@ std::optional<TransferError> detail::executeH2DPrepared(
       // may read the staging bytes.
       dispatchRows(gather, parallelSafe, sched.rowBytes, c.validBegin,
                    c.validEnd, [&](int64_t rb, int64_t re) {
+                     detail::TraceRange work("reloc.gather.work", k);
                      gatherChunk(bound, srcBase, dstBase, rb, re);
                    });
     }
@@ -207,8 +209,11 @@ std::optional<TransferError> detail::executeH2DPrepared(
     int q = static_cast<int>(k % static_cast<size_t>(nStreams));
     completion = TransferCompletion::Unknown;
     pool.markPending();
-    backend.copyAsync(q, static_cast<uint8_t *>(deviceDst) + c.byteOffset,
-                      staging, c.bytes, CopyDir::HostToDevice);
+    {
+      detail::TraceRange submit("reloc.h2d.submit", k);
+      backend.copyAsync(q, static_cast<uint8_t *>(deviceDst) + c.byteOffset,
+                        staging, c.bytes, CopyDir::HostToDevice);
+    }
     if (backend.failed())
       return TransferError{"backend_failure",
                            "copy submission failed: " + backend.error()};
