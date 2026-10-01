@@ -31,15 +31,16 @@ __all__ = (
     "prepare_weights",
     "PreparedWeights",
     "TransferResources",
+    "AUTO",
 )
 
 
 def __getattr__(name):
-    if name == "TransferResources":
-        from .resources import TransferResources
+    if name in {"AUTO", "TransferResources"}:
+        from .resources import AUTO, TransferResources
 
-        globals()[name] = TransferResources
-        return TransferResources
+        globals().update(AUTO=AUTO, TransferResources=TransferResources)
+        return globals()[name]
     if name in {"CompilerClient", "CompiledRecipe", "UnsupportedRecipe"}:
         from .compiler import CompilerClient, CompiledRecipe, UnsupportedRecipe
 

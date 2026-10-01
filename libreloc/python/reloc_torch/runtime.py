@@ -15,12 +15,14 @@ from contextlib import contextmanager
 import dataclasses
 from dataclasses import dataclass, field
 import importlib
+import os
 import threading
 from typing import Protocol
 
 from . import compat
 from .artifact import UnsupportedRecipe
 from .eligibility import _metadata_reason
+from .resources import AUTO, TransferResources, _transfer_configuration
 from .symbolic import GuardError, expression
 
 
@@ -99,7 +101,7 @@ class RuntimeAdapter(Protocol):
 class ExecutionEntry:
     """A compiled recipe, its saved original region, adapter and diagnostics."""
 
-    def __init__(self, *, compiled, original, runtime, diagnostics, symbolic_bindings=(), extent_guards=()):
+    def __init__(self, *, compiled, original, runtime, diagnostics, symbolic_bindings=(), extent_guards=(), closed_event=None):
         self.compiled = compiled
         self.original = original
         self.runtime = runtime
@@ -107,7 +109,8 @@ class ExecutionEntry:
         self.symbolic_bindings = tuple(symbolic_bindings)
         self.extent_guards = tuple(extent_guards)
         self.handle = None
-        self.closed = False
+        self._closed = False
+        self._closed_event = closed_event
         self.fallback_calls = 0
         self._lock = threading.Lock()
 
@@ -119,7 +122,15 @@ class ExecutionEntry:
         return self.handle if self.handle is not None else "unregistered entry"
 
     def close(self):
-        self.closed = True
+        self._closed = True
+
+    @property
+    def closed(self):
+        return self._closed or (self._closed_event is not None and self._closed_event.is_set())
+
+    @closed.setter
+    def closed(self, value):
+        self._closed = value
 
     def fallback(self, src, *symbols, parameters=()):
         """Run the saved original region once with T2's ordered scalar arguments
@@ -293,13 +304,24 @@ class TransportAdapter:
     R2 owns storage validation, allocation, stream ordering and completion.
     While that module is absent every preflight is the expected exclusion
     ``runtime_unavailable``: the original region runs and nothing launches.
+
+    ``transfer_resources=AUTO`` lazily owns a layout-transfer cache; an explicit
+    TransferResources is borrowed. None (the default) keeps per-call resources.
+    Entry lifetimes never control this owner's lifetime; call close() to drain
+    an owned cache. Typed transfers keep their separate dispatch policy.
     """
 
     REQUEST_ATTRIBUTES = ("bindings", "destination")
 
     MODULE = f"{__package__}.transport"
 
-    def __init__(self):
+    def __init__(self, *, transfer_resources=None, transfer_options=None):
+        self._transfer_options = _transfer_configuration(transfer_resources, transfer_options)
+        self._owns_resources = transfer_resources is AUTO
+        self._resources = None if self._owns_resources else transfer_resources
+        self._pid = os.getpid()
+        self._lock = threading.Lock()
+        self._closed = False
         self._module = None
         self.unavailable_reason = None
         try:
@@ -316,6 +338,33 @@ class TransportAdapter:
         else:
             self._module = module
 
+    def _check_process(self):
+        # Inherited Python locks are unsafe too, even before AUTO materializes.
+        if os.getpid() != self._pid:
+            raise RuntimeError("process_mismatch: transport adapter belongs to another process")
+
+    def _require_open(self):
+        self._check_process()
+        if self._closed:
+            raise RuntimeError("resources_closed: TransportAdapter is closed")
+
+    def resource_stats(self):
+        """Native counters, or None while disabled/unmaterialized; never allocate."""
+        self._check_process()
+        with self._lock:
+            resources = self._resources
+        return None if resources is None else resources.stats()
+
+    def close(self):
+        self._check_process()
+        with self._lock:
+            self._closed = True
+            resources = self._resources if self._owns_resources else None
+        # Native close can wait with the GIL released. No Python owner lock is
+        # held, so in-flight work and stats can make progress while it drains.
+        if resources is not None:
+            resources.close()
+
     @property
     def available(self):
         return self._module is not None
@@ -327,6 +376,7 @@ class TransportAdapter:
         return f"reloc_torch.transport/{getattr(self._module, 'CAPABILITY_IDENTITY', '0')}"
 
     def preflight(self, compiled, src, device, *, non_blocking=False, parameters=None):
+        self._require_open()
         import torch
 
         if not self.available:
@@ -357,11 +407,18 @@ class TransportAdapter:
         )
 
     def execute(self, call):
-        if getattr(call.compiled, "typed", False):
+        self._check_process()
+        typed = getattr(call.compiled, "typed", False)
+        with self._lock:
+            self._require_open()
+            if not typed and self._owns_resources and self._resources is None:
+                self._resources = TransferResources()
+            resources = self._resources
+        if typed:
             result = self._dispatch().execute_typed_transfer(call.request)
             call.report = result.report
             return result.tensor
-        return self._module.execute_transfer(call.request)
+        return self._module.execute_transfer(call.request, resources=resources, **self._transfer_options)
 
     def _dispatch(self):
         return importlib.import_module(f"{__package__}.dispatch")

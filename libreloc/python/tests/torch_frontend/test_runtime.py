@@ -330,7 +330,8 @@ def test_transport_adapter_pins_the_r2_request_contract(monkeypatch, compiler, i
     module.prepare_transfer = lambda compiled, src, device, *, non_blocking=False: (
         Loose() if getattr(module, "loose", False) else Request(compiled, src, device))
 
-    def execute_transfer(request):
+    def execute_transfer(request, *, resources=None):
+        assert resources is None
         requests.append(request)
         return torch.empty(request.destination.shape).copy_(current_source[0])
 

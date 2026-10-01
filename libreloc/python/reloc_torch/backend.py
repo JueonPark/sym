@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import copy
 import operator
+import os
 import threading
 import weakref
 
@@ -20,6 +21,7 @@ from .artifact import UnsupportedRecipe
 from .cache import DEFAULT_CAPACITY, REGISTRY, ArtifactCache, artifact_key
 from .diagnostics import Diagnostics
 from .recipe import Recipe, TensorSpec
+from .resources import _transfer_configuration
 from .runtime import ExecutionEntry, TransportAdapter
 from .symbolic import Add, Const, FloorDiv, Mod, Mul, Symbol, dense_strides, expression
 
@@ -79,6 +81,9 @@ class RelocBackend:
     Default construction resolves the bundled R1 exporter (or explicit
     ``SYM_RELOC_EXPORT`` / ``SYM_OPT`` override) and R2 transport lazily. ``stats()`` returns a plain
     snapshot; ``close()`` invalidates every live handle and later use.
+    Opt-in ``transfer_resources=AUTO`` shares a lazy cache across compiled/eager
+    layout calls. Explicit resource owners and injected runtimes are borrowed;
+    ``transfer_options`` copies the buffer/stream/gather execution settings.
     """
 
     def __init__(
@@ -86,10 +91,19 @@ class RelocBackend:
         *,
         compiler=None,
         runtime=None,
+        transfer_resources=None,
+        transfer_options=None,
         cache_capacity=DEFAULT_CAPACITY,
         importer=None,
         registry=REGISTRY,
     ):
+        if runtime is not None and (transfer_resources is not None or transfer_options is not None):
+            raise ValueError("custom runtime owns its policy; configure transfer resources/options on it")
+        self._transfer_options = _transfer_configuration(transfer_resources, transfer_options)
+        self._transfer_resources = transfer_resources
+        self._owns_runtime = runtime is None
+        self._pid = os.getpid()
+        self._execution_closed = threading.Event()
         self._compiler = compiler
         self._runtime = runtime
         self._importer = importer
@@ -111,9 +125,15 @@ class RelocBackend:
 
     @property
     def runtime(self):
-        if self._runtime is None:
-            self._runtime = TransportAdapter()
-        return self._runtime
+        self._check_process()
+        with self._lock:
+            self._require_open()
+            if self._runtime is None:
+                self._runtime = TransportAdapter(
+                    transfer_resources=self._transfer_resources,
+                    transfer_options=self._transfer_options,
+                )
+            return self._runtime
 
     @property
     def importer(self):
@@ -128,32 +148,49 @@ class RelocBackend:
         return self._closed
 
     def _require_open(self):
+        self._check_process()
         if self._closed:
             raise RuntimeError("RelocBackend is closed")
 
+    def _check_process(self):
+        if os.getpid() != self._pid:
+            raise RuntimeError("process_mismatch: RelocBackend belongs to another process")
+
     def stats(self):
+        self._check_process()
         result = self.diagnostics.snapshot()
         with self._lock:
             result["replaced_regions"] = self._replaced
             result["live_handles"] = len(self._live)
+            runtime = self._runtime
+            result["closed"] = self._closed
         result["cache_entries"] = len(self._cache)
         result["cache_rejections"] = self._cache.rejections
-        result["closed"] = self._closed
+        # Custom adapters need not expose resource counters. Do not construct
+        # the lazy adapter/cache merely to observe it, or hold backend locks
+        # across an injected adapter's code.
+        result["transfer_resources"] = (
+            runtime.resource_stats() if isinstance(runtime, TransportAdapter) else None
+        )
         return result
 
     def close(self):
+        self._check_process()
         with self._lock:
-            if self._closed:
-                return
             self._closed = True
+            self._execution_closed.set()
             live = list(self._live.items())
             self._live.clear()
+            runtime = self._runtime if self._owns_runtime else None
         for registration, entry in live:
             entry.close()
             registration.release()
+        if runtime is not None:
+            runtime.close()
 
     def compile_recipe(self, recipe):
         """Compile through the bounded cache; rejections raise ``UnsupportedRecipe``."""
+        self._require_open()
         key = artifact_key(
             recipe,
             compiler_identity=self.compiler.identity,
@@ -173,6 +210,7 @@ class RelocBackend:
             original=original,
             runtime=self.runtime,
             diagnostics=self.diagnostics,
+            closed_event=self._execution_closed,
         )
         # Eager entries are never registered; give diagnostics a stable label.
         entry.handle = f"eager/{direction}/{dtype}/rank{src.dim()}"
@@ -237,9 +275,11 @@ class RelocBackend:
                 diagnostics=self.diagnostics,
                 symbolic_bindings=candidate.symbolic_bindings,
                 extent_guards=candidate.extent_guards,
+                closed_event=self._execution_closed,
             )
-            registration = self._registry.register(entry)
             with self._lock:
+                self._require_open()
+                registration = self._registry.register(entry)
                 self._live[registration] = entry
             with graph.inserting_before(tail):
                 op_node = _insert_transfer(

@@ -194,8 +194,7 @@ does not load Torch or the optional native runtime. Each execution rechecks the
 source, creates an independently owned output, captures the caller's current
 CUDA stream, and completes the existing chunk pipeline. Earlier outputs remain
 valid when staging is reused. Forward D2H retains its download-then-gather
-schedule. Passing `resources=None` or omitting it keeps per-call allocations;
-compiled/eager adapter sharing and automatic defaults are subsequent steps.
+schedule. Passing `resources=None` or omitting it keeps per-call allocations.
 
 The defaults retain at most 256 MiB of staging, four contexts, two contexts per
 backend/device, and 64 owned background gather workers. Optional
@@ -218,6 +217,63 @@ completion retains both tensors and native resources for the process lifetime;
 execution and close report `completion_unknown` rather than freeing memory
 that a copy might still access. Handles cannot be serialized or reused after
 fork. Prefer context managers or explicit close before interpreter shutdown.
+
+### Shared resources for compiled and eager calls
+
+Reuse is opt-in while performance and lifecycle qualification continue (#170,
+#171, #172). `RelocBackend` and `TransportAdapter` accept `transfer_resources`
+and `transfer_options`. The default `None` keeps ephemeral execution; explicit
+`AUTO` creates one adapter-owned cache on its first layout execution. Import,
+backend construction, compilation, preflight, fake execution, and stats do not
+materialize that cache. Typed transfers use their existing dispatch path and
+do not populate these resource counters.
+
+```python
+import torch
+from reloc_torch import AUTO, RelocBackend, eager_transfers
+
+backend = RelocBackend(transfer_resources=AUTO,
+                       transfer_options={"gather_threads": 8})
+transpose_to_gpu = torch.compile(
+    lambda x: x.t().contiguous().to("cuda"), backend=backend, dynamic=True,
+)
+try:
+    for source in inputs:
+        output = transpose_to_gpu(source)
+        with eager_transfers(backend=backend):
+            identity_output = source.to("cuda")
+        consume(output, identity_output)
+    print(backend.stats()["transfer_resources"])
+finally:
+    backend.close()
+```
+
+One adapter shares its cache across graph entries, layout recipes and shapes;
+compatible requests reuse native contexts. Artifact eviction and individual
+entry closure do not close the cache. Fresh outputs, current-stream ordering,
+blocking completion and the CPU-gather/PCIe chunk pipeline remain unchanged.
+
+`transfer_options` is a copied mapping accepting `n_buffers` (default 4),
+`n_streams` (2), `gather_threads` (1; 0 means all cores), and `gather_pool`
+(None). A supplied pool remains borrowed and overrides the gather count.
+Invalid keys/types/ranges fail at configuration time. Custom runtime injection
+requires leaving both backend configuration arguments at None; configure the
+injected adapter itself instead.
+
+Passing an explicit `TransferResources` borrows it, allowing multiple backends
+and direct transfers to share one budget. Backend close stops new entry
+execution, then closes its owned adapter outside its Python lock. The adapter
+drains only its own AUTO cache; it never closes a borrowed owner. An injected
+adapter is also borrowed and remains usable by other backends. Close that
+adapter or shared owner explicitly when all borrowers are finished. Already
+leased requests finish; racing requests that lose admission fail without Torch
+replay. Inherited backend/adapter use after fork is rejected before their locks;
+construct new owners in the child process.
+
+`backend.stats()["transfer_resources"]` is a native cache snapshot when its
+adapter has an owner, otherwise None (including other custom adapters).
+Inspection never creates resources. Native counters remain inspectable after
+closure. Automatic default enablement is tracked separately in #173.
 
 ## 5. Semantics and boundaries
 
