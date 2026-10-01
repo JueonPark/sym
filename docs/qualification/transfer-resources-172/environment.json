@@ -1,0 +1,59 @@
+{
+  "source_revision": "54ec674951c35d8b2b0722755c60fe289dd18476",
+  "git_status_at_final_stress_start": "",
+  "test_source_sha256": {
+    "libreloc/python/tests/TransferResourceHarness.cpp": "2ff32536b32b19d3f70bae4bca91a596d813193619a4da9aea094de7c28d492e",
+    "libreloc/python/tests/test_transfer_resources.py": "00c78c3da38f7e603dcd1cf9c0da9ae8fa102cb91202c08d79016a4e8279f1e2",
+    "libreloc/python/tests/torch_frontend/test_backend_resources.py": "0a1a6c14dba287d435dd54e7ca1606f447d39efc0d99ba01c87b62f40bab17ab",
+    "libreloc/python/tests/torch_frontend/test_resource_qualification.py": "2698949712e989d71dc3bf9c1dc3aab290434b143955328d9a49cbaa91e7003c",
+    "libreloc/test/TransferResourceCacheTest.cpp": "71245921f288e0cbac774ace1a7130471eaad59591634c2007a6a4a82c331982"
+  },
+  "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.35",
+  "gpu": "index, name, uuid, driver_version\n0, NVIDIA GeForce RTX 2080 Ti, GPU-3d1f8d63-b97b-4647-b4bb-0e543b4019cf, 595.71.05\n1, NVIDIA GeForce RTX 2080 Ti, GPU-5e0e775d-6b08-6e21-3cf3-2107d1913a04, 595.71.05\n2, NVIDIA GeForce RTX 2080 Ti, GPU-c73412cb-b474-0e64-0cf3-26d9a8090c31, 595.71.05\n3, NVIDIA GeForce RTX 2080 Ti, GPU-0cf19128-46d7-9a5f-b130-7c293c4c0bbc, 595.71.05",
+  "stress_rounds": 100,
+  "stress_calls": 4000,
+  "borrower_survival_calls": 2,
+  "tested_devices": [
+    0,
+    1
+  ],
+  "toolchain": {
+    "debug_release": "GCC 11.4.0",
+    "asan_ubsan": "Clang 18.1.8; explicit -fsanitize=address,undefined -fno-sanitize-recover=all; Debug -O1",
+    "tsan": "Clang 18.1.8; -fsanitize=thread; Debug -O1; exits 66 before tests"
+  },
+  "build_flags": {
+    "cuda_release": {
+      "cuda": true,
+      "nvtx": false,
+      "python": "CPython 3.14.7 (regular GIL)",
+      "torch": "2.14.0+cu126"
+    },
+    "cpu_release": {
+      "cuda": false,
+      "python_refcount_checks": "PYBIND11_ASSERT_GIL_HELD_INCREF_DECREF"
+    },
+    "host_debug": {
+      "cuda": false,
+      "python": false
+    },
+    "asan_ubsan": {
+      "cuda": false,
+      "python": false,
+      "detect_leaks": true,
+      "halt_on_error": true
+    },
+    "tsan": {
+      "cuda": false,
+      "python": false,
+      "status": "unavailable"
+    }
+  },
+  "runtime_sha256": {
+    "torch-cuda": "c29a3337656afcd7dc9307f869094ec419837f3440a9d69bc31a1dd25cceaea6",
+    "torch-cpu-resources": "7b91b3ed5786e9e9c223c9c26153eced1007adefb1d26f71bac339c8eeadc36b",
+    "resource-debug": "e2de088e5001bdc81b58760feecb72e3f14b0b23feddccd5ec474c7ae9750ac9",
+    "resource-asan-clang": "0860a31dbbba5c6e1f35e0d5c4d7f248f90d1cd433717c250299fa05353d9943",
+    "resource-tsan": "2cc27283830575a1bb31421bb0782fd8c29b336c98f8a11c2ccf3814cbc85560"
+  }
+}
