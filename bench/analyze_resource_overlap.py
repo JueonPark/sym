@@ -94,9 +94,9 @@ def chrome_trace(result):
     for request in result['requests']:
         for chunk in request['chunks']:
             args = dict(request=request['request'], chunk=chunk['chunk'], bytes=chunk['bytes'])
-            span(f"H2D chunk {chunk['chunk']}", chunk['dma_start_ns'], chunk['dma_end_ns'], 'GPU', chunk['stream'], args)
+            span(f"H2D chunk {chunk['chunk']}", chunk['dma_start_ns'], chunk['dma_end_ns'], 2, chunk['stream'], args)
             for work in chunk['gather']:
-                span(f"gather chunk {chunk['chunk']}", work['start_ns'], work['end_ns'], 'CPU', work['thread'], args)
+                span(f"gather chunk {chunk['chunk']}", work['start_ns'], work['end_ns'], 1, work['thread'], args)
     return dict(traceEvents=events, displayTimeUnit='ms')
 
 
