@@ -27,7 +27,9 @@ compares Torch GPU transpose + D2H. This is not the historical prototype that
 reused output storage. All inputs are pageable CPU tensors or dense CUDA tensors.
 
 Five warmups, three shuffled method rounds and 30 samples per round are the
-defaults. The first transfer after compilation and cache clearing is reported
+defaults. Competing methods' caches are cleared between blocks so one policy
+does not benefit from another policy's live pinned allocations. The first
+transfer after compilation and cache clearing is reported
 separately in each round: the process, CUDA context and Torch allocators have
 already been initialized. Warmed samples include caller-stream synchronization.
 Byte-exact checks run outside each latency sample and touch the CPU data; there

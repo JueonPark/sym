@@ -247,6 +247,12 @@ def latency_case(torch, compiler, args, label, shapes, direction, rng, control=F
             rng.shuffle(order)
             result['round_order'].append(order)
             for name in order:
+                # Idle pinned allocations owned by a competing method can
+                # change CUDA allocation cost, especially for small buffers.
+                # Isolate policies outside timing, not just the target cache.
+                for other in methods.values():
+                    if isinstance(other, Sym):
+                        other.clear()
                 result['methods'][name].append(measure(torch, methods[name], sources, args))
     finally:
         for fn in methods.values():
