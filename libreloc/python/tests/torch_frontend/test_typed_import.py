@@ -321,11 +321,12 @@ def test_typed_op_schema_is_explicit_and_registered_once():
 
 @pytest.mark.gpu
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable")
-@pytest.mark.parametrize("reuse", [False, True])
+@pytest.mark.parametrize("reuse", [None, False, True])
 def test_compiled_layout_plus_cast_and_dequantize_execute_on_cuda(compiler, reuse):
     from reloc_torch import AUTO, RelocBackend
 
-    backend = RelocBackend(compiler=compiler, transfer_resources=AUTO if reuse else None)
+    options = {} if reuse is None else {"transfer_resources": AUTO if reuse else None}
+    backend = RelocBackend(compiler=compiler, **options)
     try:
         def cast_fn(x):
             return x.to("cuda", torch.float16).t().contiguous()

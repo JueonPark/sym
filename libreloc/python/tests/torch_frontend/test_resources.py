@@ -41,7 +41,7 @@ finder = NoRuntime()
 sys.meta_path.insert(0, finder)
 from reloc_torch import AUTO, RelocBackend, TransferResources
 assert 'torch' not in sys.modules and 'pyreloc' not in sys.modules
-backend = RelocBackend(transfer_resources=AUTO)
+backend = RelocBackend()
 assert backend.stats()['transfer_resources'] is None
 backend.close()
 assert 'torch' not in sys.modules and 'pyreloc' not in sys.modules

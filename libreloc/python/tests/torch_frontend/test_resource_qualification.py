@@ -56,13 +56,14 @@ def assert_drained(stats):
 
 
 @pytest.mark.parametrize('direction', ['h2d', 'd2h'])
-@pytest.mark.parametrize('policy', ['auto', 'borrowed'])
+@pytest.mark.parametrize('policy', ['default', 'auto', 'borrowed'])
 def test_compiled_streams_immediate_consumers_and_retained_outputs(compiler, cuda_device,
                                                                  direction, policy):
-    owner = AUTO if policy == 'auto' else TransferResources(
+    owner = TransferResources(
         max_contexts=2, max_retained_bytes=32 << 20, max_live_staging_bytes=48 << 20,
-        max_background_workers=4)
-    backend = RelocBackend(compiler=compiler, transfer_resources=owner, cache_capacity=1,
+        max_background_workers=4) if policy == 'borrowed' else AUTO
+    options = {} if policy == 'default' else {'transfer_resources': owner}
+    backend = RelocBackend(compiler=compiler, **options, cache_capacity=1,
                            transfer_options=dict(n_buffers=4, n_streams=2, gather_threads=3))
     destination = cuda_device if direction == 'h2d' else 'cpu'
     streams = [torch.cuda.default_stream(cuda_device), torch.cuda.Stream(device=cuda_device),
