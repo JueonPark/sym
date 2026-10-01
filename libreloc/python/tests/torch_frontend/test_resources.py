@@ -39,7 +39,11 @@ class NoRuntime(importlib.abc.MetaPathFinder):
         if fullname == 'pyreloc': raise ModuleNotFoundError('native runtime unavailable')
 finder = NoRuntime()
 sys.meta_path.insert(0, finder)
-from reloc_torch import TransferResources
+from reloc_torch import AUTO, RelocBackend, TransferResources
+assert 'torch' not in sys.modules and 'pyreloc' not in sys.modules
+backend = RelocBackend(transfer_resources=AUTO)
+assert backend.stats()['transfer_resources'] is None
+backend.close()
 assert 'torch' not in sys.modules and 'pyreloc' not in sys.modules
 try: TransferResources()
 except ModuleNotFoundError: pass

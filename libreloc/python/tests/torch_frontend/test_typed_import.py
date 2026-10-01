@@ -321,11 +321,11 @@ def test_typed_op_schema_is_explicit_and_registered_once():
 
 @pytest.mark.gpu
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable")
-def test_compiled_layout_plus_cast_and_dequantize_execute_on_cuda(compiler):
-    from reloc_torch.backend import RelocBackend
-    from reloc_torch.runtime import TransportAdapter
+@pytest.mark.parametrize("reuse", [False, True])
+def test_compiled_layout_plus_cast_and_dequantize_execute_on_cuda(compiler, reuse):
+    from reloc_torch import AUTO, RelocBackend
 
-    backend = RelocBackend(compiler=compiler, runtime=TransportAdapter())
+    backend = RelocBackend(compiler=compiler, transfer_resources=AUTO if reuse else None)
     try:
         def cast_fn(x):
             return x.to("cuda", torch.float16).t().contiguous()
@@ -353,6 +353,7 @@ def test_compiled_layout_plus_cast_and_dequantize_execute_on_cuda(compiler):
         assert torch.equal(actual.view(torch.int32), expected.view(torch.int32))
         assert backend.stats()["typed_executions"] >= 2
         assert set(backend.stats()["dispatches"]) <= {"cpu_reference"}
+        assert backend.stats()["transfer_resources"] is None
     finally:
         backend.close()
 
