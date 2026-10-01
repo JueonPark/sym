@@ -189,6 +189,26 @@ def test_admission_failure_propagates_without_torch_replay(compiler, host_bridge
         backend.close()
 
 
+@pytest.mark.parametrize('mode', ['allocation', 'copy', 'throw_copy', 'complete_failure', 'wait'])
+def test_native_failure_propagates_without_original_region_replay(compiler, host_bridge, mode):
+    harness = pytest.importorskip('_reloc_transfer_test', reason='build-only native fault harness')
+    control = harness.Control(mode=mode, gated=False)
+    with TransferResources() as resources:
+        resources._native = control.cache()
+        backend = RelocBackend(compiler=compiler, transfer_resources=resources)
+        source = torch.arange(64, dtype=torch.float32)
+        entry = backend.eager_entry(source, 'cpu', lambda x: pytest.fail('unexpected replay'))
+        try:
+            with pytest.raises(ExecutionError, match='backend_failure'):
+                execute_or_fallback(entry, source, None, 'cpu')
+            assert entry.fallback_calls == 0
+            assert backend.stats()['runtime_executions'] == 1
+            assert control.stats()['copies'] == (0 if mode == 'allocation' else 1)
+            assert resources.stats()['contexts'] == 0
+        finally:
+            backend.close()
+
+
 def test_close_wins_before_native_admission(compiler, host_bridge, monkeypatch):
     from reloc_torch import transport
 

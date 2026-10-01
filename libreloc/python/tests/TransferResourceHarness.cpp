@@ -8,7 +8,9 @@ namespace {
 struct Control : std::enable_shared_from_this<Control> {
   explicit Control(std::string mode, bool gated) : mode(std::move(mode)) {
     if (this->mode != "healthy" && this->mode != "allocation" &&
-        this->mode != "complete_failure" && this->mode != "unknown")
+        this->mode != "complete_failure" && this->mode != "unknown" &&
+        this->mode != "copy" && this->mode != "throw_copy" &&
+        this->mode != "wait")
       throw std::invalid_argument("unknown test failure mode");
     if (gated)
       gate = std::make_shared<BlockingGate>();
@@ -33,6 +35,9 @@ struct Control : std::enable_shared_from_this<Control> {
           b->failEvent =
               self->mode == "complete_failure" || self->mode == "unknown";
           b->unknown = self->mode == "unknown";
+          b->failCopy = self->mode == "copy";
+          b->throwCopy = self->mode == "throw_copy";
+          b->failWait = self->mode == "wait";
           if (self->gate) {
             b->gate = self->gate;
             b->setCopyHook([gate = self->gate] { gate->arriveAndWait(); });

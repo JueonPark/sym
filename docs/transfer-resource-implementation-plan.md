@@ -149,6 +149,9 @@ close #165, after all eight items and the parent checks are complete.
 
 ## Progress and acceptance tracking
 
+Recorded evidence: [R6 performance and overlap](../bench/results/transfer-resource-reuse-171/README.md)
+and [R7 lifecycle qualification](transfer-resource-qualification.md).
+
 Keep each subissue as the working implementation record. As work progresses,
 link its PRs, update completed checklist items, and record the tested commit,
 commands/configuration, results, and outstanding limitations. A branch or PR

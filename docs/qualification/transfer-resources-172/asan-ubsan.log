@@ -1,0 +1,207 @@
+Note: Google Test filter = HostBackend.*:Backend.*:Pool.*:GatherPool.*:Pipeline.*:Transfer*
+[==========] Running 87 tests from 9 test suites.
+[----------] Global test environment set-up.
+[----------] 7 tests from Backend
+[ RUN      ] Backend.AllocCopyEventMovesBytes
+[       OK ] Backend.AllocCopyEventMovesBytes (0 ms)
+[ RUN      ] Backend.ZeroEventIsAlwaysComplete
+[       OK ] Backend.ZeroEventIsAlwaysComplete (0 ms)
+[ RUN      ] Backend.CopyHookGatesCompletion
+[       OK ] Backend.CopyHookGatesCompletion (1 ms)
+[ RUN      ] Backend.MultipleQueuesReportCount
+[       OK ] Backend.MultipleQueuesReportCount (0 ms)
+[ RUN      ] Backend.QuiesceDrainsExecutingAndQueuedCopiesAfterEventFailure
+[       OK ] Backend.QuiesceDrainsExecutingAndQueuedCopiesAfterEventFailure (206 ms)
+[ RUN      ] Backend.SuccessfulWaitsBoundEventMetadataAndAllowRepeatedWaits
+[       OK ] Backend.SuccessfulWaitsBoundEventMetadataAndAllowRepeatedWaits (40 ms)
+[ RUN      ] Backend.ConcurrentWaitersCanObserveTheSameRetiredEvent
+[       OK ] Backend.ConcurrentWaitersCanObserveTheSameRetiredEvent (1 ms)
+[----------] 7 tests from Backend (252 ms total)
+
+[----------] 3 tests from Pool
+[ RUN      ] Pool.AllocatesDistinctBuffersRoundRobin
+[       OK ] Pool.AllocatesDistinctBuffersRoundRobin (0 ms)
+[ RUN      ] Pool.AcquireIsEventGated
+[       OK ] Pool.AcquireIsEventGated (33 ms)
+[ RUN      ] Pool.DrainWaitsForAllEvents
+[       OK ] Pool.DrainWaitsForAllEvents (0 ms)
+[----------] 3 tests from Pool (34 ms total)
+
+[----------] 10 tests from GatherPool
+[ RUN      ] GatherPool.ParallelForCoversRangeExactlyOnce
+[       OK ] GatherPool.ParallelForCoversRangeExactlyOnce (74 ms)
+[ RUN      ] GatherPool.MinRowsFloorLimitsPartitionCount
+[       OK ] GatherPool.MinRowsFloorLimitsPartitionCount (1 ms)
+[ RUN      ] GatherPool.SingleThreadRunsInlineOnCaller
+[       OK ] GatherPool.SingleThreadRunsInlineOnCaller (0 ms)
+[ RUN      ] GatherPool.ReusableAcrossDispatches
+[       OK ] GatherPool.ReusableAcrossDispatches (1 ms)
+[ RUN      ] GatherPool.ConcurrentDispatchesSerialize
+[       OK ] GatherPool.ConcurrentDispatchesSerialize (2 ms)
+[ RUN      ] GatherPool.CloseIsIdempotentAndObservable
+[       OK ] GatherPool.CloseIsIdempotentAndObservable (0 ms)
+[ RUN      ] GatherPool.ZeroThreadsResolvesToHardwareConcurrency
+[       OK ] GatherPool.ZeroThreadsResolvesToHardwareConcurrency (8 ms)
+[ RUN      ] GatherPool.BorrowedPoolClosedAfterAdmissionRunsLaterDispatchInline
+[       OK ] GatherPool.BorrowedPoolClosedAfterAdmissionRunsLaterDispatchInline (1 ms)
+[ RUN      ] GatherPool.ConcurrentCloseWaitsForRunningWorkers
+[       OK ] GatherPool.ConcurrentCloseWaitsForRunningWorkers (102 ms)
+[ RUN      ] GatherPool.ThrowingCallerOrWorkerStillCompletesTheOtherRange
+[       OK ] GatherPool.ThrowingCallerOrWorkerStillCompletesTheOtherRange (102 ms)
+[----------] 10 tests from GatherPool (296 ms total)
+
+[----------] 12 tests from Pipeline
+[ RUN      ] Pipeline.H2DByteExactMatrix
+[       OK ] Pipeline.H2DByteExactMatrix (798 ms)
+[ RUN      ] Pipeline.H2DInterleavingStress
+[       OK ] Pipeline.H2DInterleavingStress (11 ms)
+[ RUN      ] Pipeline.H2DSingleBufferSerializes
+[       OK ] Pipeline.H2DSingleBufferSerializes (2 ms)
+[ RUN      ] Pipeline.H2DParallelGatherEngagesWorkers
+[       OK ] Pipeline.H2DParallelGatherEngagesWorkers (286 ms)
+[ RUN      ] Pipeline.H2DNonDisjointDstStaysExactWithThreads
+[       OK ] Pipeline.H2DNonDisjointDstStaysExactWithThreads (2 ms)
+[ RUN      ] Pipeline.CallerOwnedGatherPoolReusedAcrossCalls
+[       OK ] Pipeline.CallerOwnedGatherPoolReusedAcrossCalls (180 ms)
+[ RUN      ] Pipeline.D2HByteExactMatrix
+[       OK ] Pipeline.D2HByteExactMatrix (798 ms)
+[ RUN      ] Pipeline.RoundTripH2DThenD2H
+[       OK ] Pipeline.RoundTripH2DThenD2H (11 ms)
+[ RUN      ] Pipeline.D2HParallelScatterEngagesWorkers
+[       OK ] Pipeline.D2HParallelScatterEngagesWorkers (528 ms)
+[ RUN      ] Pipeline.D2HAliasedSrcSerializesScatter
+[       OK ] Pipeline.D2HAliasedSrcSerializesScatter (2 ms)
+[ RUN      ] Pipeline.D2HCallerOwnedGatherPool
+[       OK ] Pipeline.D2HCallerOwnedGatherPool (328 ms)
+[ RUN      ] Pipeline.CallerOwnedPoolReusedAcrossCalls
+[       OK ] Pipeline.CallerOwnedPoolReusedAcrossCalls (5 ms)
+[----------] 12 tests from Pipeline (2957 ms total)
+
+[----------] 12 tests from Transfer
+[ RUN      ] Transfer.SourceOrDestinationOneByteShortFailsBeforeAnyCopy
+[       OK ] Transfer.SourceOrDestinationOneByteShortFailsBeforeAnyCopy (0 ms)
+[ RUN      ] Transfer.LargeCheckedProductsReportOverflowNotWraparound
+[       OK ] Transfer.LargeCheckedProductsReportOverflowNotWraparound (0 ms)
+[ RUN      ] Transfer.UnsupportedViewsAreRejectedWithStableCodes
+[       OK ] Transfer.UnsupportedViewsAreRejectedWithStableCodes (0 ms)
+[ RUN      ] Transfer.PadOnlyRegionsNeverReadSourceBytes
+[       OK ] Transfer.PadOnlyRegionsNeverReadSourceBytes (0 ms)
+[ RUN      ] Transfer.HostToHostForwardMatchesReferenceAndIsSingleUse
+[       OK ] Transfer.HostToHostForwardMatchesReferenceAndIsSingleUse (0 ms)
+[ RUN      ] Transfer.DeviceToHostForwardStagesThenGathers
+[       OK ] Transfer.DeviceToHostForwardStagesThenGathers (1 ms)
+[ RUN      ] Transfer.IdentityPlanStillMovesBytes
+[       OK ] Transfer.IdentityPlanStillMovesBytes (0 ms)
+[ RUN      ] Transfer.BackendFailuresPropagateWithoutRetry
+[       OK ] Transfer.BackendFailuresPropagateWithoutRetry (0 ms)
+[ RUN      ] Transfer.HostToDeviceStagingFailureIsReportedNotDereferenced
+[       OK ] Transfer.HostToDeviceStagingFailureIsReportedNotDereferenced (0 ms)
+[ RUN      ] Transfer.CudaViewOnAnotherDeviceFailsBeforeAnyWork
+[       OK ] Transfer.CudaViewOnAnotherDeviceFailsBeforeAnyWork (0 ms)
+[ RUN      ] Transfer.SourceOnlyValidationMatchesFullValidation
+[       OK ] Transfer.SourceOnlyValidationMatchesFullValidation (0 ms)
+[ RUN      ] Transfer.HostBackendDefaultsSatisfyTheExtendedContract
+[       OK ] Transfer.HostBackendDefaultsSatisfyTheExtendedContract (0 ms)
+[----------] 12 tests from Transfer (6 ms total)
+
+[----------] 7 tests from TransferExecution
+[ RUN      ] TransferExecution.RequirementsPreserveScheduleAndReduceOnlyActiveSlots
+[       OK ] TransferExecution.RequirementsPreserveScheduleAndReduceOnlyActiveSlots (0 ms)
+[ RUN      ] TransferExecution.LargeRowsSerializedSchedulesAndHugeOverrideAreChecked
+[       OK ] TransferExecution.LargeRowsSerializedSchedulesAndHugeOverrideAreChecked (0 ms)
+[ RUN      ] TransferExecution.CheckedCoreRejectsUndersizedOrForeignStagingBeforeCopy
+[       OK ] TransferExecution.CheckedCoreRejectsUndersizedOrForeignStagingBeforeCopy (1 ms)
+[ RUN      ] TransferExecution.AliasedSerializedDestinationIsRejectedBeforeAllocation
+[       OK ] TransferExecution.AliasedSerializedDestinationIsRejectedBeforeAllocation (0 ms)
+[ RUN      ] TransferExecution.ErrorsAfterEnqueueDrainBeforeFreeAndNeverReplay
+[       OK ] TransferExecution.ErrorsAfterEnqueueDrainBeforeFreeAndNeverReplay (205 ms)
+[ RUN      ] TransferExecution.SecondGatherOverlapsPendingCopyOnlyWithTwoBuffers
+[       OK ] TransferExecution.SecondGatherOverlapsPendingCopyOnlyWithTwoBuffers (52 ms)
+[ RUN      ] TransferExecution.PartialConstructionRollsBackAndChangedViewsAreRechecked
+[       OK ] TransferExecution.PartialConstructionRollsBackAndChangedViewsAreRechecked (1 ms)
+[----------] 7 tests from TransferExecution (262 ms total)
+
+[----------] 8 tests from TransferResources
+[ RUN      ] TransferResources.RepeatedLayoutsAreExactAndOnlyResourcesAreRetained
+[       OK ] TransferResources.RepeatedLayoutsAreExactAndOnlyResourcesAreRetained (5 ms)
+[ RUN      ] TransferResources.GrowthKeepsBackendWorkersAndPerRequestStreamOrdering
+[       OK ] TransferResources.GrowthKeepsBackendWorkersAndPerRequestStreamOrdering (1 ms)
+[ RUN      ] TransferResources.LargeStagingAndParallelChunksExecuteWithActualCapacity
+[       OK ] TransferResources.LargeStagingAndParallelChunksExecuteWithActualCapacity (3742 ms)
+[ RUN      ] TransferResources.ForwardD2HRevalidatesSourceSpanIncludingOffsetAndGaps
+[       OK ] TransferResources.ForwardD2HRevalidatesSourceSpanIncludingOffsetAndGaps (0 ms)
+[ RUN      ] TransferResources.RejectionsLaunchNothingAndFailedConstructionRetires
+[       OK ] TransferResources.RejectionsLaunchNothingAndFailedConstructionRetires (0 ms)
+[ RUN      ] TransferResources.EventFailureKeepsOwnersUntilQuiescenceCompletes
+[       OK ] TransferResources.EventFailureKeepsOwnersUntilQuiescenceCompletes (103 ms)
+[ RUN      ] TransferResources.UnknownCompletionOutlivesContextAndDiscardedError
+[       OK ] TransferResources.UnknownCompletionOutlivesContextAndDiscardedError (0 ms)
+[ RUN      ] TransferResources.BorrowedWorkersAreNeitherClosedNorRetained
+[       OK ] TransferResources.BorrowedWorkersAreNeitherClosedNorRetained (1 ms)
+[----------] 8 tests from TransferResources (3855 ms total)
+
+[----------] 5 tests from TransferResourcePolicy
+[ RUN      ] TransferResourcePolicy.CapacityRoundingIsCheckedAndPreservesSchedule
+[       OK ] TransferResourcePolicy.CapacityRoundingIsCheckedAndPreservesSchedule (0 ms)
+[ RUN      ] TransferResourcePolicy.KeysDescribeResourcesRatherThanRequestValues
+[       OK ] TransferResourcePolicy.KeysDescribeResourcesRatherThanRequestValues (0 ms)
+[ RUN      ] TransferResourcePolicy.PreparedCapacityCanGrowWithoutReplanningOrRecreatingWorkers
+[       OK ] TransferResourcePolicy.PreparedCapacityCanGrowWithoutReplanningOrRecreatingWorkers (1 ms)
+[ RUN      ] TransferResourcePolicy.ForwardD2HCapacityUsesSourceReachAndDevicePreflight
+[       OK ] TransferResourcePolicy.ForwardD2HCapacityUsesSourceReachAndDevicePreflight (0 ms)
+[ RUN      ] TransferResourcePolicy.CallbackMarkerCoversWorkersInlineAndExceptions
+[       OK ] TransferResourcePolicy.CallbackMarkerCoversWorkersInlineAndExceptions (0 ms)
+[----------] 5 tests from TransferResourcePolicy (2 ms total)
+
+[----------] 23 tests from TransferResourceCache
+[ RUN      ] TransferResourceCache.LazyReuseProcessesCurrentDataAndRetainsOnlyResources
+[       OK ] TransferResourceCache.LazyReuseProcessesCurrentDataAndRetainsOnlyResources (5 ms)
+[ RUN      ] TransferResourceCache.GrowthKeepsFullReservationAcrossFreeAndAllocation
+[       OK ] TransferResourceCache.GrowthKeepsFullReservationAcrossFreeAndAllocation (10 ms)
+[ RUN      ] TransferResourceCache.ChoosesSmallestSufficientCapacityAndEvictsIdleLru
+[       OK ] TransferResourceCache.ChoosesSmallestSufficientCapacityAndEvictsIdleLru (6 ms)
+[ RUN      ] TransferResourceCache.WaitersAreFifoAndAContextIsExclusive
+[       OK ] TransferResourceCache.WaitersAreFifoAndAContextIsExclusive (2 ms)
+[ RUN      ] TransferResourceCache.ImpossibleLimitsRejectWithoutWaitingOrChangingThreads
+[       OK ] TransferResourceCache.ImpossibleLimitsRejectWithoutWaitingOrChangingThreads (0 ms)
+[ RUN      ] TransferResourceCache.TimeoutRemovesWaiterAndLaterCallsStillWork
+[       OK ] TransferResourceCache.TimeoutRemovesWaiterAndLaterCallsStillWork (51 ms)
+[ RUN      ] TransferResourceCache.ClearRetiresOldBuildingAndExecutingGenerations
+[       OK ] TransferResourceCache.ClearRetiresOldBuildingAndExecutingGenerations (23 ms)
+[ RUN      ] TransferResourceCache.CloseWaitsForConstructionAndRejectsItsPublication
+[       OK ] TransferResourceCache.CloseWaitsForConstructionAndRejectsItsPublication (11 ms)
+[ RUN      ] TransferResourceCache.CloseWakesWaitersAndWaitsForTheActiveLease
+[       OK ] TransferResourceCache.CloseWakesWaitersAndWaitsForTheActiveLease (12 ms)
+[ RUN      ] TransferResourceCache.EvictionKeepsRetiringCapacityChargedUntilFreeFinishes
+[       OK ] TransferResourceCache.EvictionKeepsRetiringCapacityChargedUntilFreeFinishes (1 ms)
+[ RUN      ] TransferResourceCache.OversizeRequestsUseAccountedEphemeralContexts
+[       OK ] TransferResourceCache.OversizeRequestsUseAccountedEphemeralContexts (8 ms)
+[ RUN      ] TransferResourceCache.PartialConstructionRollsBackEveryReservation
+[       OK ] TransferResourceCache.PartialConstructionRollsBackEveryReservation (6 ms)
+[ RUN      ] TransferResourceCache.PerDeviceLimitsAllowIndependentActiveDevices
+[       OK ] TransferResourceCache.PerDeviceLimitsAllowIndependentActiveDevices (13 ms)
+[ RUN      ] TransferResourceCache.QuarantineStaysChargedDisablesDeviceAndOutlivesCache
+[       OK ] TransferResourceCache.QuarantineStaysChargedDisablesDeviceAndOutlivesCache (2 ms)
+[ RUN      ] TransferResourceCache.BorrowedWorkersAndRecursiveCallsHaveExplicitLifetimes
+[       OK ] TransferResourceCache.BorrowedWorkersAndRecursiveCallsHaveExplicitLifetimes (1 ms)
+[ RUN      ] TransferResourceCache.ForkInheritedCacheRejectsBeforeLocksAndCanBeAbandoned
+[       OK ] TransferResourceCache.ForkInheritedCacheRejectsBeforeLocksAndCanBeAbandoned (34 ms)
+[ RUN      ] TransferResourceCache.PreflightRejectsWithoutClaimButClosedAdmissionConsumes
+[       OK ] TransferResourceCache.PreflightRejectsWithoutClaimButClosedAdmissionConsumes (1 ms)
+[ RUN      ] TransferResourceCache.BorrowedPoolCanCloseWhileItsRequestWaitsForAdmission
+[       OK ] TransferResourceCache.BorrowedPoolCanCloseWhileItsRequestWaitsForAdmission (50 ms)
+[ RUN      ] TransferResourceCache.CachedExecutionPreservesTwoBufferOverlap
+[       OK ] TransferResourceCache.CachedExecutionPreservesTwoBufferOverlap (33 ms)
+[ RUN      ] TransferResourceCache.ActualCallerAffinityIsPartOfCompatibility
+[       OK ] TransferResourceCache.ActualCallerAffinityIsPartOfCompatibility (3 ms)
+[ RUN      ] TransferResourceCache.ConcurrentChangingShapesStayWithinPhysicalAndReservedLimits
+[       OK ] TransferResourceCache.ConcurrentChangingShapesStayWithinPhysicalAndReservedLimits (350 ms)
+[ RUN      ] TransferResourceCache.ClearAndCloseDuringGrowthRetireTheOldGeneration
+[       OK ] TransferResourceCache.ClearAndCloseDuringGrowthRetireTheOldGeneration (26 ms)
+[ RUN      ] TransferResourceCache.WarmedCopyFailuresDrainBeforeRetiringAndNeverReplay
+[       OK ] TransferResourceCache.WarmedCopyFailuresDrainBeforeRetiringAndNeverReplay (55 ms)
+[----------] 23 tests from TransferResourceCache (716 ms total)
+
+[----------] Global test environment tear-down
+[==========] 87 tests from 9 test suites ran. (8384 ms total)
+[  PASSED  ] 87 tests.

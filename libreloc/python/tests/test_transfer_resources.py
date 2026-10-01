@@ -205,7 +205,7 @@ def scenario_failure(mode):
         if mode != 'allocation':
             assert control.wait_for_copy()
             assert all(ref() is not None for ref in references)
-        if mode == 'complete_failure':
+        if mode not in {'allocation', 'unknown'}:
             assert thread.is_alive()  # quiescence still needs the pending copy
             assert control.stats()['frees'] == 0
     finally:
@@ -257,7 +257,8 @@ def scenario_fork():
 
 
 @pytest.mark.parametrize('case', ['close', 'clear', 'timeout', 'borrowed_close',
-                                  'allocation', 'complete_failure', 'unknown', 'fork'])
+                                  'allocation', 'complete_failure', 'copy', 'throw_copy',
+                                  'wait', 'unknown', 'fork'])
 def test_native_thread_failure_and_shutdown_cases(case):
     pytest.importorskip('_reloc_transfer_test', reason='requires the build-only fault harness')
     if case == 'fork' and not hasattr(os, 'fork'):
@@ -271,7 +272,7 @@ if __name__ == '__main__':
     case = sys.argv[1]
     if case == 'fork':
         scenario_fork()
-    elif case in {'allocation', 'complete_failure', 'unknown'}:
+    elif case in {'allocation', 'complete_failure', 'copy', 'throw_copy', 'wait', 'unknown'}:
         scenario_failure(case)
     else:
         scenario_lifecycle(case)
