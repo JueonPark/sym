@@ -10,6 +10,7 @@ checked against the recipe's value transforms and against the plan the
 runtime decoded. The portable serialization carries `format_version` 1 for
 layout-only and 2 for typed artifacts; a loader accepts both.
 """
+from functools import cached_property, lru_cache
 from dataclasses import dataclass
 import base64
 import hashlib
@@ -105,18 +106,47 @@ class CompiledRecipe:
         ``pyreloc.load_typed_plan`` and bind it with ``pyreloc.bind_typed``."""
         return self.wire_version == TYPED_SCHEMA[1]
 
+    @cached_property
+    def _metadata_binder(self):
+        # Only immutable TensorSpec values are keys; no tensor, storage,
+        # parameter values or executable request is retained. Every previously
+        # unseen descriptor runs all guards, including intermediate overflow.
+        @lru_cache(maxsize=32)
+        def bind(concrete):
+            bindings = bind_recipe(self.recipe, self.symbol_sources, concrete)
+            for constraint in self.constraints:
+                try:
+                    dividend = constraint.expr.evaluate(bindings, checked=True)
+                except KeyError as error:
+                    raise GuardError("missing_symbol") from error
+                if dividend % constraint.divisor:
+                    raise GuardError("divisibility")
+            return tuple((name, bindings[name]) for name in self.symbols)
+        return bind
+
     def bind_values(self, value):
-        """Guard concrete source metadata and return wire-symbol bindings."""
-        concrete = _tensor_spec(value)
-        bindings = bind_recipe(self.recipe, self.symbol_sources, concrete)
-        for constraint in self.constraints:
-            try:
-                dividend = constraint.expr.evaluate(bindings, checked=True)
-            except KeyError as error:
-                raise GuardError("missing_symbol") from error
-            if dividend % constraint.divisor:
-                raise GuardError("divisibility")
-        return {name: bindings[name] for name in self.symbols}
+        """Guard current source metadata; return a fresh wire-symbol mapping."""
+        return dict(self._metadata_binder(_tensor_spec(value)))
+
+    @cached_property
+    def decoded_plan(self):
+        """Immutable decoded wire metadata, owned for this artifact's lifetime."""
+        import pyreloc
+        return (pyreloc.load_typed_plan if self.typed else pyreloc.load_plan)(self.plan_bytes)
+
+    @cached_property
+    def _destination_metadata(self):
+        @lru_cache(maxsize=32)
+        def describe(items):
+            bindings = dict(items)
+            logical = self.logical_destination
+            ev = lambda value: expression(value).evaluate(bindings, checked=True)
+            shape = tuple(ev(d) for d in logical.shape)
+            strides = tuple(ev(d) for d in logical.strides)
+            if ev(logical.offset) != 0 or any(d <= 0 for d in shape):
+                raise GuardError("destination_descriptor")
+            return shape, strides, logical.dtype
+        return describe
 
     def parameter_extents(self, symbols):
         """Concrete ``{name: (dtype, extents)}`` of every declared runtime

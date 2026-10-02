@@ -293,6 +293,29 @@ def test_typed_concurrent_requests_share_exclusive_resources(compiler, dequantiz
         assert resources.stats()['typed']['requests'] == 8
 
 
+def test_metadata_cache_keeps_guards_and_returns_fresh_bindings(compiler, identity_recipe, monkeypatch):
+    from reloc_torch import artifact
+    from reloc_torch.symbolic import GuardError
+    compiled = compiler.compile(identity_recipe)
+    calls = []
+    original = artifact.bind_recipe
+    def observed(*args):
+        calls.append(args[-1])
+        return original(*args)
+    monkeypatch.setattr(artifact, 'bind_recipe', observed)
+    src = torch.zeros(16)
+    first = compiled.bind_values(src)
+    first.clear()
+    assert compiled.bind_values(src)  # a fresh mapping, not the previous dict
+    assert len(calls) == 1
+    assert compiled.decoded_plan is compiled.decoded_plan
+    with pytest.raises(GuardError):
+        compiled.bind_values(src[::2])
+    with pytest.raises(GuardError):
+        compiled.bind_values(src.half())
+    assert len(calls) == 3
+
+
 @pytest.mark.gpu
 @pytest.mark.parametrize('mode', [1, 2])
 def test_typed_completion_faults_retain_exactly_the_required_owners(cuda_device, mode):

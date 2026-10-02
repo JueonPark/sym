@@ -186,6 +186,10 @@ def source_reason(src):
 
 def bind_symbols(compiled, src):
     """Exact name-to-value map for ``pyreloc.bind`` from real source metadata."""
+    validated = getattr(_local, "validated_binding", None)
+    if (validated is not None and validated[0] is compiled and validated[1] is src
+            and validated[2] == compat.storage_snapshot(src)):
+        return dict(validated[3])
     try:
         return compiled.bind_values(src)
     except GuardError as error:
@@ -212,9 +216,19 @@ def bind_plan(compiled, bindings):
     if diagnostics is not None:
         diagnostics.increment("symbol_binds")
     try:
-        return pyreloc.bind(load_plan(compiled.plan_bytes), bindings)
+        return pyreloc.bind(compiled.decoded_plan, bindings)
     except pyreloc.BindError as error:
         raise UnsupportedRecipe("bind_error", str(error)) from error
+
+
+@contextmanager
+def _validated_binding(compiled, src, bindings):
+    previous = getattr(_local, "validated_binding", None)
+    _local.validated_binding = (compiled, src, compat.storage_snapshot(src), dict(bindings))
+    try:
+        yield
+    finally:
+        _local.validated_binding = previous
 
 
 @contextmanager
@@ -238,6 +252,14 @@ def destination_descriptor(compiled, bindings, device):
         except GuardError as error:
             raise UnsupportedRecipe(error.reason, str(error)) from error
 
+    if hasattr(compiled, "_destination_metadata"):
+        try:
+            shape, strides, dtype = compiled._destination_metadata(tuple(sorted(bindings.items())))
+        except KeyError as error:
+            raise UnsupportedRecipe("missing_symbol", str(error)) from error
+        except GuardError as error:
+            raise UnsupportedRecipe(error.reason, str(error)) from error
+        return ConcreteDescriptor(shape, strides, dtype, torch.device(device))
     logical = compiled.logical_destination
     shape = tuple(evaluate(dim) for dim in logical.shape)
     strides = tuple(evaluate(dim) for dim in logical.strides)
@@ -517,7 +539,7 @@ def execute_or_fallback(entry, src, symbols, device, *, non_blocking=False, decl
         if typed:
             options["parameters"] = dict(zip(names, parameters))
         try:
-            with _counting_binds(entry.diagnostics):
+            with _counting_binds(entry.diagnostics), _validated_binding(entry.compiled, src, bindings):
                 call = entry.runtime.preflight(entry.compiled, src, device, **options)
         except UnsupportedRecipe as error:
             return _fallback(entry, src, symbols, error.reason, promised, parameters)

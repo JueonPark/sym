@@ -97,6 +97,7 @@ class PreparedTypedTransfer:
     snapshots: dict
     capability: dict
     selected: dict
+    program: object = None
     request: object = None
     consumed: bool = False
     _storage: tuple = field(init=False, repr=False)
@@ -161,7 +162,7 @@ def prepare_typed_transfer(
         )
     snapshots = {name: _parameter_snapshot(name, parameters[name], declared[name]) for name in declared}
     try:
-        plan = pyreloc.load_typed_plan(compiled.plan_bytes)
+        plan = compiled.decoded_plan
         bound = pyreloc.bind_typed(plan, bindings, snapshots)
     except pyreloc.DecodeError as error:
         raise RuntimeError(f"compiled recipe holds an invalid typed plan: {error}") from error
@@ -191,16 +192,17 @@ def prepare_typed_transfer(
         view = _storage_view(source, "cuda", index)
     destination = destination_descriptor(compiled, bindings, target)
     try:
-        capability = pyreloc.query_capability(bound, direction, "cuda")
+        program = pyreloc.prepare_typed_program(bound)
+        capability = pyreloc.query_capability(program, direction, "cuda")
         selected = pyreloc.select_dispatch(
-            bound, direction, "cuda", policy=policy, calibration=calibration,
+            program, direction, "cuda", policy=policy, calibration=calibration,
             threads=threads, implementation=implementation,
         )
     except pyreloc.TransferError as error:
         raise UnsupportedRecipe(_code(error), str(error)) from error
     return PreparedTypedTransfer(
         compiled, source, bindings, bound, destination, direction, target, view,
-        policy, calibration, threads, parameters, snapshots, capability, selected,
+        policy, calibration, threads, parameters, snapshots, capability, selected, program=program,
     )
 
 
@@ -211,7 +213,8 @@ def execute_typed_transfer(request, *, n_buffers=4, n_streams=2, gather_threads=
     try:
         return _execute_typed_transfer(request, n_buffers=n_buffers, n_streams=n_streams,
             gather_threads=gather_threads, gather_pool=gather_pool,
-            direct_dense_upload=direct_dense_upload, resources=resources)
+            direct_dense_upload=direct_dense_upload,
+            resources=resources)
     finally:
         request._execution_lock.release()
 
@@ -249,7 +252,7 @@ def _execute_typed_transfer(request, *, n_buffers, n_streams, gather_threads,
         cuda_device = request.source.device
     try:
         native = pyreloc.prepare_dispatch(
-            request.bound, request.source_view, dst_view, request.direction,
+            request.program, request.source_view, dst_view, request.direction,
             policy=request.policy, calibration=request.calibration, threads=request.threads,
             implementation=request.selected["implementation"],
         )

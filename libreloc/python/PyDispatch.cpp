@@ -86,18 +86,26 @@ py::dict reportDict(const reloc::dispatch::Report &r) {
   return out;
 }
 
-py::dict queryCapability(const reloc::TypedBoundPlan &bound,
-                         const std::string &direction,
+reloc::typed::Program checkedProgram(const reloc::TypedBoundPlan &bound) {
+  auto prepared = reloc::typed::prepareProgram(bound);
+  if (auto *error = std::get_if<reloc::typed::ExecutionError>(&prepared))
+    raise({error->code, error->message});
+  return std::get<reloc::typed::Program>(std::move(prepared));
+}
+const reloc::typed::Program &
+checkedProgram(const reloc::typed::Program &program) {
+  return program;
+}
+
+template <typename Plan>
+py::dict queryCapability(const Plan &bound, const std::string &direction,
                          const std::string &device) {
   if (device != "host" && device != "cuda")
     throw py::value_error("device must be 'host' or 'cuda', got '" + device +
                           "'");
-  auto prepared = reloc::typed::prepareProgram(bound);
-  if (auto *error = std::get_if<reloc::typed::ExecutionError>(&prepared))
-    raise(reloc::TransferError{error->code, error->message});
+  const auto &program = checkedProgram(bound);
   auto capability = reloc::dispatch::queryCapability(
-      std::get<reloc::typed::Program>(prepared), parseDirection(direction),
-      device == "cuda");
+      program, parseDirection(direction), device == "cuda");
   py::list eligible, excluded;
   for (const auto &row : capability.eligible)
     eligible.append(rowDict(row));
@@ -113,11 +121,13 @@ py::dict queryCapability(const reloc::TypedBoundPlan &bound,
   return out;
 }
 
-reloc::dispatch::DispatchRequest prepareDispatch(
-    const reloc::TypedBoundPlan &bound, const reloc::BufferView &source,
-    const reloc::BufferView &destination, const std::string &direction,
-    const std::string &policy, const reloc::costmodel::CostModel *calibration,
-    int threads, const std::string &implementation) {
+template <typename Plan>
+reloc::dispatch::DispatchRequest
+prepareDispatch(const Plan &bound, const reloc::BufferView &source,
+                const reloc::BufferView &destination,
+                const std::string &direction, const std::string &policy,
+                const reloc::costmodel::CostModel *calibration, int threads,
+                const std::string &implementation) {
   if (threads < 1)
     throw py::value_error("threads must be >= 1");
   reloc::dispatch::Options options;
@@ -212,9 +222,9 @@ executeDispatchPy(reloc::dispatch::DispatchRequest &request,
   return reportDict(request.report);
 }
 
-py::dict selectDispatch(const reloc::TypedBoundPlan &bound,
-                        const std::string &direction, const std::string &device,
-                        const std::string &policy,
+template <typename Plan>
+py::dict selectDispatch(const Plan &bound, const std::string &direction,
+                        const std::string &device, const std::string &policy,
                         const reloc::costmodel::CostModel *calibration,
                         int threads, const std::string &implementation) {
   if (device != "host" && device != "cuda")
@@ -258,6 +268,11 @@ py::dict prefoldSpec(const reloc::TypedBoundPlan &bound) {
 } // namespace
 
 void registerDispatchBindings(py::module_ &m) {
+  py::class_<reloc::typed::Program>(m, "TypedProgram");
+  m.def(
+      "prepare_typed_program",
+      [](const reloc::TypedBoundPlan &p) { return checkedProgram(p); },
+      py::arg("bound"));
   using Resources = reloc::dispatch::Resources;
   py::class_<Resources, std::shared_ptr<Resources>>(m, "DispatchResources")
       .def(py::init<size_t, size_t, unsigned, unsigned>(), py::kw_only(),
@@ -332,16 +347,23 @@ void registerDispatchBindings(py::module_ &m) {
       .def_readonly("destination",
                     &reloc::dispatch::DispatchRequest::destination);
 
-  m.def("query_capability", &queryCapability, py::arg("bound"),
-        py::arg("direction"), py::arg("device") = "host",
+  m.def("query_capability", &queryCapability<reloc::TypedBoundPlan>,
+        py::arg("bound"), py::arg("direction"), py::arg("device") = "host",
         "Pure capability query for a typed bound plan: {'eligible': [rows "
         "with implementation/wire_boundary/wire_bytes/method], 'excluded': "
         "[{implementation, reason}]}. `device` is the device end ('host' or "
         "'cuda'). Consults no cost model; raises TransferError when no "
         "reference path exists (unsupported_stage).");
-  m.def("select_dispatch", &selectDispatch, py::arg("bound"),
-        py::arg("direction"), py::arg("device") = "host", py::kw_only(),
-        py::arg("policy") = "auto",
+  m.def("query_capability", &queryCapability<reloc::typed::Program>,
+        py::arg("bound"), py::arg("direction"), py::arg("device") = "host",
+        "Pure capability query for a typed bound plan: {'eligible': [rows "
+        "with implementation/wire_boundary/wire_bytes/method], 'excluded': "
+        "[{implementation, reason}]}. `device` is the device end ('host' or "
+        "'cuda'). Consults no cost model; raises TransferError when no "
+        "reference path exists (unsupported_stage).");
+  m.def("select_dispatch", &selectDispatch<reloc::TypedBoundPlan>,
+        py::arg("bound"), py::arg("direction"), py::arg("device") = "host",
+        py::kw_only(), py::arg("policy") = "auto",
         py::arg("calibration") =
             static_cast<const reloc::costmodel::CostModel *>(nullptr),
         py::arg("threads") = 8, py::arg("implementation") = "",
@@ -349,9 +371,31 @@ void registerDispatchBindings(py::module_ &m) {
         "program, direction and device end, with 'policy' and "
         "'placement_reason'. A bridge fixes the row here and forces exactly "
         "it in prepare_dispatch once the destination exists.");
-  m.def("prepare_dispatch", &prepareDispatch, py::arg("bound"),
-        py::arg("source"), py::arg("destination"), py::arg("direction"),
+  m.def("select_dispatch", &selectDispatch<reloc::typed::Program>,
+        py::arg("bound"), py::arg("direction"), py::arg("device") = "host",
         py::kw_only(), py::arg("policy") = "auto",
+        py::arg("calibration") =
+            static_cast<const reloc::costmodel::CostModel *>(nullptr),
+        py::arg("threads") = 8, py::arg("implementation") = "",
+        "Pure selection without buffers: the row the policy picks for this "
+        "program, direction and device end, with 'policy' and "
+        "'placement_reason'. A bridge fixes the row here and forces exactly "
+        "it in prepare_dispatch once the destination exists.");
+  m.def("prepare_dispatch", &prepareDispatch<reloc::TypedBoundPlan>,
+        py::arg("bound"), py::arg("source"), py::arg("destination"),
+        py::arg("direction"), py::kw_only(), py::arg("policy") = "auto",
+        py::arg("calibration") =
+            static_cast<const reloc::costmodel::CostModel *>(nullptr),
+        py::arg("threads") = 8, py::arg("implementation") = "",
+        "Validate the typed program and both dense views, enumerate the "
+        "eligible rows and select one: policy 'original_cpu' forces the CPU "
+        "reference pipeline, 'auto' consults `calibration` when given and "
+        "otherwise takes the reference with a recorded reason; "
+        "`implementation` forces an eligible row by label. Raises "
+        "TransferError('<code>: <detail>'); allocates and launches nothing.");
+  m.def("prepare_dispatch", &prepareDispatch<reloc::typed::Program>,
+        py::arg("bound"), py::arg("source"), py::arg("destination"),
+        py::arg("direction"), py::kw_only(), py::arg("policy") = "auto",
         py::arg("calibration") =
             static_cast<const reloc::costmodel::CostModel *>(nullptr),
         py::arg("threads") = 8, py::arg("implementation") = "",

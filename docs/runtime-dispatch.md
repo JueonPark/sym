@@ -226,3 +226,10 @@ Sym's extra host memcpy; CUDA may still stage pageable memory internally.
 Layout-only transpose/gather transfers retain the chunked CPU/PCIe pipeline.
 This change does not add CPU-stage/DMA overlap to the whole-buffer typed CPU
 reference path.
+
+Compiled artifacts cache immutable decoded plans and at most 32 validated source
+and destination metadata descriptors. Changed descriptors still run all guards;
+source storage and parameter values are rechecked before execution. Typed stage
+arithmetic is prepared once per invocation and shared by capability, selection,
+and request construction. No successful invocation's tensor data or executable
+request enters these caches.
