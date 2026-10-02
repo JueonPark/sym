@@ -12,6 +12,7 @@ from ._pyreloc import (  # noqa: F401
     Calibration,
     DecodeError,
     DispatchRequest,
+    DispatchResources,
     GatherPool,
     PlanHandle,
     PrefoldError,

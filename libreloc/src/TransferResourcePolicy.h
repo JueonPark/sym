@@ -49,6 +49,8 @@ std::variant<CacheRequest, TransferError>
 describeCachedTransfer(const TransferRequest &, const CachedTransferOptions &,
                        const TransferResourceLimits &);
 
+std::vector<unsigned long> currentCpuAffinity();
+
 struct ProcessIdentity {
   int64_t pid;
   uint64_t epoch;

@@ -52,11 +52,26 @@ public:
   /// erased to void* (the CudaKernels.h convention).
   void *stream(int queue) const { return streams_[static_cast<size_t>(queue)]; }
   /// Device memory on this backend's device; nullptr on failure (recorded).
-  void *allocDevice(size_t bytes);
-  void freeDevice(void *p);
+  virtual void *allocDevice(size_t bytes);
+  virtual void freeDevice(void *p);
   /// Record a pending launch error (cudaGetLastError) under `what`; true
   /// when none is pending.
   bool recordLaunchStatus(const char *what);
+
+  /// Kernel launches use the calling thread's current device, unlike the
+  /// individually guarded allocation/copy methods. Restore it on every exit.
+  class LaunchScope {
+  public:
+    explicit LaunchScope(CudaBackend &backend);
+    ~LaunchScope();
+    LaunchScope(const LaunchScope &) = delete;
+    LaunchScope &operator=(const LaunchScope &) = delete;
+
+  private:
+    CudaBackend &backend_;
+    int previous_ = -1;
+    bool switched_ = false;
+  };
 
 private:
   /// Record the first failing status; returns true when `status` is success.

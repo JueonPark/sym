@@ -204,3 +204,126 @@ def test_parameter_values_are_snapshotted_and_rechecked(compiler, dequantize_rec
     with pytest.raises(UnsupportedRecipe) as failure:
         api().prepare_typed_transfer(compiled, q, cuda_device, parameters={"s": torch.tensor(0.3).to(cuda_device), "zp": zp})
     assert failure.value.reason == "device_parameters_unavailable"
+
+
+@pytest.fixture
+def dequantize_matrix_recipe(dequantize_recipe):
+    from reloc_torch.recipe import Transpose
+    from reloc_torch.symbolic import Symbol
+    n = Symbol("s0")
+    return dataclasses.replace(dequantize_recipe,
+        source=_spec((n, 2), "int8"),
+        destination=_spec((2, n), "float32"),
+        operations=(*dequantize_recipe.operations, Transpose((1, 0))))
+
+
+@pytest.mark.gpu
+def test_typed_resources_refresh_inputs_and_parameters_and_bound_retention(
+        compiler, dequantize_matrix_recipe, cuda_device):
+    import weakref
+    from reloc_torch import TransferResources
+
+    compiled = compiler.compile(dequantize_matrix_recipe)
+    retained = []
+    with TransferResources(max_typed_retained_bytes=65536) as resources:
+        for n, scale in [(4096, .25), (2048, .5), (4096, 2.)]:
+            src = (torch.arange(n) % 127).to(torch.int8).reshape(-1, 2)
+            params = {'s': torch.tensor(scale), 'zp': torch.tensor(0, dtype=torch.int32)}
+            request = api().prepare_typed_transfer(compiled, src, cuda_device,
+                parameters=params, implementation='cuda_dequant_relocate', threads=1)
+            ref = weakref.ref(src)
+            result = api().execute_typed_transfer(request, resources=resources)
+            expected = src.t().contiguous().float() * scale
+            assert torch.equal(result.tensor.cpu(), expected)
+            retained.append((result.tensor, expected))
+            del src, request, result
+            assert ref() is None  # scratch cache never keeps successful inputs
+        stats = resources.stats()['typed']
+        assert stats['hits'] == 2 and stats['context_creations'] == 1
+        assert stats['device_allocations'] == 2  # wire + freshly uploaded scalar
+        assert stats['retained_bytes'] <= 65536
+        for output, expected in retained:
+            assert torch.equal(output.cpu(), expected)  # outputs never recycled
+        resources.clear()
+        assert resources.stats()['typed']['retained_bytes'] == 0
+    assert resources.stats()['typed']['closed']
+    assert resources.stats()['typed']['streams'] == 0
+
+
+@pytest.mark.gpu
+def test_typed_zero_retention_live_limit_and_closed_owner(compiler, dequantize_matrix_recipe, cuda_device):
+    from reloc_torch import TransferResources
+    compiled = compiler.compile(dequantize_matrix_recipe)
+    src = torch.arange(64, dtype=torch.int8).reshape(32, 2)
+    def prepare():
+        return api().prepare_typed_transfer(compiled, src, cuda_device,
+            parameters={'s': torch.tensor(.25), 'zp': torch.tensor(0, dtype=torch.int32)},
+            implementation='cuda_dequant_relocate', threads=1)
+    with TransferResources(max_typed_retained_bytes=0) as owner:
+        for _ in range(2):
+            assert torch.equal(api().execute_typed_transfer(prepare(), resources=owner).tensor.cpu(), src.t().contiguous().float() * .25)
+            assert owner.stats()['typed']['retained_bytes'] == 0
+        assert owner.stats()['typed']['device_allocations'] == 4
+    with pytest.raises(RuntimeError, match='resources_closed'):
+        api().execute_typed_transfer(prepare(), resources=owner)
+    with TransferResources(max_typed_live_bytes=32) as limited:
+        req = prepare()
+        with pytest.raises(RuntimeError, match='limit exceeded'):
+            api().execute_typed_transfer(req, resources=limited)
+        assert req.consumed
+        assert limited.stats()['typed']['retained_bytes'] == 0
+        assert not limited.stats()['typed']['quarantined']
+
+
+@pytest.mark.gpu
+def test_typed_concurrent_requests_share_exclusive_resources(compiler, dequantize_matrix_recipe, cuda_device):
+    from concurrent.futures import ThreadPoolExecutor
+    from reloc_torch import TransferResources
+    compiled = compiler.compile(dequantize_matrix_recipe)
+    with TransferResources() as resources:
+        def transfer(i):
+            src = torch.full((4096, 2), i, dtype=torch.int8)
+            request = api().prepare_typed_transfer(compiled, src, cuda_device,
+                parameters={'s': torch.tensor(float(i)), 'zp': torch.tensor(0, dtype=torch.int32)},
+                implementation='cuda_dequant_relocate', threads=1)
+            return api().execute_typed_transfer(request, resources=resources).tensor.cpu(), i
+        with ThreadPoolExecutor(4) as pool:
+            for output, i in pool.map(transfer, range(1, 9)):
+                assert torch.equal(output, torch.full((2, 4096), float(i * i)))
+        assert resources.stats()['typed']['requests'] == 8
+
+
+@pytest.mark.gpu
+@pytest.mark.parametrize('mode', [1, 2])
+def test_typed_completion_faults_retain_exactly_the_required_owners(cuda_device, mode):
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+    shim = Path(pyreloc.__file__).resolve().parent.parent / 'libtyped_dispatch_faults.so'
+    if not shim.exists():
+        pytest.skip('test-only CUDA fault shim was not built')
+    env = dict(os.environ, LD_PRELOAD=str(shim), SYM_DISPATCH_FAULT_SHIM=str(shim))
+    scenario = Path(__file__).with_name('typed_fault_scenario.py')
+    result = subprocess.run([sys.executable, str(scenario), str(mode)], env=env,
+                            capture_output=True, text=True, timeout=45)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.gpu
+def test_typed_owner_switches_devices_and_restores_callers_device(compiler, dequantize_matrix_recipe):
+    if torch.cuda.device_count() < 2:
+        pytest.skip('needs two CUDA devices')
+    from reloc_torch import TransferResources
+    compiled = compiler.compile(dequantize_matrix_recipe)
+    src = torch.arange(128, dtype=torch.int8).reshape(64, 2)
+    with torch.cuda.device(0), TransferResources() as owner:
+        for ordinal in [0, 1, 0]:
+            request = api().prepare_typed_transfer(compiled, src, f'cuda:{ordinal}',
+                parameters={'s': torch.tensor(.5), 'zp': torch.tensor(0, dtype=torch.int32)},
+                implementation='cuda_dequant_relocate', threads=1)
+            out = api().execute_typed_transfer(request, resources=owner).tensor
+            assert out.device.index == ordinal
+            assert torch.cuda.current_device() == 0
+            assert torch.equal(out.cpu(), src.t().contiguous().float() * .5)
+        assert owner.stats()['typed']['context_creations'] == 3
