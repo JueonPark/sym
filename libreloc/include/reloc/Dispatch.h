@@ -134,6 +134,15 @@ std::variant<Selection, TransferError>
 selectImplementation(const TypedBoundPlan &plan, TransferDirection direction,
                      const Options &options);
 
+/// Reuse checked arithmetic within one invocation. Program must come from
+/// typed::prepareProgram; parameters are still freshly bound each invocation.
+std::variant<Selection, TransferError>
+selectImplementation(const typed::Program &, TransferDirection,
+                     const Options &);
+std::variant<DispatchRequest, TransferError>
+prepareDispatch(const typed::Program &, const BufferView &, const BufferView &,
+                TransferDirection, const Options &);
+
 /// Validate the typed program and both views, enumerate capability, apply
 /// the policy. Fails (TransferError) with: the program's own code
 /// (unsupported_stage, invalid_parameter), invalid_view / unsupported_layout

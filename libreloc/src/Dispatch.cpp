@@ -810,7 +810,12 @@ selectImplementation(const TypedBoundPlan &plan, TransferDirection direction,
   auto prepared = typed::prepareProgram(plan);
   if (auto *error = std::get_if<typed::ExecutionError>(&prepared))
     return fromExecution(*error);
-  const Program &program = std::get<Program>(prepared);
+  return selectImplementation(std::get<Program>(prepared), direction, options);
+}
+
+std::variant<Selection, TransferError>
+selectImplementation(const Program &program, TransferDirection direction,
+                     const Options &options) {
   Capability capability = queryCapability(program, direction, options.cuda);
   auto selected = select(program, capability, options);
   if (auto *error = std::get_if<TransferError>(&selected))
@@ -826,8 +831,17 @@ prepareDispatch(const TypedBoundPlan &plan, const BufferView &source,
   auto prepared = typed::prepareProgram(plan);
   if (auto *error = std::get_if<typed::ExecutionError>(&prepared))
     return fromExecution(*error);
+  return prepareDispatch(std::get<Program>(prepared), source, destination,
+                         direction, options);
+}
+
+std::variant<DispatchRequest, TransferError>
+prepareDispatch(const Program &program, const BufferView &source,
+                const BufferView &destination, TransferDirection direction,
+                const Options &options) {
+  const auto &plan = program.plan;
   DispatchRequest request;
-  request.program = std::move(std::get<Program>(prepared));
+  request.program = program;
   if (auto error = checkView(request.program, source, true, direction))
     return *error;
   if (auto error = checkView(request.program, destination, false, direction))
