@@ -129,12 +129,17 @@ describeCachedTransfer(const TransferRequest &request,
                                : result.execution.gatherThreads,
                 options.placementTag,
                 affinity()};
-  result.key.backend.pinned = usePinnedStaging(
-      options.transfer, request.direction == TransferDirection::HostToDevice
-                            ? request.destinationBytes
-                            : result.execution.sourceBytes);
-  if (!result.cacheable && options.transfer.pinning == PinningPolicy::Auto)
-    result.key.backend.pinned = false;
+  result.staging =
+      selectStaging(options.transfer,
+                    request.direction == TransferDirection::HostToDevice
+                        ? request.destinationBytes
+                        : result.execution.sourceBytes,
+                    result.cacheable);
+  if (backend.kind == MemoryKind::Host) {
+    result.staging.pinned = false;
+    result.staging.reason = "host_backend";
+  }
+  result.key.backend.pinned = result.staging.pinned;
   return result;
 }
 } // namespace reloc::detail

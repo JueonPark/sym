@@ -84,6 +84,7 @@ py::dict reportDict(const reloc::dispatch::Report &r) {
   out["device_temp_bytes"] = r.deviceTempBytes;
   out["artifact_version"] = r.artifactVersion;
   out["executed"] = r.executed;
+  out["staging"] = stagingReport(r.staging);
   return out;
 }
 
@@ -149,8 +150,8 @@ py::dict
 executeDispatchPy(reloc::dispatch::DispatchRequest &request,
                   const py::object &callerStream, int nBuffers, int nStreams,
                   int gatherThreads, std::shared_ptr<reloc::GatherPool> pool,
-                  const std::string &pinning, size_t minPinnedBytes,
-                  bool directDenseUpload,
+                  const std::string &pinning,
+                  std::optional<size_t> minPinnedBytes, bool directDenseUpload,
                   std::shared_ptr<reloc::dispatch::Resources> resources,
                   const py::object &owners) {
   if (request.executing)
@@ -179,6 +180,8 @@ executeDispatchPy(reloc::dispatch::DispatchRequest &request,
   options.nBuffers = nBuffers;
   options.pinning = parsePinning(pinning);
   options.minPinnedBytes = minPinnedBytes;
+  request.report.staging.clear();
+  options.staging = &request.report.staging;
   options.directDenseUpload = directDenseUpload;
   options.gatherThreads = static_cast<unsigned>(gatherThreads);
   options.gather = pool.get();
@@ -210,7 +213,8 @@ executeDispatchPy(reloc::dispatch::DispatchRequest &request,
         // Raw callers retain their buffers and backend lifetimes themselves.
         reloc::CudaBackend backend(
             nStreams, device,
-            reloc::usePinnedStaging(options, request.selected.wireBytes));
+            reloc::usePinnedStaging(options, request.selected.wireBytes,
+                                    false));
         error = reloc::dispatch::executeDispatch(request, backend, options);
       }
 #else
@@ -338,6 +342,9 @@ void registerDispatchBindings(py::module_ &m) {
       "views, the selected implementation and the scalar report.")
       .def_property_readonly("report",
                              [](const reloc::dispatch::DispatchRequest &r) {
+                               if (r.executing)
+                                 throw py::value_error(
+                                     "report is unavailable during execution");
                                return reportDict(r.report);
                              })
       .def_property_readonly("implementation",
@@ -348,7 +355,10 @@ void registerDispatchBindings(py::module_ &m) {
                              [](const reloc::dispatch::DispatchRequest &r) {
                                return directionName(r.direction);
                              })
-      .def_readonly("consumed", &reloc::dispatch::DispatchRequest::consumed)
+      .def_property_readonly("consumed",
+                             [](const reloc::dispatch::DispatchRequest &r) {
+                               return r.executing || r.consumed;
+                             })
       .def_readonly("source", &reloc::dispatch::DispatchRequest::source)
       .def_readonly("destination",
                     &reloc::dispatch::DispatchRequest::destination);
@@ -415,8 +425,7 @@ void registerDispatchBindings(py::module_ &m) {
         py::kw_only(), py::arg("caller_stream") = py::none(),
         py::arg("n_buffers") = 4, py::arg("n_streams") = 2,
         py::arg("gather_threads") = 1, py::arg("gather_pool") = nullptr,
-        py::arg("pinning") = "auto",
-        py::arg("min_pinned_bytes") = size_t(8) << 20,
+        py::arg("pinning") = "auto", py::arg("min_pinned_bytes") = py::none(),
         py::arg("direct_dense_upload") = true, py::arg("resources") = nullptr,
         py::arg("owners") = py::none(),
         "Run the selected row and block until this request's work completed; "

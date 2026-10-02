@@ -73,6 +73,7 @@ class PreparedTransfer:
     non_blocking: bool = False
     request: object = None
     consumed: bool = False
+    staging: tuple = field(default=(), init=False)
     _snapshot: tuple = field(init=False, repr=False)
     _execution_lock: object = field(default_factory=Lock, init=False, repr=False, compare=False)
 
@@ -139,13 +140,15 @@ def prepare_transfer(compiled, source, device, *, non_blocking=False):
 
 def execute_transfer(request, *, n_buffers=4, n_streams=2, gather_threads=1,
                      gather_pool=None, resources=None, pinning="auto",
-                     min_pinned_bytes=8 << 20):
+                     min_pinned_bytes=None):
     """Allocate a fresh output and complete; optionally reuse explicit resources.
 
     Omission/None uses a fresh native context for this call. In both cases the
     source and output are strongly owned through cleanup or quarantine.
     """
-    from .resources import TransferResources
+    from .resources import TransferResources, _transfer_configuration
+
+    _transfer_configuration(resources, {"pinning": pinning, "min_pinned_bytes": min_pinned_bytes})
 
     if resources is not None and not isinstance(resources, TransferResources):
         raise TypeError("resources must be TransferResources or None")
@@ -195,6 +198,8 @@ def execute_transfer(request, *, n_buffers=4, n_streams=2, gather_threads=1,
             )
         except pyreloc.TransferError as error:
             raise RuntimeError(f"{request.direction} transfer failed: {error}") from error
+        finally:
+            request.staging = tuple(getattr(native, "staging", ()))
         return out
     finally:
         request._execution_lock.release()

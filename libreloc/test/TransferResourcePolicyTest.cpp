@@ -169,6 +169,10 @@ TEST(TransferResourcePolicy, PinningUsesWireSizeAndSeparatesAllocationKinds) {
   options.transfer.minPinnedBytes = 64;
   auto req =
       request(b, reinterpret_cast<void *>(1), reinterpret_cast<void *>(2));
+  options.backend.kind = MemoryKind::Cuda;
+  options.backend.device = 0;
+  req.destination.kind = MemoryKind::Cuda;
+  req.destination.device = 0;
   auto describe = [&] {
     return std::get<detail::CacheRequest>(
         detail::describeCachedTransfer(req, options, {}));
@@ -178,6 +182,10 @@ TEST(TransferResourcePolicy, PinningUsesWireSizeAndSeparatesAllocationKinds) {
   EXPECT_FALSE(
       h2d.key.backend.pinned); // capacity rounds to 256 KiB, wire is 32 B
   req.direction = TransferDirection::DeviceToHost;
+  req.source.kind = MemoryKind::Cuda;
+  req.source.device = 0;
+  req.destination.kind = MemoryKind::Host;
+  req.destination.device = -1;
   auto d2h = describe();
   EXPECT_EQ(d2h.execution.sourceBytes, 88u);
   EXPECT_TRUE(d2h.key.backend.pinned); // source reach, not the 32 B result
@@ -190,6 +198,28 @@ TEST(TransferResourcePolicy, PinningUsesWireSizeAndSeparatesAllocationKinds) {
   options.transfer.pinning = PinningPolicy::Auto;
   EXPECT_FALSE(usePinnedStaging(options.transfer, 63));
   EXPECT_TRUE(usePinnedStaging(options.transfer, 64));
+}
+
+TEST(TransferResourcePolicy, AutoNeedsExplicitCalibrationAndReportsWhy) {
+  TransferOptions options;
+  options.pinning = PinningPolicy::Auto;
+  auto d = selectStaging(options, 64u << 20, true);
+  EXPECT_FALSE(d.pinned);
+  EXPECT_EQ(d.reason, "unconfigured_threshold");
+  EXPECT_FALSE(d.threshold);
+  options.minPinnedBytes = 8u << 20;
+  d = selectStaging(options, 64u << 20, false);
+  EXPECT_FALSE(d.pinned);
+  EXPECT_EQ(d.reason, "ephemeral_staging");
+  d = selectStaging(options, 8u << 20, true);
+  EXPECT_TRUE(d.pinned);
+  EXPECT_EQ(d.wireBytes, 8u << 20);
+  EXPECT_EQ(d.reason, "configured_size_gate");
+  EXPECT_EQ(d.capacityBytes, 0u);
+  options.pinning = PinningPolicy::Pinned;
+  EXPECT_TRUE(selectStaging(options, 1, false).pinned);
+  options.pinning = PinningPolicy::Pageable;
+  EXPECT_EQ(selectStaging(options, 64u << 20, true).reason, "forced_pageable");
 }
 
 } // namespace

@@ -32,6 +32,15 @@ class Diagnostics:
         self.exclusions = Counter()
         self.redispatches = Counter()
         self.dispatches = Counter()
+        self.staging_decisions = Counter()
+        self.staging_reuse = Counter()
+
+    def record_staging(self, decisions):
+        """Count scalar policy explanations without retaining per-call data."""
+        with self._lock:
+            for row in decisions:
+                self.staging_decisions[f"{row['memory_kind']}:{row['reason']}"] += 1
+                self.staging_reuse["reused" if row['reused'] else "allocated"] += 1
 
     def increment(self, name, amount=1):
         with self._lock:
@@ -66,6 +75,8 @@ class Diagnostics:
             result["exclusions"] = dict(self.exclusions)
             result["redispatches"] = dict(self.redispatches)
             result["dispatches"] = dict(self.dispatches)
+            result["staging_decisions"] = dict(self.staging_decisions)
+            result["staging_reuse"] = dict(self.staging_reuse)
         return result
 
 
