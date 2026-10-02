@@ -1,0 +1,18 @@
+Capture range started in the application.
+Capture range ended in the application.
+Generating '/tmp/nsys-report-117b.qdstrm'
+[1/1] [0%                          ] moe-retained.nsys-repProcessing events...
+[1/1] [0%                          ] moe-retained.nsys-rep[1/1] [12%                         ] moe-retained.nsys-rep[1/1] [===24%                      ] moe-retained.nsys-rep[1/1] [==============61%           ] moe-retained.nsys-rep[1/1] [7%                          ] moe-retained.nsys-rep[1/1] [12%                         ] moe-retained.nsys-rep[1/1] [6%                          ] moe-retained.nsys-rep[1/1] [==20%                       ] moe-retained.nsys-rep[1/1] [=15%                        ] moe-retained.nsys-rep[1/1] [12%                         ] moe-retained.nsys-rep[1/1] [10%                         ] moe-retained.nsys-rep[1/1] [8%                          ] moe-retained.nsys-rep[1/1] [14%                         ] moe-retained.nsys-rep[1/1] [==21%                       ] moe-retained.nsys-rep[1/1] [====27%                     ] moe-retained.nsys-rep[1/1] [======34%                   ] moe-retained.nsys-rep[1/1] [========40%                 ] moe-retained.nsys-rep[1/1] [===========50%              ] moe-retained.nsys-rep[1/1] [============55%             ] moe-retained.nsys-rep[1/1] [==================76%       ] moe-retained.nsys-rep[1/1] [========================100%] moe-retained.nsys-rep[1/1] [========================100%] moe-retained.nsys-rep
+moe_experts: PASS (6/6 checks)
+  devices: cuda:0; sizes: {'top_k': 2, 'd_model': 1024, 'd_ff': 2048, 'experts': 16, 'blocks': 2, 'batches': [256, 32, 8]}
+  sym transfers: 170; plan compiles: 1; typed dispatch rows: cuda_dequant_relocate=170; fallbacks/exclusions: 0
+  expert_weights: 170 Sym transfers moved 340.00 MiB over the link for 1360.00 MiB of destination tensors (sources 340.00 MiB)
+  expert_weights median per transfer: sym 0.98 ms / torch 0.61 ms (descriptive only)
+  note: calibration: /tmp/sym-pr162-pageable/calibration/epyc7351-2080ti.cal
+  note: 85 of 96 expert slots were active, and only those experts' weights moved
+  note: routing, token dispatch, GPU-to-GPU token moves and the combine are PyTorch in both passes
+  note: several GPUs show placement and correctness only: the multi-GPU throughput gate failed on this box (R3)
+  note: transfers are blocking; every Sym call includes per-call runtime setup
+  note: wire bytes follow from the recipe's dtype choice; equivalent PyTorch code moves the same bytes
+Generated:
+    /tmp/sym-torch-side-results/profiles-inputs/moe-retained.nsys-rep

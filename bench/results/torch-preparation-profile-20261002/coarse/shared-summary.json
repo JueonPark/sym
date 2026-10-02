@@ -1,0 +1,5214 @@
+{
+  "llm-retained": {
+    "totals": {
+      "torch": {
+        "calls": 477,
+        "wall_ms": 240.312991,
+        "gpu_copy_ms": 74.508021,
+        "gpu_kernel_ms": 45.604478,
+        "gpu_busy_ms": 120.112499,
+        "copy_bytes": 836358144,
+        "exclusive_ms": {
+          "preparation_guards": 12.288387,
+          "output_setup_allocation": 15.963924,
+          "frontend_execution": 0.0,
+          "torch_operator_other": 28.742694,
+          "native_other": 0.0,
+          "outer_host": 24.759704,
+          "cpu_transform": 5.979443,
+          "staging_management": 0.0,
+          "device_management": 2.016074,
+          "cuda_copy_api": 95.03556999999999,
+          "cuda_wait_api": 43.275624,
+          "cuda_other_api": 12.251571
+        }
+      },
+      "sym": {
+        "calls": 477,
+        "wall_ms": 486.100441,
+        "gpu_copy_ms": 83.988687,
+        "gpu_kernel_ms": 23.424381,
+        "gpu_busy_ms": 107.413068,
+        "copy_bytes": 836358144,
+        "exclusive_ms": {
+          "preparation_guards": 148.234158,
+          "output_setup_allocation": 6.93367,
+          "frontend_execution": 47.29199,
+          "torch_operator_other": 0.0,
+          "native_other": 34.712014,
+          "outer_host": 86.437294,
+          "cpu_transform": 2.642034,
+          "staging_management": 0.455655,
+          "device_management": 0.728782,
+          "cuda_copy_api": 99.539702,
+          "cuda_wait_api": 45.793731,
+          "cuda_other_api": 13.331411000000001
+        }
+      }
+    },
+    "by_kind": {
+      "kv_evict": {
+        "torch": {
+          "calls": 111,
+          "wall_ms": 29.673414,
+          "gpu_copy_ms": 1.310305,
+          "gpu_kernel_ms": 0.300616,
+          "gpu_busy_ms": 1.610921,
+          "copy_bytes": 15925248,
+          "exclusive_ms": {
+            "preparation_guards": 1.736416,
+            "output_setup_allocation": 2.924925,
+            "frontend_execution": 0.0,
+            "torch_operator_other": 4.142098,
+            "native_other": 0.0,
+            "outer_host": 4.279056,
+            "cpu_transform": 0.0,
+            "staging_management": 0.0,
+            "device_management": 0.0,
+            "cuda_copy_api": 14.104827,
+            "cuda_wait_api": 0.742365,
+            "cuda_other_api": 1.743727
+          }
+        },
+        "sym": {
+          "calls": 111,
+          "wall_ms": 91.055726,
+          "gpu_copy_ms": 1.342501,
+          "gpu_kernel_ms": 0.0,
+          "gpu_busy_ms": 1.342501,
+          "copy_bytes": 15925248,
+          "exclusive_ms": {
+            "preparation_guards": 23.124728,
+            "output_setup_allocation": 1.354942,
+            "frontend_execution": 10.424473,
+            "torch_operator_other": 0.0,
+            "native_other": 14.88645,
+            "outer_host": 33.926475,
+            "cpu_transform": 0.0,
+            "staging_management": 0.0,
+            "device_management": 0.0,
+            "cuda_copy_api": 4.729103,
+            "cuda_wait_api": 0.921108,
+            "cuda_other_api": 1.688447
+          }
+        }
+      },
+      "kv_restore": {
+        "torch": {
+          "calls": 111,
+          "wall_ms": 21.690755,
+          "gpu_copy_ms": 1.389859,
+          "gpu_kernel_ms": 0.0,
+          "gpu_busy_ms": 1.389859,
+          "copy_bytes": 15925248,
+          "exclusive_ms": {
+            "preparation_guards": 1.7340929999999999,
+            "output_setup_allocation": 2.480596,
+            "frontend_execution": 0.0,
+            "torch_operator_other": 3.11143,
+            "native_other": 0.0,
+            "outer_host": 3.737116,
+            "cpu_transform": 5.979443,
+            "staging_management": 0.0,
+            "device_management": 0.0,
+            "cuda_copy_api": 2.407628,
+            "cuda_wait_api": 2.053959,
+            "cuda_other_api": 0.18649
+          }
+        },
+        "sym": {
+          "calls": 111,
+          "wall_ms": 83.301826,
+          "gpu_copy_ms": 1.389195,
+          "gpu_kernel_ms": 0.0,
+          "gpu_busy_ms": 1.389195,
+          "copy_bytes": 15925248,
+          "exclusive_ms": {
+            "preparation_guards": 26.578704000000002,
+            "output_setup_allocation": 1.770054,
+            "frontend_execution": 9.513617,
+            "torch_operator_other": 0.0,
+            "native_other": 3.996211,
+            "outer_host": 33.390643,
+            "cpu_transform": 2.642034,
+            "staging_management": 0.0,
+            "device_management": 0.0,
+            "cuda_copy_api": 2.070398,
+            "cuda_wait_api": 1.714561,
+            "cuda_other_api": 1.625604
+          }
+        }
+      },
+      "weights": {
+        "torch": {
+          "calls": 255,
+          "wall_ms": 188.948822,
+          "gpu_copy_ms": 71.807857,
+          "gpu_kernel_ms": 45.303862,
+          "gpu_busy_ms": 117.111719,
+          "copy_bytes": 804507648,
+          "exclusive_ms": {
+            "preparation_guards": 8.817878,
+            "output_setup_allocation": 10.558403,
+            "frontend_execution": 0.0,
+            "torch_operator_other": 21.489166,
+            "native_other": 0.0,
+            "outer_host": 16.743532,
+            "cpu_transform": 0.0,
+            "staging_management": 0.0,
+            "device_management": 2.016074,
+            "cuda_copy_api": 78.523115,
+            "cuda_wait_api": 40.4793,
+            "cuda_other_api": 10.321354
+          }
+        },
+        "sym": {
+          "calls": 255,
+          "wall_ms": 311.742889,
+          "gpu_copy_ms": 81.256991,
+          "gpu_kernel_ms": 23.424381,
+          "gpu_busy_ms": 104.681372,
+          "copy_bytes": 804507648,
+          "exclusive_ms": {
+            "preparation_guards": 98.530726,
+            "output_setup_allocation": 3.808674,
+            "frontend_execution": 27.3539,
+            "torch_operator_other": 0.0,
+            "native_other": 15.829353000000001,
+            "outer_host": 19.120176,
+            "cpu_transform": 0.0,
+            "staging_management": 0.455655,
+            "device_management": 0.728782,
+            "cuda_copy_api": 92.740201,
+            "cuda_wait_api": 43.158062,
+            "cuda_other_api": 10.01736
+          }
+        }
+      }
+    },
+    "model": {
+      "torch": {
+        "kernel_count": 1280,
+        "kernel_ms": 10.587909,
+        "copy_count": 72,
+        "copy_bytes": 653376,
+        "memset_count": 16,
+        "memset_bytes": 1792,
+        "kernel_signatures": [
+          {
+            "signature": [
+              "std::enable_if<!T7, void>::type internal::gemvx::kernel<int, int, float, float, float, float, (bool)0, (bool)1, (bool)0, (bool)0, (int)6, (bool)0, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<float>, float>>(T13)",
+              2,
+              1,
+              16,
+              32,
+              2,
+              1
+            ],
+            "count": 56
+          },
+          {
+            "signature": [
+              "std::enable_if<!T7, void>::type internal::gemvx::kernel<int, int, float, float, float, float, (bool)0, (bool)1, (bool)1, (bool)0, (int)7, (bool)0, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<float>, float>>(T13)",
+              256,
+              1,
+              1,
+              32,
+              4,
+              1
+            ],
+            "count": 112
+          },
+          {
+            "signature": [
+              "std::enable_if<!T7, void>::type internal::gemvx::kernel<int, int, float, float, float, float, (bool)0, (bool)1, (bool)1, (bool)0, (int)7, (bool)0, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<float>, float>>(T13)",
+              384,
+              1,
+              1,
+              16,
+              8,
+              1
+            ],
+            "count": 56
+          },
+          {
+            "signature": [
+              "std::enable_if<!T7, void>::type internal::gemvx::kernel<int, int, float, float, float, float, (bool)0, (bool)1, (bool)1, (bool)0, (int)7, (bool)0, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<float>, float>>(T13)",
+              512,
+              1,
+              1,
+              16,
+              8,
+              1
+            ],
+            "count": 56
+          },
+          {
+            "signature": [
+              "void <unnamed>::softmax_warp_forward<float, float, float, (int)5, (bool)0, (bool)0, (int)32>(T2 *, const T1 *, int, int, int, const bool *, int, bool)",
+              64,
+              1,
+              1,
+              32,
+              4,
+              1
+            ],
+            "count": 8
+          },
+          {
+            "signature": [
+              "void <unnamed>::softmax_warp_forward<float, float, float, (int)6, (bool)0, (bool)0, (int)32>(T2 *, const T1 *, int, int, int, const bool *, int, bool)",
+              2,
+              1,
+              1,
+              32,
+              4,
+              1
+            ],
+            "count": 56
+          },
+          {
+            "signature": [
+              "void at::native::<unnamed>::CatArrayBatchedCopy_vectorized<at::native::<unnamed>::OpaqueType<(unsigned int)4>, unsigned int, (int)2, (int)128, (int)1, (int)16, (int)4>(char *, at::native::<unnamed>::CatArrInputTensorMetadata<T1, T2, T4, T5>, at::native::<unnamed>::TensorSizeStride<T2, (unsigned int)4>, int, T2)",
+              64,
+              2,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 16
+          },
+          {
+            "signature": [
+              "void at::native::<unnamed>::CatArrayBatchedCopy_vectorized<at::native::<unnamed>::OpaqueType<(unsigned int)4>, unsigned int, (int)2, (int)128, (int)1, (int)16, (int)4>(char *, at::native::<unnamed>::CatArrInputTensorMetadata<T1, T2, T4, T5>, at::native::<unnamed>::TensorSizeStride<T2, (unsigned int)4>, int, T2)",
+              66,
+              2,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 16
+          },
+          {
+            "signature": [
+              "void at::native::<unnamed>::CatArrayBatchedCopy_vectorized<at::native::<unnamed>::OpaqueType<(unsigned int)4>, unsigned int, (int)2, (int)128, (int)1, (int)16, (int)4>(char *, at::native::<unnamed>::CatArrInputTensorMetadata<T1, T2, T4, T5>, at::native::<unnamed>::TensorSizeStride<T2, (unsigned int)4>, int, T2)",
+              68,
+              2,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 16
+          },
+          {
+            "signature": [
+              "void at::native::<unnamed>::CatArrayBatchedCopy_vectorized<at::native::<unnamed>::OpaqueType<(unsigned int)4>, unsigned int, (int)2, (int)128, (int)1, (int)16, (int)4>(char *, at::native::<unnamed>::CatArrInputTensorMetadata<T1, T2, T4, T5>, at::native::<unnamed>::TensorSizeStride<T2, (unsigned int)4>, int, T2)",
+              70,
+              2,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 16
+          },
+          {
+            "signature": [
+              "void at::native::<unnamed>::CatArrayBatchedCopy_vectorized<at::native::<unnamed>::OpaqueType<(unsigned int)4>, unsigned int, (int)2, (int)128, (int)1, (int)16, (int)4>(char *, at::native::<unnamed>::CatArrInputTensorMetadata<T1, T2, T4, T5>, at::native::<unnamed>::TensorSizeStride<T2, (unsigned int)4>, int, T2)",
+              72,
+              2,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 16
+          },
+          {
+            "signature": [
+              "void at::native::<unnamed>::CatArrayBatchedCopy_vectorized<at::native::<unnamed>::OpaqueType<(unsigned int)4>, unsigned int, (int)2, (int)128, (int)1, (int)16, (int)4>(char *, at::native::<unnamed>::CatArrInputTensorMetadata<T1, T2, T4, T5>, at::native::<unnamed>::TensorSizeStride<T2, (unsigned int)4>, int, T2)",
+              74,
+              2,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 16
+          },
+          {
+            "signature": [
+              "void at::native::<unnamed>::CatArrayBatchedCopy_vectorized<at::native::<unnamed>::OpaqueType<(unsigned int)4>, unsigned int, (int)2, (int)128, (int)1, (int)16, (int)4>(char *, at::native::<unnamed>::CatArrInputTensorMetadata<T1, T2, T4, T5>, at::native::<unnamed>::TensorSizeStride<T2, (unsigned int)4>, int, T2)",
+              76,
+              2,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 16
+          },
+          {
+            "signature": [
+              "void at::native::<unnamed>::vectorized_layer_norm_kernel<float, float, (bool)0>(int, T2, const T1 *, const T1 *, const T1 *, T2 *, T2 *, T1 *)",
+              1,
+              1,
+              1,
+              32,
+              4,
+              1
+            ],
+            "count": 119
+          },
+          {
+            "signature": [
+              "void at::native::<unnamed>::vectorized_layer_norm_kernel<float, float, (bool)0>(int, T2, const T1 *, const T1 *, const T1 *, T2 *, T2 *, T1 *)",
+              32,
+              1,
+              1,
+              32,
+              4,
+              1
+            ],
+            "count": 17
+          },
+          {
+            "signature": [
+              "void at::native::elementwise_kernel<(int)128, (int)2, void at::native::gpu_kernel_impl_nocast<at::native::<unnamed>::masked_fill_kernel(at::TensorIterator &, const c10::Scalar &)::[lambda() (instance 1)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float, bool) (instance 1)]>(at::TensorIteratorBase &, const T1 &)::[lambda(int) (instance 1)]>(int, T3)",
+              3,
+              1,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 56
+          },
+          {
+            "signature": [
+              "void at::native::elementwise_kernel<(int)128, (int)2, void at::native::gpu_kernel_impl_nocast<at::native::<unnamed>::masked_fill_kernel(at::TensorIterator &, const c10::Scalar &)::[lambda() (instance 1)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float, bool) (instance 1)]>(at::TensorIteratorBase &, const T1 &)::[lambda(int) (instance 1)]>(int, T3)",
+              64,
+              1,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 8
+          },
+          {
+            "signature": [
+              "void at::native::elementwise_kernel<(int)128, (int)2, void at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase &)::[lambda() (instance 3)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float) (instance 1)]>(at::TensorIteratorBase &, const T1 &)::[lambda(int) (instance 1)]>(int, T3)",
+              128,
+              1,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 24
+          },
+          {
+            "signature": [
+              "void at::native::index_elementwise_kernel<(int)128, (int)4, void at::native::gpu_index_kernel<void at::native::index_kernel_impl<at::native::OpaqueType<(int)4>>(at::TensorIteratorBase &, c10::ArrayRef<long>, c10::ArrayRef<long>)::[lambda(char *, const char *, long) (instance 1)]>(at::TensorIteratorBase &, c10::ArrayRef<long>, c10::ArrayRef<long>, const T1 &, bool)::[lambda(int) (instance 1)]>(long, T3)",
+              2,
+              1,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 7
+          },
+          {
+            "signature": [
+              "void at::native::reduce_kernel<(int)512, (int)1, at::native::ReduceOp<float, at::native::ArgMaxOps<float>, unsigned int, long, (int)4, (int)4>>(T3)",
+              1,
+              1,
+              1,
+              512,
+              1,
+              1
+            ],
+            "count": 8
+          },
+          {
+            "signature": [
+              "void at::native::triu_tril_kernel<bool, int, (bool)0, (int)8, (bool)0>(at::cuda::detail::TensorInfo<T1, T2>, at::cuda::detail::TensorInfo<const T1, T2>, long, long, T2)",
+              1,
+              1,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 64
+          },
+          {
+            "signature": [
+              "void at::native::vectorized_elementwise_kernel<(int)4, at::native::BUnaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float>>, std::array<char *, (unsigned long)2>, (bool)0>(int, T2, T3)",
+              1,
+              1,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 56
+          },
+          {
+            "signature": [
+              "void at::native::vectorized_elementwise_kernel<(int)4, at::native::BUnaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float>>, std::array<char *, (unsigned long)2>, (bool)0>(int, T2, T3)",
+              16,
+              1,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 8
+          },
+          {
+            "signature": [
+              "void at::native::vectorized_elementwise_kernel<(int)4, at::native::CUDAFunctor_add<float>, std::array<char *, (unsigned long)3>, (bool)0>(int, T2, T3)",
+              1,
+              1,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 119
+          },
+          {
+            "signature": [
+              "void at::native::vectorized_elementwise_kernel<(int)4, at::native::CUDAFunctor_add<float>, std::array<char *, (unsigned long)3>, (bool)0>(int, T2, T3)",
+              32,
+              1,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 17
+          },
+          {
+            "signature": [
+              "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<bool>, std::array<char *, (unsigned long)1>, (bool)0>(int, T2, T3)",
+              1,
+              1,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 64
+          },
+          {
+            "signature": [
+              "void at::native::vectorized_elementwise_kernel<(int)4, at::native::GeluCUDAKernelImpl(at::TensorIteratorBase &, at::native::GeluType)::[lambda() (instance 2)]::operator ()() const::[lambda() (instance 2)]::operator ()() const::[lambda(float) (instance 1)], std::array<char *, (unsigned long)2>, (bool)0>(int, T2, T3)",
+              4,
+              1,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 56
+          },
+          {
+            "signature": [
+              "void at::native::vectorized_elementwise_kernel<(int)4, at::native::GeluCUDAKernelImpl(at::TensorIteratorBase &, at::native::GeluType)::[lambda() (instance 2)]::operator ()() const::[lambda() (instance 2)]::operator ()() const::[lambda(float) (instance 1)], std::array<char *, (unsigned long)2>, (bool)0>(int, T2, T3)",
+              128,
+              1,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 8
+          },
+          {
+            "signature": [
+              "void at::native::vectorized_elementwise_kernel<(int)4, at::native::bitwise_not_kernel_cuda(at::TensorIteratorBase &)::[lambda(bool) (instance 1)], std::array<char *, (unsigned long)2>, (bool)0>(int, T2, T3)",
+              1,
+              1,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 64
+          },
+          {
+            "signature": [
+              "void at::native::vectorized_gather_kernel<(int)16, long>(char *, char *, T2 *, int, long, long, long, long, bool)",
+              32,
+              1,
+              1,
+              256,
+              1,
+              1
+            ],
+            "count": 1
+          },
+          {
+            "signature": [
+              "void cublasLt::splitKreduce_kernel<(int)32, (int)16, int, float, float, float, (bool)0, float, float, float, (bool)1, (bool)0, (bool)0>(cublasLt::cublasSplitKParams<T6>, const T4 *, const T9 *, T8 *, T5 *, const T6 *, const T6 *, const T10 *, const T4 *, T10 *, void *, long, T6 *, int *, T6 *, const T6 *, const T6 *, const T6 *, const T6 *)",
+              32,
+              2,
+              1,
+              32,
+              16,
+              1
+            ],
+            "count": 16
+          },
+          {
+            "signature": [
+              "void gemv2T_kernel_val<int, int, float, float, float, float, (int)128, (int)16, (int)2, (int)2, (bool)0, (bool)0, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<float>, float>>(T13, T6, T6)",
+              5,
+              1,
+              16,
+              128,
+              1,
+              1
+            ],
+            "count": 56
+          },
+          {
+            "signature": [
+              "void gemv2T_kernel_val<int, int, float, float, float, float, (int)128, (int)16, (int)4, (int)4, (bool)0, (bool)0, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<float>, float>>(T13, T6, T6)",
+              1024,
+              1,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 7
+          },
+          {
+            "signature": [
+              "volta_sgemm_128x32_sliced1x4_tn",
+              24,
+              1,
+              2,
+              256,
+              1,
+              1
+            ],
+            "count": 8
+          },
+          {
+            "signature": [
+              "volta_sgemm_128x32_sliced1x4_tn",
+              32,
+              1,
+              2,
+              256,
+              1,
+              1
+            ],
+            "count": 8
+          },
+          {
+            "signature": [
+              "volta_sgemm_128x32_sliced1x4_tn",
+              64,
+              1,
+              1,
+              256,
+              1,
+              1
+            ],
+            "count": 1
+          },
+          {
+            "signature": [
+              "volta_sgemm_64x32_sliced1x4_tn",
+              16,
+              1,
+              4,
+              256,
+              1,
+              1
+            ],
+            "count": 16
+          },
+          {
+            "signature": [
+              "volta_sgemm_64x64_nn",
+              1,
+              1,
+              16,
+              64,
+              1,
+              1
+            ],
+            "count": 8
+          },
+          {
+            "signature": [
+              "volta_sgemm_64x64_tn",
+              1,
+              1,
+              16,
+              64,
+              1,
+              1
+            ],
+            "count": 8
+          }
+        ],
+        "ordered_signature_sha256": "5395deebca126d3b9efe29d96e68ccacd342ab2c2a2de7e46340f505094ae016"
+      },
+      "sym": {
+        "kernel_count": 1280,
+        "kernel_ms": 10.099852,
+        "copy_count": 72,
+        "copy_bytes": 653376,
+        "memset_count": 16,
+        "memset_bytes": 1792,
+        "kernel_signatures": [
+          {
+            "signature": [
+              "std::enable_if<!T7, void>::type internal::gemvx::kernel<int, int, float, float, float, float, (bool)0, (bool)1, (bool)0, (bool)0, (int)6, (bool)0, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<float>, float>>(T13)",
+              2,
+              1,
+              16,
+              32,
+              2,
+              1
+            ],
+            "count": 56
+          },
+          {
+            "signature": [
+              "std::enable_if<!T7, void>::type internal::gemvx::kernel<int, int, float, float, float, float, (bool)0, (bool)1, (bool)1, (bool)0, (int)7, (bool)0, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<float>, float>>(T13)",
+              256,
+              1,
+              1,
+              32,
+              4,
+              1
+            ],
+            "count": 112
+          },
+          {
+            "signature": [
+              "std::enable_if<!T7, void>::type internal::gemvx::kernel<int, int, float, float, float, float, (bool)0, (bool)1, (bool)1, (bool)0, (int)7, (bool)0, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<float>, float>>(T13)",
+              384,
+              1,
+              1,
+              16,
+              8,
+              1
+            ],
+            "count": 56
+          },
+          {
+            "signature": [
+              "std::enable_if<!T7, void>::type internal::gemvx::kernel<int, int, float, float, float, float, (bool)0, (bool)1, (bool)1, (bool)0, (int)7, (bool)0, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<float>, float>>(T13)",
+              512,
+              1,
+              1,
+              16,
+              8,
+              1
+            ],
+            "count": 56
+          },
+          {
+            "signature": [
+              "void <unnamed>::softmax_warp_forward<float, float, float, (int)5, (bool)0, (bool)0, (int)32>(T2 *, const T1 *, int, int, int, const bool *, int, bool)",
+              64,
+              1,
+              1,
+              32,
+              4,
+              1
+            ],
+            "count": 8
+          },
+          {
+            "signature": [
+              "void <unnamed>::softmax_warp_forward<float, float, float, (int)6, (bool)0, (bool)0, (int)32>(T2 *, const T1 *, int, int, int, const bool *, int, bool)",
+              2,
+              1,
+              1,
+              32,
+              4,
+              1
+            ],
+            "count": 56
+          },
+          {
+            "signature": [
+              "void at::native::<unnamed>::CatArrayBatchedCopy_vectorized<at::native::<unnamed>::OpaqueType<(unsigned int)4>, unsigned int, (int)2, (int)128, (int)1, (int)16, (int)4>(char *, at::native::<unnamed>::CatArrInputTensorMetadata<T1, T2, T4, T5>, at::native::<unnamed>::TensorSizeStride<T2, (unsigned int)4>, int, T2)",
+              64,
+              2,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 16
+          },
+          {
+            "signature": [
+              "void at::native::<unnamed>::CatArrayBatchedCopy_vectorized<at::native::<unnamed>::OpaqueType<(unsigned int)4>, unsigned int, (int)2, (int)128, (int)1, (int)16, (int)4>(char *, at::native::<unnamed>::CatArrInputTensorMetadata<T1, T2, T4, T5>, at::native::<unnamed>::TensorSizeStride<T2, (unsigned int)4>, int, T2)",
+              66,
+              2,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 16
+          },
+          {
+            "signature": [
+              "void at::native::<unnamed>::CatArrayBatchedCopy_vectorized<at::native::<unnamed>::OpaqueType<(unsigned int)4>, unsigned int, (int)2, (int)128, (int)1, (int)16, (int)4>(char *, at::native::<unnamed>::CatArrInputTensorMetadata<T1, T2, T4, T5>, at::native::<unnamed>::TensorSizeStride<T2, (unsigned int)4>, int, T2)",
+              68,
+              2,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 16
+          },
+          {
+            "signature": [
+              "void at::native::<unnamed>::CatArrayBatchedCopy_vectorized<at::native::<unnamed>::OpaqueType<(unsigned int)4>, unsigned int, (int)2, (int)128, (int)1, (int)16, (int)4>(char *, at::native::<unnamed>::CatArrInputTensorMetadata<T1, T2, T4, T5>, at::native::<unnamed>::TensorSizeStride<T2, (unsigned int)4>, int, T2)",
+              70,
+              2,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 16
+          },
+          {
+            "signature": [
+              "void at::native::<unnamed>::CatArrayBatchedCopy_vectorized<at::native::<unnamed>::OpaqueType<(unsigned int)4>, unsigned int, (int)2, (int)128, (int)1, (int)16, (int)4>(char *, at::native::<unnamed>::CatArrInputTensorMetadata<T1, T2, T4, T5>, at::native::<unnamed>::TensorSizeStride<T2, (unsigned int)4>, int, T2)",
+              72,
+              2,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 16
+          },
+          {
+            "signature": [
+              "void at::native::<unnamed>::CatArrayBatchedCopy_vectorized<at::native::<unnamed>::OpaqueType<(unsigned int)4>, unsigned int, (int)2, (int)128, (int)1, (int)16, (int)4>(char *, at::native::<unnamed>::CatArrInputTensorMetadata<T1, T2, T4, T5>, at::native::<unnamed>::TensorSizeStride<T2, (unsigned int)4>, int, T2)",
+              74,
+              2,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 16
+          },
+          {
+            "signature": [
+              "void at::native::<unnamed>::CatArrayBatchedCopy_vectorized<at::native::<unnamed>::OpaqueType<(unsigned int)4>, unsigned int, (int)2, (int)128, (int)1, (int)16, (int)4>(char *, at::native::<unnamed>::CatArrInputTensorMetadata<T1, T2, T4, T5>, at::native::<unnamed>::TensorSizeStride<T2, (unsigned int)4>, int, T2)",
+              76,
+              2,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 16
+          },
+          {
+            "signature": [
+              "void at::native::<unnamed>::vectorized_layer_norm_kernel<float, float, (bool)0>(int, T2, const T1 *, const T1 *, const T1 *, T2 *, T2 *, T1 *)",
+              1,
+              1,
+              1,
+              32,
+              4,
+              1
+            ],
+            "count": 119
+          },
+          {
+            "signature": [
+              "void at::native::<unnamed>::vectorized_layer_norm_kernel<float, float, (bool)0>(int, T2, const T1 *, const T1 *, const T1 *, T2 *, T2 *, T1 *)",
+              32,
+              1,
+              1,
+              32,
+              4,
+              1
+            ],
+            "count": 17
+          },
+          {
+            "signature": [
+              "void at::native::elementwise_kernel<(int)128, (int)2, void at::native::gpu_kernel_impl_nocast<at::native::<unnamed>::masked_fill_kernel(at::TensorIterator &, const c10::Scalar &)::[lambda() (instance 1)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float, bool) (instance 1)]>(at::TensorIteratorBase &, const T1 &)::[lambda(int) (instance 1)]>(int, T3)",
+              3,
+              1,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 56
+          },
+          {
+            "signature": [
+              "void at::native::elementwise_kernel<(int)128, (int)2, void at::native::gpu_kernel_impl_nocast<at::native::<unnamed>::masked_fill_kernel(at::TensorIterator &, const c10::Scalar &)::[lambda() (instance 1)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float, bool) (instance 1)]>(at::TensorIteratorBase &, const T1 &)::[lambda(int) (instance 1)]>(int, T3)",
+              64,
+              1,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 8
+          },
+          {
+            "signature": [
+              "void at::native::elementwise_kernel<(int)128, (int)2, void at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase &)::[lambda() (instance 3)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float) (instance 1)]>(at::TensorIteratorBase &, const T1 &)::[lambda(int) (instance 1)]>(int, T3)",
+              128,
+              1,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 24
+          },
+          {
+            "signature": [
+              "void at::native::index_elementwise_kernel<(int)128, (int)4, void at::native::gpu_index_kernel<void at::native::index_kernel_impl<at::native::OpaqueType<(int)4>>(at::TensorIteratorBase &, c10::ArrayRef<long>, c10::ArrayRef<long>)::[lambda(char *, const char *, long) (instance 1)]>(at::TensorIteratorBase &, c10::ArrayRef<long>, c10::ArrayRef<long>, const T1 &, bool)::[lambda(int) (instance 1)]>(long, T3)",
+              2,
+              1,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 7
+          },
+          {
+            "signature": [
+              "void at::native::reduce_kernel<(int)512, (int)1, at::native::ReduceOp<float, at::native::ArgMaxOps<float>, unsigned int, long, (int)4, (int)4>>(T3)",
+              1,
+              1,
+              1,
+              512,
+              1,
+              1
+            ],
+            "count": 8
+          },
+          {
+            "signature": [
+              "void at::native::triu_tril_kernel<bool, int, (bool)0, (int)8, (bool)0>(at::cuda::detail::TensorInfo<T1, T2>, at::cuda::detail::TensorInfo<const T1, T2>, long, long, T2)",
+              1,
+              1,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 64
+          },
+          {
+            "signature": [
+              "void at::native::vectorized_elementwise_kernel<(int)4, at::native::BUnaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float>>, std::array<char *, (unsigned long)2>, (bool)0>(int, T2, T3)",
+              1,
+              1,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 56
+          },
+          {
+            "signature": [
+              "void at::native::vectorized_elementwise_kernel<(int)4, at::native::BUnaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float>>, std::array<char *, (unsigned long)2>, (bool)0>(int, T2, T3)",
+              16,
+              1,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 8
+          },
+          {
+            "signature": [
+              "void at::native::vectorized_elementwise_kernel<(int)4, at::native::CUDAFunctor_add<float>, std::array<char *, (unsigned long)3>, (bool)0>(int, T2, T3)",
+              1,
+              1,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 119
+          },
+          {
+            "signature": [
+              "void at::native::vectorized_elementwise_kernel<(int)4, at::native::CUDAFunctor_add<float>, std::array<char *, (unsigned long)3>, (bool)0>(int, T2, T3)",
+              32,
+              1,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 17
+          },
+          {
+            "signature": [
+              "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<bool>, std::array<char *, (unsigned long)1>, (bool)0>(int, T2, T3)",
+              1,
+              1,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 64
+          },
+          {
+            "signature": [
+              "void at::native::vectorized_elementwise_kernel<(int)4, at::native::GeluCUDAKernelImpl(at::TensorIteratorBase &, at::native::GeluType)::[lambda() (instance 2)]::operator ()() const::[lambda() (instance 2)]::operator ()() const::[lambda(float) (instance 1)], std::array<char *, (unsigned long)2>, (bool)0>(int, T2, T3)",
+              4,
+              1,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 56
+          },
+          {
+            "signature": [
+              "void at::native::vectorized_elementwise_kernel<(int)4, at::native::GeluCUDAKernelImpl(at::TensorIteratorBase &, at::native::GeluType)::[lambda() (instance 2)]::operator ()() const::[lambda() (instance 2)]::operator ()() const::[lambda(float) (instance 1)], std::array<char *, (unsigned long)2>, (bool)0>(int, T2, T3)",
+              128,
+              1,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 8
+          },
+          {
+            "signature": [
+              "void at::native::vectorized_elementwise_kernel<(int)4, at::native::bitwise_not_kernel_cuda(at::TensorIteratorBase &)::[lambda(bool) (instance 1)], std::array<char *, (unsigned long)2>, (bool)0>(int, T2, T3)",
+              1,
+              1,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 64
+          },
+          {
+            "signature": [
+              "void at::native::vectorized_gather_kernel<(int)16, long>(char *, char *, T2 *, int, long, long, long, long, bool)",
+              32,
+              1,
+              1,
+              256,
+              1,
+              1
+            ],
+            "count": 1
+          },
+          {
+            "signature": [
+              "void cublasLt::splitKreduce_kernel<(int)32, (int)16, int, float, float, float, (bool)0, float, float, float, (bool)1, (bool)0, (bool)0>(cublasLt::cublasSplitKParams<T6>, const T4 *, const T9 *, T8 *, T5 *, const T6 *, const T6 *, const T10 *, const T4 *, T10 *, void *, long, T6 *, int *, T6 *, const T6 *, const T6 *, const T6 *, const T6 *)",
+              32,
+              2,
+              1,
+              32,
+              16,
+              1
+            ],
+            "count": 16
+          },
+          {
+            "signature": [
+              "void gemv2T_kernel_val<int, int, float, float, float, float, (int)128, (int)16, (int)2, (int)2, (bool)0, (bool)0, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<float>, float>>(T13, T6, T6)",
+              5,
+              1,
+              16,
+              128,
+              1,
+              1
+            ],
+            "count": 56
+          },
+          {
+            "signature": [
+              "void gemv2T_kernel_val<int, int, float, float, float, float, (int)128, (int)16, (int)4, (int)4, (bool)0, (bool)0, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<float>, float>>(T13, T6, T6)",
+              1024,
+              1,
+              1,
+              128,
+              1,
+              1
+            ],
+            "count": 7
+          },
+          {
+            "signature": [
+              "volta_sgemm_128x32_sliced1x4_tn",
+              24,
+              1,
+              2,
+              256,
+              1,
+              1
+            ],
+            "count": 8
+          },
+          {
+            "signature": [
+              "volta_sgemm_128x32_sliced1x4_tn",
+              32,
+              1,
+              2,
+              256,
+              1,
+              1
+            ],
+            "count": 8
+          },
+          {
+            "signature": [
+              "volta_sgemm_128x32_sliced1x4_tn",
+              64,
+              1,
+              1,
+              256,
+              1,
+              1
+            ],
+            "count": 1
+          },
+          {
+            "signature": [
+              "volta_sgemm_64x32_sliced1x4_tn",
+              16,
+              1,
+              4,
+              256,
+              1,
+              1
+            ],
+            "count": 16
+          },
+          {
+            "signature": [
+              "volta_sgemm_64x64_nn",
+              1,
+              1,
+              16,
+              64,
+              1,
+              1
+            ],
+            "count": 8
+          },
+          {
+            "signature": [
+              "volta_sgemm_64x64_tn",
+              1,
+              1,
+              16,
+              64,
+              1,
+              1
+            ],
+            "count": 8
+          }
+        ],
+        "ordered_signature_sha256": "5395deebca126d3b9efe29d96e68ccacd342ab2c2a2de7e46340f505094ae016"
+      },
+      "kernel_signatures_equal": true,
+      "kernel_sequence_equal": true
+    },
+    "scope_totals": {
+      "torch": {
+        "transfer/torch/weights/1": {
+          "count": 1,
+          "inclusive_ms": 0.539138
+        },
+        "aten::to": {
+          "count": 987,
+          "inclusive_ms": 158.0492669999999
+        },
+        "aten::_to_copy": {
+          "count": 987,
+          "inclusive_ms": 155.33021900000014
+        },
+        "aten::empty_strided": {
+          "count": 987,
+          "inclusive_ms": 11.605056999999993
+        },
+        "aten::copy_": {
+          "count": 1464,
+          "inclusive_ms": 152.06507500000012
+        },
+        "torch.native.ti.build": {
+          "count": 1719,
+          "inclusive_ms": 8.16271100000001
+        },
+        "aten::mul": {
+          "count": 255,
+          "inclusive_ms": 9.335266
+        },
+        "aten::t": {
+          "count": 255,
+          "inclusive_ms": 3.026017999999999
+        },
+        "aten::transpose": {
+          "count": 477,
+          "inclusive_ms": 4.020129000000002
+        },
+        "aten::as_strided": {
+          "count": 477,
+          "inclusive_ms": 1.2766869999999995
+        },
+        "aten::contiguous": {
+          "count": 477,
+          "inclusive_ms": 24.702679999999983
+        },
+        "aten::clone": {
+          "count": 477,
+          "inclusive_ms": 23.61626599999998
+        },
+        "aten::empty_like": {
+          "count": 477,
+          "inclusive_ms": 5.239716999999998
+        },
+        "aten::empty": {
+          "count": 477,
+          "inclusive_ms": 3.9226300000000016
+        },
+        "transfer/torch/weights/2": {
+          "count": 1,
+          "inclusive_ms": 1.465094
+        },
+        "transfer/torch/weights/3": {
+          "count": 1,
+          "inclusive_ms": 1.07553
+        },
+        "transfer/torch/weights/4": {
+          "count": 1,
+          "inclusive_ms": 1.217932
+        },
+        "transfer/torch/weights/5": {
+          "count": 1,
+          "inclusive_ms": 0.475577
+        },
+        "transfer/torch/weights/6": {
+          "count": 1,
+          "inclusive_ms": 1.381725
+        },
+        "transfer/torch/weights/7": {
+          "count": 1,
+          "inclusive_ms": 1.146877
+        },
+        "transfer/torch/weights/8": {
+          "count": 1,
+          "inclusive_ms": 0.910687
+        },
+        "transfer/torch/weights/9": {
+          "count": 1,
+          "inclusive_ms": 0.474485
+        },
+        "transfer/torch/weights/10": {
+          "count": 1,
+          "inclusive_ms": 0.858987
+        },
+        "transfer/torch/weights/11": {
+          "count": 1,
+          "inclusive_ms": 0.861894
+        },
+        "transfer/torch/weights/12": {
+          "count": 1,
+          "inclusive_ms": 0.748537
+        },
+        "transfer/torch/weights/13": {
+          "count": 1,
+          "inclusive_ms": 0.465237
+        },
+        "transfer/torch/weights/14": {
+          "count": 1,
+          "inclusive_ms": 0.830614
+        },
+        "transfer/torch/weights/15": {
+          "count": 1,
+          "inclusive_ms": 0.841916
+        },
+        "transfer/torch/weights/16": {
+          "count": 1,
+          "inclusive_ms": 0.747896
+        },
+        "transfer/torch/weights/17": {
+          "count": 1,
+          "inclusive_ms": 0.471349
+        },
+        "transfer/torch/weights/18": {
+          "count": 1,
+          "inclusive_ms": 0.840653
+        },
+        "transfer/torch/weights/19": {
+          "count": 1,
+          "inclusive_ms": 0.835423
+        },
+        "transfer/torch/weights/20": {
+          "count": 1,
+          "inclusive_ms": 0.730403
+        },
+        "transfer/torch/weights/21": {
+          "count": 1,
+          "inclusive_ms": 0.442604
+        },
+        "transfer/torch/weights/22": {
+          "count": 1,
+          "inclusive_ms": 0.850091
+        },
+        "transfer/torch/weights/23": {
+          "count": 1,
+          "inclusive_ms": 0.845663
+        },
+        "transfer/torch/weights/24": {
+          "count": 1,
+          "inclusive_ms": 0.815966
+        },
+        "transfer/torch/weights/25": {
+          "count": 1,
+          "inclusive_ms": 0.456209
+        },
+        "transfer/torch/weights/26": {
+          "count": 1,
+          "inclusive_ms": 0.842746
+        },
+        "transfer/torch/weights/27": {
+          "count": 1,
+          "inclusive_ms": 0.830183
+        },
+        "transfer/torch/weights/28": {
+          "count": 1,
+          "inclusive_ms": 0.753116
+        },
+        "transfer/torch/weights/29": {
+          "count": 1,
+          "inclusive_ms": 0.448335
+        },
+        "transfer/torch/weights/30": {
+          "count": 1,
+          "inclusive_ms": 0.840963
+        },
+        "transfer/torch/weights/31": {
+          "count": 1,
+          "inclusive_ms": 0.870029
+        },
+        "transfer/torch/kv_evict/1": {
+          "count": 1,
+          "inclusive_ms": 0.272169
+        },
+        "transfer/torch/kv_evict/2": {
+          "count": 1,
+          "inclusive_ms": 0.265396
+        },
+        "transfer/torch/kv_evict/3": {
+          "count": 1,
+          "inclusive_ms": 0.256829
+        },
+        "transfer/torch/kv_evict/4": {
+          "count": 1,
+          "inclusive_ms": 0.251589
+        },
+        "transfer/torch/kv_evict/5": {
+          "count": 1,
+          "inclusive_ms": 0.271668
+        },
+        "transfer/torch/kv_evict/6": {
+          "count": 1,
+          "inclusive_ms": 0.25144
+        },
+        "transfer/torch/kv_evict/7": {
+          "count": 1,
+          "inclusive_ms": 0.25675
+        },
+        "transfer/torch/kv_evict/8": {
+          "count": 1,
+          "inclusive_ms": 0.253053
+        },
+        "transfer/torch/kv_evict/9": {
+          "count": 1,
+          "inclusive_ms": 0.287028
+        },
+        "transfer/torch/kv_evict/10": {
+          "count": 1,
+          "inclusive_ms": 0.263442
+        },
+        "transfer/torch/kv_evict/11": {
+          "count": 1,
+          "inclusive_ms": 0.254234
+        },
+        "transfer/torch/kv_evict/12": {
+          "count": 1,
+          "inclusive_ms": 0.261949
+        },
+        "transfer/torch/kv_evict/13": {
+          "count": 1,
+          "inclusive_ms": 0.252462
+        },
+        "transfer/torch/kv_evict/14": {
+          "count": 1,
+          "inclusive_ms": 0.257872
+        },
+        "transfer/torch/kv_evict/15": {
+          "count": 1,
+          "inclusive_ms": 0.254615
+        },
+        "transfer/torch/kv_restore/1": {
+          "count": 1,
+          "inclusive_ms": 0.285083
+        },
+        "torch.native.cpu_copy_operator": {
+          "count": 111,
+          "inclusive_ms": 6.367676000000002
+        },
+        "torch.native.cpu_loop": {
+          "count": 111,
+          "inclusive_ms": 5.544353999999999
+        },
+        "transfer/torch/kv_restore/2": {
+          "count": 1,
+          "inclusive_ms": 0.237814
+        },
+        "transfer/torch/kv_restore/3": {
+          "count": 1,
+          "inclusive_ms": 0.233946
+        },
+        "transfer/torch/kv_restore/4": {
+          "count": 1,
+          "inclusive_ms": 0.254105
+        },
+        "transfer/torch/kv_restore/5": {
+          "count": 1,
+          "inclusive_ms": 0.149385
+        },
+        "transfer/torch/kv_restore/6": {
+          "count": 1,
+          "inclusive_ms": 0.229397
+        },
+        "transfer/torch/kv_restore/7": {
+          "count": 1,
+          "inclusive_ms": 0.235119
+        },
+        "transfer/torch/kv_restore/8": {
+          "count": 1,
+          "inclusive_ms": 0.238755
+        },
+        "transfer/torch/kv_restore/9": {
+          "count": 1,
+          "inclusive_ms": 0.236391
+        },
+        "transfer/torch/kv_restore/10": {
+          "count": 1,
+          "inclusive_ms": 0.228025
+        },
+        "transfer/torch/kv_restore/11": {
+          "count": 1,
+          "inclusive_ms": 0.238384
+        },
+        "transfer/torch/kv_restore/12": {
+          "count": 1,
+          "inclusive_ms": 0.237823
+        },
+        "transfer/torch/kv_restore/13": {
+          "count": 1,
+          "inclusive_ms": 0.232373
+        },
+        "transfer/torch/kv_restore/14": {
+          "count": 1,
+          "inclusive_ms": 0.227905
+        },
+        "transfer/torch/kv_restore/15": {
+          "count": 1,
+          "inclusive_ms": 0.238535
+        },
+        "transfer/torch/weights/32": {
+          "count": 1,
+          "inclusive_ms": 0.785648
+        },
+        "transfer/torch/weights/33": {
+          "count": 1,
+          "inclusive_ms": 0.801539
+        },
+        "transfer/torch/weights/34": {
+          "count": 1,
+          "inclusive_ms": 0.828089
+        },
+        "transfer/torch/weights/35": {
+          "count": 1,
+          "inclusive_ms": 0.846213
+        },
+        "transfer/torch/weights/36": {
+          "count": 1,
+          "inclusive_ms": 0.825825
+        },
+        "transfer/torch/weights/37": {
+          "count": 1,
+          "inclusive_ms": 0.455168
+        },
+        "transfer/torch/weights/38": {
+          "count": 1,
+          "inclusive_ms": 0.864629
+        },
+        "transfer/torch/weights/39": {
+          "count": 1,
+          "inclusive_ms": 0.846373
+        },
+        "transfer/torch/weights/40": {
+          "count": 1,
+          "inclusive_ms": 0.723209
+        },
+        "transfer/torch/weights/41": {
+          "count": 1,
+          "inclusive_ms": 0.453194
+        },
+        "transfer/torch/weights/42": {
+          "count": 1,
+          "inclusive_ms": 0.838048
+        },
+        "transfer/torch/weights/43": {
+          "count": 1,
+          "inclusive_ms": 0.853979
+        },
+        "transfer/torch/weights/44": {
+          "count": 1,
+          "inclusive_ms": 0.725393
+        },
+        "transfer/torch/weights/45": {
+          "count": 1,
+          "inclusive_ms": 0.45108
+        },
+        "transfer/torch/weights/46": {
+          "count": 1,
+          "inclusive_ms": 0.852976
+        },
+        "transfer/torch/weights/47": {
+          "count": 1,
+          "inclusive_ms": 0.833069
+        },
+        "transfer/torch/weights/48": {
+          "count": 1,
+          "inclusive_ms": 0.72885
+        },
+        "transfer/torch/weights/49": {
+          "count": 1,
+          "inclusive_ms": 0.453675
+        },
+        "transfer/torch/weights/50": {
+          "count": 1,
+          "inclusive_ms": 0.841344
+        },
+        "transfer/torch/weights/51": {
+          "count": 1,
+          "inclusive_ms": 0.860361
+        },
+        "transfer/torch/weights/52": {
+          "count": 1,
+          "inclusive_ms": 0.731124
+        },
+        "transfer/torch/weights/53": {
+          "count": 1,
+          "inclusive_ms": 0.455408
+        },
+        "transfer/torch/weights/54": {
+          "count": 1,
+          "inclusive_ms": 0.841725
+        },
+        "transfer/torch/weights/55": {
+          "count": 1,
+          "inclusive_ms": 0.83378
+        },
+        "transfer/torch/weights/56": {
+          "count": 1,
+          "inclusive_ms": 0.824993
+        },
+        "transfer/torch/weights/57": {
+          "count": 1,
+          "inclusive_ms": 0.453525
+        },
+        "transfer/torch/weights/58": {
+          "count": 1,
+          "inclusive_ms": 0.853497
+        },
+        "transfer/torch/weights/59": {
+          "count": 1,
+          "inclusive_ms": 0.870951
+        },
+        "transfer/torch/weights/60": {
+          "count": 1,
+          "inclusive_ms": 0.745652
+        },
+        "transfer/torch/weights/61": {
+          "count": 1,
+          "inclusive_ms": 0.45145
+        },
+        "transfer/torch/weights/62": {
+          "count": 1,
+          "inclusive_ms": 0.872674
+        },
+        "transfer/torch/weights/63": {
+          "count": 1,
+          "inclusive_ms": 0.84407
+        },
+        "transfer/torch/kv_evict/16": {
+          "count": 1,
+          "inclusive_ms": 0.297498
+        },
+        "transfer/torch/kv_evict/17": {
+          "count": 1,
+          "inclusive_ms": 0.2625
+        },
+        "transfer/torch/kv_evict/18": {
+          "count": 1,
+          "inclusive_ms": 0.266538
+        },
+        "transfer/torch/kv_evict/19": {
+          "count": 1,
+          "inclusive_ms": 0.269354
+        },
+        "transfer/torch/kv_evict/20": {
+          "count": 1,
+          "inclusive_ms": 0.264996
+        },
+        "transfer/torch/kv_evict/21": {
+          "count": 1,
+          "inclusive_ms": 0.262491
+        },
+        "transfer/torch/kv_evict/22": {
+          "count": 1,
+          "inclusive_ms": 0.263453
+        },
+        "transfer/torch/kv_evict/23": {
+          "count": 1,
+          "inclusive_ms": 0.274523
+        },
+        "transfer/torch/kv_evict/24": {
+          "count": 1,
+          "inclusive_ms": 0.258313
+        },
+        "transfer/torch/kv_evict/25": {
+          "count": 1,
+          "inclusive_ms": 0.263342
+        },
+        "transfer/torch/kv_evict/26": {
+          "count": 1,
+          "inclusive_ms": 0.267981
+        },
+        "transfer/torch/kv_evict/27": {
+          "count": 1,
+          "inclusive_ms": 0.261639
+        },
+        "transfer/torch/kv_evict/28": {
+          "count": 1,
+          "inclusive_ms": 0.258202
+        },
+        "transfer/torch/kv_evict/29": {
+          "count": 1,
+          "inclusive_ms": 0.266518
+        },
+        "transfer/torch/kv_evict/30": {
+          "count": 1,
+          "inclusive_ms": 0.269013
+        },
+        "transfer/torch/kv_evict/31": {
+          "count": 1,
+          "inclusive_ms": 0.258233
+        },
+        "transfer/torch/kv_restore/16": {
+          "count": 1,
+          "inclusive_ms": 0.442333
+        },
+        "transfer/torch/kv_restore/17": {
+          "count": 1,
+          "inclusive_ms": 0.179422
+        },
+        "transfer/torch/kv_restore/18": {
+          "count": 1,
+          "inclusive_ms": 0.175364
+        },
+        "transfer/torch/kv_restore/19": {
+          "count": 1,
+          "inclusive_ms": 0.16775
+        },
+        "transfer/torch/kv_restore/20": {
+          "count": 1,
+          "inclusive_ms": 0.165675
+        },
+        "transfer/torch/kv_restore/21": {
+          "count": 1,
+          "inclusive_ms": 0.168852
+        },
+        "transfer/torch/kv_restore/22": {
+          "count": 1,
+          "inclusive_ms": 0.184962
+        },
+        "transfer/torch/kv_restore/23": {
+          "count": 1,
+          "inclusive_ms": 0.16786
+        },
+        "transfer/torch/kv_restore/24": {
+          "count": 1,
+          "inclusive_ms": 0.167279
+        },
+        "transfer/torch/kv_restore/25": {
+          "count": 1,
+          "inclusive_ms": 0.166648
+        },
+        "transfer/torch/kv_restore/26": {
+          "count": 1,
+          "inclusive_ms": 0.176347
+        },
+        "transfer/torch/kv_restore/27": {
+          "count": 1,
+          "inclusive_ms": 0.177539
+        },
+        "transfer/torch/kv_restore/28": {
+          "count": 1,
+          "inclusive_ms": 0.16772
+        },
+        "transfer/torch/kv_restore/29": {
+          "count": 1,
+          "inclusive_ms": 0.168842
+        },
+        "transfer/torch/kv_restore/30": {
+          "count": 1,
+          "inclusive_ms": 0.174833
+        },
+        "transfer/torch/kv_restore/31": {
+          "count": 1,
+          "inclusive_ms": 0.16784
+        },
+        "transfer/torch/weights/64": {
+          "count": 1,
+          "inclusive_ms": 0.773295
+        },
+        "transfer/torch/weights/65": {
+          "count": 1,
+          "inclusive_ms": 0.459436
+        },
+        "transfer/torch/weights/66": {
+          "count": 1,
+          "inclusive_ms": 0.845132
+        },
+        "transfer/torch/weights/67": {
+          "count": 1,
+          "inclusive_ms": 0.841995
+        },
+        "transfer/torch/weights/68": {
+          "count": 1,
+          "inclusive_ms": 0.730914
+        },
+        "transfer/torch/weights/69": {
+          "count": 1,
+          "inclusive_ms": 0.442283
+        },
+        "transfer/torch/weights/70": {
+          "count": 1,
+          "inclusive_ms": 0.845332
+        },
+        "transfer/torch/weights/71": {
+          "count": 1,
+          "inclusive_ms": 0.842366
+        },
+        "transfer/torch/weights/72": {
+          "count": 1,
+          "inclusive_ms": 0.735082
+        },
+        "transfer/torch/weights/73": {
+          "count": 1,
+          "inclusive_ms": 0.454957
+        },
+        "transfer/torch/weights/74": {
+          "count": 1,
+          "inclusive_ms": 0.827748
+        },
+        "transfer/torch/weights/75": {
+          "count": 1,
+          "inclusive_ms": 0.849029
+        },
+        "transfer/torch/weights/76": {
+          "count": 1,
+          "inclusive_ms": 0.728429
+        },
+        "transfer/torch/weights/77": {
+          "count": 1,
+          "inclusive_ms": 0.457883
+        },
+        "transfer/torch/weights/78": {
+          "count": 1,
+          "inclusive_ms": 0.855491
+        },
+        "transfer/torch/weights/79": {
+          "count": 1,
+          "inclusive_ms": 0.842366
+        },
+        "transfer/torch/weights/80": {
+          "count": 1,
+          "inclusive_ms": 0.745481
+        },
+        "transfer/torch/weights/81": {
+          "count": 1,
+          "inclusive_ms": 0.447062
+        },
+        "transfer/torch/weights/82": {
+          "count": 1,
+          "inclusive_ms": 0.837167
+        },
+        "transfer/torch/weights/83": {
+          "count": 1,
+          "inclusive_ms": 0.868326
+        },
+        "transfer/torch/weights/84": {
+          "count": 1,
+          "inclusive_ms": 0.722968
+        },
+        "transfer/torch/weights/85": {
+          "count": 1,
+          "inclusive_ms": 0.842356
+        },
+        "transfer/torch/weights/86": {
+          "count": 1,
+          "inclusive_ms": 0.852476
+        },
+        "transfer/torch/weights/87": {
+          "count": 1,
+          "inclusive_ms": 0.854509
+        },
+        "transfer/torch/weights/88": {
+          "count": 1,
+          "inclusive_ms": 0.850612
+        },
+        "transfer/torch/weights/89": {
+          "count": 1,
+          "inclusive_ms": 0.455289
+        },
+        "transfer/torch/weights/90": {
+          "count": 1,
+          "inclusive_ms": 0.87064
+        },
+        "transfer/torch/weights/91": {
+          "count": 1,
+          "inclusive_ms": 0.874347
+        },
+        "transfer/torch/weights/92": {
+          "count": 1,
+          "inclusive_ms": 0.771401
+        },
+        "transfer/torch/weights/93": {
+          "count": 1,
+          "inclusive_ms": 0.471218
+        },
+        "transfer/torch/weights/94": {
+          "count": 1,
+          "inclusive_ms": 0.856684
+        },
+        "transfer/torch/weights/95": {
+          "count": 1,
+          "inclusive_ms": 0.860751
+        },
+        "transfer/torch/kv_evict/32": {
+          "count": 1,
+          "inclusive_ms": 0.17864
+        },
+        "transfer/torch/kv_evict/33": {
+          "count": 1,
+          "inclusive_ms": 0.283831
+        },
+        "transfer/torch/kv_evict/34": {
+          "count": 1,
+          "inclusive_ms": 0.267139
+        },
+        "transfer/torch/kv_evict/35": {
+          "count": 1,
+          "inclusive_ms": 0.272529
+        },
+        "transfer/torch/kv_evict/36": {
+          "count": 1,
+          "inclusive_ms": 0.265476
+        },
+        "transfer/torch/kv_evict/37": {
+          "count": 1,
+          "inclusive_ms": 0.278421
+        },
+        "transfer/torch/kv_evict/38": {
+          "count": 1,
+          "inclusive_ms": 0.265616
+        },
+        "transfer/torch/kv_evict/39": {
+          "count": 1,
+          "inclusive_ms": 0.269334
+        },
+        "transfer/torch/kv_evict/40": {
+          "count": 1,
+          "inclusive_ms": 0.280245
+        },
+        "transfer/torch/kv_evict/41": {
+          "count": 1,
+          "inclusive_ms": 0.265055
+        },
+        "transfer/torch/kv_evict/42": {
+          "count": 1,
+          "inclusive_ms": 0.268712
+        },
+        "transfer/torch/kv_evict/43": {
+          "count": 1,
+          "inclusive_ms": 0.264475
+        },
+        "transfer/torch/kv_evict/44": {
+          "count": 1,
+          "inclusive_ms": 0.280104
+        },
+        "transfer/torch/kv_evict/45": {
+          "count": 1,
+          "inclusive_ms": 0.265696
+        },
+        "transfer/torch/kv_evict/46": {
+          "count": 1,
+          "inclusive_ms": 0.266518
+        },
+        "transfer/torch/kv_evict/47": {
+          "count": 1,
+          "inclusive_ms": 0.274404
+        },
+        "transfer/torch/kv_restore/32": {
+          "count": 1,
+          "inclusive_ms": 0.372781
+        },
+        "transfer/torch/kv_restore/33": {
+          "count": 1,
+          "inclusive_ms": 0.179613
+        },
+        "transfer/torch/kv_restore/34": {
+          "count": 1,
+          "inclusive_ms": 0.170435
+        },
+        "transfer/torch/kv_restore/35": {
+          "count": 1,
+          "inclusive_ms": 0.179954
+        },
+        "transfer/torch/kv_restore/36": {
+          "count": 1,
+          "inclusive_ms": 0.169123
+        },
+        "transfer/torch/kv_restore/37": {
+          "count": 1,
+          "inclusive_ms": 0.177979
+        },
+        "transfer/torch/kv_restore/38": {
+          "count": 1,
+          "inclusive_ms": 0.170505
+        },
+        "transfer/torch/kv_restore/39": {
+          "count": 1,
+          "inclusive_ms": 0.168561
+        },
+        "transfer/torch/kv_restore/40": {
+          "count": 1,
+          "inclusive_ms": 0.180605
+        },
+        "transfer/torch/kv_restore/41": {
+          "count": 1,
+          "inclusive_ms": 0.179071
+        },
+        "transfer/torch/kv_restore/42": {
+          "count": 1,
+          "inclusive_ms": 0.169613
+        },
+        "transfer/torch/kv_restore/43": {
+          "count": 1,
+          "inclusive_ms": 0.16787
+        },
+        "transfer/torch/kv_restore/44": {
+          "count": 1,
+          "inclusive_ms": 0.168942
+        },
+        "transfer/torch/kv_restore/45": {
+          "count": 1,
+          "inclusive_ms": 0.188309
+        },
+        "transfer/torch/kv_restore/46": {
+          "count": 1,
+          "inclusive_ms": 0.170755
+        },
+        "transfer/torch/kv_restore/47": {
+          "count": 1,
+          "inclusive_ms": 0.170185
+        },
+        "transfer/torch/weights/96": {
+          "count": 1,
+          "inclusive_ms": 0.794655
+        },
+        "transfer/torch/weights/97": {
+          "count": 1,
+          "inclusive_ms": 0.447494
+        },
+        "transfer/torch/weights/98": {
+          "count": 1,
+          "inclusive_ms": 0.862835
+        },
+        "transfer/torch/weights/99": {
+          "count": 1,
+          "inclusive_ms": 0.846263
+        },
+        "transfer/torch/weights/100": {
+          "count": 1,
+          "inclusive_ms": 0.718219
+        },
+        "transfer/torch/weights/101": {
+          "count": 1,
+          "inclusive_ms": 0.465949
+        },
+        "transfer/torch/weights/102": {
+          "count": 1,
+          "inclusive_ms": 0.838679
+        },
+        "transfer/torch/weights/103": {
+          "count": 1,
+          "inclusive_ms": 0.864168
+        },
+        "transfer/torch/weights/104": {
+          "count": 1,
+          "inclusive_ms": 0.727928
+        },
+        "transfer/torch/weights/105": {
+          "count": 1,
+          "inclusive_ms": 0.442454
+        },
+        "transfer/torch/weights/106": {
+          "count": 1,
+          "inclusive_ms": 0.852385
+        },
+        "transfer/torch/weights/107": {
+          "count": 1,
+          "inclusive_ms": 0.852575
+        },
+        "transfer/torch/weights/108": {
+          "count": 1,
+          "inclusive_ms": 0.726295
+        },
+        "transfer/torch/weights/109": {
+          "count": 1,
+          "inclusive_ms": 0.459686
+        },
+        "transfer/torch/weights/110": {
+          "count": 1,
+          "inclusive_ms": 0.839511
+        },
+        "transfer/torch/weights/111": {
+          "count": 1,
+          "inclusive_ms": 0.852024
+        },
+        "transfer/torch/weights/112": {
+          "count": 1,
+          "inclusive_ms": 0.741504
+        },
+        "transfer/torch/weights/113": {
+          "count": 1,
+          "inclusive_ms": 0.442183
+        },
+        "transfer/torch/weights/114": {
+          "count": 1,
+          "inclusive_ms": 0.852115
+        },
+        "transfer/torch/weights/115": {
+          "count": 1,
+          "inclusive_ms": 0.843098
+        },
+        "transfer/torch/weights/116": {
+          "count": 1,
+          "inclusive_ms": 0.737166
+        },
+        "transfer/torch/weights/117": {
+          "count": 1,
+          "inclusive_ms": 0.484323
+        },
+        "transfer/torch/weights/118": {
+          "count": 1,
+          "inclusive_ms": 0.889697
+        },
+        "transfer/torch/weights/119": {
+          "count": 1,
+          "inclusive_ms": 0.873455
+        },
+        "transfer/torch/weights/120": {
+          "count": 1,
+          "inclusive_ms": 0.870239
+        },
+        "transfer/torch/weights/121": {
+          "count": 1,
+          "inclusive_ms": 0.452262
+        },
+        "transfer/torch/weights/122": {
+          "count": 1,
+          "inclusive_ms": 0.887583
+        },
+        "transfer/torch/weights/123": {
+          "count": 1,
+          "inclusive_ms": 0.858667
+        },
+        "transfer/torch/weights/124": {
+          "count": 1,
+          "inclusive_ms": 0.722457
+        },
+        "transfer/torch/weights/125": {
+          "count": 1,
+          "inclusive_ms": 0.456991
+        },
+        "transfer/torch/weights/126": {
+          "count": 1,
+          "inclusive_ms": 0.84952
+        },
+        "transfer/torch/weights/127": {
+          "count": 1,
+          "inclusive_ms": 0.852315
+        },
+        "transfer/torch/kv_evict/48": {
+          "count": 1,
+          "inclusive_ms": 0.180765
+        },
+        "transfer/torch/kv_evict/49": {
+          "count": 1,
+          "inclusive_ms": 0.286216
+        },
+        "transfer/torch/kv_evict/50": {
+          "count": 1,
+          "inclusive_ms": 0.273391
+        },
+        "transfer/torch/kv_evict/51": {
+          "count": 1,
+          "inclusive_ms": 0.268172
+        },
+        "transfer/torch/kv_evict/52": {
+          "count": 1,
+          "inclusive_ms": 0.285905
+        },
+        "transfer/torch/kv_evict/53": {
+          "count": 1,
+          "inclusive_ms": 0.269644
+        },
+        "transfer/torch/kv_evict/54": {
+          "count": 1,
+          "inclusive_ms": 0.273381
+        },
+        "transfer/torch/kv_evict/55": {
+          "count": 1,
+          "inclusive_ms": 0.2831
+        },
+        "transfer/torch/kv_evict/56": {
+          "count": 1,
+          "inclusive_ms": 0.268682
+        },
+        "transfer/torch/kv_evict/57": {
+          "count": 1,
+          "inclusive_ms": 0.271097
+        },
+        "transfer/torch/kv_evict/58": {
+          "count": 1,
+          "inclusive_ms": 0.26712
+        },
+        "transfer/torch/kv_evict/59": {
+          "count": 1,
+          "inclusive_ms": 0.287048
+        },
+        "transfer/torch/kv_evict/60": {
+          "count": 1,
+          "inclusive_ms": 0.272239
+        },
+        "transfer/torch/kv_evict/61": {
+          "count": 1,
+          "inclusive_ms": 0.2673
+        },
+        "transfer/torch/kv_evict/62": {
+          "count": 1,
+          "inclusive_ms": 0.272559
+        },
+        "transfer/torch/kv_evict/63": {
+          "count": 1,
+          "inclusive_ms": 0.27281
+        },
+        "transfer/torch/kv_restore/48": {
+          "count": 1,
+          "inclusive_ms": 0.294902
+        },
+        "transfer/torch/kv_restore/49": {
+          "count": 1,
+          "inclusive_ms": 0.242993
+        },
+        "transfer/torch/kv_restore/50": {
+          "count": 1,
+          "inclusive_ms": 0.176647
+        },
+        "transfer/torch/kv_restore/51": {
+          "count": 1,
+          "inclusive_ms": 0.169654
+        },
+        "transfer/torch/kv_restore/52": {
+          "count": 1,
+          "inclusive_ms": 0.180524
+        },
+        "transfer/torch/kv_restore/53": {
+          "count": 1,
+          "inclusive_ms": 0.168912
+        },
+        "transfer/torch/kv_restore/54": {
+          "count": 1,
+          "inclusive_ms": 0.180504
+        },
+        "transfer/torch/kv_restore/55": {
+          "count": 1,
+          "inclusive_ms": 0.173481
+        },
+        "transfer/torch/kv_restore/56": {
+          "count": 1,
+          "inclusive_ms": 0.177748
+        },
+        "transfer/torch/kv_restore/57": {
+          "count": 1,
+          "inclusive_ms": 0.169674
+        },
+        "transfer/torch/kv_restore/58": {
+          "count": 1,
+          "inclusive_ms": 0.170244
+        },
+        "transfer/torch/kv_restore/59": {
+          "count": 1,
+          "inclusive_ms": 0.170355
+        },
+        "transfer/torch/kv_restore/60": {
+          "count": 1,
+          "inclusive_ms": 0.179422
+        },
+        "transfer/torch/kv_restore/61": {
+          "count": 1,
+          "inclusive_ms": 0.171126
+        },
+        "transfer/torch/kv_restore/62": {
+          "count": 1,
+          "inclusive_ms": 0.169323
+        },
+        "transfer/torch/kv_restore/63": {
+          "count": 1,
+          "inclusive_ms": 0.170676
+        },
+        "transfer/torch/weights/128": {
+          "count": 1,
+          "inclusive_ms": 0.783453
+        },
+        "transfer/torch/weights/129": {
+          "count": 1,
+          "inclusive_ms": 0.448736
+        },
+        "transfer/torch/weights/130": {
+          "count": 1,
+          "inclusive_ms": 0.861693
+        },
+        "transfer/torch/weights/131": {
+          "count": 1,
+          "inclusive_ms": 0.831536
+        },
+        "transfer/torch/weights/132": {
+          "count": 1,
+          "inclusive_ms": 0.73412
+        },
+        "transfer/torch/weights/133": {
+          "count": 1,
+          "inclusive_ms": 0.444648
+        },
+        "transfer/torch/weights/134": {
+          "count": 1,
+          "inclusive_ms": 0.845051
+        },
+        "transfer/torch/weights/135": {
+          "count": 1,
+          "inclusive_ms": 0.856684
+        },
+        "transfer/torch/weights/136": {
+          "count": 1,
+          "inclusive_ms": 0.732737
+        },
+        "transfer/torch/weights/137": {
+          "count": 1,
+          "inclusive_ms": 0.453505
+        },
+        "transfer/torch/weights/138": {
+          "count": 1,
+          "inclusive_ms": 0.84966
+        },
+        "transfer/torch/weights/139": {
+          "count": 1,
+          "inclusive_ms": 0.837407
+        },
+        "transfer/torch/weights/140": {
+          "count": 1,
+          "inclusive_ms": 0.726215
+        },
+        "transfer/torch/weights/141": {
+          "count": 1,
+          "inclusive_ms": 0.440299
+        },
+        "transfer/torch/weights/142": {
+          "count": 1,
+          "inclusive_ms": 0.831826
+        },
+        "transfer/torch/weights/143": {
+          "count": 1,
+          "inclusive_ms": 0.849009
+        },
+        "transfer/torch/weights/144": {
+          "count": 1,
+          "inclusive_ms": 0.72869
+        },
+        "transfer/torch/weights/145": {
+          "count": 1,
+          "inclusive_ms": 0.451591
+        },
+        "transfer/torch/weights/146": {
+          "count": 1,
+          "inclusive_ms": 0.835563
+        },
+        "transfer/torch/weights/147": {
+          "count": 1,
+          "inclusive_ms": 0.84415
+        },
+        "transfer/torch/weights/148": {
+          "count": 1,
+          "inclusive_ms": 0.76545
+        },
+        "transfer/torch/weights/149": {
+          "count": 1,
+          "inclusive_ms": 0.449798
+        },
+        "transfer/torch/weights/150": {
+          "count": 1,
+          "inclusive_ms": 0.870099
+        },
+        "transfer/torch/weights/151": {
+          "count": 1,
+          "inclusive_ms": 0.971222
+        },
+        "transfer/torch/weights/152": {
+          "count": 1,
+          "inclusive_ms": 0.836766
+        },
+        "transfer/torch/weights/153": {
+          "count": 1,
+          "inclusive_ms": 0.470016
+        },
+        "transfer/torch/weights/154": {
+          "count": 1,
+          "inclusive_ms": 0.841555
+        },
+        "transfer/torch/weights/155": {
+          "count": 1,
+          "inclusive_ms": 0.835192
+        },
+        "transfer/torch/weights/156": {
+          "count": 1,
+          "inclusive_ms": 0.737145
+        },
+        "transfer/torch/weights/157": {
+          "count": 1,
+          "inclusive_ms": 0.439699
+        },
+        "transfer/torch/weights/158": {
+          "count": 1,
+          "inclusive_ms": 0.845131
+        },
+        "transfer/torch/weights/159": {
+          "count": 1,
+          "inclusive_ms": 0.84448
+        },
+        "transfer/torch/kv_evict/64": {
+          "count": 1,
+          "inclusive_ms": 0.175414
+        },
+        "transfer/torch/kv_evict/65": {
+          "count": 1,
+          "inclusive_ms": 0.177488
+        },
+        "transfer/torch/kv_evict/66": {
+          "count": 1,
+          "inclusive_ms": 0.284343
+        },
+        "transfer/torch/kv_evict/67": {
+          "count": 1,
+          "inclusive_ms": 0.281247
+        },
+        "transfer/torch/kv_evict/68": {
+          "count": 1,
+          "inclusive_ms": 0.274273
+        },
+        "transfer/torch/kv_evict/69": {
+          "count": 1,
+          "inclusive_ms": 0.277179
+        },
+        "transfer/torch/kv_evict/70": {
+          "count": 1,
+          "inclusive_ms": 0.288991
+        },
+        "transfer/torch/kv_evict/71": {
+          "count": 1,
+          "inclusive_ms": 0.277599
+        },
+        "transfer/torch/kv_evict/72": {
+          "count": 1,
+          "inclusive_ms": 0.271949
+        },
+        "transfer/torch/kv_evict/73": {
+          "count": 1,
+          "inclusive_ms": 0.275786
+        },
+        "transfer/torch/kv_evict/74": {
+          "count": 1,
+          "inclusive_ms": 0.287047
+        },
+        "transfer/torch/kv_evict/75": {
+          "count": 1,
+          "inclusive_ms": 0.27258
+        },
+        "transfer/torch/kv_evict/76": {
+          "count": 1,
+          "inclusive_ms": 0.274493
+        },
+        "transfer/torch/kv_evict/77": {
+          "count": 1,
+          "inclusive_ms": 0.280345
+        },
+        "transfer/torch/kv_evict/78": {
+          "count": 1,
+          "inclusive_ms": 0.274163
+        },
+        "transfer/torch/kv_evict/79": {
+          "count": 1,
+          "inclusive_ms": 0.275435
+        },
+        "transfer/torch/kv_restore/64": {
+          "count": 1,
+          "inclusive_ms": 0.41449
+        },
+        "transfer/torch/kv_restore/65": {
+          "count": 1,
+          "inclusive_ms": 0.171396
+        },
+        "transfer/torch/kv_restore/66": {
+          "count": 1,
+          "inclusive_ms": 0.167439
+        },
+        "transfer/torch/kv_restore/67": {
+          "count": 1,
+          "inclusive_ms": 0.177047
+        },
+        "transfer/torch/kv_restore/68": {
+          "count": 1,
+          "inclusive_ms": 0.237914
+        },
+        "transfer/torch/kv_restore/69": {
+          "count": 1,
+          "inclusive_ms": 0.182468
+        },
+        "transfer/torch/kv_restore/70": {
+          "count": 1,
+          "inclusive_ms": 0.172228
+        },
+        "transfer/torch/kv_restore/71": {
+          "count": 1,
+          "inclusive_ms": 0.180113
+        },
+        "transfer/torch/kv_restore/72": {
+          "count": 1,
+          "inclusive_ms": 0.170055
+        },
+        "transfer/torch/kv_restore/73": {
+          "count": 1,
+          "inclusive_ms": 0.169193
+        },
+        "transfer/torch/kv_restore/74": {
+          "count": 1,
+          "inclusive_ms": 0.178701
+        },
+        "transfer/torch/kv_restore/75": {
+          "count": 1,
+          "inclusive_ms": 0.179573
+        },
+        "transfer/torch/kv_restore/76": {
+          "count": 1,
+          "inclusive_ms": 0.170055
+        },
+        "transfer/torch/kv_restore/77": {
+          "count": 1,
+          "inclusive_ms": 0.171537
+        },
+        "transfer/torch/kv_restore/78": {
+          "count": 1,
+          "inclusive_ms": 0.170926
+        },
+        "transfer/torch/kv_restore/79": {
+          "count": 1,
+          "inclusive_ms": 0.294131
+        },
+        "transfer/torch/weights/160": {
+          "count": 1,
+          "inclusive_ms": 0.790748
+        },
+        "transfer/torch/weights/161": {
+          "count": 1,
+          "inclusive_ms": 0.454657
+        },
+        "transfer/torch/weights/162": {
+          "count": 1,
+          "inclusive_ms": 0.853427
+        },
+        "transfer/torch/weights/163": {
+          "count": 1,
+          "inclusive_ms": 0.842877
+        },
+        "transfer/torch/weights/164": {
+          "count": 1,
+          "inclusive_ms": 0.737636
+        },
+        "transfer/torch/weights/165": {
+          "count": 1,
+          "inclusive_ms": 0.457662
+        },
+        "transfer/torch/weights/166": {
+          "count": 1,
+          "inclusive_ms": 0.836394
+        },
+        "transfer/torch/weights/167": {
+          "count": 1,
+          "inclusive_ms": 0.832418
+        },
+        "transfer/torch/weights/168": {
+          "count": 1,
+          "inclusive_ms": 0.717338
+        },
+        "transfer/torch/weights/169": {
+          "count": 1,
+          "inclusive_ms": 0.451991
+        },
+        "transfer/torch/weights/170": {
+          "count": 1,
+          "inclusive_ms": 0.841675
+        },
+        "transfer/torch/weights/171": {
+          "count": 1,
+          "inclusive_ms": 0.859969
+        },
+        "transfer/torch/weights/172": {
+          "count": 1,
+          "inclusive_ms": 0.737376
+        },
+        "transfer/torch/weights/173": {
+          "count": 1,
+          "inclusive_ms": 0.44031
+        },
+        "transfer/torch/weights/174": {
+          "count": 1,
+          "inclusive_ms": 0.850912
+        },
+        "transfer/torch/weights/175": {
+          "count": 1,
+          "inclusive_ms": 0.847175
+        },
+        "transfer/torch/weights/176": {
+          "count": 1,
+          "inclusive_ms": 0.736204
+        },
+        "transfer/torch/weights/177": {
+          "count": 1,
+          "inclusive_ms": 0.490616
+        },
+        "transfer/torch/weights/178": {
+          "count": 1,
+          "inclusive_ms": 0.859188
+        },
+        "transfer/torch/weights/179": {
+          "count": 1,
+          "inclusive_ms": 0.876351
+        },
+        "transfer/torch/weights/180": {
+          "count": 1,
+          "inclusive_ms": 0.813912
+        },
+        "transfer/torch/weights/181": {
+          "count": 1,
+          "inclusive_ms": 0.462582
+        },
+        "transfer/torch/weights/182": {
+          "count": 1,
+          "inclusive_ms": 0.877142
+        },
+        "transfer/torch/weights/183": {
+          "count": 1,
+          "inclusive_ms": 0.859508
+        },
+        "transfer/torch/weights/184": {
+          "count": 1,
+          "inclusive_ms": 0.818921
+        },
+        "transfer/torch/weights/185": {
+          "count": 1,
+          "inclusive_ms": 0.450449
+        },
+        "transfer/torch/weights/186": {
+          "count": 1,
+          "inclusive_ms": 0.841785
+        },
+        "transfer/torch/weights/187": {
+          "count": 1,
+          "inclusive_ms": 0.845522
+        },
+        "transfer/torch/weights/188": {
+          "count": 1,
+          "inclusive_ms": 0.721115
+        },
+        "transfer/torch/weights/189": {
+          "count": 1,
+          "inclusive_ms": 0.454767
+        },
+        "transfer/torch/weights/190": {
+          "count": 1,
+          "inclusive_ms": 0.844871
+        },
+        "transfer/torch/weights/191": {
+          "count": 1,
+          "inclusive_ms": 0.855741
+        },
+        "transfer/torch/kv_evict/80": {
+          "count": 1,
+          "inclusive_ms": 0.181796
+        },
+        "transfer/torch/kv_evict/81": {
+          "count": 1,
+          "inclusive_ms": 0.165356
+        },
+        "transfer/torch/kv_evict/82": {
+          "count": 1,
+          "inclusive_ms": 0.181025
+        },
+        "transfer/torch/kv_evict/83": {
+          "count": 1,
+          "inclusive_ms": 0.176446
+        },
+        "transfer/torch/kv_evict/84": {
+          "count": 1,
+          "inclusive_ms": 0.280766
+        },
+        "transfer/torch/kv_evict/85": {
+          "count": 1,
+          "inclusive_ms": 0.287227
+        },
+        "transfer/torch/kv_evict/86": {
+          "count": 1,
+          "inclusive_ms": 0.284974
+        },
+        "transfer/torch/kv_evict/87": {
+          "count": 1,
+          "inclusive_ms": 0.274443
+        },
+        "transfer/torch/kv_evict/88": {
+          "count": 1,
+          "inclusive_ms": 0.279263
+        },
+        "transfer/torch/kv_evict/89": {
+          "count": 1,
+          "inclusive_ms": 0.288901
+        },
+        "transfer/torch/kv_evict/90": {
+          "count": 1,
+          "inclusive_ms": 0.273572
+        },
+        "transfer/torch/kv_evict/91": {
+          "count": 1,
+          "inclusive_ms": 0.275165
+        },
+        "transfer/torch/kv_evict/92": {
+          "count": 1,
+          "inclusive_ms": 0.282438
+        },
+        "transfer/torch/kv_evict/93": {
+          "count": 1,
+          "inclusive_ms": 0.274654
+        },
+        "transfer/torch/kv_evict/94": {
+          "count": 1,
+          "inclusive_ms": 0.281426
+        },
+        "transfer/torch/kv_evict/95": {
+          "count": 1,
+          "inclusive_ms": 0.27271
+        },
+        "transfer/torch/kv_restore/80": {
+          "count": 1,
+          "inclusive_ms": 0.301755
+        },
+        "transfer/torch/kv_restore/81": {
+          "count": 1,
+          "inclusive_ms": 0.176366
+        },
+        "transfer/torch/kv_restore/82": {
+          "count": 1,
+          "inclusive_ms": 0.183099
+        },
+        "transfer/torch/kv_restore/83": {
+          "count": 1,
+          "inclusive_ms": 0.175445
+        },
+        "transfer/torch/kv_restore/84": {
+          "count": 1,
+          "inclusive_ms": 0.184221
+        },
+        "transfer/torch/kv_restore/85": {
+          "count": 1,
+          "inclusive_ms": 0.174242
+        },
+        "transfer/torch/kv_restore/86": {
+          "count": 1,
+          "inclusive_ms": 0.18338
+        },
+        "transfer/torch/kv_restore/87": {
+          "count": 1,
+          "inclusive_ms": 0.174062
+        },
+        "transfer/torch/kv_restore/88": {
+          "count": 1,
+          "inclusive_ms": 0.172289
+        },
+        "transfer/torch/kv_restore/89": {
+          "count": 1,
+          "inclusive_ms": 0.182287
+        },
+        "transfer/torch/kv_restore/90": {
+          "count": 1,
+          "inclusive_ms": 0.181937
+        },
+        "transfer/torch/kv_restore/91": {
+          "count": 1,
+          "inclusive_ms": 0.17269
+        },
+        "transfer/torch/kv_restore/92": {
+          "count": 1,
+          "inclusive_ms": 0.172789
+        },
+        "transfer/torch/kv_restore/93": {
+          "count": 1,
+          "inclusive_ms": 0.17348
+        },
+        "transfer/torch/kv_restore/94": {
+          "count": 1,
+          "inclusive_ms": 0.190443
+        },
+        "transfer/torch/kv_restore/95": {
+          "count": 1,
+          "inclusive_ms": 0.174633
+        },
+        "transfer/torch/weights/192": {
+          "count": 1,
+          "inclusive_ms": 0.824262
+        },
+        "transfer/torch/weights/193": {
+          "count": 1,
+          "inclusive_ms": 0.454437
+        },
+        "transfer/torch/weights/194": {
+          "count": 1,
+          "inclusive_ms": 0.846805
+        },
+        "transfer/torch/weights/195": {
+          "count": 1,
+          "inclusive_ms": 0.851043
+        },
+        "transfer/torch/weights/196": {
+          "count": 1,
+          "inclusive_ms": 0.721586
+        },
+        "transfer/torch/weights/197": {
+          "count": 1,
+          "inclusive_ms": 0.449067
+        },
+        "transfer/torch/weights/198": {
+          "count": 1,
+          "inclusive_ms": 0.850702
+        },
+        "transfer/torch/weights/199": {
+          "count": 1,
+          "inclusive_ms": 0.829351
+        },
+        "transfer/torch/weights/200": {
+          "count": 1,
+          "inclusive_ms": 0.729361
+        },
+        "transfer/torch/weights/201": {
+          "count": 1,
+          "inclusive_ms": 0.444698
+        },
+        "transfer/torch/weights/202": {
+          "count": 1,
+          "inclusive_ms": 0.841685
+        },
+        "transfer/torch/weights/203": {
+          "count": 1,
+          "inclusive_ms": 0.848178
+        },
+        "transfer/torch/weights/204": {
+          "count": 1,
+          "inclusive_ms": 0.731264
+        },
+        "transfer/torch/weights/205": {
+          "count": 1,
+          "inclusive_ms": 0.451621
+        },
+        "transfer/torch/weights/206": {
+          "count": 1,
+          "inclusive_ms": 0.843137
+        },
+        "transfer/torch/weights/207": {
+          "count": 1,
+          "inclusive_ms": 0.855872
+        },
+        "transfer/torch/weights/208": {
+          "count": 1,
+          "inclusive_ms": 0.770769
+        },
+        "transfer/torch/weights/209": {
+          "count": 1,
+          "inclusive_ms": 0.455017
+        },
+        "transfer/torch/weights/210": {
+          "count": 1,
+          "inclusive_ms": 0.895207
+        },
+        "transfer/torch/weights/211": {
+          "count": 1,
+          "inclusive_ms": 0.893143
+        },
+        "transfer/torch/weights/212": {
+          "count": 1,
+          "inclusive_ms": 0.752685
+        },
+        "transfer/torch/weights/213": {
+          "count": 1,
+          "inclusive_ms": 0.469766
+        },
+        "transfer/torch/weights/214": {
+          "count": 1,
+          "inclusive_ms": 0.840643
+        },
+        "transfer/torch/weights/215": {
+          "count": 1,
+          "inclusive_ms": 0.840032
+        },
+        "transfer/torch/weights/216": {
+          "count": 1,
+          "inclusive_ms": 0.828119
+        },
+        "transfer/torch/weights/217": {
+          "count": 1,
+          "inclusive_ms": 0.441772
+        },
+        "transfer/torch/weights/218": {
+          "count": 1,
+          "inclusive_ms": 0.838349
+        },
+        "transfer/torch/weights/219": {
+          "count": 1,
+          "inclusive_ms": 0.840372
+        },
+        "transfer/torch/weights/220": {
+          "count": 1,
+          "inclusive_ms": 0.721346
+        },
+        "transfer/torch/weights/221": {
+          "count": 1,
+          "inclusive_ms": 0.462021
+        },
+        "transfer/torch/weights/222": {
+          "count": 1,
+          "inclusive_ms": 0.83391
+        },
+        "transfer/torch/weights/223": {
+          "count": 1,
+          "inclusive_ms": 0.847947
+        },
+        "transfer/torch/kv_evict/96": {
+          "count": 1,
+          "inclusive_ms": 0.184101
+        },
+        "transfer/torch/kv_evict/97": {
+          "count": 1,
+          "inclusive_ms": 0.294952
+        },
+        "transfer/torch/kv_evict/98": {
+          "count": 1,
+          "inclusive_ms": 0.28293
+        },
+        "transfer/torch/kv_evict/99": {
+          "count": 1,
+          "inclusive_ms": 0.282379
+        },
+        "transfer/torch/kv_evict/100": {
+          "count": 1,
+          "inclusive_ms": 0.285434
+        },
+        "transfer/torch/kv_evict/101": {
+          "count": 1,
+          "inclusive_ms": 0.284793
+        },
+        "transfer/torch/kv_evict/102": {
+          "count": 1,
+          "inclusive_ms": 0.470958
+        },
+        "transfer/torch/kv_evict/103": {
+          "count": 1,
+          "inclusive_ms": 0.296255
+        },
+        "transfer/torch/kv_evict/104": {
+          "count": 1,
+          "inclusive_ms": 0.282588
+        },
+        "transfer/torch/kv_evict/105": {
+          "count": 1,
+          "inclusive_ms": 0.282209
+        },
+        "transfer/torch/kv_evict/106": {
+          "count": 1,
+          "inclusive_ms": 0.287107
+        },
+        "transfer/torch/kv_evict/107": {
+          "count": 1,
+          "inclusive_ms": 0.281116
+        },
+        "transfer/torch/kv_evict/108": {
+          "count": 1,
+          "inclusive_ms": 0.276117
+        },
+        "transfer/torch/kv_evict/109": {
+          "count": 1,
+          "inclusive_ms": 0.286907
+        },
+        "transfer/torch/kv_evict/110": {
+          "count": 1,
+          "inclusive_ms": 0.289101
+        },
+        "transfer/torch/kv_evict/111": {
+          "count": 1,
+          "inclusive_ms": 0.277259
+        },
+        "transfer/torch/kv_restore/96": {
+          "count": 1,
+          "inclusive_ms": 0.302947
+        },
+        "transfer/torch/kv_restore/97": {
+          "count": 1,
+          "inclusive_ms": 0.190904
+        },
+        "transfer/torch/kv_restore/98": {
+          "count": 1,
+          "inclusive_ms": 0.236901
+        },
+        "transfer/torch/kv_restore/99": {
+          "count": 1,
+          "inclusive_ms": 0.176696
+        },
+        "transfer/torch/kv_restore/100": {
+          "count": 1,
+          "inclusive_ms": 0.173931
+        },
+        "transfer/torch/kv_restore/101": {
+          "count": 1,
+          "inclusive_ms": 0.18913
+        },
+        "transfer/torch/kv_restore/102": {
+          "count": 1,
+          "inclusive_ms": 0.179562
+        },
+        "transfer/torch/kv_restore/103": {
+          "count": 1,
+          "inclusive_ms": 0.174593
+        },
+        "transfer/torch/kv_restore/104": {
+          "count": 1,
+          "inclusive_ms": 0.175164
+        },
+        "transfer/torch/kv_restore/105": {
+          "count": 1,
+          "inclusive_ms": 0.181015
+        },
+        "transfer/torch/kv_restore/106": {
+          "count": 1,
+          "inclusive_ms": 0.172399
+        },
+        "transfer/torch/kv_restore/107": {
+          "count": 1,
+          "inclusive_ms": 0.182097
+        },
+        "transfer/torch/kv_restore/108": {
+          "count": 1,
+          "inclusive_ms": 0.174704
+        },
+        "transfer/torch/kv_restore/109": {
+          "count": 1,
+          "inclusive_ms": 0.181346
+        },
+        "transfer/torch/kv_restore/110": {
+          "count": 1,
+          "inclusive_ms": 0.17296
+        },
+        "transfer/torch/kv_restore/111": {
+          "count": 1,
+          "inclusive_ms": 0.17323
+        },
+        "transfer/torch/weights/224": {
+          "count": 1,
+          "inclusive_ms": 0.782241
+        },
+        "transfer/torch/weights/225": {
+          "count": 1,
+          "inclusive_ms": 0.446902
+        },
+        "transfer/torch/weights/226": {
+          "count": 1,
+          "inclusive_ms": 0.863065
+        },
+        "transfer/torch/weights/227": {
+          "count": 1,
+          "inclusive_ms": 0.842717
+        },
+        "transfer/torch/weights/228": {
+          "count": 1,
+          "inclusive_ms": 0.72369
+        },
+        "transfer/torch/weights/229": {
+          "count": 1,
+          "inclusive_ms": 0.45092
+        },
+        "transfer/torch/weights/230": {
+          "count": 1,
+          "inclusive_ms": 0.839611
+        },
+        "transfer/torch/weights/231": {
+          "count": 1,
+          "inclusive_ms": 0.838779
+        },
+        "transfer/torch/weights/232": {
+          "count": 1,
+          "inclusive_ms": 0.723349
+        },
+        "transfer/torch/weights/233": {
+          "count": 1,
+          "inclusive_ms": 0.454176
+        },
+        "transfer/torch/weights/234": {
+          "count": 1,
+          "inclusive_ms": 0.846654
+        },
+        "transfer/torch/weights/235": {
+          "count": 1,
+          "inclusive_ms": 0.835172
+        },
+        "transfer/torch/weights/236": {
+          "count": 1,
+          "inclusive_ms": 0.769938
+        },
+        "transfer/torch/weights/237": {
+          "count": 1,
+          "inclusive_ms": 0.461029
+        },
+        "transfer/torch/weights/238": {
+          "count": 1,
+          "inclusive_ms": 0.872594
+        },
+        "transfer/torch/weights/239": {
+          "count": 1,
+          "inclusive_ms": 0.89141
+        },
+        "transfer/torch/weights/240": {
+          "count": 1,
+          "inclusive_ms": 0.780939
+        },
+        "transfer/torch/weights/241": {
+          "count": 1,
+          "inclusive_ms": 0.465998
+        },
+        "transfer/torch/weights/242": {
+          "count": 1,
+          "inclusive_ms": 0.871592
+        },
+        "transfer/torch/weights/243": {
+          "count": 1,
+          "inclusive_ms": 0.848888
+        },
+        "transfer/torch/weights/244": {
+          "count": 1,
+          "inclusive_ms": 0.722728
+        },
+        "transfer/torch/weights/245": {
+          "count": 1,
+          "inclusive_ms": 0.45611
+        },
+        "transfer/torch/weights/246": {
+          "count": 1,
+          "inclusive_ms": 0.841715
+        },
+        "transfer/torch/weights/247": {
+          "count": 1,
+          "inclusive_ms": 0.859228
+        },
+        "transfer/torch/weights/248": {
+          "count": 1,
+          "inclusive_ms": 0.812319
+        },
+        "transfer/torch/weights/249": {
+          "count": 1,
+          "inclusive_ms": 0.460197
+        },
+        "transfer/torch/weights/250": {
+          "count": 1,
+          "inclusive_ms": 0.846444
+        },
+        "transfer/torch/weights/251": {
+          "count": 1,
+          "inclusive_ms": 0.827928
+        },
+        "transfer/torch/weights/252": {
+          "count": 1,
+          "inclusive_ms": 0.726235
+        },
+        "transfer/torch/weights/253": {
+          "count": 1,
+          "inclusive_ms": 0.45126
+        },
+        "transfer/torch/weights/254": {
+          "count": 1,
+          "inclusive_ms": 0.836715
+        },
+        "transfer/torch/weights/255": {
+          "count": 1,
+          "inclusive_ms": 0.858657
+        }
+      },
+      "sym": {
+        "transfer/sym/weights/1": {
+          "count": 1,
+          "inclusive_ms": 1.824779
+        },
+        "python.prepare_typed_transfer": {
+          "count": 255,
+          "inclusive_ms": 78.27408399999997
+        },
+        "aten::is_pinned": {
+          "count": 477,
+          "inclusive_ms": 6.913568999999998
+        },
+        "python.bind_symbols": {
+          "count": 255,
+          "inclusive_ms": 6.156424000000003
+        },
+        "python.artifact.bind_values": {
+          "count": 477,
+          "inclusive_ms": 9.43705100000001
+        },
+        "python._parameter_snapshot": {
+          "count": 510,
+          "inclusive_ms": 19.088850999999995
+        },
+        "aten::detach": {
+          "count": 1020,
+          "inclusive_ms": 4.503739000000003
+        },
+        "detach": {
+          "count": 1020,
+          "inclusive_ms": 2.123518000000002
+        },
+        "aten::to": {
+          "count": 510,
+          "inclusive_ms": 0.47668499999999964
+        },
+        "aten::resolve_conj": {
+          "count": 510,
+          "inclusive_ms": 0.4141429999999999
+        },
+        "aten::resolve_neg": {
+          "count": 510,
+          "inclusive_ms": 0.33386600000000005
+        },
+        "python.native.bind_typed": {
+          "count": 255,
+          "inclusive_ms": 7.425382000000002
+        },
+        "python._storage_view": {
+          "count": 510,
+          "inclusive_ms": 8.148206000000002
+        },
+        "python.destination_descriptor": {
+          "count": 255,
+          "inclusive_ms": 2.6334099999999987
+        },
+        "python.native.prepare_typed_program": {
+          "count": 255,
+          "inclusive_ms": 3.549184999999999
+        },
+        "python.native.query_capability": {
+          "count": 255,
+          "inclusive_ms": 5.071494999999998
+        },
+        "python.native.select_dispatch": {
+          "count": 255,
+          "inclusive_ms": 5.172844999999996
+        },
+        "python.execute_typed_transfer": {
+          "count": 255,
+          "inclusive_ms": 212.8099849999999
+        },
+        "python.recheck": {
+          "count": 255,
+          "inclusive_ms": 13.424072
+        },
+        "aten::empty_strided": {
+          "count": 477,
+          "inclusive_ms": 6.933669999999994
+        },
+        "python.native.prepare_dispatch": {
+          "count": 255,
+          "inclusive_ms": 6.832570000000001
+        },
+        "python.native.execute_dispatch": {
+          "count": 255,
+          "inclusive_ms": 161.39076900000006
+        },
+        "reloc.scratch.device_acquire": {
+          "count": 510,
+          "inclusive_ms": 0.728782
+        },
+        "reloc.scratch.host_acquire": {
+          "count": 255,
+          "inclusive_ms": 0.4556550000000002
+        },
+        "transfer/sym/weights/2": {
+          "count": 1,
+          "inclusive_ms": 1.862681
+        },
+        "transfer/sym/weights/3": {
+          "count": 1,
+          "inclusive_ms": 1.485212
+        },
+        "transfer/sym/weights/4": {
+          "count": 1,
+          "inclusive_ms": 1.222871
+        },
+        "transfer/sym/weights/5": {
+          "count": 1,
+          "inclusive_ms": 0.87617
+        },
+        "transfer/sym/weights/6": {
+          "count": 1,
+          "inclusive_ms": 1.250384
+        },
+        "transfer/sym/weights/7": {
+          "count": 1,
+          "inclusive_ms": 1.288126
+        },
+        "transfer/sym/weights/8": {
+          "count": 1,
+          "inclusive_ms": 1.209536
+        },
+        "transfer/sym/weights/9": {
+          "count": 1,
+          "inclusive_ms": 0.858587
+        },
+        "transfer/sym/weights/10": {
+          "count": 1,
+          "inclusive_ms": 1.226078
+        },
+        "transfer/sym/weights/11": {
+          "count": 1,
+          "inclusive_ms": 1.359382
+        },
+        "transfer/sym/weights/12": {
+          "count": 1,
+          "inclusive_ms": 1.237169
+        },
+        "transfer/sym/weights/13": {
+          "count": 1,
+          "inclusive_ms": 0.866512
+        },
+        "transfer/sym/weights/14": {
+          "count": 1,
+          "inclusive_ms": 1.202503
+        },
+        "transfer/sym/weights/15": {
+          "count": 1,
+          "inclusive_ms": 1.29553
+        },
+        "transfer/sym/weights/16": {
+          "count": 1,
+          "inclusive_ms": 1.229995
+        },
+        "transfer/sym/weights/17": {
+          "count": 1,
+          "inclusive_ms": 0.87065
+        },
+        "transfer/sym/weights/18": {
+          "count": 1,
+          "inclusive_ms": 1.200489
+        },
+        "transfer/sym/weights/19": {
+          "count": 1,
+          "inclusive_ms": 1.279149
+        },
+        "transfer/sym/weights/20": {
+          "count": 1,
+          "inclusive_ms": 1.205559
+        },
+        "transfer/sym/weights/21": {
+          "count": 1,
+          "inclusive_ms": 0.869749
+        },
+        "transfer/sym/weights/22": {
+          "count": 1,
+          "inclusive_ms": 1.22239
+        },
+        "transfer/sym/weights/23": {
+          "count": 1,
+          "inclusive_ms": 1.271514
+        },
+        "transfer/sym/weights/24": {
+          "count": 1,
+          "inclusive_ms": 1.28497
+        },
+        "transfer/sym/weights/25": {
+          "count": 1,
+          "inclusive_ms": 0.879998
+        },
+        "transfer/sym/weights/26": {
+          "count": 1,
+          "inclusive_ms": 1.252538
+        },
+        "transfer/sym/weights/27": {
+          "count": 1,
+          "inclusive_ms": 1.263359
+        },
+        "transfer/sym/weights/28": {
+          "count": 1,
+          "inclusive_ms": 1.302233
+        },
+        "transfer/sym/weights/29": {
+          "count": 1,
+          "inclusive_ms": 0.905216
+        },
+        "transfer/sym/weights/30": {
+          "count": 1,
+          "inclusive_ms": 1.256886
+        },
+        "transfer/sym/weights/31": {
+          "count": 1,
+          "inclusive_ms": 1.323343
+        },
+        "transfer/sym/kv_evict/1": {
+          "count": 1,
+          "inclusive_ms": 0.948158
+        },
+        "TorchDynamo Cache Lookup": {
+          "count": 222,
+          "inclusive_ms": 3.2313980000000004
+        },
+        "Torch-Compiled Region: 0/0": {
+          "count": 111,
+          "inclusive_ms": 81.91665800000003
+        },
+        "Pregraph bytecode": {
+          "count": 222,
+          "inclusive_ms": 2.545653000000001
+        },
+        "aten::sym_size": {
+          "count": 666,
+          "inclusive_ms": 0.846378000000001
+        },
+        "reloc_torch::transfer": {
+          "count": 222,
+          "inclusive_ms": 134.42147000000008
+        },
+        "python.runtime.bind_symbols": {
+          "count": 222,
+          "inclusive_ms": 6.457565
+        },
+        "python.runtime.destination_descriptor": {
+          "count": 222,
+          "inclusive_ms": 2.183896999999999
+        },
+        "python.adapter.preflight": {
+          "count": 222,
+          "inclusive_ms": 29.955875999999993
+        },
+        "python.layout.prepare_transfer": {
+          "count": 222,
+          "inclusive_ms": 26.179830000000003
+        },
+        "python.layout.bind_symbols": {
+          "count": 222,
+          "inclusive_ms": 1.5754580000000007
+        },
+        "python.layout.bind_plan": {
+          "count": 222,
+          "inclusive_ms": 5.011324999999998
+        },
+        "python.native.bind": {
+          "count": 222,
+          "inclusive_ms": 3.0561000000000025
+        },
+        "python.layout.destination_descriptor": {
+          "count": 222,
+          "inclusive_ms": 1.591095
+        },
+        "python.native.validate_transfer_source": {
+          "count": 222,
+          "inclusive_ms": 0.773592
+        },
+        "python.adapter.execute": {
+          "count": 222,
+          "inclusive_ms": 57.65745500000002
+        },
+        "python.layout.execute_transfer": {
+          "count": 222,
+          "inclusive_ms": 55.697701000000016
+        },
+        "python.native.make_transfer": {
+          "count": 222,
+          "inclusive_ms": 1.5444120000000008
+        },
+        "python.native.execute_transfer": {
+          "count": 222,
+          "inclusive_ms": 33.04995699999998
+        },
+        "python.runtime.verify_result": {
+          "count": 222,
+          "inclusive_ms": 3.842483000000001
+        },
+        "transfer/sym/kv_evict/2": {
+          "count": 1,
+          "inclusive_ms": 0.795707
+        },
+        "transfer/sym/kv_evict/3": {
+          "count": 1,
+          "inclusive_ms": 0.787882
+        },
+        "transfer/sym/kv_evict/4": {
+          "count": 1,
+          "inclusive_ms": 0.802771
+        },
+        "transfer/sym/kv_evict/5": {
+          "count": 1,
+          "inclusive_ms": 0.803843
+        },
+        "transfer/sym/kv_evict/6": {
+          "count": 1,
+          "inclusive_ms": 0.783594
+        },
+        "transfer/sym/kv_evict/7": {
+          "count": 1,
+          "inclusive_ms": 0.793543
+        },
+        "transfer/sym/kv_evict/8": {
+          "count": 1,
+          "inclusive_ms": 0.786219
+        },
+        "transfer/sym/kv_evict/9": {
+          "count": 1,
+          "inclusive_ms": 0.794074
+        },
+        "transfer/sym/kv_evict/10": {
+          "count": 1,
+          "inclusive_ms": 0.783625
+        },
+        "transfer/sym/kv_evict/11": {
+          "count": 1,
+          "inclusive_ms": 0.793242
+        },
+        "transfer/sym/kv_evict/12": {
+          "count": 1,
+          "inclusive_ms": 0.789906
+        },
+        "transfer/sym/kv_evict/13": {
+          "count": 1,
+          "inclusive_ms": 0.784476
+        },
+        "transfer/sym/kv_evict/14": {
+          "count": 1,
+          "inclusive_ms": 0.792922
+        },
+        "transfer/sym/kv_evict/15": {
+          "count": 1,
+          "inclusive_ms": 0.78629
+        },
+        "transfer/sym/kv_restore/1": {
+          "count": 1,
+          "inclusive_ms": 0.801989
+        },
+        "Torch-Compiled Region: 1/0": {
+          "count": 111,
+          "inclusive_ms": 74.39807300000004
+        },
+        "reloc.gather.work": {
+          "count": 111,
+          "inclusive_ms": 2.6420340000000015
+        },
+        "reloc.h2d.submit": {
+          "count": 111,
+          "inclusive_ms": 2.291629000000001
+        },
+        "transfer/sym/kv_restore/2": {
+          "count": 1,
+          "inclusive_ms": 0.70249
+        },
+        "transfer/sym/kv_restore/3": {
+          "count": 1,
+          "inclusive_ms": 0.689715
+        },
+        "transfer/sym/kv_restore/4": {
+          "count": 1,
+          "inclusive_ms": 0.697199
+        },
+        "transfer/sym/kv_restore/5": {
+          "count": 1,
+          "inclusive_ms": 0.693152
+        },
+        "transfer/sym/kv_restore/6": {
+          "count": 1,
+          "inclusive_ms": 0.691879
+        },
+        "transfer/sym/kv_restore/7": {
+          "count": 1,
+          "inclusive_ms": 0.691498
+        },
+        "transfer/sym/kv_restore/8": {
+          "count": 1,
+          "inclusive_ms": 0.674797
+        },
+        "transfer/sym/kv_restore/9": {
+          "count": 1,
+          "inclusive_ms": 0.687431
+        },
+        "transfer/sym/kv_restore/10": {
+          "count": 1,
+          "inclusive_ms": 0.698822
+        },
+        "transfer/sym/kv_restore/11": {
+          "count": 1,
+          "inclusive_ms": 0.671109
+        },
+        "transfer/sym/kv_restore/12": {
+          "count": 1,
+          "inclusive_ms": 0.673565
+        },
+        "transfer/sym/kv_restore/13": {
+          "count": 1,
+          "inclusive_ms": 0.680037
+        },
+        "transfer/sym/kv_restore/14": {
+          "count": 1,
+          "inclusive_ms": 0.669376
+        },
+        "transfer/sym/kv_restore/15": {
+          "count": 1,
+          "inclusive_ms": 0.680988
+        },
+        "transfer/sym/weights/32": {
+          "count": 1,
+          "inclusive_ms": 1.165312
+        },
+        "transfer/sym/weights/33": {
+          "count": 1,
+          "inclusive_ms": 0.861743
+        },
+        "transfer/sym/weights/34": {
+          "count": 1,
+          "inclusive_ms": 1.227902
+        },
+        "transfer/sym/weights/35": {
+          "count": 1,
+          "inclusive_ms": 1.291272
+        },
+        "transfer/sym/weights/36": {
+          "count": 1,
+          "inclusive_ms": 1.206921
+        },
+        "transfer/sym/weights/37": {
+          "count": 1,
+          "inclusive_ms": 0.858356
+        },
+        "transfer/sym/weights/38": {
+          "count": 1,
+          "inclusive_ms": 1.212161
+        },
+        "transfer/sym/weights/39": {
+          "count": 1,
+          "inclusive_ms": 1.298265
+        },
+        "transfer/sym/weights/40": {
+          "count": 1,
+          "inclusive_ms": 1.210858
+        },
+        "transfer/sym/weights/41": {
+          "count": 1,
+          "inclusive_ms": 0.852586
+        },
+        "transfer/sym/weights/42": {
+          "count": 1,
+          "inclusive_ms": 1.20644
+        },
+        "transfer/sym/weights/43": {
+          "count": 1,
+          "inclusive_ms": 1.376805
+        },
+        "transfer/sym/weights/44": {
+          "count": 1,
+          "inclusive_ms": 1.266455
+        },
+        "transfer/sym/weights/45": {
+          "count": 1,
+          "inclusive_ms": 0.885158
+        },
+        "transfer/sym/weights/46": {
+          "count": 1,
+          "inclusive_ms": 1.223042
+        },
+        "transfer/sym/weights/47": {
+          "count": 1,
+          "inclusive_ms": 1.27957
+        },
+        "transfer/sym/weights/48": {
+          "count": 1,
+          "inclusive_ms": 1.201972
+        },
+        "transfer/sym/weights/49": {
+          "count": 1,
+          "inclusive_ms": 0.856624
+        },
+        "transfer/sym/weights/50": {
+          "count": 1,
+          "inclusive_ms": 1.233302
+        },
+        "transfer/sym/weights/51": {
+          "count": 1,
+          "inclusive_ms": 1.277756
+        },
+        "transfer/sym/weights/52": {
+          "count": 1,
+          "inclusive_ms": 1.21137
+        },
+        "transfer/sym/weights/53": {
+          "count": 1,
+          "inclusive_ms": 0.865339
+        },
+        "transfer/sym/weights/54": {
+          "count": 1,
+          "inclusive_ms": 1.199618
+        },
+        "transfer/sym/weights/55": {
+          "count": 1,
+          "inclusive_ms": 1.293837
+        },
+        "transfer/sym/weights/56": {
+          "count": 1,
+          "inclusive_ms": 1.298245
+        },
+        "transfer/sym/weights/57": {
+          "count": 1,
+          "inclusive_ms": 0.866862
+        },
+        "transfer/sym/weights/58": {
+          "count": 1,
+          "inclusive_ms": 1.208884
+        },
+        "transfer/sym/weights/59": {
+          "count": 1,
+          "inclusive_ms": 1.292905
+        },
+        "transfer/sym/weights/60": {
+          "count": 1,
+          "inclusive_ms": 1.287916
+        },
+        "transfer/sym/weights/61": {
+          "count": 1,
+          "inclusive_ms": 0.905366
+        },
+        "transfer/sym/weights/62": {
+          "count": 1,
+          "inclusive_ms": 1.236848
+        },
+        "transfer/sym/weights/63": {
+          "count": 1,
+          "inclusive_ms": 1.314376
+        },
+        "transfer/sym/kv_evict/16": {
+          "count": 1,
+          "inclusive_ms": 1.196361
+        },
+        "transfer/sym/kv_evict/17": {
+          "count": 1,
+          "inclusive_ms": 0.766572
+        },
+        "transfer/sym/kv_evict/18": {
+          "count": 1,
+          "inclusive_ms": 0.770358
+        },
+        "transfer/sym/kv_evict/19": {
+          "count": 1,
+          "inclusive_ms": 0.814312
+        },
+        "transfer/sym/kv_evict/20": {
+          "count": 1,
+          "inclusive_ms": 0.736554
+        },
+        "transfer/sym/kv_evict/21": {
+          "count": 1,
+          "inclusive_ms": 0.797441
+        },
+        "transfer/sym/kv_evict/22": {
+          "count": 1,
+          "inclusive_ms": 0.800716
+        },
+        "transfer/sym/kv_evict/23": {
+          "count": 1,
+          "inclusive_ms": 0.807851
+        },
+        "transfer/sym/kv_evict/24": {
+          "count": 1,
+          "inclusive_ms": 0.725323
+        },
+        "transfer/sym/kv_evict/25": {
+          "count": 1,
+          "inclusive_ms": 0.808742
+        },
+        "transfer/sym/kv_evict/26": {
+          "count": 1,
+          "inclusive_ms": 0.712369
+        },
+        "transfer/sym/kv_evict/27": {
+          "count": 1,
+          "inclusive_ms": 0.800786
+        },
+        "transfer/sym/kv_evict/28": {
+          "count": 1,
+          "inclusive_ms": 0.718039
+        },
+        "transfer/sym/kv_evict/29": {
+          "count": 1,
+          "inclusive_ms": 0.790197
+        },
+        "transfer/sym/kv_evict/30": {
+          "count": 1,
+          "inclusive_ms": 0.712107
+        },
+        "transfer/sym/kv_evict/31": {
+          "count": 1,
+          "inclusive_ms": 0.713049
+        },
+        "transfer/sym/kv_restore/16": {
+          "count": 1,
+          "inclusive_ms": 1.093164
+        },
+        "transfer/sym/kv_restore/17": {
+          "count": 1,
+          "inclusive_ms": 0.794464
+        },
+        "transfer/sym/kv_restore/18": {
+          "count": 1,
+          "inclusive_ms": 0.727918
+        },
+        "transfer/sym/kv_restore/19": {
+          "count": 1,
+          "inclusive_ms": 0.716897
+        },
+        "transfer/sym/kv_restore/20": {
+          "count": 1,
+          "inclusive_ms": 0.711246
+        },
+        "transfer/sym/kv_restore/21": {
+          "count": 1,
+          "inclusive_ms": 0.70811
+        },
+        "transfer/sym/kv_restore/22": {
+          "count": 1,
+          "inclusive_ms": 0.704083
+        },
+        "transfer/sym/kv_restore/23": {
+          "count": 1,
+          "inclusive_ms": 0.715364
+        },
+        "transfer/sym/kv_restore/24": {
+          "count": 1,
+          "inclusive_ms": 0.727397
+        },
+        "transfer/sym/kv_restore/25": {
+          "count": 1,
+          "inclusive_ms": 0.737546
+        },
+        "transfer/sym/kv_restore/26": {
+          "count": 1,
+          "inclusive_ms": 0.706608
+        },
+        "transfer/sym/kv_restore/27": {
+          "count": 1,
+          "inclusive_ms": 1.100158
+        },
+        "transfer/sym/kv_restore/28": {
+          "count": 1,
+          "inclusive_ms": 0.71354
+        },
+        "transfer/sym/kv_restore/29": {
+          "count": 1,
+          "inclusive_ms": 0.704654
+        },
+        "transfer/sym/kv_restore/30": {
+          "count": 1,
+          "inclusive_ms": 0.694595
+        },
+        "transfer/sym/kv_restore/31": {
+          "count": 1,
+          "inclusive_ms": 0.706407
+        },
+        "transfer/sym/weights/64": {
+          "count": 1,
+          "inclusive_ms": 1.176073
+        },
+        "transfer/sym/weights/65": {
+          "count": 1,
+          "inclusive_ms": 0.867203
+        },
+        "transfer/sym/weights/66": {
+          "count": 1,
+          "inclusive_ms": 1.254422
+        },
+        "transfer/sym/weights/67": {
+          "count": 1,
+          "inclusive_ms": 1.291011
+        },
+        "transfer/sym/weights/68": {
+          "count": 1,
+          "inclusive_ms": 1.2167
+        },
+        "transfer/sym/weights/69": {
+          "count": 1,
+          "inclusive_ms": 0.863336
+        },
+        "transfer/sym/weights/70": {
+          "count": 1,
+          "inclusive_ms": 1.21187
+        },
+        "transfer/sym/weights/71": {
+          "count": 1,
+          "inclusive_ms": 1.284118
+        },
+        "transfer/sym/weights/72": {
+          "count": 1,
+          "inclusive_ms": 1.220046
+        },
+        "transfer/sym/weights/73": {
+          "count": 1,
+          "inclusive_ms": 0.910967
+        },
+        "transfer/sym/weights/74": {
+          "count": 1,
+          "inclusive_ms": 1.33229
+        },
+        "transfer/sym/weights/75": {
+          "count": 1,
+          "inclusive_ms": 1.356847
+        },
+        "transfer/sym/weights/76": {
+          "count": 1,
+          "inclusive_ms": 1.199177
+        },
+        "transfer/sym/weights/77": {
+          "count": 1,
+          "inclusive_ms": 0.870941
+        },
+        "transfer/sym/weights/78": {
+          "count": 1,
+          "inclusive_ms": 1.21154
+        },
+        "transfer/sym/weights/79": {
+          "count": 1,
+          "inclusive_ms": 1.289358
+        },
+        "transfer/sym/weights/80": {
+          "count": 1,
+          "inclusive_ms": 1.207472
+        },
+        "transfer/sym/weights/81": {
+          "count": 1,
+          "inclusive_ms": 0.860901
+        },
+        "transfer/sym/weights/82": {
+          "count": 1,
+          "inclusive_ms": 1.208745
+        },
+        "transfer/sym/weights/83": {
+          "count": 1,
+          "inclusive_ms": 1.281363
+        },
+        "transfer/sym/weights/84": {
+          "count": 1,
+          "inclusive_ms": 1.209767
+        },
+        "transfer/sym/weights/85": {
+          "count": 1,
+          "inclusive_ms": 0.858436
+        },
+        "transfer/sym/weights/86": {
+          "count": 1,
+          "inclusive_ms": 1.212622
+        },
+        "transfer/sym/weights/87": {
+          "count": 1,
+          "inclusive_ms": 1.298927
+        },
+        "transfer/sym/weights/88": {
+          "count": 1,
+          "inclusive_ms": 1.304437
+        },
+        "transfer/sym/weights/89": {
+          "count": 1,
+          "inclusive_ms": 0.864237
+        },
+        "transfer/sym/weights/90": {
+          "count": 1,
+          "inclusive_ms": 1.278217
+        },
+        "transfer/sym/weights/91": {
+          "count": 1,
+          "inclusive_ms": 1.390752
+        },
+        "transfer/sym/weights/92": {
+          "count": 1,
+          "inclusive_ms": 1.21661
+        },
+        "transfer/sym/weights/93": {
+          "count": 1,
+          "inclusive_ms": 0.862755
+        },
+        "transfer/sym/weights/94": {
+          "count": 1,
+          "inclusive_ms": 1.228363
+        },
+        "transfer/sym/weights/95": {
+          "count": 1,
+          "inclusive_ms": 1.294308
+        },
+        "transfer/sym/kv_evict/32": {
+          "count": 1,
+          "inclusive_ms": 1.153138
+        },
+        "transfer/sym/kv_evict/33": {
+          "count": 1,
+          "inclusive_ms": 0.742145
+        },
+        "transfer/sym/kv_evict/34": {
+          "count": 1,
+          "inclusive_ms": 0.824502
+        },
+        "transfer/sym/kv_evict/35": {
+          "count": 1,
+          "inclusive_ms": 0.797721
+        },
+        "transfer/sym/kv_evict/36": {
+          "count": 1,
+          "inclusive_ms": 0.807931
+        },
+        "transfer/sym/kv_evict/37": {
+          "count": 1,
+          "inclusive_ms": 0.733689
+        },
+        "transfer/sym/kv_evict/38": {
+          "count": 1,
+          "inclusive_ms": 0.811207
+        },
+        "transfer/sym/kv_evict/39": {
+          "count": 1,
+          "inclusive_ms": 0.897671
+        },
+        "transfer/sym/kv_evict/40": {
+          "count": 1,
+          "inclusive_ms": 0.803712
+        },
+        "transfer/sym/kv_evict/41": {
+          "count": 1,
+          "inclusive_ms": 0.72901
+        },
+        "transfer/sym/kv_evict/42": {
+          "count": 1,
+          "inclusive_ms": 0.81296
+        },
+        "transfer/sym/kv_evict/43": {
+          "count": 1,
+          "inclusive_ms": 0.716676
+        },
+        "transfer/sym/kv_evict/44": {
+          "count": 1,
+          "inclusive_ms": 0.799344
+        },
+        "transfer/sym/kv_evict/45": {
+          "count": 1,
+          "inclusive_ms": 0.726164
+        },
+        "transfer/sym/kv_evict/46": {
+          "count": 1,
+          "inclusive_ms": 0.809624
+        },
+        "transfer/sym/kv_evict/47": {
+          "count": 1,
+          "inclusive_ms": 0.739761
+        },
+        "transfer/sym/kv_restore/32": {
+          "count": 1,
+          "inclusive_ms": 1.019824
+        },
+        "transfer/sym/kv_restore/33": {
+          "count": 1,
+          "inclusive_ms": 0.721896
+        },
+        "transfer/sym/kv_restore/34": {
+          "count": 1,
+          "inclusive_ms": 0.71838
+        },
+        "transfer/sym/kv_restore/35": {
+          "count": 1,
+          "inclusive_ms": 0.719232
+        },
+        "transfer/sym/kv_restore/36": {
+          "count": 1,
+          "inclusive_ms": 0.719481
+        },
+        "transfer/sym/kv_restore/37": {
+          "count": 1,
+          "inclusive_ms": 0.715595
+        },
+        "transfer/sym/kv_restore/38": {
+          "count": 1,
+          "inclusive_ms": 0.929803
+        },
+        "transfer/sym/kv_restore/39": {
+          "count": 1,
+          "inclusive_ms": 0.763656
+        },
+        "transfer/sym/kv_restore/40": {
+          "count": 1,
+          "inclusive_ms": 0.720624
+        },
+        "transfer/sym/kv_restore/41": {
+          "count": 1,
+          "inclusive_ms": 0.712258
+        },
+        "transfer/sym/kv_restore/42": {
+          "count": 1,
+          "inclusive_ms": 0.70269
+        },
+        "transfer/sym/kv_restore/43": {
+          "count": 1,
+          "inclusive_ms": 0.714763
+        },
+        "transfer/sym/kv_restore/44": {
+          "count": 1,
+          "inclusive_ms": 0.716346
+        },
+        "transfer/sym/kv_restore/45": {
+          "count": 1,
+          "inclusive_ms": 0.73959
+        },
+        "transfer/sym/kv_restore/46": {
+          "count": 1,
+          "inclusive_ms": 0.719973
+        },
+        "transfer/sym/kv_restore/47": {
+          "count": 1,
+          "inclusive_ms": 0.712698
+        },
+        "transfer/sym/weights/96": {
+          "count": 1,
+          "inclusive_ms": 1.20625
+        },
+        "transfer/sym/weights/97": {
+          "count": 1,
+          "inclusive_ms": 0.893744
+        },
+        "transfer/sym/weights/98": {
+          "count": 1,
+          "inclusive_ms": 1.213424
+        },
+        "transfer/sym/weights/99": {
+          "count": 1,
+          "inclusive_ms": 1.296152
+        },
+        "transfer/sym/weights/100": {
+          "count": 1,
+          "inclusive_ms": 1.216439
+        },
+        "transfer/sym/weights/101": {
+          "count": 1,
+          "inclusive_ms": 0.866862
+        },
+        "transfer/sym/weights/102": {
+          "count": 1,
+          "inclusive_ms": 1.224023
+        },
+        "transfer/sym/weights/103": {
+          "count": 1,
+          "inclusive_ms": 1.287134
+        },
+        "transfer/sym/weights/104": {
+          "count": 1,
+          "inclusive_ms": 1.207071
+        },
+        "transfer/sym/weights/105": {
+          "count": 1,
+          "inclusive_ms": 0.848588
+        },
+        "transfer/sym/weights/106": {
+          "count": 1,
+          "inclusive_ms": 1.199467
+        },
+        "transfer/sym/weights/107": {
+          "count": 1,
+          "inclusive_ms": 1.307974
+        },
+        "transfer/sym/weights/108": {
+          "count": 1,
+          "inclusive_ms": 1.308555
+        },
+        "transfer/sym/weights/109": {
+          "count": 1,
+          "inclusive_ms": 0.893003
+        },
+        "transfer/sym/weights/110": {
+          "count": 1,
+          "inclusive_ms": 1.22191
+        },
+        "transfer/sym/weights/111": {
+          "count": 1,
+          "inclusive_ms": 1.286623
+        },
+        "transfer/sym/weights/112": {
+          "count": 1,
+          "inclusive_ms": 1.215418
+        },
+        "transfer/sym/weights/113": {
+          "count": 1,
+          "inclusive_ms": 0.83411
+        },
+        "transfer/sym/weights/114": {
+          "count": 1,
+          "inclusive_ms": 1.223974
+        },
+        "transfer/sym/weights/115": {
+          "count": 1,
+          "inclusive_ms": 1.276685
+        },
+        "transfer/sym/weights/116": {
+          "count": 1,
+          "inclusive_ms": 1.220677
+        },
+        "transfer/sym/weights/117": {
+          "count": 1,
+          "inclusive_ms": 0.89146
+        },
+        "transfer/sym/weights/118": {
+          "count": 1,
+          "inclusive_ms": 1.214385
+        },
+        "transfer/sym/weights/119": {
+          "count": 1,
+          "inclusive_ms": 1.275672
+        },
+        "transfer/sym/weights/120": {
+          "count": 1,
+          "inclusive_ms": 1.283787
+        },
+        "transfer/sym/weights/121": {
+          "count": 1,
+          "inclusive_ms": 0.868285
+        },
+        "transfer/sym/weights/122": {
+          "count": 1,
+          "inclusive_ms": 1.227941
+        },
+        "transfer/sym/weights/123": {
+          "count": 1,
+          "inclusive_ms": 1.281173
+        },
+        "transfer/sym/weights/124": {
+          "count": 1,
+          "inclusive_ms": 1.23814
+        },
+        "transfer/sym/weights/125": {
+          "count": 1,
+          "inclusive_ms": 0.937427
+        },
+        "transfer/sym/weights/126": {
+          "count": 1,
+          "inclusive_ms": 1.275973
+        },
+        "transfer/sym/weights/127": {
+          "count": 1,
+          "inclusive_ms": 1.318955
+        },
+        "transfer/sym/kv_evict/48": {
+          "count": 1,
+          "inclusive_ms": 1.622253
+        },
+        "transfer/sym/kv_evict/49": {
+          "count": 1,
+          "inclusive_ms": 0.780899
+        },
+        "transfer/sym/kv_evict/50": {
+          "count": 1,
+          "inclusive_ms": 0.715083
+        },
+        "transfer/sym/kv_evict/51": {
+          "count": 1,
+          "inclusive_ms": 0.713891
+        },
+        "transfer/sym/kv_evict/52": {
+          "count": 1,
+          "inclusive_ms": 0.720403
+        },
+        "transfer/sym/kv_evict/53": {
+          "count": 1,
+          "inclusive_ms": 0.716526
+        },
+        "transfer/sym/kv_evict/54": {
+          "count": 1,
+          "inclusive_ms": 0.707829
+        },
+        "transfer/sym/kv_evict/55": {
+          "count": 1,
+          "inclusive_ms": 0.722057
+        },
+        "transfer/sym/kv_evict/56": {
+          "count": 1,
+          "inclusive_ms": 0.721997
+        },
+        "transfer/sym/kv_evict/57": {
+          "count": 1,
+          "inclusive_ms": 0.701177
+        },
+        "transfer/sym/kv_evict/58": {
+          "count": 1,
+          "inclusive_ms": 0.699463
+        },
+        "transfer/sym/kv_evict/59": {
+          "count": 1,
+          "inclusive_ms": 0.807961
+        },
+        "transfer/sym/kv_evict/60": {
+          "count": 1,
+          "inclusive_ms": 0.813281
+        },
+        "transfer/sym/kv_evict/61": {
+          "count": 1,
+          "inclusive_ms": 0.806107
+        },
+        "transfer/sym/kv_evict/62": {
+          "count": 1,
+          "inclusive_ms": 0.729461
+        },
+        "transfer/sym/kv_evict/63": {
+          "count": 1,
+          "inclusive_ms": 0.802761
+        },
+        "transfer/sym/kv_restore/48": {
+          "count": 1,
+          "inclusive_ms": 1.030545
+        },
+        "transfer/sym/kv_restore/49": {
+          "count": 1,
+          "inclusive_ms": 0.715995
+        },
+        "transfer/sym/kv_restore/50": {
+          "count": 1,
+          "inclusive_ms": 0.722789
+        },
+        "transfer/sym/kv_restore/51": {
+          "count": 1,
+          "inclusive_ms": 0.71848
+        },
+        "transfer/sym/kv_restore/52": {
+          "count": 1,
+          "inclusive_ms": 0.70814
+        },
+        "transfer/sym/kv_restore/53": {
+          "count": 1,
+          "inclusive_ms": 0.70254
+        },
+        "transfer/sym/kv_restore/54": {
+          "count": 1,
+          "inclusive_ms": 0.708792
+        },
+        "transfer/sym/kv_restore/55": {
+          "count": 1,
+          "inclusive_ms": 0.700906
+        },
+        "transfer/sym/kv_restore/56": {
+          "count": 1,
+          "inclusive_ms": 0.725854
+        },
+        "transfer/sym/kv_restore/57": {
+          "count": 1,
+          "inclusive_ms": 0.708811
+        },
+        "transfer/sym/kv_restore/58": {
+          "count": 1,
+          "inclusive_ms": 0.715835
+        },
+        "transfer/sym/kv_restore/59": {
+          "count": 1,
+          "inclusive_ms": 0.757925
+        },
+        "transfer/sym/kv_restore/60": {
+          "count": 1,
+          "inclusive_ms": 0.829291
+        },
+        "transfer/sym/kv_restore/61": {
+          "count": 1,
+          "inclusive_ms": 0.849149
+        },
+        "transfer/sym/kv_restore/62": {
+          "count": 1,
+          "inclusive_ms": 0.73983
+        },
+        "transfer/sym/kv_restore/63": {
+          "count": 1,
+          "inclusive_ms": 0.723359
+        },
+        "transfer/sym/weights/128": {
+          "count": 1,
+          "inclusive_ms": 1.183957
+        },
+        "transfer/sym/weights/129": {
+          "count": 1,
+          "inclusive_ms": 0.862965
+        },
+        "transfer/sym/weights/130": {
+          "count": 1,
+          "inclusive_ms": 1.224775
+        },
+        "transfer/sym/weights/131": {
+          "count": 1,
+          "inclusive_ms": 1.286914
+        },
+        "transfer/sym/weights/132": {
+          "count": 1,
+          "inclusive_ms": 1.208825
+        },
+        "transfer/sym/weights/133": {
+          "count": 1,
+          "inclusive_ms": 0.866974
+        },
+        "transfer/sym/weights/134": {
+          "count": 1,
+          "inclusive_ms": 1.19088
+        },
+        "transfer/sym/weights/135": {
+          "count": 1,
+          "inclusive_ms": 1.272988
+        },
+        "transfer/sym/weights/136": {
+          "count": 1,
+          "inclusive_ms": 1.207171
+        },
+        "transfer/sym/weights/137": {
+          "count": 1,
+          "inclusive_ms": 0.868876
+        },
+        "transfer/sym/weights/138": {
+          "count": 1,
+          "inclusive_ms": 1.228522
+        },
+        "transfer/sym/weights/139": {
+          "count": 1,
+          "inclusive_ms": 1.297214
+        },
+        "transfer/sym/weights/140": {
+          "count": 1,
+          "inclusive_ms": 1.216469
+        },
+        "transfer/sym/weights/141": {
+          "count": 1,
+          "inclusive_ms": 0.855251
+        },
+        "transfer/sym/weights/142": {
+          "count": 1,
+          "inclusive_ms": 1.280862
+        },
+        "transfer/sym/weights/143": {
+          "count": 1,
+          "inclusive_ms": 1.387486
+        },
+        "transfer/sym/weights/144": {
+          "count": 1,
+          "inclusive_ms": 1.246657
+        },
+        "transfer/sym/weights/145": {
+          "count": 1,
+          "inclusive_ms": 0.851494
+        },
+        "transfer/sym/weights/146": {
+          "count": 1,
+          "inclusive_ms": 1.217111
+        },
+        "transfer/sym/weights/147": {
+          "count": 1,
+          "inclusive_ms": 1.305138
+        },
+        "transfer/sym/weights/148": {
+          "count": 1,
+          "inclusive_ms": 1.207713
+        },
+        "transfer/sym/weights/149": {
+          "count": 1,
+          "inclusive_ms": 0.851323
+        },
+        "transfer/sym/weights/150": {
+          "count": 1,
+          "inclusive_ms": 1.220898
+        },
+        "transfer/sym/weights/151": {
+          "count": 1,
+          "inclusive_ms": 1.270061
+        },
+        "transfer/sym/weights/152": {
+          "count": 1,
+          "inclusive_ms": 1.302574
+        },
+        "transfer/sym/weights/153": {
+          "count": 1,
+          "inclusive_ms": 0.862345
+        },
+        "transfer/sym/weights/154": {
+          "count": 1,
+          "inclusive_ms": 1.192313
+        },
+        "transfer/sym/weights/155": {
+          "count": 1,
+          "inclusive_ms": 1.265463
+        },
+        "transfer/sym/weights/156": {
+          "count": 1,
+          "inclusive_ms": 1.19055
+        },
+        "transfer/sym/weights/157": {
+          "count": 1,
+          "inclusive_ms": 0.850762
+        },
+        "transfer/sym/weights/158": {
+          "count": 1,
+          "inclusive_ms": 1.212732
+        },
+        "transfer/sym/weights/159": {
+          "count": 1,
+          "inclusive_ms": 1.300039
+        },
+        "transfer/sym/kv_evict/64": {
+          "count": 1,
+          "inclusive_ms": 1.23798
+        },
+        "transfer/sym/kv_evict/65": {
+          "count": 1,
+          "inclusive_ms": 0.794525
+        },
+        "transfer/sym/kv_evict/66": {
+          "count": 1,
+          "inclusive_ms": 0.738698
+        },
+        "transfer/sym/kv_evict/67": {
+          "count": 1,
+          "inclusive_ms": 0.720294
+        },
+        "transfer/sym/kv_evict/68": {
+          "count": 1,
+          "inclusive_ms": 0.720484
+        },
+        "transfer/sym/kv_evict/69": {
+          "count": 1,
+          "inclusive_ms": 0.723019
+        },
+        "transfer/sym/kv_evict/70": {
+          "count": 1,
+          "inclusive_ms": 0.919073
+        },
+        "transfer/sym/kv_evict/71": {
+          "count": 1,
+          "inclusive_ms": 0.730402
+        },
+        "transfer/sym/kv_evict/72": {
+          "count": 1,
+          "inclusive_ms": 0.726034
+        },
+        "transfer/sym/kv_evict/73": {
+          "count": 1,
+          "inclusive_ms": 0.735012
+        },
+        "transfer/sym/kv_evict/74": {
+          "count": 1,
+          "inclusive_ms": 0.730172
+        },
+        "transfer/sym/kv_evict/75": {
+          "count": 1,
+          "inclusive_ms": 0.810586
+        },
+        "transfer/sym/kv_evict/76": {
+          "count": 1,
+          "inclusive_ms": 0.837276
+        },
+        "transfer/sym/kv_evict/77": {
+          "count": 1,
+          "inclusive_ms": 0.813211
+        },
+        "transfer/sym/kv_evict/78": {
+          "count": 1,
+          "inclusive_ms": 0.821787
+        },
+        "transfer/sym/kv_evict/79": {
+          "count": 1,
+          "inclusive_ms": 0.812268
+        },
+        "transfer/sym/kv_restore/64": {
+          "count": 1,
+          "inclusive_ms": 1.037238
+        },
+        "transfer/sym/kv_restore/65": {
+          "count": 1,
+          "inclusive_ms": 0.720945
+        },
+        "transfer/sym/kv_restore/66": {
+          "count": 1,
+          "inclusive_ms": 0.71333
+        },
+        "transfer/sym/kv_restore/67": {
+          "count": 1,
+          "inclusive_ms": 0.717057
+        },
+        "transfer/sym/kv_restore/68": {
+          "count": 1,
+          "inclusive_ms": 0.718089
+        },
+        "transfer/sym/kv_restore/69": {
+          "count": 1,
+          "inclusive_ms": 0.728629
+        },
+        "transfer/sym/kv_restore/70": {
+          "count": 1,
+          "inclusive_ms": 0.728359
+        },
+        "transfer/sym/kv_restore/71": {
+          "count": 1,
+          "inclusive_ms": 0.712709
+        },
+        "transfer/sym/kv_restore/72": {
+          "count": 1,
+          "inclusive_ms": 0.714072
+        },
+        "transfer/sym/kv_restore/73": {
+          "count": 1,
+          "inclusive_ms": 0.69769
+        },
+        "transfer/sym/kv_restore/74": {
+          "count": 1,
+          "inclusive_ms": 0.720063
+        },
+        "transfer/sym/kv_restore/75": {
+          "count": 1,
+          "inclusive_ms": 1.144041
+        },
+        "transfer/sym/kv_restore/76": {
+          "count": 1,
+          "inclusive_ms": 0.732667
+        },
+        "transfer/sym/kv_restore/77": {
+          "count": 1,
+          "inclusive_ms": 0.704874
+        },
+        "transfer/sym/kv_restore/78": {
+          "count": 1,
+          "inclusive_ms": 0.715554
+        },
+        "transfer/sym/kv_restore/79": {
+          "count": 1,
+          "inclusive_ms": 0.720163
+        },
+        "transfer/sym/weights/160": {
+          "count": 1,
+          "inclusive_ms": 1.208825
+        },
+        "transfer/sym/weights/161": {
+          "count": 1,
+          "inclusive_ms": 0.936646
+        },
+        "transfer/sym/weights/162": {
+          "count": 1,
+          "inclusive_ms": 1.332069
+        },
+        "transfer/sym/weights/163": {
+          "count": 1,
+          "inclusive_ms": 1.339394
+        },
+        "transfer/sym/weights/164": {
+          "count": 1,
+          "inclusive_ms": 1.223242
+        },
+        "transfer/sym/weights/165": {
+          "count": 1,
+          "inclusive_ms": 0.877553
+        },
+        "transfer/sym/weights/166": {
+          "count": 1,
+          "inclusive_ms": 1.218744
+        },
+        "transfer/sym/weights/167": {
+          "count": 1,
+          "inclusive_ms": 1.284339
+        },
+        "transfer/sym/weights/168": {
+          "count": 1,
+          "inclusive_ms": 1.21183
+        },
+        "transfer/sym/weights/169": {
+          "count": 1,
+          "inclusive_ms": 0.853347
+        },
+        "transfer/sym/weights/170": {
+          "count": 1,
+          "inclusive_ms": 1.192664
+        },
+        "transfer/sym/weights/171": {
+          "count": 1,
+          "inclusive_ms": 1.270713
+        },
+        "transfer/sym/weights/172": {
+          "count": 1,
+          "inclusive_ms": 1.197473
+        },
+        "transfer/sym/weights/173": {
+          "count": 1,
+          "inclusive_ms": 0.847476
+        },
+        "transfer/sym/weights/174": {
+          "count": 1,
+          "inclusive_ms": 1.217501
+        },
+        "transfer/sym/weights/175": {
+          "count": 1,
+          "inclusive_ms": 1.272907
+        },
+        "transfer/sym/weights/176": {
+          "count": 1,
+          "inclusive_ms": 1.205588
+        },
+        "transfer/sym/weights/177": {
+          "count": 1,
+          "inclusive_ms": 0.84967
+        },
+        "transfer/sym/weights/178": {
+          "count": 1,
+          "inclusive_ms": 1.269751
+        },
+        "transfer/sym/weights/179": {
+          "count": 1,
+          "inclusive_ms": 1.408446
+        },
+        "transfer/sym/weights/180": {
+          "count": 1,
+          "inclusive_ms": 1.245314
+        },
+        "transfer/sym/weights/181": {
+          "count": 1,
+          "inclusive_ms": 0.877322
+        },
+        "transfer/sym/weights/182": {
+          "count": 1,
+          "inclusive_ms": 1.203144
+        },
+        "transfer/sym/weights/183": {
+          "count": 1,
+          "inclusive_ms": 1.285341
+        },
+        "transfer/sym/weights/184": {
+          "count": 1,
+          "inclusive_ms": 1.292414
+        },
+        "transfer/sym/weights/185": {
+          "count": 1,
+          "inclusive_ms": 0.84961
+        },
+        "transfer/sym/weights/186": {
+          "count": 1,
+          "inclusive_ms": 1.2171
+        },
+        "transfer/sym/weights/187": {
+          "count": 1,
+          "inclusive_ms": 1.279811
+        },
+        "transfer/sym/weights/188": {
+          "count": 1,
+          "inclusive_ms": 1.204317
+        },
+        "transfer/sym/weights/189": {
+          "count": 1,
+          "inclusive_ms": 0.852175
+        },
+        "transfer/sym/weights/190": {
+          "count": 1,
+          "inclusive_ms": 1.198716
+        },
+        "transfer/sym/weights/191": {
+          "count": 1,
+          "inclusive_ms": 1.283627
+        },
+        "transfer/sym/kv_evict/80": {
+          "count": 1,
+          "inclusive_ms": 1.171564
+        },
+        "transfer/sym/kv_evict/81": {
+          "count": 1,
+          "inclusive_ms": 0.774517
+        },
+        "transfer/sym/kv_evict/82": {
+          "count": 1,
+          "inclusive_ms": 0.737186
+        },
+        "transfer/sym/kv_evict/83": {
+          "count": 1,
+          "inclusive_ms": 0.734371
+        },
+        "transfer/sym/kv_evict/84": {
+          "count": 1,
+          "inclusive_ms": 0.733529
+        },
+        "transfer/sym/kv_evict/85": {
+          "count": 1,
+          "inclusive_ms": 0.734371
+        },
+        "transfer/sym/kv_evict/86": {
+          "count": 1,
+          "inclusive_ms": 0.921577
+        },
+        "transfer/sym/kv_evict/87": {
+          "count": 1,
+          "inclusive_ms": 0.874247
+        },
+        "transfer/sym/kv_evict/88": {
+          "count": 1,
+          "inclusive_ms": 0.848397
+        },
+        "transfer/sym/kv_evict/89": {
+          "count": 1,
+          "inclusive_ms": 0.825544
+        },
+        "transfer/sym/kv_evict/90": {
+          "count": 1,
+          "inclusive_ms": 0.815324
+        },
+        "transfer/sym/kv_evict/91": {
+          "count": 1,
+          "inclusive_ms": 0.805887
+        },
+        "transfer/sym/kv_evict/92": {
+          "count": 1,
+          "inclusive_ms": 0.819823
+        },
+        "transfer/sym/kv_evict/93": {
+          "count": 1,
+          "inclusive_ms": 0.816296
+        },
+        "transfer/sym/kv_evict/94": {
+          "count": 1,
+          "inclusive_ms": 0.820284
+        },
+        "transfer/sym/kv_evict/95": {
+          "count": 1,
+          "inclusive_ms": 0.909745
+        },
+        "transfer/sym/kv_restore/80": {
+          "count": 1,
+          "inclusive_ms": 1.042006
+        },
+        "transfer/sym/kv_restore/81": {
+          "count": 1,
+          "inclusive_ms": 0.721646
+        },
+        "transfer/sym/kv_restore/82": {
+          "count": 1,
+          "inclusive_ms": 0.74445
+        },
+        "transfer/sym/kv_restore/83": {
+          "count": 1,
+          "inclusive_ms": 0.730913
+        },
+        "transfer/sym/kv_restore/84": {
+          "count": 1,
+          "inclusive_ms": 0.728499
+        },
+        "transfer/sym/kv_restore/85": {
+          "count": 1,
+          "inclusive_ms": 0.737216
+        },
+        "transfer/sym/kv_restore/86": {
+          "count": 1,
+          "inclusive_ms": 0.712909
+        },
+        "transfer/sym/kv_restore/87": {
+          "count": 1,
+          "inclusive_ms": 0.71868
+        },
+        "transfer/sym/kv_restore/88": {
+          "count": 1,
+          "inclusive_ms": 0.719372
+        },
+        "transfer/sym/kv_restore/89": {
+          "count": 1,
+          "inclusive_ms": 0.774937
+        },
+        "transfer/sym/kv_restore/90": {
+          "count": 1,
+          "inclusive_ms": 0.728879
+        },
+        "transfer/sym/kv_restore/91": {
+          "count": 1,
+          "inclusive_ms": 0.722107
+        },
+        "transfer/sym/kv_restore/92": {
+          "count": 1,
+          "inclusive_ms": 0.714322
+        },
+        "transfer/sym/kv_restore/93": {
+          "count": 1,
+          "inclusive_ms": 0.714191
+        },
+        "transfer/sym/kv_restore/94": {
+          "count": 1,
+          "inclusive_ms": 0.712028
+        },
+        "transfer/sym/kv_restore/95": {
+          "count": 1,
+          "inclusive_ms": 0.70839
+        },
+        "transfer/sym/weights/192": {
+          "count": 1,
+          "inclusive_ms": 1.208765
+        },
+        "transfer/sym/weights/193": {
+          "count": 1,
+          "inclusive_ms": 0.917639
+        },
+        "transfer/sym/weights/194": {
+          "count": 1,
+          "inclusive_ms": 1.332711
+        },
+        "transfer/sym/weights/195": {
+          "count": 1,
+          "inclusive_ms": 1.320969
+        },
+        "transfer/sym/weights/196": {
+          "count": 1,
+          "inclusive_ms": 1.237149
+        },
+        "transfer/sym/weights/197": {
+          "count": 1,
+          "inclusive_ms": 0.864218
+        },
+        "transfer/sym/weights/198": {
+          "count": 1,
+          "inclusive_ms": 1.192804
+        },
+        "transfer/sym/weights/199": {
+          "count": 1,
+          "inclusive_ms": 1.288026
+        },
+        "transfer/sym/weights/200": {
+          "count": 1,
+          "inclusive_ms": 1.205148
+        },
+        "transfer/sym/weights/201": {
+          "count": 1,
+          "inclusive_ms": 0.855791
+        },
+        "transfer/sym/weights/202": {
+          "count": 1,
+          "inclusive_ms": 1.216831
+        },
+        "transfer/sym/weights/203": {
+          "count": 1,
+          "inclusive_ms": 1.29006
+        },
+        "transfer/sym/weights/204": {
+          "count": 1,
+          "inclusive_ms": 1.191712
+        },
+        "transfer/sym/weights/205": {
+          "count": 1,
+          "inclusive_ms": 0.845232
+        },
+        "transfer/sym/weights/206": {
+          "count": 1,
+          "inclusive_ms": 1.208765
+        },
+        "transfer/sym/weights/207": {
+          "count": 1,
+          "inclusive_ms": 3.1623
+        },
+        "transfer/sym/weights/208": {
+          "count": 1,
+          "inclusive_ms": 1.25357
+        },
+        "transfer/sym/weights/209": {
+          "count": 1,
+          "inclusive_ms": 0.872393
+        },
+        "transfer/sym/weights/210": {
+          "count": 1,
+          "inclusive_ms": 1.243722
+        },
+        "transfer/sym/weights/211": {
+          "count": 1,
+          "inclusive_ms": 2.588455
+        },
+        "transfer/sym/weights/212": {
+          "count": 1,
+          "inclusive_ms": 1.206821
+        },
+        "transfer/sym/weights/213": {
+          "count": 1,
+          "inclusive_ms": 0.861723
+        },
+        "transfer/sym/weights/214": {
+          "count": 1,
+          "inclusive_ms": 2.506599
+        },
+        "transfer/sym/weights/215": {
+          "count": 1,
+          "inclusive_ms": 1.318073
+        },
+        "transfer/sym/weights/216": {
+          "count": 1,
+          "inclusive_ms": 1.322852
+        },
+        "transfer/sym/weights/217": {
+          "count": 1,
+          "inclusive_ms": 0.887682
+        },
+        "transfer/sym/weights/218": {
+          "count": 1,
+          "inclusive_ms": 1.207903
+        },
+        "transfer/sym/weights/219": {
+          "count": 1,
+          "inclusive_ms": 1.277787
+        },
+        "transfer/sym/weights/220": {
+          "count": 1,
+          "inclusive_ms": 1.213554
+        },
+        "transfer/sym/weights/221": {
+          "count": 1,
+          "inclusive_ms": 0.875449
+        },
+        "transfer/sym/weights/222": {
+          "count": 1,
+          "inclusive_ms": 1.280983
+        },
+        "transfer/sym/weights/223": {
+          "count": 1,
+          "inclusive_ms": 1.391844
+        },
+        "transfer/sym/kv_evict/96": {
+          "count": 1,
+          "inclusive_ms": 1.387355
+        },
+        "transfer/sym/kv_evict/97": {
+          "count": 1,
+          "inclusive_ms": 1.244794
+        },
+        "transfer/sym/kv_evict/98": {
+          "count": 1,
+          "inclusive_ms": 0.778624
+        },
+        "transfer/sym/kv_evict/99": {
+          "count": 1,
+          "inclusive_ms": 0.845041
+        },
+        "transfer/sym/kv_evict/100": {
+          "count": 1,
+          "inclusive_ms": 0.826676
+        },
+        "transfer/sym/kv_evict/101": {
+          "count": 1,
+          "inclusive_ms": 0.842496
+        },
+        "transfer/sym/kv_evict/102": {
+          "count": 1,
+          "inclusive_ms": 1.05912
+        },
+        "transfer/sym/kv_evict/103": {
+          "count": 1,
+          "inclusive_ms": 0.836365
+        },
+        "transfer/sym/kv_evict/104": {
+          "count": 1,
+          "inclusive_ms": 0.816227
+        },
+        "transfer/sym/kv_evict/105": {
+          "count": 1,
+          "inclusive_ms": 0.837026
+        },
+        "transfer/sym/kv_evict/106": {
+          "count": 1,
+          "inclusive_ms": 0.824713
+        },
+        "transfer/sym/kv_evict/107": {
+          "count": 1,
+          "inclusive_ms": 0.822448
+        },
+        "transfer/sym/kv_evict/108": {
+          "count": 1,
+          "inclusive_ms": 0.824332
+        },
+        "transfer/sym/kv_evict/109": {
+          "count": 1,
+          "inclusive_ms": 0.845011
+        },
+        "transfer/sym/kv_evict/110": {
+          "count": 1,
+          "inclusive_ms": 0.828811
+        },
+        "transfer/sym/kv_evict/111": {
+          "count": 1,
+          "inclusive_ms": 0.839771
+        },
+        "transfer/sym/kv_restore/96": {
+          "count": 1,
+          "inclusive_ms": 1.050373
+        },
+        "transfer/sym/kv_restore/97": {
+          "count": 1,
+          "inclusive_ms": 0.719051
+        },
+        "transfer/sym/kv_restore/98": {
+          "count": 1,
+          "inclusive_ms": 0.727307
+        },
+        "transfer/sym/kv_restore/99": {
+          "count": 1,
+          "inclusive_ms": 0.731054
+        },
+        "transfer/sym/kv_restore/100": {
+          "count": 1,
+          "inclusive_ms": 0.733618
+        },
+        "transfer/sym/kv_restore/101": {
+          "count": 1,
+          "inclusive_ms": 0.745982
+        },
+        "transfer/sym/kv_restore/102": {
+          "count": 1,
+          "inclusive_ms": 0.737206
+        },
+        "transfer/sym/kv_restore/103": {
+          "count": 1,
+          "inclusive_ms": 0.733969
+        },
+        "transfer/sym/kv_restore/104": {
+          "count": 1,
+          "inclusive_ms": 0.714342
+        },
+        "transfer/sym/kv_restore/105": {
+          "count": 1,
+          "inclusive_ms": 0.755281
+        },
+        "transfer/sym/kv_restore/106": {
+          "count": 1,
+          "inclusive_ms": 0.749148
+        },
+        "transfer/sym/kv_restore/107": {
+          "count": 1,
+          "inclusive_ms": 0.782762
+        },
+        "transfer/sym/kv_restore/108": {
+          "count": 1,
+          "inclusive_ms": 0.857144
+        },
+        "transfer/sym/kv_restore/109": {
+          "count": 1,
+          "inclusive_ms": 0.863677
+        },
+        "transfer/sym/kv_restore/110": {
+          "count": 1,
+          "inclusive_ms": 0.741263
+        },
+        "transfer/sym/kv_restore/111": {
+          "count": 1,
+          "inclusive_ms": 0.732376
+        },
+        "transfer/sym/weights/224": {
+          "count": 1,
+          "inclusive_ms": 2.16577
+        },
+        "transfer/sym/weights/225": {
+          "count": 1,
+          "inclusive_ms": 1.22209
+        },
+        "transfer/sym/weights/226": {
+          "count": 1,
+          "inclusive_ms": 2.512631
+        },
+        "transfer/sym/weights/227": {
+          "count": 1,
+          "inclusive_ms": 2.57003
+        },
+        "transfer/sym/weights/228": {
+          "count": 1,
+          "inclusive_ms": 2.184535
+        },
+        "transfer/sym/weights/229": {
+          "count": 1,
+          "inclusive_ms": 1.191722
+        },
+        "transfer/sym/weights/230": {
+          "count": 1,
+          "inclusive_ms": 2.50694
+        },
+        "transfer/sym/weights/231": {
+          "count": 1,
+          "inclusive_ms": 2.58047
+        },
+        "transfer/sym/weights/232": {
+          "count": 1,
+          "inclusive_ms": 1.219706
+        },
+        "transfer/sym/weights/233": {
+          "count": 1,
+          "inclusive_ms": 1.181653
+        },
+        "transfer/sym/weights/234": {
+          "count": 1,
+          "inclusive_ms": 2.02962
+        },
+        "transfer/sym/weights/235": {
+          "count": 1,
+          "inclusive_ms": 2.661124
+        },
+        "transfer/sym/weights/236": {
+          "count": 1,
+          "inclusive_ms": 1.25859
+        },
+        "transfer/sym/weights/237": {
+          "count": 1,
+          "inclusive_ms": 1.226679
+        },
+        "transfer/sym/weights/238": {
+          "count": 1,
+          "inclusive_ms": 1.225196
+        },
+        "transfer/sym/weights/239": {
+          "count": 1,
+          "inclusive_ms": 1.296913
+        },
+        "transfer/sym/weights/240": {
+          "count": 1,
+          "inclusive_ms": 1.19584
+        },
+        "transfer/sym/weights/241": {
+          "count": 1,
+          "inclusive_ms": 0.858317
+        },
+        "transfer/sym/weights/242": {
+          "count": 1,
+          "inclusive_ms": 1.197914
+        },
+        "transfer/sym/weights/243": {
+          "count": 1,
+          "inclusive_ms": 1.276273
+        },
+        "transfer/sym/weights/244": {
+          "count": 1,
+          "inclusive_ms": 1.207021
+        },
+        "transfer/sym/weights/245": {
+          "count": 1,
+          "inclusive_ms": 0.866603
+        },
+        "transfer/sym/weights/246": {
+          "count": 1,
+          "inclusive_ms": 1.214045
+        },
+        "transfer/sym/weights/247": {
+          "count": 1,
+          "inclusive_ms": 1.286183
+        },
+        "transfer/sym/weights/248": {
+          "count": 1,
+          "inclusive_ms": 1.283658
+        },
+        "transfer/sym/weights/249": {
+          "count": 1,
+          "inclusive_ms": 0.84927
+        },
+        "transfer/sym/weights/250": {
+          "count": 1,
+          "inclusive_ms": 1.207582
+        },
+        "transfer/sym/weights/251": {
+          "count": 1,
+          "inclusive_ms": 1.290832
+        },
+        "transfer/sym/weights/252": {
+          "count": 1,
+          "inclusive_ms": 1.29557
+        },
+        "transfer/sym/weights/253": {
+          "count": 1,
+          "inclusive_ms": 0.895337
+        },
+        "transfer/sym/weights/254": {
+          "count": 1,
+          "inclusive_ms": 1.218804
+        },
+        "transfer/sym/weights/255": {
+          "count": 1,
+          "inclusive_ms": 1.271354
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,13 @@
+[
+  [
+    "taskset",
+    "-c",
+    "4-7,20-23",
+    "/tmp/sym-torch-cuda/bin/python",
+    "/tmp/sym-torch-side-profile/bench/workload_profile/controls.py",
+    "--workloads",
+    "/tmp/sym-pr162-pageable",
+    "--output",
+    "/tmp/sym-torch-side-results/controls"
+  ]
+]

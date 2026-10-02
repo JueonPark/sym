@@ -1,0 +1,3808 @@
+{
+  "example": "moe_experts",
+  "devices": [
+    "cuda:0"
+  ],
+  "sizes": {
+    "top_k": 2,
+    "d_model": 1024,
+    "d_ff": 2048,
+    "experts": 16,
+    "blocks": 2,
+    "batches": [
+      256,
+      32,
+      8
+    ]
+  },
+  "checks": {
+    "expert_weights_equal": {
+      "passed": 170,
+      "failed": 0
+    },
+    "outputs_equal": {
+      "passed": 3,
+      "failed": 0
+    },
+    "routing_identical": {
+      "passed": 1,
+      "failed": 0
+    },
+    "only_active_experts_fetched": {
+      "passed": 1,
+      "failed": 0
+    },
+    "every_device_received_experts": {
+      "passed": 1,
+      "failed": 0
+    },
+    "one_weight_artifact_for_both_shapes": {
+      "passed": 1,
+      "failed": 0
+    }
+  },
+  "counters": {},
+  "plan_compiles": 1,
+  "bytes": {
+    "expert_weights": {
+      "transfers": 170,
+      "source": 356515840,
+      "wire": 356515840,
+      "destination": 1426063360,
+      "payload": 357560320
+    }
+  },
+  "dispatches": {
+    "cuda_dequant_relocate": 170
+  },
+  "timings_ms": {
+    "expert_weights": {
+      "torch": {
+        "count": 170,
+        "first_call": 10.967,
+        "median": 0.606,
+        "total": 116.831
+      },
+      "sym": {
+        "count": 170,
+        "first_call": 2.554,
+        "median": 0.979,
+        "total": 168.656
+      }
+    }
+  },
+  "workload": {
+    "active_experts": [
+      [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ],
+      [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ],
+      [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ],
+      [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ],
+      [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        9,
+        12,
+        13,
+        14,
+        15
+      ],
+      [
+        0,
+        2,
+        5,
+        7,
+        8,
+        9,
+        11,
+        13,
+        14
+      ]
+    ],
+    "active_expert_count": 85,
+    "possible_expert_count": 96,
+    "fetches_per_device": {
+      "cuda:0": 170
+    }
+  },
+  "notes": [
+    "calibration: /tmp/sym-pr162-pageable/calibration/epyc7351-2080ti.cal",
+    "85 of 96 expert slots were active, and only those experts' weights moved",
+    "routing, token dispatch, GPU-to-GPU token moves and the combine are PyTorch in both passes",
+    "several GPUs show placement and correctness only: the multi-GPU throughput gate failed on this box (R3)",
+    "transfers are blocking; every Sym call includes per-call runtime setup",
+    "wire bytes follow from the recipe's dtype choice; equivalent PyTorch code moves the same bytes"
+  ],
+  "raw_transfer_samples_ms": {
+    "expert_weights": {
+      "torch": [
+        10.966790840029716,
+        0.7233284413814545,
+        1.022850163280964,
+        0.6447797641158104,
+        0.634368509054184,
+        0.6354106590151787,
+        0.5941232666373253,
+        0.6038406863808632,
+        0.608440488576889,
+        0.597919337451458,
+        0.6179781630635262,
+        0.5941232666373253,
+        0.6052637472748756,
+        0.9721340611577034,
+        0.6049629300832748,
+        0.597899779677391,
+        0.6016567349433899,
+        0.5980497226119041,
+        0.6010457873344421,
+        0.9763510897755623,
+        0.5937926471233368,
+        0.6132591515779495,
+        0.6058448925614357,
+        0.5999328568577766,
+        0.9700190275907516,
+        0.6059054285287857,
+        0.5996739491820335,
+        0.6056651473045349,
+        0.597689300775528,
+        0.5987808108329773,
+        1.009955070912838,
+        0.5912482738494873,
+        0.6649475544691086,
+        0.6245505064725876,
+        0.5982806906104088,
+        0.6189802661538124,
+        0.6291894242167473,
+        0.599653460085392,
+        0.603080727159977,
+        0.5978401750326157,
+        0.5973493680357933,
+        1.0742275044322014,
+        0.6363829597830772,
+        0.7620425894856453,
+        0.6483374163508415,
+        0.6401399150490761,
+        0.5984213203191757,
+        0.6061559543013573,
+        0.5980897694826126,
+        0.6062258034944534,
+        0.6030900403857231,
+        0.6207944825291634,
+        0.5958154797554016,
+        0.6072474643588066,
+        0.6016688421368599,
+        0.6006453186273575,
+        0.6002550944685936,
+        0.6132489070296288,
+        0.6057051941752434,
+        0.6126882508397102,
+        0.6069876253604889,
+        0.6013168022036552,
+        0.600714236497879,
+        0.5916683003306389,
+        0.6003854796290398,
+        0.6118277087807655,
+        0.684625469148159,
+        0.6320551037788391,
+        0.6255535408854485,
+        0.6002848967909813,
+        0.6335275247693062,
+        0.6186999380588531,
+        0.6089508533477783,
+        0.6048837676644325,
+        0.6232988089323044,
+        0.605093315243721,
+        0.6369845941662788,
+        0.6343601271510124,
+        0.6158240139484406,
+        0.6050337105989456,
+        0.6047133356332779,
+        0.5973195657134056,
+        0.6371345371007919,
+        0.594613142311573,
+        0.6063757464289665,
+        0.5972888320684433,
+        0.6083501502871513,
+        0.5991123616695404,
+        0.6013065576553345,
+        0.6049126386642456,
+        0.6063757464289665,
+        0.6106141954660416,
+        0.5966778844594955,
+        0.6065173074603081,
+        0.6021680310368538,
+        0.6100330501794815,
+        0.609230250120163,
+        0.6023989990353584,
+        0.6103133782744408,
+        0.5946028977632523,
+        0.6080092862248421,
+        0.5975291132926941,
+        0.5997242406010628,
+        0.6003445014357567,
+        0.5949940532445908,
+        0.6056251004338264,
+        0.5984911695122719,
+        0.6002942100167274,
+        0.595705583691597,
+        0.6062760949134827,
+        0.5947733297944069,
+        0.6180480122566223,
+        0.7513724267482758,
+        0.6520235911011696,
+        0.6056353449821472,
+        0.6193006411194801,
+        0.6233174353837967,
+        0.6172973662614822,
+        0.6514023989439011,
+        0.6212443113327026,
+        0.6049741059541702,
+        0.6117364391684532,
+        0.5996646359562874,
+        0.6028991192579269,
+        0.6030695512890816,
+        0.6065666675567627,
+        0.6108740344643593,
+        0.6034504622220993,
+        0.6074681878089905,
+        0.6154738366603851,
+        0.6698574870824814,
+        0.639929436147213,
+        0.6143609061837196,
+        0.6134398281574249,
+        0.5978802219033241,
+        0.6074486300349236,
+        0.6053531542420387,
+        0.6051631644368172,
+        0.6040306761860847,
+        0.5937619134783745,
+        0.6076395511627197,
+        0.5895942449569702,
+        0.605936162173748,
+        0.5984008312225342,
+        0.6067268550395966,
+        0.6027892231941223,
+        0.6352728232741356,
+        0.6258124485611916,
+        0.5977405235171318,
+        0.6143823266029358,
+        0.5992734804749489,
+        0.6138896569609642,
+        0.6178580224514008,
+        0.6396584212779999,
+        0.6249705329537392,
+        0.618509016931057,
+        0.599774532020092,
+        0.5963165313005447,
+        0.6146524101495743,
+        0.598762184381485,
+        0.6131092086434364,
+        0.5969377234578133,
+        0.6099725142121315,
+        0.5963072180747986,
+        0.6053037941455841,
+        0.5998136475682259,
+        0.5968883633613586,
+        0.6165951490402222,
+        0.6035817787051201,
+        0.6049834191799164
+      ],
+      "sym": [
+        2.5544101372361183,
+        1.474481076002121,
+        1.023632474243641,
+        0.9472165256738663,
+        1.0029831901192665,
+        1.045714132487774,
+        1.0094037279486656,
+        0.9636674076318741,
+        1.0025203227996826,
+        0.9531471878290176,
+        1.0059988126158714,
+        0.9667240083217621,
+        0.9866813197731972,
+        0.9543895721435547,
+        0.987163744866848,
+        0.927668996155262,
+        0.9976718574762344,
+        0.9478172287344933,
+        1.0064095258712769,
+        0.9433580562472343,
+        0.9947260841727257,
+        0.9530670940876007,
+        1.0042143985629082,
+        0.9589791297912598,
+        1.0052360594272614,
+        0.9704716503620148,
+        1.0154061019420624,
+        0.9566536173224449,
+        0.9894166141748428,
+        0.9721145033836365,
+        1.0008597746491432,
+        0.9472668170928955,
+        1.0194843634963036,
+        0.9604813531041145,
+        1.004224643111229,
+        0.9669838473200798,
+        0.999164767563343,
+        0.9582974016666412,
+        0.9912606328725815,
+        0.9717931970953941,
+        0.9815609082579613,
+        0.9550713002681732,
+        0.982062891125679,
+        0.9535886347293854,
+        0.9987447410821915,
+        0.962444581091404,
+        1.0305549949407578,
+        0.9679049253463745,
+        0.9896373376250267,
+        0.9434288367629051,
+        1.0051466524600983,
+        0.958908349275589,
+        1.001039519906044,
+        0.9735962375998497,
+        1.004144549369812,
+        0.9514139965176582,
+        0.9901169687509537,
+        0.9595593437552452,
+        1.0822145268321037,
+        0.960291363298893,
+        1.0218974202871323,
+        0.9412653744220734,
+        0.9999368339776993,
+        0.9675053879618645,
+        1.0442407801747322,
+        0.9727748110890388,
+        0.986780971288681,
+        0.9551914408802986,
+        0.9765420109033585,
+        0.9640278294682503,
+        0.9942054748535156,
+        0.92299934476614,
+        1.002902165055275,
+        0.9371470659971237,
+        0.9887255728244781,
+        0.9797085076570511,
+        1.0112589225172997,
+        0.9690579026937485,
+        0.9863413870334625,
+        0.947996973991394,
+        0.992913730442524,
+        0.9602205827832222,
+        1.0104253888130188,
+        0.9555919095873833,
+        0.9838659316301346,
+        1.2762928381562233,
+        1.0154154151678085,
+        0.9486190974712372,
+        1.0007582604885101,
+        0.95415860414505,
+        1.0017799213528633,
+        0.9642783552408218,
+        1.001390628516674,
+        0.9656017646193504,
+        0.9900880977511406,
+        0.9448621422052383,
+        0.9950771927833557,
+        0.9895768016576767,
+        0.9907186031341553,
+        0.945323146879673,
+        0.9951768442988396,
+        0.9663430973887444,
+        1.0222885757684708,
+        0.9708311408758163,
+        0.9944755584001541,
+        0.9444709867238998,
+        0.9971624240279198,
+        0.956803560256958,
+        0.9966893121600151,
+        0.9509027004241943,
+        0.9763026610016823,
+        0.9430879727005959,
+        0.9935544803738594,
+        0.9386800229549408,
+        0.9952764958143234,
+        0.9485995396971703,
+        0.9895768016576767,
+        0.9649200364947319,
+        0.9947475045919418,
+        0.9715612977743149,
+        0.9985333308577538,
+        0.9674848988652229,
+        0.9917104616761208,
+        0.9820824488997459,
+        0.9812312200665474,
+        0.9361039847135544,
+        0.9842077270150185,
+        0.938628800213337,
+        1.011318527162075,
+        0.937056727707386,
+        1.0071806609630585,
+        0.9603304788470268,
+        0.9872317314147949,
+        0.9514056146144867,
+        0.9781848639249802,
+        0.9365761652588844,
+        0.9846873581409454,
+        0.9307935833930969,
+        0.9970711544156075,
+        0.9345719590783119,
+        1.026698388159275,
+        0.9511532261967659,
+        1.003173179924488,
+        0.9634466841816902,
+        0.9940555319190025,
+        0.9705200791358948,
+        1.017310656607151,
+        0.9550610557198524,
+        0.9792977944016457,
+        0.9566554799675941,
+        0.9905686601996422,
+        0.9394306689500809,
+        1.0091541334986687,
+        0.9644795209169388,
+        0.9766314178705215,
+        0.9474875405430794,
+        0.9881546720862389,
+        0.9341612458229065,
+        0.9903376922011375,
+        0.9767329320311546,
+        0.9947456419467926,
+        0.967404805123806,
+        1.0007582604885101,
+        0.976812094449997,
+        0.9932238608598709,
+        0.9536594152450562,
+        0.9720232337713242,
+        0.948549248278141,
+        1.0085133835673332,
+        0.9476365521550179
+      ]
+    }
+  },
+  "typed_decisions": [
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": false
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8192,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cuda_dequant_relocate",
+      "source_bytes": 2097152,
+      "wire_bytes": 2097152,
+      "destination_bytes": 8388608,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 4096,
+          "staging_capacity_bytes": 8192,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    }
+  ],
+  "typed_reuse": true,
+  "direct_typed_resources": {
+    "requests": 170,
+    "hits": 169,
+    "context_creations": 1,
+    "device_allocations": 2,
+    "host_allocations": 1,
+    "frees": 0,
+    "retained_bytes": 2375680,
+    "device_bytes": 2367488,
+    "host_bytes": 8192,
+    "background_workers": 0,
+    "streams": 2,
+    "closed": false,
+    "quarantined": false,
+    "process_valid": true
+  },
+  "profiling": {
+    "torch_threads": 8,
+    "model_regions_per_path": 3,
+    "transfer_range_includes_completion": true,
+    "first_transfer_of_each_kind_excluded_in_analysis": true,
+    "aten_nvtx_both_paths": true,
+    "native_detail": "full",
+    "native_hook_calls": 29476
+  },
+  "ok": true,
+  "summary": {
+    "checks_passed": 6,
+    "checks_total": 6,
+    "plan_compiles": 1,
+    "sym_transfers": 170,
+    "wire_bytes": 356515840,
+    "destination_bytes": 1426063360,
+    "fallbacks": 0,
+    "steady_transfer_ms": {
+      "torch": 105.864,
+      "sym": 166.101
+    }
+  }
+}

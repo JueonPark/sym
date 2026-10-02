@@ -18,6 +18,10 @@ def main():
     p.add_argument('--output',type=Path,required=True)
     p.add_argument('--rounds',type=int,default=3)
     p.add_argument('--nsys',default='/tmp/sym-cuda-toolkit-12.6.3/bin/nsys')
+    p.add_argument('--aten-nvtx',action='store_true')
+    p.add_argument('--torch-hooks',type=Path)
+    p.add_argument('--retained-only',action='store_true')
+    p.add_argument('--examples',default='dlrm,gnn,llm,moe')
     args=p.parse_args()
     root=Path(__file__).resolve().parents[2]
     args.output.mkdir(parents=True,exist_ok=True)
@@ -62,6 +66,9 @@ def main():
         run(command,args.output/'matrix.log')
     else:
         cases=[(name,True) for name in ('dlrm','gnn','llm','moe')]+[(name,False) for name in ('llm','moe')]
+        if args.retained_only:cases=cases[:4]
+        cases=[(name,reuse) for name,reuse in cases if name in args.examples.split(',')]
+        if args.torch_hooks:env['LD_PRELOAD']=str(args.torch_hooks.resolve())
         for name,reuse in cases:
             stem=name+('-retained' if reuse else '-default')
             dest=args.output/stem
@@ -71,6 +78,8 @@ def main():
                 str(Path(__file__).with_name('capture.py')),'--repo',str(args.workloads),
                 '--example',name,'--output',str(dest)+'.json']
             if reuse:command.append('--typed-reuse')
+            if args.aten_nvtx:command.append('--aten-nvtx')
+            if args.torch_hooks:command.append('--native-hooks')
             run(command,args.output/(stem+'-capture.log'))
             assert json.loads(Path(str(dest)+'.json').read_text())['ok']
             run([args.nsys,'export','--type=sqlite','--force-overwrite=true',

@@ -1,0 +1,483 @@
+{
+  "measurements": {
+    "dlrm": {
+      "default": {
+        "torch": {
+          "median_ms": 5.623,
+          "min_ms": 5.592,
+          "max_ms": 5.627
+        },
+        "sym": {
+          "median_ms": 8.059,
+          "min_ms": 7.933,
+          "max_ms": 8.243
+        }
+      },
+      "typed_reuse": {
+        "torch": {
+          "median_ms": 6.619,
+          "min_ms": 5.6,
+          "max_ms": 6.698
+        },
+        "sym": {
+          "median_ms": 8.096,
+          "min_ms": 7.872,
+          "max_ms": 8.348
+        }
+      }
+    },
+    "gnn": {
+      "default": {
+        "torch": {
+          "median_ms": 9.851,
+          "min_ms": 9.346,
+          "max_ms": 10.01
+        },
+        "sym": {
+          "median_ms": 13.723,
+          "min_ms": 13.707,
+          "max_ms": 13.787
+        }
+      },
+      "typed_reuse": {
+        "torch": {
+          "median_ms": 9.394,
+          "min_ms": 9.194,
+          "max_ms": 10.033
+        },
+        "sym": {
+          "median_ms": 13.732,
+          "min_ms": 13.705,
+          "max_ms": 13.801
+        }
+      }
+    },
+    "llm": {
+      "default": {
+        "torch": {
+          "median_ms": 183.837,
+          "min_ms": 182.244,
+          "max_ms": 187.52
+        },
+        "sym": {
+          "median_ms": 469.851,
+          "min_ms": 469.664,
+          "max_ms": 470.373
+        }
+      },
+      "typed_reuse": {
+        "torch": {
+          "median_ms": 183.609,
+          "min_ms": 183.596,
+          "max_ms": 199.643
+        },
+        "sym": {
+          "median_ms": 362.493,
+          "min_ms": 361.386,
+          "max_ms": 363.219
+        }
+      }
+    },
+    "moe": {
+      "default": {
+        "torch": {
+          "median_ms": 75.862,
+          "min_ms": 75.642,
+          "max_ms": 76.07
+        },
+        "sym": {
+          "median_ms": 208.447,
+          "min_ms": 205.479,
+          "max_ms": 209.674
+        }
+      },
+      "typed_reuse": {
+        "torch": {
+          "median_ms": 75.516,
+          "min_ms": 75.242,
+          "max_ms": 75.737
+        },
+        "sym": {
+          "median_ms": 128.103,
+          "min_ms": 128.038,
+          "max_ms": 128.212
+        }
+      }
+    }
+  },
+  "preparation": {
+    "dlrm": {
+      "pooled_embeddings": {
+        "torch": {
+          "calls": 3,
+          "total_ms": 0.156451,
+          "us_per_call": 52.15033333333333
+        },
+        "sym": {
+          "calls": 3,
+          "total_ms": 2.218009,
+          "us_per_call": 739.3363333333333
+        }
+      }
+    },
+    "gnn": {
+      "node_features": {
+        "torch": {
+          "calls": 4,
+          "total_ms": 0.11551099999999997,
+          "us_per_call": 28.877749999999995
+        },
+        "sym": {
+          "calls": 4,
+          "total_ms": 2.7042710000000003,
+          "us_per_call": 676.06775
+        }
+      }
+    },
+    "llm": {
+      "weights": {
+        "torch": {
+          "calls": 255,
+          "total_ms": 12.751235000000001,
+          "us_per_call": 50.0048431372549
+        },
+        "sym": {
+          "calls": 255,
+          "total_ms": 97.927178,
+          "us_per_call": 384.02814901960784
+        }
+      },
+      "kv_restore": {
+        "torch": {
+          "calls": 111,
+          "total_ms": 2.759862,
+          "us_per_call": 24.863621621621622
+        },
+        "sym": {
+          "calls": 111,
+          "total_ms": 26.234658,
+          "us_per_call": 236.34827027027026
+        }
+      },
+      "kv_evict": {
+        "torch": {
+          "calls": 111,
+          "total_ms": 2.503705,
+          "us_per_call": 22.5559009009009
+        },
+        "sym": {
+          "calls": 111,
+          "total_ms": 22.827029,
+          "us_per_call": 205.6489099099099
+        }
+      }
+    },
+    "moe": {
+      "expert_weights": {
+        "torch": {
+          "calls": 169,
+          "total_ms": 9.275941,
+          "us_per_call": 54.887224852071
+        },
+        "sym": {
+          "calls": 169,
+          "total_ms": 61.429119,
+          "us_per_call": 363.48591124260355
+        }
+      }
+    }
+  },
+  "tensor_iterator": {
+    "dlrm/pooled_embeddings": {
+      "calls": 3,
+      "methods": {
+        "build": {
+          "count": 9,
+          "inclusive_ms": 0.098799,
+          "mean_us_per_transfer": 32.933
+        },
+        "compute_mem_overlaps": {
+          "count": 9,
+          "inclusive_ms": 0.011803,
+          "mean_us_per_transfer": 3.934333333333333
+        },
+        "compute_shape": {
+          "count": 9,
+          "inclusive_ms": 0.0049499999999999995,
+          "mean_us_per_transfer": 1.6499999999999997
+        },
+        "compute_types": {
+          "count": 9,
+          "inclusive_ms": 0.004419,
+          "mean_us_per_transfer": 1.473
+        },
+        "fast_set_up": {
+          "count": 9,
+          "inclusive_ms": 0.007723999999999999,
+          "mean_us_per_transfer": 2.5746666666666664
+        },
+        "allocate_or_resize_outputs": {
+          "count": 3,
+          "inclusive_ms": 0.001883,
+          "mean_us_per_transfer": 0.6276666666666667
+        }
+      }
+    },
+    "gnn/node_features": {
+      "calls": 4,
+      "methods": {
+        "build": {
+          "count": 8,
+          "inclusive_ms": 0.107006,
+          "mean_us_per_transfer": 26.7515
+        },
+        "compute_mem_overlaps": {
+          "count": 8,
+          "inclusive_ms": 0.018025,
+          "mean_us_per_transfer": 4.50625
+        },
+        "compute_shape": {
+          "count": 8,
+          "inclusive_ms": 0.008537999999999999,
+          "mean_us_per_transfer": 2.1344999999999996
+        },
+        "compute_types": {
+          "count": 8,
+          "inclusive_ms": 0.005351,
+          "mean_us_per_transfer": 1.33775
+        },
+        "fast_set_up": {
+          "count": 8,
+          "inclusive_ms": 0.011453999999999999,
+          "mean_us_per_transfer": 2.8634999999999997
+        },
+        "allocate_or_resize_outputs": {
+          "count": 0,
+          "inclusive_ms": 0,
+          "mean_us_per_transfer": 0.0
+        }
+      }
+    },
+    "llm/weights": {
+      "calls": 255,
+      "methods": {
+        "build": {
+          "count": 1275,
+          "inclusive_ms": 13.716582999999995,
+          "mean_us_per_transfer": 53.79052156862743
+        },
+        "compute_mem_overlaps": {
+          "count": 1275,
+          "inclusive_ms": 0.7896010000000003,
+          "mean_us_per_transfer": 3.096474509803923
+        },
+        "compute_shape": {
+          "count": 1275,
+          "inclusive_ms": 0.963852,
+          "mean_us_per_transfer": 3.7798117647058826
+        },
+        "compute_types": {
+          "count": 1275,
+          "inclusive_ms": 0.4708540000000001,
+          "mean_us_per_transfer": 1.8464862745098043
+        },
+        "fast_set_up": {
+          "count": 1275,
+          "inclusive_ms": 0.5806039999999997,
+          "mean_us_per_transfer": 2.276878431372548
+        },
+        "allocate_or_resize_outputs": {
+          "count": 510,
+          "inclusive_ms": 3.372053,
+          "mean_us_per_transfer": 13.223737254901963
+        }
+      }
+    },
+    "llm/kv_restore": {
+      "calls": 111,
+      "methods": {
+        "build": {
+          "count": 222,
+          "inclusive_ms": 1.815592,
+          "mean_us_per_transfer": 16.356684684684687
+        },
+        "compute_mem_overlaps": {
+          "count": 222,
+          "inclusive_ms": 0.14719799999999988,
+          "mean_us_per_transfer": 1.3261081081081072
+        },
+        "compute_shape": {
+          "count": 222,
+          "inclusive_ms": 0.11107700000000001,
+          "mean_us_per_transfer": 1.0006936936936939
+        },
+        "compute_types": {
+          "count": 222,
+          "inclusive_ms": 0.10261299999999997,
+          "mean_us_per_transfer": 0.9244414414414411
+        },
+        "fast_set_up": {
+          "count": 222,
+          "inclusive_ms": 0.11149200000000001,
+          "mean_us_per_transfer": 1.0044324324324325
+        },
+        "allocate_or_resize_outputs": {
+          "count": 111,
+          "inclusive_ms": 0.06202500000000001,
+          "mean_us_per_transfer": 0.5587837837837839
+        }
+      }
+    },
+    "llm/kv_evict": {
+      "calls": 111,
+      "methods": {
+        "build": {
+          "count": 222,
+          "inclusive_ms": 1.5962539999999996,
+          "mean_us_per_transfer": 14.380666666666663
+        },
+        "compute_mem_overlaps": {
+          "count": 222,
+          "inclusive_ms": 0.14471299999999998,
+          "mean_us_per_transfer": 1.3037207207207206
+        },
+        "compute_shape": {
+          "count": 222,
+          "inclusive_ms": 0.08313699999999999,
+          "mean_us_per_transfer": 0.7489819819819818
+        },
+        "compute_types": {
+          "count": 222,
+          "inclusive_ms": 0.07155500000000001,
+          "mean_us_per_transfer": 0.6446396396396397
+        },
+        "fast_set_up": {
+          "count": 222,
+          "inclusive_ms": 0.10064000000000003,
+          "mean_us_per_transfer": 0.906666666666667
+        },
+        "allocate_or_resize_outputs": {
+          "count": 111,
+          "inclusive_ms": 0.036631,
+          "mean_us_per_transfer": 0.33000900900900904
+        }
+      }
+    },
+    "moe/expert_weights": {
+      "calls": 169,
+      "methods": {
+        "build": {
+          "count": 845,
+          "inclusive_ms": 9.77959200000001,
+          "mean_us_per_transfer": 57.867408284023725
+        },
+        "compute_mem_overlaps": {
+          "count": 845,
+          "inclusive_ms": 0.8938590000000002,
+          "mean_us_per_transfer": 5.289106508875741
+        },
+        "compute_shape": {
+          "count": 845,
+          "inclusive_ms": 0.39881599999999995,
+          "mean_us_per_transfer": 2.3598579881656803
+        },
+        "compute_types": {
+          "count": 845,
+          "inclusive_ms": 0.7073759999999999,
+          "mean_us_per_transfer": 4.185656804733727
+        },
+        "fast_set_up": {
+          "count": 845,
+          "inclusive_ms": 0.37324400000000013,
+          "mean_us_per_transfer": 2.2085443786982255
+        },
+        "allocate_or_resize_outputs": {
+          "count": 338,
+          "inclusive_ms": 2.110691,
+          "mean_us_per_transfer": 12.489295857988168
+        }
+      }
+    }
+  },
+  "monitor": {
+    "measurements": {
+      "samples": 78,
+      "compiler_max": 0,
+      "simulator_max": 0
+    },
+    "controls": {
+      "samples": 7,
+      "compiler_max": 0,
+      "simulator_max": 0
+    },
+    "profiles": {
+      "samples": 45,
+      "compiler_max": 0,
+      "simulator_max": 0
+    },
+    "coarse": {
+      "samples": 14,
+      "compiler_max": 0,
+      "simulator_max": 0
+    }
+  },
+  "coarse_control": {
+    "full": {
+      "weights": {
+        "median_ti_build_us": 43.802,
+        "median_transfer_us": 853.448,
+        "builds": 1275
+      },
+      "kv_restore": {
+        "median_ti_build_us": 14.938999999999998,
+        "median_transfer_us": 185.554,
+        "builds": 222
+      },
+      "kv_evict": {
+        "median_ti_build_us": 12.744000000000002,
+        "median_transfer_us": 177.87900000000002,
+        "builds": 222
+      }
+    },
+    "build_only": {
+      "weights": {
+        "median_ti_build_us": 19.708,
+        "median_transfer_us": 831.5360000000001,
+        "builds": 1275
+      },
+      "kv_restore": {
+        "median_ti_build_us": 5.28,
+        "median_transfer_us": 176.647,
+        "builds": 222
+      },
+      "kv_evict": {
+        "median_ti_build_us": 5.6,
+        "median_transfer_us": 272.55899999999997,
+        "builds": 222
+      }
+    }
+  },
+  "controls": {
+    "kv_h2d": {
+      "sym_prepared_outside_timer": 0.165741,
+      "torch": 0.105596,
+      "sym_direct": 0.258002,
+      "sym_frontend": 0.5302115000000001
+    },
+    "kv_h2d_torch_one_thread": {
+      "torch": 0.076817
+    },
+    "weight_4MiB": {
+      "sym_prepared_outside_timer": 0.892542,
+      "torch": 0.886255,
+      "sym_retained": 1.2608845,
+      "sym_ephemeral": 1.836186
+    },
+    "kv_d2h": {
+      "sym_prepared_outside_timer": 0.1957685,
+      "torch": 0.09642400000000001,
+      "sym_direct": 0.2732205,
+      "sym_frontend": 0.5420134999999999
+    }
+  }
+}

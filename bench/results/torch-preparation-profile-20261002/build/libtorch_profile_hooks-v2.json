@@ -1,0 +1,26 @@
+{
+  "command": [
+    "g++",
+    "-std=c++20",
+    "-O2",
+    "-DNDEBUG",
+    "-shared",
+    "-fPIC",
+    "-Wall",
+    "-Wextra",
+    "-I/tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/include",
+    "-I/tmp/sym-cuda-toolkit-12.6.3/nsight-systems-2024.5.1/target-linux-x64/nvtx/include",
+    "/tmp/sym-torch-side-profile/bench/torch_profile/native_hooks.cpp",
+    "-o",
+    "/tmp/sym-torch-side-admin/libtorch_profile_hooks-v2.so",
+    "-L/tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/lib",
+    "-Wl,-rpath,/tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/lib",
+    "-ltorch_cpu",
+    "-lc10",
+    "-ldl"
+  ],
+  "torch": "2.14.0+cu126",
+  "torch_git": "08187d9e0fba026dc8217405802ab5381dc88d90",
+  "source_sha256": "5f0e315bf1d1c36db5f4c21822716432b645f3411348f2faf53fdf968ac294c3",
+  "sha256": "10fd0b5d6e6546e84ea02caac341919dc21c02512f65e22e53fd294dc1a397f5"
+}

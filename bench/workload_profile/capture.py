@@ -10,6 +10,7 @@ from collections import defaultdict
 from contextlib import contextmanager
 import importlib
 import json
+import os
 from pathlib import Path
 import sys
 import time
@@ -21,6 +22,8 @@ def main():
     parser.add_argument('--example', choices=['dlrm','gnn','llm','moe'], required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--typed-reuse', action='store_true')
+    parser.add_argument('--aten-nvtx', action='store_true', help='Annotate Torch operations in both paths.')
+    parser.add_argument('--native-hooks', action='store_true', help='Enable the diagnostic preloaded Torch shim.')
     args = parser.parse_args()
     sys.path.insert(0, str(args.repo/'libreloc/python/examples/workloads'))
     import torch
@@ -44,6 +47,12 @@ def main():
     dispatch.execute_typed_transfer = execute
     counters = defaultdict(int)
     started = False
+    aten_profiler = None
+    hooks = None
+    if args.native_hooks:
+        import ctypes
+        hooks = ctypes.CDLL(None)
+        hooks.symprof_native_calls.restype = ctypes.c_ulonglong
 
     @contextmanager
     def span(name):
@@ -54,9 +63,14 @@ def main():
             torch.cuda.nvtx.range_pop()
 
     def begin():
-        nonlocal started
+        nonlocal started, aten_profiler
         if not started:
             torch.cuda.synchronize()
+            if args.aten_nvtx:
+                aten_profiler = torch.autograd.profiler.emit_nvtx(record_shapes=False)
+                aten_profiler.__enter__()
+            if hooks is not None:
+                hooks.symprof_enable_native(1)
             torch.cuda.profiler.start()
             started = True
 
@@ -123,6 +137,10 @@ def main():
         torch.cuda.synchronize()
         if started:
             torch.cuda.profiler.stop()
+        if hooks is not None:
+            hooks.symprof_enable_native(0)
+        if aten_profiler is not None:
+            aten_profiler.__exit__(None, None, None)
         report.data['raw_transfer_samples_ms'] = report._samples
         report.data['typed_decisions'] = decisions
         report.data['typed_reuse'] = args.typed_reuse
@@ -131,7 +149,10 @@ def main():
             owner.close()
         report.data['profiling'] = {'torch_threads':8, 'model_regions_per_path':calls,
                                    'transfer_range_includes_completion':True,
-                                   'first_transfer_of_each_kind_excluded_in_analysis':True}
+                                   'first_transfer_of_each_kind_excluded_in_analysis':True,
+                                   'aten_nvtx_both_paths':args.aten_nvtx,
+                                   'native_detail':os.getenv('SYMPROF_NATIVE_DETAIL', 'full'),
+                                   'native_hook_calls':hooks.symprof_native_calls() if hooks is not None else None}
         return old_finish(report, output)
     common.Report.finish = finish
     sys.argv = [names[args.example], '--output', str(args.output),
