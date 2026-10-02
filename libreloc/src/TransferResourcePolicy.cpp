@@ -61,11 +61,11 @@ bool ResourceKey::sameDevice(const ResourceKey &other) const {
 
 bool ResourceKey::operator==(const ResourceKey &other) const {
   return sameDevice(other) &&
-         std::tie(backend.streams, direction, activeSlots, workers,
-                  participants, placementTag, affinity) ==
-             std::tie(other.backend.streams, other.direction, other.activeSlots,
-                      other.workers, other.participants, other.placementTag,
-                      other.affinity);
+         std::tie(backend.streams, backend.pinned, direction, activeSlots,
+                  workers, participants, placementTag, affinity) ==
+             std::tie(other.backend.streams, other.backend.pinned,
+                      other.direction, other.activeSlots, other.workers,
+                      other.participants, other.placementTag, other.affinity);
 }
 
 std::variant<size_t, TransferError> roundStagingCapacity(size_t bytes) {
@@ -129,6 +129,12 @@ describeCachedTransfer(const TransferRequest &request,
                                : result.execution.gatherThreads,
                 options.placementTag,
                 affinity()};
+  result.key.backend.pinned = usePinnedStaging(
+      options.transfer, request.direction == TransferDirection::HostToDevice
+                            ? request.destinationBytes
+                            : result.execution.sourceBytes);
+  if (!result.cacheable && options.transfer.pinning == PinningPolicy::Auto)
+    result.key.backend.pinned = false;
   return result;
 }
 } // namespace reloc::detail

@@ -106,6 +106,8 @@ std::variant<TransferRequest, TransferError>
 validateTransfer(const BoundPlan &bound, const BufferView &source,
                  const BufferView &destination, TransferDirection direction);
 
+enum class PinningPolicy { Auto, Pinned, Pageable };
+
 struct TransferOptions {
   int nBuffers = 4;             // pinned staging ring size (H2D)
   size_t chunkSizeOverride = 0; // 0 = heuristic
@@ -117,7 +119,15 @@ struct TransferOptions {
   // Typed dispatch only: an already-dense host buffer needs no layout gather.
   // The blocking caller must retain it until completion is established.
   bool directDenseUpload = true;
+  PinningPolicy pinning = PinningPolicy::Pinned;
+  size_t minPinnedBytes = size_t(8) << 20;
 };
+
+inline bool usePinnedStaging(const TransferOptions &options, size_t wireBytes) {
+  return options.pinning == PinningPolicy::Pinned ||
+         (options.pinning == PinningPolicy::Auto &&
+          wireBytes >= options.minPinnedBytes);
+}
 
 /// Execute a validated request through `backend` and block until this
 /// request's work has completed (never a device-wide synchronization).

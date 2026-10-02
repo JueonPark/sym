@@ -138,7 +138,8 @@ def prepare_transfer(compiled, source, device, *, non_blocking=False):
 
 
 def execute_transfer(request, *, n_buffers=4, n_streams=2, gather_threads=1,
-                     gather_pool=None, resources=None):
+                     gather_pool=None, resources=None, pinning="auto",
+                     min_pinned_bytes=8 << 20):
     """Allocate a fresh output and complete; optionally reuse explicit resources.
 
     Omission/None uses a fresh native context for this call. In both cases the
@@ -190,6 +191,7 @@ def execute_transfer(request, *, n_buffers=4, n_streams=2, gather_threads=1,
                 gather_pool=gather_pool,
                 resources=native_resources,
                 owners=(request.source, out),
+                pinning=pinning, min_pinned_bytes=min_pinned_bytes,
             )
         except pyreloc.TransferError as error:
             raise RuntimeError(f"{request.direction} transfer failed: {error}") from error

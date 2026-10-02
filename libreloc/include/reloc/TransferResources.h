@@ -30,6 +30,7 @@ struct TransferBackendConfig {
   MemoryKind kind = MemoryKind::Host;
   int device = -1; // explicit CUDA ordinal; -1 for Host
   int streams = 2;
+  bool pinned = true; // resolved from policy and the request's wire bytes
 };
 
 struct CachedTransferOptions {

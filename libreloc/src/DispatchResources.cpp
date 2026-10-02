@@ -23,16 +23,19 @@ class ScratchBackend : public CudaBackend {
   struct Block {
     void *pointer = nullptr;
     size_t bytes = 0;
-    bool device = false, busy = false;
+    bool device = false, pinned = false, busy = false;
   };
   std::vector<Block> blocks_;
   size_t live_ = 0, retainedLimit_, liveLimit_;
   std::string scratchError_;
+  TransferOptions options_;
   void release(Block &b) {
     if (b.device)
       CudaBackend::freeDevice(b.pointer);
-    else
+    else if (b.pinned)
       CudaBackend::freeStaging(b.pointer);
+    else
+      std::free(b.pointer);
     live_ -= b.bytes;
     ++frees;
     b.pointer = nullptr;
@@ -40,10 +43,13 @@ class ScratchBackend : public CudaBackend {
   void *allocate(size_t bytes, bool device) {
     if (failed())
       return nullptr;
+    bool pinned =
+        !device && usePinnedStaging(options_, bytes) &&
+        (options_.pinning != PinningPolicy::Auto || bytes <= retainedLimit_);
     Block *best = nullptr;
     for (auto &b : blocks_)
-      if (!b.busy && b.device == device && b.bytes >= bytes &&
-          (!best || b.bytes < best->bytes))
+      if (!b.busy && b.device == device && b.pinned == pinned &&
+          b.bytes >= bytes && (!best || b.bytes < best->bytes))
         best = &b;
     if (best) {
       best->busy = true;
@@ -51,6 +57,7 @@ class ScratchBackend : public CudaBackend {
     }
     // Small shape changes should not pay another CUDA/pinned allocation.
     // Add 12.5% headroom, rounded to 256 KiB, only when both budgets allow it.
+    // Pinning above used requested wire bytes, not this spare capacity.
     size_t capacity = bytes;
     constexpr size_t quantum = size_t(256) << 10;
     if (bytes >= (size_t(1) << 20) &&
@@ -79,13 +86,14 @@ class ScratchBackend : public CudaBackend {
     if (failed())
       return nullptr;
     blocks_.reserve(blocks_.size() + 1); // no throwing bookkeeping after alloc
-    void *p = device ? CudaBackend::allocDevice(capacity)
-                     : CudaBackend::allocStaging(capacity);
+    void *p = device   ? CudaBackend::allocDevice(capacity)
+              : pinned ? CudaBackend::allocStaging(capacity)
+                       : std::malloc(capacity);
     if (!p) {
       scratchError_ = "typed scratch allocation failed";
       return nullptr;
     }
-    blocks_.push_back({p, capacity, device, true});
+    blocks_.push_back({p, capacity, device, pinned, true});
     live_ += capacity;
     if (device)
       ++deviceAllocations;
@@ -103,6 +111,7 @@ public:
     for (auto &b : blocks_)
       release(b);
   }
+  void begin(const TransferOptions &options) { options_ = options; }
   void *allocDevice(size_t bytes) override { return allocate(bytes, true); }
   void freeDevice(void *) override {}
   void *allocStaging(size_t bytes) override { return allocate(bytes, false); }
@@ -122,6 +131,8 @@ public:
     blocks_.erase(std::remove_if(blocks_.begin(), blocks_.end(),
                                  [](const Block &b) { return !b.pointer; }),
                   blocks_.end());
+    // No request's caller stream or borrowed pool remains in an idle owner.
+    options_ = {};
   }
   void snapshot(ResourceStats &s) const {
     s.retainedBytes = live_;
@@ -279,8 +290,11 @@ TransferOutcome Resources::execute(DispatchRequest &request, int device,
   auto &c = *impl_->context;
   c.owners = std::move(owners);
   auto execution = options;
+  if (!impl_->retainedLimit && execution.pinning == PinningPolicy::Auto)
+    execution.pinning = PinningPolicy::Pageable;
   if (!execution.gather)
     execution.gather = c.workers.get();
+  c.backend.begin(execution);
   TransferOutcome out;
   try {
     out.error = executeDispatch(request, c.backend, execution);

@@ -207,20 +207,22 @@ def prepare_typed_transfer(
 
 
 def execute_typed_transfer(request, *, n_buffers=4, n_streams=2, gather_threads=None, gather_pool=None,
+                           pinning="auto", min_pinned_bytes=8 << 20,
                            direct_dense_upload=True, resources=None):
     if not request._execution_lock.acquire(blocking=False):
         raise RuntimeError("typed transfer request is already executing")
     try:
         return _execute_typed_transfer(request, n_buffers=n_buffers, n_streams=n_streams,
-            gather_threads=gather_threads, gather_pool=gather_pool,
-            direct_dense_upload=direct_dense_upload,
+            gather_threads=gather_threads, gather_pool=gather_pool, pinning=pinning,
+            min_pinned_bytes=min_pinned_bytes, direct_dense_upload=direct_dense_upload,
             resources=resources)
     finally:
         request._execution_lock.release()
 
 
 def _execute_typed_transfer(request, *, n_buffers, n_streams, gather_threads,
-                            gather_pool, direct_dense_upload, resources):
+                            gather_pool, pinning, min_pinned_bytes,
+                            direct_dense_upload, resources):
     """Allocate the destination, recheck, order after the caller stream, run
     exactly the prepared implementation and complete."""
     import torch
@@ -228,7 +230,7 @@ def _execute_typed_transfer(request, *, n_buffers, n_streams, gather_threads,
 
     _transfer_configuration(resources, {"n_buffers": n_buffers, "n_streams": n_streams,
         "gather_threads": request.threads if gather_threads is None else gather_threads,
-        "gather_pool": gather_pool})
+        "gather_pool": gather_pool, "pinning": pinning, "min_pinned_bytes": min_pinned_bytes})
     if resources is not None and not isinstance(resources, TransferResources):
         raise TypeError("resources must be TransferResources or None")
     native_resources = None if resources is None else resources.native_typed
@@ -269,6 +271,7 @@ def _execute_typed_transfer(request, *, n_buffers, n_streams, gather_threads,
             n_streams=n_streams,
             gather_threads=gather_threads,
             gather_pool=gather_pool,
+            pinning=pinning, min_pinned_bytes=min_pinned_bytes,
             direct_dense_upload=direct_dense_upload,
             resources=native_resources, owners=(request.source, out),
         )

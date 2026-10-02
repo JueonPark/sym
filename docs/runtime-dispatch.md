@@ -233,3 +233,20 @@ source storage and parameter values are rechecked before execution. Typed stage
 arithmetic is prepared once per invocation and shared by capability, selection,
 and request construction. No successful invocation's tensor data or executable
 request enters these caches.
+
+`pinning="auto"` is the frontend default; `"pinned"` and `"pageable"` force the
+allocation policy. Auto uses pageable staging for ephemeral calls and allocations
+that cannot be retained. For retained layout staging it pins when actual wire
+bytes are at least `min_pinned_bytes` (default **8 MiB**), independently of rounded
+slot capacity or buffer count. H2D uses result bytes; D2H uses source reach. Typed
+scratch uses each allocation's bytes; small scale uploads are classified
+separately from weights. An existing dense input uploads directly without being
+registered or copied just to satisfy the pinning setting.
+
+The initial threshold was checked with end-to-end transpose transfers on the
+EPYC 7351 / RTX 2080 Ti. Retained pinned staging won at large sizes; repeated cold
+pinned allocations lost. The first retained allocation still pays its setup cost,
+so a size threshold is not a guarantee of benefit for every call. Direction,
+layout, expected reuse, host-memory pressure, and device-specific calibration
+belong in the subsequent cost model. Pageable CUDA copies can block internally;
+selecting pageable staging does not promise CPU/DMA overlap.

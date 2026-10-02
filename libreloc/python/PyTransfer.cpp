@@ -1,6 +1,7 @@
 //===- PyTransfer.cpp - validated forward transfer bindings ---------------===//
 
 #include "PyTransfer.h"
+#include "PyPinning.h"
 
 #include "reloc/GatherPool.h"
 #include "reloc/HostBackend.h"
@@ -119,7 +120,8 @@ void executeTransferPy(PythonTransferRequest &wrapped,
                        int nStreams, int gatherThreads,
                        std::shared_ptr<reloc::GatherPool> pool,
                        std::shared_ptr<reloc::TransferResourceCache> resources,
-                       const py::object &owners) {
+                       const py::object &owners, const std::string &pinning,
+                       size_t minPinnedBytes) {
   if (resources)
     checkProcess(*resources); // before any inherited pool locks
   if (wrapped.executing)
@@ -150,6 +152,10 @@ void executeTransferPy(PythonTransferRequest &wrapped,
   auto &request = wrapped.native;
   reloc::TransferOptions options;
   options.nBuffers = nBuffers;
+  options.pinning = parsePinning(pinning);
+  options.minPinnedBytes = minPinnedBytes;
+  if (!resources && options.pinning == reloc::PinningPolicy::Auto)
+    options.pinning = reloc::PinningPolicy::Pageable;
   options.gatherThreads = static_cast<unsigned>(gatherThreads);
   options.gather = pool.get();
   if (!callerStream.is_none()) {
@@ -184,7 +190,13 @@ void executeTransferPy(PythonTransferRequest &wrapped,
       std::unique_ptr<reloc::CopyBackend> backend;
       if (cuda) {
 #ifdef RELOC_ENABLE_CUDA
-        backend = std::make_unique<reloc::CudaBackend>(nStreams, device);
+        backend = std::make_unique<reloc::CudaBackend>(
+            nStreams, device,
+            reloc::usePinnedStaging(
+                options,
+                request.direction == reloc::TransferDirection::HostToDevice
+                    ? request.destinationBytes
+                    : request.sourceSpanBytes));
 #else
         raise(
             {"backend_failure", "pyreloc was built without RELOC_ENABLE_CUDA"});
@@ -419,7 +431,8 @@ void registerTransferBindings(py::module_ &m) {
       py::arg("caller_stream") = py::none(), py::arg("n_buffers") = 4,
       py::arg("n_streams") = 2, py::arg("gather_threads") = 1,
       py::arg("gather_pool") = nullptr, py::arg("resources") = nullptr,
-      py::arg("owners") = py::none(),
+      py::arg("owners") = py::none(), py::arg("pinning") = "auto",
+      py::arg("min_pinned_bytes") = size_t(8) << 20,
       "Run the forward transfer and block until this request's work has "
       "completed. caller_stream (a cudaStream_t handle; 0 is the legacy "
       "default stream, None means no producer to order after) is recorded "
