@@ -1,4 +1,4 @@
-//===- TypedExecute.cpp - scalar reference execution of typed plans -------===//
+//===- TypedExecute.cpp - CPU reference execution of typed plans -------===//
 
 #include "reloc/TypedExecute.h"
 

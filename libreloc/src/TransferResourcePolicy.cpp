@@ -35,6 +35,8 @@ std::vector<unsigned long> affinity() {
 }
 } // namespace
 
+std::vector<unsigned long> currentCpuAffinity() { return affinity(); }
+
 ProcessIdentity currentProcessIdentity() {
   return {int64_t(getpid()), processEpoch.load(std::memory_order_relaxed)};
 }
@@ -59,9 +61,9 @@ bool ResourceKey::sameDevice(const ResourceKey &other) const {
 
 bool ResourceKey::operator==(const ResourceKey &other) const {
   return sameDevice(other) &&
-         std::tie(backend.streams, direction, activeSlots, workers,
+         std::tie(backend.streams, backend.pinned, direction, activeSlots, workers,
                   participants, placementTag, affinity) ==
-             std::tie(other.backend.streams, other.direction, other.activeSlots,
+             std::tie(other.backend.streams, other.backend.pinned, other.direction, other.activeSlots,
                       other.workers, other.participants, other.placementTag,
                       other.affinity);
 }
@@ -127,6 +129,12 @@ describeCachedTransfer(const TransferRequest &request,
                                : result.execution.gatherThreads,
                 options.placementTag,
                 affinity()};
+  result.key.backend.pinned = usePinnedStaging(
+      options.transfer, request.direction == TransferDirection::HostToDevice
+                            ? request.destinationBytes
+                            : result.execution.sourceBytes);
+  if (!result.cacheable && options.transfer.pinning == PinningPolicy::Auto)
+    result.key.backend.pinned = false;
   return result;
 }
 } // namespace reloc::detail

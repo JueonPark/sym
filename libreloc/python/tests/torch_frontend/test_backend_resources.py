@@ -277,21 +277,23 @@ def test_close_wins_before_native_admission(compiler, host_bridge, monkeypatch):
     assert entry.fallback_calls == 0
 
 
-def test_typed_dispatch_does_not_materialize_layout_cache(monkeypatch):
+def test_typed_dispatch_borrows_frontend_owner_without_allocating_layout_staging(monkeypatch):
     adapter = TransportAdapter(transfer_resources=AUTO)
     tensor = torch.arange(6, dtype=torch.float32)
     report = object()
     request = object()
     calls = []
 
-    def execute(prepared):
+    def execute(prepared, *, resources):
         calls.append(prepared)
+        assert resources is not None
+        assert resources.stats()['contexts'] == 0
         return SimpleNamespace(tensor=tensor, report=report)
 
     monkeypatch.setattr(adapter, '_dispatch', lambda: SimpleNamespace(execute_typed_transfer=execute))
     call = SimpleNamespace(compiled=SimpleNamespace(typed=True), request=request)
     assert adapter.execute(call) is tensor and call.report is report
-    assert calls == [request] and adapter.resource_stats() is None
+    assert calls == [request] and adapter.resource_stats()['typed']['requests'] == 0
     adapter.close()
 
 

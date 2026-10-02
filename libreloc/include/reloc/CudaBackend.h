@@ -1,6 +1,6 @@
 //===- CudaBackend.h - CopyBackend over the CUDA Runtime API ----*- C++ -*-===//
 //
-// Pinned staging (cudaHostAlloc), cudaMemcpyAsync on non-blocking streams, and
+// Pinned or pageable staging, cudaMemcpyAsync on non-blocking streams, and
 // cudaEvent completion. Compiled only when RELOC_ENABLE_CUDA; its tests run
 // locally on the desktop GPU, never in CI. CUDA handles are erased to void* so
 // this header pulls in no CUDA headers (keeps the MLIR-free include scan and
@@ -27,7 +27,8 @@ namespace reloc {
 class CudaBackend : public CopyBackend {
 public:
   /// `device` < 0 uses the current device at construction and pins it.
-  explicit CudaBackend(int numStreams = 2, int device = -1);
+  explicit CudaBackend(int numStreams = 2, int device = -1,
+                       bool pinnedStaging = true);
   ~CudaBackend() override;
 
   CudaBackend(const CudaBackend &) = delete;
@@ -52,11 +53,25 @@ public:
   /// erased to void* (the CudaKernels.h convention).
   void *stream(int queue) const { return streams_[static_cast<size_t>(queue)]; }
   /// Device memory on this backend's device; nullptr on failure (recorded).
-  void *allocDevice(size_t bytes);
-  void freeDevice(void *p);
+  virtual void *allocDevice(size_t bytes);
+  virtual void freeDevice(void *p);
   /// Record a pending launch error (cudaGetLastError) under `what`; true
   /// when none is pending.
   bool recordLaunchStatus(const char *what);
+
+  /// Kernel launches use the calling thread's current device, unlike the
+  /// individually guarded allocation/copy methods. Restore it on every exit.
+  class LaunchScope {
+  public:
+    explicit LaunchScope(CudaBackend &backend);
+    ~LaunchScope();
+    LaunchScope(const LaunchScope &) = delete;
+    LaunchScope &operator=(const LaunchScope &) = delete;
+  private:
+    CudaBackend &backend_;
+    int previous_ = -1;
+    bool switched_ = false;
+  };
 
 private:
   /// Record the first failing status; returns true when `status` is success.
@@ -67,6 +82,7 @@ private:
   uint64_t nextEvent_ = 1;
   int device_ = -1;
   std::string error_;
+  bool pinnedStaging_ = true;
 };
 
 /// Resolve the CUDA device that owns `pointer` (cudaPointerGetAttributes).

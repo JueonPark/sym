@@ -21,20 +21,23 @@ def _transfer_configuration(resources, options):
         raise TypeError("transfer_options must be a mapping or None")
     options = dict(options) if options is not None else {}
     for name, value in options.items():
-        if name == "gather_pool":
+        if name == "pinning":
+            if value not in ("auto", "pinned", "pageable"):
+                raise ValueError("pinning must be auto, pinned or pageable")
+        elif name == "gather_pool":
             if value is not None:
                 import pyreloc
 
                 if not isinstance(value, pyreloc.GatherPool):
                     raise TypeError("gather_pool must be GatherPool or None")
-        elif name in {"n_buffers", "n_streams", "gather_threads"}:
+        elif name in {"n_buffers", "n_streams", "gather_threads", "min_pinned_bytes"}:
             if isinstance(value, bool):
                 raise TypeError(f"{name} must be an integer")
             try:
                 value = operator.index(value)
             except TypeError:
                 raise TypeError(f"{name} must be an integer") from None
-            minimum = 0 if name == "gather_threads" else 1
+            minimum = 0 if name in {"gather_threads", "min_pinned_bytes"} else 1
             if not minimum <= value <= (1 << 31) - 1:
                 raise ValueError(f"{name} must be between {minimum} and 2147483647")
             options[name] = value
@@ -46,17 +49,23 @@ def _transfer_configuration(resources, options):
 class TransferResources:
     """Keep bounded staging, streams and workers across blocking transfers.
 
-    Limits apply to this owner. Construction and stats do not initialize CUDA.
+    Layout limits and typed limits are separate: max_retained_bytes bounds
+    layout staging; max_typed_retained_bytes bounds combined typed host/device
+    scratch (default 64 MiB). Typed calls serialize within one owner. Optional
+    max_typed_live_bytes also caps scratch during execution (0 = unlimited).
+    Construction and stats do not initialize CUDA.
     Use a context manager or close() before shutdown. clear() retires idle
     resources and older active generations. Unknown completion retains resources
     and tensor owners for the process lifetime; close() reports that failure.
     """
 
-    __slots__ = ("_native", "_pid", "__weakref__")
+    __slots__ = ("_native", "_typed", "_pid", "__weakref__")
 
     def __init__(self, *, max_retained_bytes=256 << 20, max_contexts=4,
                  max_contexts_per_device=2, max_background_workers=64,
-                 max_live_staging_bytes=None, acquire_timeout_ms=None):
+                 max_live_staging_bytes=None, acquire_timeout_ms=None,
+                 max_typed_retained_bytes=64 << 20, max_typed_live_bytes=0,
+                 max_typed_streams=8, max_typed_background_workers=64):
         import pyreloc
 
         self._pid = os.getpid()
@@ -67,6 +76,18 @@ class TransferResources:
             max_live_staging_bytes=max_live_staging_bytes,
             acquire_timeout_ms=acquire_timeout_ms,
         )
+
+        self._typed = pyreloc.DispatchResources(
+            max_retained_bytes=max_typed_retained_bytes,
+            max_live_bytes=max_typed_live_bytes,
+            max_background_workers=max_typed_background_workers,
+            max_streams=max_typed_streams,
+        )
+
+    @property
+    def native_typed(self):
+        self.native  # PID check before taking any native lock
+        return self._typed
 
     @property
     def native(self):
@@ -82,13 +103,21 @@ class TransferResources:
 
     def stats(self):
         """Return scalar counters/gauges and per-device snapshots."""
-        return self.native.stats()
+        result = self.native.stats()
+        result["typed"] = self.native_typed.stats()
+        return result
 
     def clear(self):
-        self.native.clear()
+        try:
+            self.native.clear()
+        finally:
+            self.native_typed.clear()
 
     def close(self):
-        self.native.close()
+        try:
+            self.native.close()
+        finally:
+            self.native_typed.close()
 
     def __enter__(self):
         self.native.__enter__()

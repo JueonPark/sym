@@ -354,7 +354,13 @@ def test_compiled_layout_plus_cast_and_dequantize_execute_on_cuda(compiler, reus
         assert torch.equal(actual.view(torch.int32), expected.view(torch.int32))
         assert backend.stats()["typed_executions"] >= 2
         assert set(backend.stats()["dispatches"]) <= {"cpu_reference"}
-        assert backend.stats()["transfer_resources"] is None
+        resources = backend.stats()["transfer_resources"]
+        if reuse is False:
+            assert resources is None
+        else:
+            assert resources["contexts"] == 0  # no layout staging for these typed calls
+            assert resources["typed"]["requests"] >= 2
+            assert resources["typed"]["hits"] >= 1
     finally:
         backend.close()
 

@@ -162,4 +162,30 @@ TEST(TransferResourcePolicy, CallbackMarkerCoversWorkersInlineAndExceptions) {
     EXPECT_FALSE(GatherPool::inCallback());
   }
 }
+TEST(TransferResourcePolicy, PinningUsesWireSizeAndSeparatesAllocationKinds) {
+  auto b = layout({8}, {3}, {1});
+  CachedTransferOptions options;
+  options.transfer.pinning = PinningPolicy::Auto;
+  options.transfer.minPinnedBytes = 64;
+  auto req = request(b, reinterpret_cast<void *>(1), reinterpret_cast<void *>(2));
+  auto describe = [&] { return std::get<detail::CacheRequest>(
+      detail::describeCachedTransfer(req, options, {})); };
+  auto h2d = describe();
+  EXPECT_EQ(req.destinationBytes, 32u);
+  EXPECT_FALSE(h2d.key.backend.pinned); // capacity rounds to 256 KiB, wire is 32 B
+  req.direction = TransferDirection::DeviceToHost;
+  auto d2h = describe();
+  EXPECT_EQ(d2h.execution.sourceBytes, 88u);
+  EXPECT_TRUE(d2h.key.backend.pinned); // source reach, not the 32 B result
+  options.transfer.pinning = PinningPolicy::Pageable;
+  auto pageable = describe();
+  EXPECT_FALSE(pageable.key.backend.pinned);
+  EXPECT_FALSE(pageable.key == d2h.key);
+  options.transfer.pinning = PinningPolicy::Pinned;
+  EXPECT_TRUE(describe().key.backend.pinned);
+  options.transfer.pinning = PinningPolicy::Auto;
+  EXPECT_FALSE(usePinnedStaging(options.transfer, 63));
+  EXPECT_TRUE(usePinnedStaging(options.transfer, 64));
+}
+
 } // namespace

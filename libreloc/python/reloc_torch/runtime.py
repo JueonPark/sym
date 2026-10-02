@@ -186,6 +186,10 @@ def source_reason(src):
 
 def bind_symbols(compiled, src):
     """Exact name-to-value map for ``pyreloc.bind`` from real source metadata."""
+    validated = getattr(_local, "validated_binding", None)
+    if (validated is not None and validated[0] is compiled and validated[1] is src
+            and validated[2] == compat.storage_snapshot(src)):
+        return dict(validated[3])
     try:
         return compiled.bind_values(src)
     except GuardError as error:
@@ -212,9 +216,19 @@ def bind_plan(compiled, bindings):
     if diagnostics is not None:
         diagnostics.increment("symbol_binds")
     try:
-        return pyreloc.bind(load_plan(compiled.plan_bytes), bindings)
+        return pyreloc.bind(compiled.decoded_plan, bindings)
     except pyreloc.BindError as error:
         raise UnsupportedRecipe("bind_error", str(error)) from error
+
+
+@contextmanager
+def _validated_binding(compiled, src, bindings):
+    previous = getattr(_local, "validated_binding", None)
+    _local.validated_binding = (compiled, src, compat.storage_snapshot(src), dict(bindings))
+    try:
+        yield
+    finally:
+        _local.validated_binding = previous
 
 
 @contextmanager
@@ -238,6 +252,14 @@ def destination_descriptor(compiled, bindings, device):
         except GuardError as error:
             raise UnsupportedRecipe(error.reason, str(error)) from error
 
+    if hasattr(compiled, "_destination_metadata"):
+        try:
+            shape, strides, dtype = compiled._destination_metadata(tuple(sorted(bindings.items())))
+        except KeyError as error:
+            raise UnsupportedRecipe("missing_symbol", str(error)) from error
+        except GuardError as error:
+            raise UnsupportedRecipe(error.reason, str(error)) from error
+        return ConcreteDescriptor(shape, strides, dtype, torch.device(device))
     logical = compiled.logical_destination
     shape = tuple(evaluate(dim) for dim in logical.shape)
     strides = tuple(evaluate(dim) for dim in logical.strides)
@@ -305,10 +327,11 @@ class TransportAdapter:
     While that module is absent every preflight is the expected exclusion
     ``runtime_unavailable``: the original region runs and nothing launches.
 
-    ``transfer_resources=AUTO`` lazily owns a layout-transfer cache; an explicit
+    ``transfer_resources=AUTO`` lazily owns layout and typed resources; an explicit
     TransferResources is borrowed. None (the default) keeps per-call resources.
     Entry lifetimes never control this owner's lifetime; call close() to drain
-    an owned cache. Typed transfers keep their separate dispatch policy.
+    an owned cache. Typed scratch has its own explicit limits and one exclusive
+    context; typed placement still uses the separate dispatch policy.
     """
 
     REQUEST_ATTRIBUTES = ("bindings", "destination")
@@ -384,8 +407,13 @@ class TransportAdapter:
         if getattr(compiled, "typed", False):
             # C4: typed recipes run through R3's dispatch bridge; parameters
             # are CPU tensors bound by declared name and snapshotted there.
+            pool = self._transfer_options.get("gather_pool")
+            threads = (pool.threads if pool is not None else
+                       self._transfer_options.get("gather_threads", 8))
+            if threads == 0:
+                threads = os.cpu_count() or 1
             request = self._dispatch().prepare_typed_transfer(
-                compiled, src, device, parameters=dict(parameters or {}),
+                compiled, src, device, parameters=dict(parameters or {}), threads=threads,
             )
         else:
             request = self._module.prepare_transfer(compiled, src, device, non_blocking=non_blocking)
@@ -411,11 +439,11 @@ class TransportAdapter:
         typed = getattr(call.compiled, "typed", False)
         with self._lock:
             self._require_open()
-            if not typed and self._owns_resources and self._resources is None:
+            if self._owns_resources and self._resources is None:
                 self._resources = TransferResources()
             resources = self._resources
         if typed:
-            result = self._dispatch().execute_typed_transfer(call.request, **self._transfer_options)
+            result = self._dispatch().execute_typed_transfer(call.request, resources=resources, **self._transfer_options)
             call.report = result.report
             return result.tensor
         return self._module.execute_transfer(call.request, resources=resources, **self._transfer_options)
@@ -511,7 +539,7 @@ def execute_or_fallback(entry, src, symbols, device, *, non_blocking=False, decl
         if typed:
             options["parameters"] = dict(zip(names, parameters))
         try:
-            with _counting_binds(entry.diagnostics):
+            with _counting_binds(entry.diagnostics), _validated_binding(entry.compiled, src, bindings):
                 call = entry.runtime.preflight(entry.compiled, src, device, **options)
         except UnsupportedRecipe as error:
             return _fallback(entry, src, symbols, error.reason, promised, parameters)

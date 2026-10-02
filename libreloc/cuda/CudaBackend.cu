@@ -5,6 +5,7 @@
 #include "reloc/CudaBackend.h"
 
 #include <cuda_runtime.h>
+#include <cstdlib>
 
 namespace reloc {
 namespace {
@@ -48,7 +49,8 @@ bool CudaBackend::check(int status, const char *what) {
   return false;
 }
 
-CudaBackend::CudaBackend(int numStreams, int device) {
+CudaBackend::CudaBackend(int numStreams, int device, bool pinnedStaging)
+    : pinnedStaging_(pinnedStaging) {
   if (numStreams < 1)
     numStreams = 1;
   if (device < 0) {
@@ -84,6 +86,12 @@ CudaBackend::~CudaBackend() {
 }
 
 void *CudaBackend::allocStaging(size_t bytes) {
+  if (!pinnedStaging_) {
+    void *p = std::malloc(bytes);
+    if (!p && error_.empty())
+      error_ = "pageable staging allocation failed";
+    return p;
+  }
   DeviceScope scope(device_);
   void *p = nullptr;
   if (!check(cudaHostAlloc(&p, bytes, cudaHostAllocDefault), "cudaHostAlloc"))
@@ -92,6 +100,10 @@ void *CudaBackend::allocStaging(size_t bytes) {
 }
 
 void CudaBackend::freeStaging(void *p) {
+  if (!pinnedStaging_) {
+    std::free(p);
+    return;
+  }
   if (p == nullptr)
     return;
   DeviceScope scope(device_);
@@ -210,6 +222,18 @@ void CudaBackend::freeDevice(void *p) {
 bool CudaBackend::recordLaunchStatus(const char *what) {
   DeviceScope scope(device_);
   return check(cudaGetLastError(), what);
+}
+
+CudaBackend::LaunchScope::LaunchScope(CudaBackend &backend) : backend_(backend) {
+  if (!backend_.check(cudaGetDevice(&previous_), "cudaGetDevice(launch)"))
+    return;
+  if (previous_ != backend_.device_)
+    switched_ = backend_.check(cudaSetDevice(backend_.device_), "cudaSetDevice(launch)");
+}
+
+CudaBackend::LaunchScope::~LaunchScope() {
+  if (switched_)
+    backend_.check(cudaSetDevice(previous_), "cudaSetDevice(restore launch)");
 }
 
 bool cudaPointerDevice(const void *pointer, int &device, std::string &error) {

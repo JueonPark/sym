@@ -451,18 +451,19 @@ std::optional<TransferError> executeCuda(DispatchRequest &request,
 
   if (row.id == kCpuStagesCudaStages) {
     const uint32_t k = row.wireBoundary;
-    std::vector<uint8_t> wire(
-        static_cast<size_t>(typed::bytesAt(program, k, true)));
-    if (auto error = hostProgram(program, 0, k, src, wire.data(), options))
+    const size_t wireBytes = static_cast<size_t>(typed::bytesAt(program, k, true));
+    StagingGuard wire{backend, backend.allocStaging(wireBytes)};
+    if (!wire.buffer) return backendFailure(backend, "host scratch allocation failed");
+    if (auto error = hostProgram(program, 0, k, src, wire.buffer, options))
       return error;
-    void *dWire = scratch.allocDevice(static_cast<int64_t>(wire.size()));
+    void *dWire = scratch.allocDevice(static_cast<int64_t>(wireBytes));
     if (dWire == nullptr)
       return backendFailure(backend, "device scratch allocation failed");
     if (auto error =
-            pipelineToDevice(wire.data(), dWire, program.resultElements,
+            pipelineToDevice(wire.buffer, dWire, program.resultElements,
                              typed::widthAt(program, k), backend, options))
       return error;
-    payload += static_cast<int64_t>(wire.size());
+    payload += static_cast<int64_t>(wireBytes);
     if (auto error = runDeviceStages(program, k, stageCount, true, dWire, dst,
                                      backend, scratch, payload))
       return error;
@@ -807,7 +808,12 @@ selectImplementation(const TypedBoundPlan &plan, TransferDirection direction,
   auto prepared = typed::prepareProgram(plan);
   if (auto *error = std::get_if<typed::ExecutionError>(&prepared))
     return fromExecution(*error);
-  const Program &program = std::get<Program>(prepared);
+  return selectImplementation(std::get<Program>(prepared), direction, options);
+}
+
+std::variant<Selection, TransferError>
+selectImplementation(const Program &program, TransferDirection direction,
+                     const Options &options) {
   Capability capability = queryCapability(program, direction, options.cuda);
   auto selected = select(program, capability, options);
   if (auto *error = std::get_if<TransferError>(&selected))
@@ -823,8 +829,16 @@ prepareDispatch(const TypedBoundPlan &plan, const BufferView &source,
   auto prepared = typed::prepareProgram(plan);
   if (auto *error = std::get_if<typed::ExecutionError>(&prepared))
     return fromExecution(*error);
+  return prepareDispatch(std::get<Program>(prepared), source, destination, direction, options);
+}
+
+std::variant<DispatchRequest, TransferError>
+prepareDispatch(const Program &program, const BufferView &source,
+                const BufferView &destination, TransferDirection direction,
+                const Options &options) {
+  const auto &plan = program.plan;
   DispatchRequest request;
-  request.program = std::move(std::get<Program>(prepared));
+  request.program = program;
   if (auto error = checkView(request.program, source, true, direction))
     return *error;
   if (auto error = checkView(request.program, destination, false, direction))
@@ -878,13 +892,14 @@ std::optional<TransferError> executeDispatch(DispatchRequest &request,
 
   if (request.selected.id == kCpuReference) {
     if (request.direction == TransferDirection::HostToDevice) {
-      std::vector<uint8_t> result(
-          static_cast<size_t>(program.plan.destinationBytes));
+      StagingGuard result{backend, backend.allocStaging(
+          static_cast<size_t>(program.plan.destinationBytes))};
+      if (!result.buffer) return backendFailure(backend, "host scratch allocation failed");
       if (auto error =
-              hostProgram(program, 0, stageCount, src, result.data(), options))
+              hostProgram(program, 0, stageCount, src, result.buffer, options))
         return error;
       if (auto error = pipelineToDevice(
-              result.data(), dst, program.resultElements,
+              result.buffer, dst, program.resultElements,
               typed::widthAt(program, stageCount), backend, options))
         return error;
       request.report.payloadBytesTransferred = program.plan.destinationBytes;
@@ -907,8 +922,15 @@ std::optional<TransferError> executeDispatch(DispatchRequest &request,
   if (cudaBackend == nullptr)
     return fail("backend_mismatch",
                 "row " + request.selected.label() + " needs a CudaBackend");
-  if (auto error = executeCuda(request, *cudaBackend, options))
-    return error;
+  {
+    CudaBackend::LaunchScope scope(*cudaBackend);
+    if (cudaBackend->failed())
+      return backendFailure(backend, "selecting kernel device failed");
+    if (auto error = executeCuda(request, *cudaBackend, options))
+      return error;
+  }
+  if (cudaBackend->failed())
+    return backendFailure(backend, "restoring kernel device failed");
   request.report.executed = true;
   return std::nullopt;
 #else
