@@ -1,0 +1,46 @@
+         2943 function calls in 0.041 seconds
+
+   Ordered by: cumulative time
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+       60    0.000    0.000    0.032    0.001 /tmp/sym-main-workload-profile/bench/workload_profile/controls.py:81(<lambda>)
+       60    0.002    0.000    0.032    0.001 /tmp/sym-pr162-pageable/libreloc/python/examples/workloads/common.py:440(reference)
+      120    0.027    0.000    0.027    0.000 {method 'to' of 'torch._C.TensorBase' objects}
+       60    0.001    0.000    0.009    0.000 /tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/cuda/__init__.py:1271(synchronize)
+       60    0.000    0.000    0.005    0.000 /tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/cuda/__init__.py:712(__init__)
+       60    0.001    0.000    0.005    0.000 /tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/cuda/_utils.py:605(_get_device_index)
+       60    0.000    0.000    0.004    0.000 /tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/_utils.py:878(_get_device_index)
+       60    0.000    0.000    0.003    0.000 /tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/_utils.py:852(_get_current_device_index)
+       60    0.000    0.000    0.003    0.000 /tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/_utils.py:836(_get_device_attr)
+       60    0.002    0.000    0.002    0.000 {built-in method torch._C._cuda_synchronize}
+       60    0.000    0.000    0.002    0.000 /tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/_utils.py:819(_get_available_device_type)
+       60    0.000    0.000    0.002    0.000 /tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/cuda/__init__.py:209(is_available)
+       60    0.001    0.000    0.001    0.000 {method 'contiguous' of 'torch._C.TensorBase' objects}
+       60    0.001    0.000    0.001    0.000 {method 'float' of 'torch._C.TensorBase' objects}
+       60    0.000    0.000    0.001    0.000 /tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/cuda/__init__.py:205(_nvml_based_avail)
+       60    0.000    0.000    0.001    0.000 <frozen os>:818(getenv)
+       60    0.000    0.000    0.001    0.000 <frozen _collections_abc>:792(get)
+       60    0.000    0.000    0.001    0.000 /tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/_utils.py:854(<lambda>)
+      120    0.000    0.000    0.001    0.000 /tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/cuda/__init__.py:563(_lazy_init)
+       60    0.000    0.000    0.001    0.000 /tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/cuda/__init__.py:1265(current_device)
+       60    0.000    0.000    0.001    0.000 <frozen os>:704(__getitem__)
+      480    0.001    0.000    0.001    0.000 {built-in method builtins.isinstance}
+       60    0.000    0.000    0.000    0.000 {method 't' of 'torch._C.TensorBase' objects}
+      120    0.000    0.000    0.000    0.000 /tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/cuda/__init__.py:514(is_initialized)
+       60    0.000    0.000    0.000    0.000 <frozen os>:786(encode)
+       60    0.000    0.000    0.000    0.000 /tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/cuda/__init__.py:716(__enter__)
+       60    0.000    0.000    0.000    0.000 /tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/cuda/__init__.py:719(__exit__)
+       60    0.000    0.000    0.000    0.000 /tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/cuda/__init__.py:200(_is_compiled)
+      120    0.000    0.000    0.000    0.000 {built-in method torch._C._cuda_isInBadFork}
+      120    0.000    0.000    0.000    0.000 /tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/_jit_internal.py:104(is_scripting)
+       60    0.000    0.000    0.000    0.000 {built-in method torch._C._cuda_getDevice}
+       60    0.000    0.000    0.000    0.000 {built-in method torch._C._cuda_exchangeDevice}
+       60    0.000    0.000    0.000    0.000 {method 'encode' of 'str' objects}
+       60    0.000    0.000    0.000    0.000 {built-in method torch._C._cuda_maybeExchangeDevice}
+       60    0.000    0.000    0.000    0.000 {built-in method torch._C._cuda_getDeviceCount}
+       60    0.000    0.000    0.000    0.000 {built-in method builtins.hasattr}
+       60    0.000    0.000    0.000    0.000 {method 'lower' of 'str' objects}
+        1    0.000    0.000    0.000    0.000 {method 'disable' of '_lsprof.Profiler' objects}
+        2    0.000    0.000    0.000    0.000 {built-in method time.perf_counter}
+
+

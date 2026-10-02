@@ -1,0 +1,3030 @@
+{
+  "case": "dlrm-retained",
+  "sqlite_sha256": "bdfbd6d96921871c3d28c1b5726cc85e53e7750443ff958bfc83bcfe5e72e63d",
+  "transfers": [
+    {
+      "path": "torch",
+      "kind": "pooled_embeddings",
+      "index": 0,
+      "wall_ms": 4.713535,
+      "exclusive_ms": {
+        "cpu_transform": 0.0,
+        "staging_management": 0.0,
+        "device_management": 0.34145,
+        "cuda_copy_api": 0.691557,
+        "cuda_wait_api": 0.07833000000000001,
+        "cuda_other_api": 0.013857000000000001,
+        "frontend_prepare": 0.0,
+        "frontend_execute": 0.0,
+        "native_other": 0.0,
+        "outer_host": 3.588341
+      },
+      "exclusive_timeline": [
+        {
+          "phase": "outer_host",
+          "start_ms": 0.0,
+          "end_ms": 2.527322
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 2.527322,
+          "end_ms": 2.534997
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 2.534997,
+          "end_ms": 2.536419
+        },
+        {
+          "phase": "device_management",
+          "start_ms": 2.536419,
+          "end_ms": 2.877869
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 2.877869,
+          "end_ms": 3.836274
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 3.836274,
+          "end_ms": 3.842456
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 3.842456,
+          "end_ms": 3.845151
+        },
+        {
+          "phase": "cuda_copy_api",
+          "start_ms": 3.845151,
+          "end_ms": 4.536708
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 4.536708,
+          "end_ms": 4.538251
+        },
+        {
+          "phase": "cuda_wait_api",
+          "start_ms": 4.538251,
+          "end_ms": 4.609597
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 4.609597,
+          "end_ms": 4.68492
+        },
+        {
+          "phase": "cuda_wait_api",
+          "start_ms": 4.68492,
+          "end_ms": 4.691904
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 4.691904,
+          "end_ms": 4.713535
+        }
+      ],
+      "api_totals": {
+        "cudaStreamIsCapturing_v10000": {
+          "count": 2,
+          "ms": 0.013857000000000001
+        },
+        "cudaMalloc_v3020": {
+          "count": 1,
+          "ms": 0.34145
+        },
+        "cudaMemcpyAsync_v3020": {
+          "count": 1,
+          "ms": 0.691557
+        },
+        "cudaStreamSynchronize_v3020": {
+          "count": 1,
+          "ms": 0.071346
+        },
+        "cudaDeviceSynchronize_v3020": {
+          "count": 1,
+          "ms": 0.006984
+        }
+      },
+      "inclusive_scopes": {
+        "transfer/torch/pooled_embeddings/0": {
+          "count": 1,
+          "ms": 4.713535
+        }
+      },
+      "gpu": {
+        "kernels": [],
+        "copies": [
+          {
+            "name": "H2D",
+            "start_ms": 3.967093,
+            "duration_ms": 0.634848,
+            "stream": 7,
+            "bytes": 6815744,
+            "correlation": 43
+          }
+        ],
+        "memsets": []
+      },
+      "gpu_busy_ms": 0.634848,
+      "gpu_copy_ms": 0.634848,
+      "gpu_kernel_ms": 0.0,
+      "copy_bytes": 6815744
+    },
+    {
+      "path": "torch",
+      "kind": "pooled_embeddings",
+      "index": 1,
+      "wall_ms": 4.010306,
+      "exclusive_ms": {
+        "cpu_transform": 0.0,
+        "staging_management": 0.0,
+        "device_management": 0.0,
+        "cuda_copy_api": 0.684283,
+        "cuda_wait_api": 0.079001,
+        "cuda_other_api": 0.008607,
+        "frontend_prepare": 0.0,
+        "frontend_execute": 0.0,
+        "native_other": 0.0,
+        "outer_host": 3.238415
+      },
+      "exclusive_timeline": [
+        {
+          "phase": "outer_host",
+          "start_ms": 0.0,
+          "end_ms": 3.14608
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 3.14608,
+          "end_ms": 3.154687
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 3.154687,
+          "end_ms": 3.157923
+        },
+        {
+          "phase": "cuda_copy_api",
+          "start_ms": 3.157923,
+          "end_ms": 3.842206
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 3.842206,
+          "end_ms": 3.844019
+        },
+        {
+          "phase": "cuda_wait_api",
+          "start_ms": 3.844019,
+          "end_ms": 3.915656
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 3.915656,
+          "end_ms": 3.983946
+        },
+        {
+          "phase": "cuda_wait_api",
+          "start_ms": 3.983946,
+          "end_ms": 3.99131
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 3.99131,
+          "end_ms": 4.010306
+        }
+      ],
+      "api_totals": {
+        "cudaStreamIsCapturing_v10000": {
+          "count": 1,
+          "ms": 0.008607
+        },
+        "cudaMemcpyAsync_v3020": {
+          "count": 1,
+          "ms": 0.684283
+        },
+        "cudaStreamSynchronize_v3020": {
+          "count": 1,
+          "ms": 0.071637
+        },
+        "cudaDeviceSynchronize_v3020": {
+          "count": 1,
+          "ms": 0.007364
+        }
+      },
+      "inclusive_scopes": {
+        "transfer/torch/pooled_embeddings/1": {
+          "count": 1,
+          "ms": 4.010306
+        }
+      },
+      "gpu": {
+        "kernels": [],
+        "copies": [
+          {
+            "name": "H2D",
+            "start_ms": 3.286558,
+            "duration_ms": 0.621185,
+            "stream": 7,
+            "bytes": 6815744,
+            "correlation": 2132
+          }
+        ],
+        "memsets": []
+      },
+      "gpu_busy_ms": 0.621185,
+      "gpu_copy_ms": 0.621185,
+      "gpu_kernel_ms": 0.0,
+      "copy_bytes": 6815744
+    },
+    {
+      "path": "torch",
+      "kind": "pooled_embeddings",
+      "index": 2,
+      "wall_ms": 2.119916,
+      "exclusive_ms": {
+        "cpu_transform": 0.0,
+        "staging_management": 0.0,
+        "device_management": 0.0,
+        "cuda_copy_api": 0.489312,
+        "cuda_wait_api": 0.082437,
+        "cuda_other_api": 0.007394,
+        "frontend_prepare": 0.0,
+        "frontend_execute": 0.0,
+        "native_other": 0.0,
+        "outer_host": 1.540773
+      },
+      "exclusive_timeline": [
+        {
+          "phase": "outer_host",
+          "start_ms": 0.0,
+          "end_ms": 1.454059
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 1.454059,
+          "end_ms": 1.461453
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 1.461453,
+          "end_ms": 1.4652
+        },
+        {
+          "phase": "cuda_copy_api",
+          "start_ms": 1.4652,
+          "end_ms": 1.954512
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 1.954512,
+          "end_ms": 1.956205
+        },
+        {
+          "phase": "cuda_wait_api",
+          "start_ms": 1.956205,
+          "end_ms": 2.031208
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 2.031208,
+          "end_ms": 2.095811
+        },
+        {
+          "phase": "cuda_wait_api",
+          "start_ms": 2.095811,
+          "end_ms": 2.103245
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 2.103245,
+          "end_ms": 2.119916
+        }
+      ],
+      "api_totals": {
+        "cudaStreamIsCapturing_v10000": {
+          "count": 1,
+          "ms": 0.007394
+        },
+        "cudaMemcpyAsync_v3020": {
+          "count": 1,
+          "ms": 0.489312
+        },
+        "cudaStreamSynchronize_v3020": {
+          "count": 1,
+          "ms": 0.075003
+        },
+        "cudaDeviceSynchronize_v3020": {
+          "count": 1,
+          "ms": 0.007434
+        }
+      },
+      "inclusive_scopes": {
+        "transfer/torch/pooled_embeddings/2": {
+          "count": 1,
+          "ms": 2.119916
+        }
+      },
+      "gpu": {
+        "kernels": [],
+        "copies": [
+          {
+            "name": "H2D",
+            "start_ms": 1.571911,
+            "duration_ms": 0.451328,
+            "stream": 7,
+            "bytes": 5111808,
+            "correlation": 2409
+          }
+        ],
+        "memsets": []
+      },
+      "gpu_busy_ms": 0.451328,
+      "gpu_copy_ms": 0.451328,
+      "gpu_kernel_ms": 0.0,
+      "copy_bytes": 5111808
+    },
+    {
+      "path": "torch",
+      "kind": "pooled_embeddings",
+      "index": 3,
+      "wall_ms": 0.706064,
+      "exclusive_ms": {
+        "cpu_transform": 0.0,
+        "staging_management": 0.0,
+        "device_management": 0.0,
+        "cuda_copy_api": 0.152981,
+        "cuda_wait_api": 0.09149499999999999,
+        "cuda_other_api": 0.003978,
+        "frontend_prepare": 0.0,
+        "frontend_execute": 0.0,
+        "native_other": 0.0,
+        "outer_host": 0.45760999999999996
+      },
+      "exclusive_timeline": [
+        {
+          "phase": "outer_host",
+          "start_ms": 0.0,
+          "end_ms": 0.412916
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 0.412916,
+          "end_ms": 0.416894
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 0.416894,
+          "end_ms": 0.419459
+        },
+        {
+          "phase": "cuda_copy_api",
+          "start_ms": 0.419459,
+          "end_ms": 0.57244
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 0.57244,
+          "end_ms": 0.573712
+        },
+        {
+          "phase": "cuda_wait_api",
+          "start_ms": 0.573712,
+          "end_ms": 0.660768
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 0.660768,
+          "end_ms": 0.684914
+        },
+        {
+          "phase": "cuda_wait_api",
+          "start_ms": 0.684914,
+          "end_ms": 0.689353
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 0.689353,
+          "end_ms": 0.706064
+        }
+      ],
+      "api_totals": {
+        "cudaStreamIsCapturing_v10000": {
+          "count": 1,
+          "ms": 0.003978
+        },
+        "cudaMemcpyAsync_v3020": {
+          "count": 1,
+          "ms": 0.152981
+        },
+        "cudaStreamSynchronize_v3020": {
+          "count": 1,
+          "ms": 0.087056
+        },
+        "cudaDeviceSynchronize_v3020": {
+          "count": 1,
+          "ms": 0.004439
+        }
+      },
+      "inclusive_scopes": {
+        "transfer/torch/pooled_embeddings/3": {
+          "count": 1,
+          "ms": 0.706064
+        }
+      },
+      "gpu": {
+        "kernels": [],
+        "copies": [
+          {
+            "name": "H2D",
+            "start_ms": 0.52153,
+            "duration_ms": 0.13408,
+            "stream": 7,
+            "bytes": 1703936,
+            "correlation": 2699
+          }
+        ],
+        "memsets": []
+      },
+      "gpu_busy_ms": 0.13408,
+      "gpu_copy_ms": 0.13408,
+      "gpu_kernel_ms": 0.0,
+      "copy_bytes": 1703936
+    },
+    {
+      "path": "sym",
+      "kind": "pooled_embeddings",
+      "index": 0,
+      "wall_ms": 274.37484,
+      "exclusive_ms": {
+        "cpu_transform": 1.758438,
+        "staging_management": 0.003086,
+        "device_management": 0.0,
+        "cuda_copy_api": 0.643516,
+        "cuda_wait_api": 0.062528,
+        "cuda_other_api": 0.07934000000000002,
+        "frontend_prepare": 0.7170659999999999,
+        "frontend_execute": 0.34573899999999996,
+        "native_other": 0.43632,
+        "outer_host": 270.32880700000004
+      },
+      "exclusive_timeline": [
+        {
+          "phase": "outer_host",
+          "start_ms": 0.0,
+          "end_ms": 4.474991
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 4.474991,
+          "end_ms": 4.480351
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 4.480351,
+          "end_ms": 4.519536
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 4.519536,
+          "end_ms": 4.52148
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 4.52148,
+          "end_ms": 219.87034
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 219.87034,
+          "end_ms": 219.877653
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 219.877653,
+          "end_ms": 219.88093
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 219.88093,
+          "end_ms": 219.881661
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 219.881661,
+          "end_ms": 270.067799
+        },
+        {
+          "phase": "frontend_prepare",
+          "start_ms": 270.067799,
+          "end_ms": 270.387057
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 270.387057,
+          "end_ms": 270.397226
+        },
+        {
+          "phase": "frontend_prepare",
+          "start_ms": 270.397226,
+          "end_ms": 270.43563
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 270.43563,
+          "end_ms": 270.476307
+        },
+        {
+          "phase": "frontend_prepare",
+          "start_ms": 270.476307,
+          "end_ms": 270.835711
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 270.835711,
+          "end_ms": 270.8561
+        },
+        {
+          "phase": "frontend_execute",
+          "start_ms": 270.8561,
+          "end_ms": 271.084806
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 271.084806,
+          "end_ms": 271.134009
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 271.134009,
+          "end_ms": 271.164237
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 271.164237,
+          "end_ms": 271.164748
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 271.164748,
+          "end_ms": 271.168615
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 271.168615,
+          "end_ms": 271.505236
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 271.505236,
+          "end_ms": 271.509735
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 271.509735,
+          "end_ms": 271.510426
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 271.510426,
+          "end_ms": 271.519473
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 271.519473,
+          "end_ms": 271.520285
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 271.520285,
+          "end_ms": 271.525535
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 271.525535,
+          "end_ms": 271.525926
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 271.525926,
+          "end_ms": 271.527068
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 271.527068,
+          "end_ms": 271.527549
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 271.527549,
+          "end_ms": 271.529643
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 271.529643,
+          "end_ms": 271.531406
+        },
+        {
+          "phase": "staging_management",
+          "start_ms": 271.531406,
+          "end_ms": 271.534492
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 271.534492,
+          "end_ms": 271.534883
+        },
+        {
+          "phase": "cpu_transform",
+          "start_ms": 271.534883,
+          "end_ms": 273.293321
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 273.293321,
+          "end_ms": 273.297819
+        },
+        {
+          "phase": "cuda_copy_api",
+          "start_ms": 273.297819,
+          "end_ms": 273.941335
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 273.941335,
+          "end_ms": 273.94411
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 273.94411,
+          "end_ms": 273.948088
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 273.948088,
+          "end_ms": 273.948599
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 273.948599,
+          "end_ms": 273.951364
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 273.951364,
+          "end_ms": 273.955442
+        },
+        {
+          "phase": "cuda_wait_api",
+          "start_ms": 273.955442,
+          "end_ms": 274.008913
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 274.008913,
+          "end_ms": 274.009214
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 274.009214,
+          "end_ms": 274.010336
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 274.010336,
+          "end_ms": 274.043629
+        },
+        {
+          "phase": "frontend_execute",
+          "start_ms": 274.043629,
+          "end_ms": 274.107882
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 274.107882,
+          "end_ms": 274.151856
+        },
+        {
+          "phase": "frontend_execute",
+          "start_ms": 274.151856,
+          "end_ms": 274.204636
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 274.204636,
+          "end_ms": 274.359341
+        },
+        {
+          "phase": "cuda_wait_api",
+          "start_ms": 274.359341,
+          "end_ms": 274.368398
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 274.368398,
+          "end_ms": 274.37484
+        }
+      ],
+      "api_totals": {
+        "cudaStreamGetCaptureInfo_v2_v11030": {
+          "count": 3,
+          "ms": 0.013404000000000001
+        },
+        "cudaStreamIsCapturing_v10000": {
+          "count": 1,
+          "ms": 0.001944
+        },
+        "cudaStreamCreateWithFlags_v5000": {
+          "count": 2,
+          "ms": 0.034095
+        },
+        "cudaEventCreateWithFlags_v3020": {
+          "count": 2,
+          "ms": 0.008477
+        },
+        "cudaEventRecord_v3020": {
+          "count": 2,
+          "ms": 0.011812
+        },
+        "cudaStreamWaitEvent_v3020": {
+          "count": 2,
+          "ms": 0.006392
+        },
+        "cudaEventDestroy_v3020": {
+          "count": 2,
+          "ms": 0.003216
+        },
+        "cudaMemcpyAsync_v3020": {
+          "count": 1,
+          "ms": 0.643516
+        },
+        "cudaEventSynchronize_v3020": {
+          "count": 1,
+          "ms": 0.053471
+        },
+        "cudaDeviceSynchronize_v3020": {
+          "count": 1,
+          "ms": 0.009057
+        }
+      },
+      "inclusive_scopes": {
+        "transfer/sym/pooled_embeddings/0": {
+          "count": 1,
+          "ms": 274.37484
+        },
+        "python.native.load_typed_plan": {
+          "count": 2,
+          "ms": 0.10373700000000001
+        },
+        "python.runtime.bind_symbols": {
+          "count": 1,
+          "ms": 0.319258
+        },
+        "python.artifact.bind_values": {
+          "count": 1,
+          "ms": 0.294872
+        },
+        "python.runtime.destination_descriptor": {
+          "count": 1,
+          "ms": 0.038404
+        },
+        "python.adapter.preflight": {
+          "count": 1,
+          "ms": 0.359404
+        },
+        "python.prepare_typed_transfer": {
+          "count": 1,
+          "ms": 0.3256
+        },
+        "python.bind_symbols": {
+          "count": 1,
+          "ms": 0.011572
+        },
+        "python.native.bind_typed": {
+          "count": 1,
+          "ms": 0.045566
+        },
+        "python._storage_view": {
+          "count": 2,
+          "ms": 0.038043
+        },
+        "python.destination_descriptor": {
+          "count": 1,
+          "ms": 0.009598
+        },
+        "python.native.prepare_typed_program": {
+          "count": 1,
+          "ms": 0.01102
+        },
+        "python.native.query_capability": {
+          "count": 1,
+          "ms": 0.027973
+        },
+        "python.native.select_dispatch": {
+          "count": 1,
+          "ms": 0.032952
+        },
+        "python.adapter.execute": {
+          "count": 1,
+          "ms": 3.251782
+        },
+        "python.execute_typed_transfer": {
+          "count": 1,
+          "ms": 3.198831
+        },
+        "python.recheck": {
+          "count": 1,
+          "ms": 0.010991
+        },
+        "python.native.prepare_dispatch": {
+          "count": 1,
+          "ms": 0.037281
+        },
+        "python.native.execute_dispatch": {
+          "count": 1,
+          "ms": 2.958823
+        },
+        "reloc.backend.create": {
+          "count": 1,
+          "ms": 0.038554
+        },
+        "reloc.scratch.host_acquire": {
+          "count": 1,
+          "ms": 0.003086
+        },
+        "reloc.typed.host_program": {
+          "count": 1,
+          "ms": 1.758438
+        },
+        "python.runtime.verify_result": {
+          "count": 1,
+          "ms": 0.05278
+        }
+      },
+      "gpu": {
+        "kernels": [],
+        "copies": [
+          {
+            "name": "H2D",
+            "start_ms": 273.397194,
+            "duration_ms": 0.605825,
+            "stream": 16,
+            "bytes": 6815744,
+            "correlation": 3034
+          }
+        ],
+        "memsets": []
+      },
+      "gpu_busy_ms": 0.605825,
+      "gpu_copy_ms": 0.605825,
+      "gpu_kernel_ms": 0.0,
+      "copy_bytes": 6815744
+    },
+    {
+      "path": "sym",
+      "kind": "pooled_embeddings",
+      "index": 1,
+      "wall_ms": 3.71835,
+      "exclusive_ms": {
+        "cpu_transform": 1.462545,
+        "staging_management": 0.002736,
+        "device_management": 0.0,
+        "cuda_copy_api": 0.645609,
+        "cuda_wait_api": 0.064964,
+        "cuda_other_api": 0.034595,
+        "frontend_prepare": 0.327334,
+        "frontend_execute": 0.330209,
+        "native_other": 0.087186,
+        "outer_host": 0.7631720000000001
+      },
+      "exclusive_timeline": [
+        {
+          "phase": "outer_host",
+          "start_ms": 0.0,
+          "end_ms": 0.506915
+        },
+        {
+          "phase": "frontend_prepare",
+          "start_ms": 0.506915,
+          "end_ms": 0.541251
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 0.541251,
+          "end_ms": 0.552151
+        },
+        {
+          "phase": "frontend_prepare",
+          "start_ms": 0.552151,
+          "end_ms": 0.56214
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 0.56214,
+          "end_ms": 0.600854
+        },
+        {
+          "phase": "frontend_prepare",
+          "start_ms": 0.600854,
+          "end_ms": 0.883863
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 0.883863,
+          "end_ms": 0.902358
+        },
+        {
+          "phase": "frontend_execute",
+          "start_ms": 0.902358,
+          "end_ms": 1.114813
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 1.114813,
+          "end_ms": 1.140261
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 1.140261,
+          "end_ms": 1.145772
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 1.145772,
+          "end_ms": 1.146894
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 1.146894,
+          "end_ms": 1.155641
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 1.155641,
+          "end_ms": 1.156432
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 1.156432,
+          "end_ms": 1.161191
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 1.161191,
+          "end_ms": 1.161602
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 1.161602,
+          "end_ms": 1.162874
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 1.162874,
+          "end_ms": 1.163586
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 1.163586,
+          "end_ms": 1.16579
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 1.16579,
+          "end_ms": 1.167162
+        },
+        {
+          "phase": "staging_management",
+          "start_ms": 1.167162,
+          "end_ms": 1.169898
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 1.169898,
+          "end_ms": 1.174005
+        },
+        {
+          "phase": "cpu_transform",
+          "start_ms": 1.174005,
+          "end_ms": 2.63655
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 2.63655,
+          "end_ms": 2.644636
+        },
+        {
+          "phase": "cuda_copy_api",
+          "start_ms": 2.644636,
+          "end_ms": 3.290245
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 3.290245,
+          "end_ms": 3.294042
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 3.294042,
+          "end_ms": 3.298931
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 3.298931,
+          "end_ms": 3.299573
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 3.299573,
+          "end_ms": 3.305043
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 3.305043,
+          "end_ms": 3.307438
+        },
+        {
+          "phase": "cuda_wait_api",
+          "start_ms": 3.307438,
+          "end_ms": 3.362633
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 3.362633,
+          "end_ms": 3.363214
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 3.363214,
+          "end_ms": 3.364957
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 3.364957,
+          "end_ms": 3.402679
+        },
+        {
+          "phase": "frontend_execute",
+          "start_ms": 3.402679,
+          "end_ms": 3.463154
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 3.463154,
+          "end_ms": 3.499984
+        },
+        {
+          "phase": "frontend_execute",
+          "start_ms": 3.499984,
+          "end_ms": 3.557263
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 3.557263,
+          "end_ms": 3.701969
+        },
+        {
+          "phase": "cuda_wait_api",
+          "start_ms": 3.701969,
+          "end_ms": 3.711738
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 3.711738,
+          "end_ms": 3.71835
+        }
+      ],
+      "api_totals": {
+        "cudaEventCreateWithFlags_v3020": {
+          "count": 2,
+          "ms": 0.0104
+        },
+        "cudaEventRecord_v3020": {
+          "count": 2,
+          "ms": 0.014217
+        },
+        "cudaStreamWaitEvent_v3020": {
+          "count": 2,
+          "ms": 0.006031
+        },
+        "cudaEventDestroy_v3020": {
+          "count": 2,
+          "ms": 0.003947
+        },
+        "cudaMemcpyAsync_v3020": {
+          "count": 1,
+          "ms": 0.645609
+        },
+        "cudaEventSynchronize_v3020": {
+          "count": 1,
+          "ms": 0.055195
+        },
+        "cudaDeviceSynchronize_v3020": {
+          "count": 1,
+          "ms": 0.009769
+        }
+      },
+      "inclusive_scopes": {
+        "transfer/sym/pooled_embeddings/1": {
+          "count": 1,
+          "ms": 3.71835
+        },
+        "python.runtime.bind_symbols": {
+          "count": 1,
+          "ms": 0.034336
+        },
+        "python.artifact.bind_values": {
+          "count": 1,
+          "ms": 0.024286
+        },
+        "python.runtime.destination_descriptor": {
+          "count": 1,
+          "ms": 0.009989
+        },
+        "python.adapter.preflight": {
+          "count": 1,
+          "ms": 0.283009
+        },
+        "python.prepare_typed_transfer": {
+          "count": 1,
+          "ms": 0.249725
+        },
+        "python.bind_symbols": {
+          "count": 1,
+          "ms": 0.008947
+        },
+        "python.native.bind_typed": {
+          "count": 1,
+          "ms": 0.034024
+        },
+        "python._storage_view": {
+          "count": 2,
+          "ms": 0.036889000000000005
+        },
+        "python.destination_descriptor": {
+          "count": 1,
+          "ms": 0.008316
+        },
+        "python.native.prepare_typed_program": {
+          "count": 1,
+          "ms": 0.012394
+        },
+        "python.native.query_capability": {
+          "count": 1,
+          "ms": 0.022082
+        },
+        "python.native.select_dispatch": {
+          "count": 1,
+          "ms": 0.026941
+        },
+        "python.adapter.execute": {
+          "count": 1,
+          "ms": 2.560796
+        },
+        "python.execute_typed_transfer": {
+          "count": 1,
+          "ms": 2.528865
+        },
+        "python.recheck": {
+          "count": 1,
+          "ms": 0.011111
+        },
+        "python.native.prepare_dispatch": {
+          "count": 1,
+          "ms": 0.035648
+        },
+        "python.native.execute_dispatch": {
+          "count": 1,
+          "ms": 2.287866
+        },
+        "reloc.scratch.host_acquire": {
+          "count": 1,
+          "ms": 0.002736
+        },
+        "reloc.typed.host_program": {
+          "count": 1,
+          "ms": 1.462545
+        },
+        "python.runtime.verify_result": {
+          "count": 1,
+          "ms": 0.057279
+        }
+      },
+      "gpu": {
+        "kernels": [],
+        "copies": [
+          {
+            "name": "H2D",
+            "start_ms": 2.783119,
+            "duration_ms": 0.573953,
+            "stream": 16,
+            "bytes": 6815744,
+            "correlation": 3387
+          }
+        ],
+        "memsets": []
+      },
+      "gpu_busy_ms": 0.573953,
+      "gpu_copy_ms": 0.573953,
+      "gpu_kernel_ms": 0.0,
+      "copy_bytes": 6815744
+    },
+    {
+      "path": "sym",
+      "kind": "pooled_embeddings",
+      "index": 2,
+      "wall_ms": 3.152533,
+      "exclusive_ms": {
+        "cpu_transform": 0.903901,
+        "staging_management": 0.002415,
+        "device_management": 0.0,
+        "cuda_copy_api": 0.48307,
+        "cuda_wait_api": 0.07238699999999999,
+        "cuda_other_api": 0.032811,
+        "frontend_prepare": 0.606786,
+        "frontend_execute": 0.265996,
+        "native_other": 0.074464,
+        "outer_host": 0.7107030000000001
+      },
+      "exclusive_timeline": [
+        {
+          "phase": "outer_host",
+          "start_ms": 0.0,
+          "end_ms": 0.465667
+        },
+        {
+          "phase": "frontend_prepare",
+          "start_ms": 0.465667,
+          "end_ms": 0.763805
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 0.763805,
+          "end_ms": 0.768874
+        },
+        {
+          "phase": "frontend_prepare",
+          "start_ms": 0.768874,
+          "end_ms": 0.794283
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 0.794283,
+          "end_ms": 0.823088
+        },
+        {
+          "phase": "frontend_prepare",
+          "start_ms": 0.823088,
+          "end_ms": 1.106327
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 1.106327,
+          "end_ms": 1.125473
+        },
+        {
+          "phase": "frontend_execute",
+          "start_ms": 1.125473,
+          "end_ms": 1.298282
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 1.298282,
+          "end_ms": 1.321647
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 1.321647,
+          "end_ms": 1.326516
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 1.326516,
+          "end_ms": 1.327478
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 1.327478,
+          "end_ms": 1.336485
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 1.336485,
+          "end_ms": 1.337597
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 1.337597,
+          "end_ms": 1.343148
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 1.343148,
+          "end_ms": 1.343599
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 1.343599,
+          "end_ms": 1.345101
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 1.345101,
+          "end_ms": 1.345492
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 1.345492,
+          "end_ms": 1.347496
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 1.347496,
+          "end_ms": 1.349099
+        },
+        {
+          "phase": "staging_management",
+          "start_ms": 1.349099,
+          "end_ms": 1.351514
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 1.351514,
+          "end_ms": 1.351724
+        },
+        {
+          "phase": "cpu_transform",
+          "start_ms": 1.351724,
+          "end_ms": 2.255625
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 2.255625,
+          "end_ms": 2.261707
+        },
+        {
+          "phase": "cuda_copy_api",
+          "start_ms": 2.261707,
+          "end_ms": 2.744777
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 2.744777,
+          "end_ms": 2.746851
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 2.746851,
+          "end_ms": 2.750668
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 2.750668,
+          "end_ms": 2.751219
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 2.751219,
+          "end_ms": 2.755647
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 2.755647,
+          "end_ms": 2.758012
+        },
+        {
+          "phase": "cuda_wait_api",
+          "start_ms": 2.758012,
+          "end_ms": 2.820741
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 2.820741,
+          "end_ms": 2.821162
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 2.821162,
+          "end_ms": 2.822795
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 2.822795,
+          "end_ms": 2.857672
+        },
+        {
+          "phase": "frontend_execute",
+          "start_ms": 2.857672,
+          "end_ms": 2.902437
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 2.902437,
+          "end_ms": 2.938586
+        },
+        {
+          "phase": "frontend_execute",
+          "start_ms": 2.938586,
+          "end_ms": 2.987008
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 2.987008,
+          "end_ms": 3.136252
+        },
+        {
+          "phase": "cuda_wait_api",
+          "start_ms": 3.136252,
+          "end_ms": 3.14591
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 3.14591,
+          "end_ms": 3.152533
+        }
+      ],
+      "api_totals": {
+        "cudaEventCreateWithFlags_v3020": {
+          "count": 2,
+          "ms": 0.008686
+        },
+        "cudaEventRecord_v3020": {
+          "count": 2,
+          "ms": 0.013434999999999999
+        },
+        "cudaStreamWaitEvent_v3020": {
+          "count": 2,
+          "ms": 0.007053
+        },
+        "cudaEventDestroy_v3020": {
+          "count": 2,
+          "ms": 0.003637
+        },
+        "cudaMemcpyAsync_v3020": {
+          "count": 1,
+          "ms": 0.48307
+        },
+        "cudaEventSynchronize_v3020": {
+          "count": 1,
+          "ms": 0.062729
+        },
+        "cudaDeviceSynchronize_v3020": {
+          "count": 1,
+          "ms": 0.009658
+        }
+      },
+      "inclusive_scopes": {
+        "transfer/sym/pooled_embeddings/2": {
+          "count": 1,
+          "ms": 3.152533
+        },
+        "python.runtime.bind_symbols": {
+          "count": 1,
+          "ms": 0.298138
+        },
+        "python.artifact.bind_values": {
+          "count": 1,
+          "ms": 0.287697
+        },
+        "python.runtime.destination_descriptor": {
+          "count": 1,
+          "ms": 0.025409
+        },
+        "python.adapter.preflight": {
+          "count": 1,
+          "ms": 0.283239
+        },
+        "python.prepare_typed_transfer": {
+          "count": 1,
+          "ms": 0.255527
+        },
+        "python.bind_symbols": {
+          "count": 1,
+          "ms": 0.007905
+        },
+        "python.native.bind_typed": {
+          "count": 1,
+          "ms": 0.033824
+        },
+        "python._storage_view": {
+          "count": 2,
+          "ms": 0.038793999999999995
+        },
+        "python.destination_descriptor": {
+          "count": 1,
+          "ms": 0.007334
+        },
+        "python.native.prepare_typed_program": {
+          "count": 1,
+          "ms": 0.011532
+        },
+        "python.native.query_capability": {
+          "count": 1,
+          "ms": 0.033424
+        },
+        "python.native.select_dispatch": {
+          "count": 1,
+          "ms": 0.028925
+        },
+        "python.adapter.execute": {
+          "count": 1,
+          "ms": 1.776964
+        },
+        "python.execute_typed_transfer": {
+          "count": 1,
+          "ms": 1.756805
+        },
+        "python.recheck": {
+          "count": 1,
+          "ms": 0.007795
+        },
+        "python.native.prepare_dispatch": {
+          "count": 1,
+          "ms": 0.034887
+        },
+        "python.native.execute_dispatch": {
+          "count": 1,
+          "ms": 1.55939
+        },
+        "reloc.scratch.host_acquire": {
+          "count": 1,
+          "ms": 0.002415
+        },
+        "reloc.typed.host_program": {
+          "count": 1,
+          "ms": 0.903901
+        },
+        "python.runtime.verify_result": {
+          "count": 1,
+          "ms": 0.048422
+        }
+      },
+      "gpu": {
+        "kernels": [],
+        "copies": [
+          {
+            "name": "H2D",
+            "start_ms": 2.372812,
+            "duration_ms": 0.442592,
+            "stream": 16,
+            "bytes": 5111808,
+            "correlation": 3734
+          }
+        ],
+        "memsets": []
+      },
+      "gpu_busy_ms": 0.442592,
+      "gpu_copy_ms": 0.442592,
+      "gpu_kernel_ms": 0.0,
+      "copy_bytes": 5111808
+    },
+    {
+      "path": "sym",
+      "kind": "pooled_embeddings",
+      "index": 3,
+      "wall_ms": 2.045325,
+      "exclusive_ms": {
+        "cpu_transform": 0.333715,
+        "staging_management": 0.002084,
+        "device_management": 0.0,
+        "cuda_copy_api": 0.148943,
+        "cuda_wait_api": 0.081094,
+        "cuda_other_api": 0.028803,
+        "frontend_prepare": 0.583852,
+        "frontend_execute": 0.212103,
+        "native_other": 0.054047,
+        "outer_host": 0.600684
+      },
+      "exclusive_timeline": [
+        {
+          "phase": "outer_host",
+          "start_ms": 0.0,
+          "end_ms": 0.442623
+        },
+        {
+          "phase": "frontend_prepare",
+          "start_ms": 0.442623,
+          "end_ms": 0.721434
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 0.721434,
+          "end_ms": 0.726544
+        },
+        {
+          "phase": "frontend_prepare",
+          "start_ms": 0.726544,
+          "end_ms": 0.753916
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 0.753916,
+          "end_ms": 0.786177
+        },
+        {
+          "phase": "frontend_prepare",
+          "start_ms": 0.786177,
+          "end_ms": 1.063846
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 1.063846,
+          "end_ms": 1.080357
+        },
+        {
+          "phase": "frontend_execute",
+          "start_ms": 1.080357,
+          "end_ms": 1.246323
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 1.246323,
+          "end_ms": 1.271972
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 1.271972,
+          "end_ms": 1.277743
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 1.277743,
+          "end_ms": 1.278765
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 1.278765,
+          "end_ms": 1.287902
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 1.287902,
+          "end_ms": 1.289045
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 1.289045,
+          "end_ms": 1.294134
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 1.294134,
+          "end_ms": 1.294535
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 1.294535,
+          "end_ms": 1.295727
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 1.295727,
+          "end_ms": 1.296208
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 1.296208,
+          "end_ms": 1.298493
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 1.298493,
+          "end_ms": 1.299915
+        },
+        {
+          "phase": "staging_management",
+          "start_ms": 1.299915,
+          "end_ms": 1.301999
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 1.301999,
+          "end_ms": 1.3024
+        },
+        {
+          "phase": "cpu_transform",
+          "start_ms": 1.3024,
+          "end_ms": 1.636115
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 1.636115,
+          "end_ms": 1.639422
+        },
+        {
+          "phase": "cuda_copy_api",
+          "start_ms": 1.639422,
+          "end_ms": 1.788365
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 1.788365,
+          "end_ms": 1.790109
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 1.790109,
+          "end_ms": 1.792493
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 1.792493,
+          "end_ms": 1.792894
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 1.792894,
+          "end_ms": 1.794697
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 1.794697,
+          "end_ms": 1.796551
+        },
+        {
+          "phase": "cuda_wait_api",
+          "start_ms": 1.796551,
+          "end_ms": 1.870361
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 1.870361,
+          "end_ms": 1.870662
+        },
+        {
+          "phase": "cuda_other_api",
+          "start_ms": 1.870662,
+          "end_ms": 1.871804
+        },
+        {
+          "phase": "native_other",
+          "start_ms": 1.871804,
+          "end_ms": 1.887725
+        },
+        {
+          "phase": "frontend_execute",
+          "start_ms": 1.887725,
+          "end_ms": 1.910798
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 1.910798,
+          "end_ms": 1.925326
+        },
+        {
+          "phase": "frontend_execute",
+          "start_ms": 1.925326,
+          "end_ms": 1.94839
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 1.94839,
+          "end_ms": 2.032941
+        },
+        {
+          "phase": "cuda_wait_api",
+          "start_ms": 2.032941,
+          "end_ms": 2.040225
+        },
+        {
+          "phase": "outer_host",
+          "start_ms": 2.040225,
+          "end_ms": 2.045325
+        }
+      ],
+      "api_totals": {
+        "cudaEventCreateWithFlags_v3020": {
+          "count": 2,
+          "ms": 0.008154999999999999
+        },
+        "cudaEventRecord_v3020": {
+          "count": 2,
+          "ms": 0.010939999999999998
+        },
+        "cudaStreamWaitEvent_v3020": {
+          "count": 2,
+          "ms": 0.006281
+        },
+        "cudaEventDestroy_v3020": {
+          "count": 2,
+          "ms": 0.0034270000000000004
+        },
+        "cudaMemcpyAsync_v3020": {
+          "count": 1,
+          "ms": 0.148943
+        },
+        "cudaEventSynchronize_v3020": {
+          "count": 1,
+          "ms": 0.07381
+        },
+        "cudaDeviceSynchronize_v3020": {
+          "count": 1,
+          "ms": 0.007284
+        }
+      },
+      "inclusive_scopes": {
+        "transfer/sym/pooled_embeddings/3": {
+          "count": 1,
+          "ms": 2.045325
+        },
+        "python.runtime.bind_symbols": {
+          "count": 1,
+          "ms": 0.278811
+        },
+        "python.artifact.bind_values": {
+          "count": 1,
+          "ms": 0.269213
+        },
+        "python.runtime.destination_descriptor": {
+          "count": 1,
+          "ms": 0.027372
+        },
+        "python.adapter.preflight": {
+          "count": 1,
+          "ms": 0.277669
+        },
+        "python.prepare_typed_transfer": {
+          "count": 1,
+          "ms": 0.247091
+        },
+        "python.bind_symbols": {
+          "count": 1,
+          "ms": 0.007825
+        },
+        "python.native.bind_typed": {
+          "count": 1,
+          "ms": 0.032642
+        },
+        "python._storage_view": {
+          "count": 2,
+          "ms": 0.034676
+        },
+        "python.destination_descriptor": {
+          "count": 1,
+          "ms": 0.007615
+        },
+        "python.native.prepare_typed_program": {
+          "count": 1,
+          "ms": 0.011622
+        },
+        "python.native.query_capability": {
+          "count": 1,
+          "ms": 0.029246
+        },
+        "python.native.select_dispatch": {
+          "count": 1,
+          "ms": 0.03163
+        },
+        "python.adapter.execute": {
+          "count": 1,
+          "ms": 0.830441
+        },
+        "python.execute_typed_transfer": {
+          "count": 1,
+          "ms": 0.813098
+        },
+        "python.recheck": {
+          "count": 1,
+          "ms": 0.007604
+        },
+        "python.native.prepare_dispatch": {
+          "count": 1,
+          "ms": 0.035228
+        },
+        "python.native.execute_dispatch": {
+          "count": 1,
+          "ms": 0.641402
+        },
+        "reloc.scratch.host_acquire": {
+          "count": 1,
+          "ms": 0.002084
+        },
+        "reloc.typed.host_program": {
+          "count": 1,
+          "ms": 0.333715
+        },
+        "python.runtime.verify_result": {
+          "count": 1,
+          "ms": 0.023064
+        }
+      },
+      "gpu": {
+        "kernels": [],
+        "copies": [
+          {
+            "name": "H2D",
+            "start_ms": 1.73133,
+            "duration_ms": 0.13392,
+            "stream": 16,
+            "bytes": 1703936,
+            "correlation": 4083
+          }
+        ],
+        "memsets": []
+      },
+      "gpu_busy_ms": 0.13392,
+      "gpu_copy_ms": 0.13392,
+      "gpu_kernel_ms": 0.0,
+      "copy_bytes": 1703936
+    }
+  ],
+  "model": {
+    "torch": {
+      "kernel_count": 69,
+      "kernel_ms": 2.059073,
+      "copy_count": 0,
+      "copy_bytes": 0,
+      "memset_count": 15,
+      "memset_bytes": 3424,
+      "kernel_signatures": [
+        {
+          "signature": [
+            "std::enable_if<!T7, void>::type internal::gemvx::kernel<int, int, float, float, float, float, (bool)0, (bool)1, (bool)1, (bool)0, (int)6, (bool)0, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<float>, float>>(T13)",
+            128,
+            1,
+            1,
+            16,
+            4,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "void at::native::<unnamed>::CatArrayBatchedCopy_alignedK_contig<at::native::<unnamed>::OpaqueType<(unsigned int)4>, unsigned int, (int)2, (int)128, (int)1, (int)16>(T1 *, at::native::<unnamed>::CatArrInputTensorMetadata<T1, T2, T4, T5>, at::native::<unnamed>::TensorSizeStride<T2, (unsigned int)4>, int, T2)",
+            351,
+            2,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "void at::native::<unnamed>::CatArrayBatchedCopy_alignedK_contig<at::native::<unnamed>::OpaqueType<(unsigned int)4>, unsigned int, (int)2, (int)128, (int)1, (int)16>(T1 *, at::native::<unnamed>::CatArrInputTensorMetadata<T1, T2, T4, T5>, at::native::<unnamed>::TensorSizeStride<T2, (unsigned int)4>, int, T2)",
+            1053,
+            2,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "void at::native::<unnamed>::CatArrayBatchedCopy_alignedK_contig<at::native::<unnamed>::OpaqueType<(unsigned int)4>, unsigned int, (int)2, (int)128, (int)1, (int)16>(T1 *, at::native::<unnamed>::CatArrInputTensorMetadata<T1, T2, T4, T5>, at::native::<unnamed>::TensorSizeStride<T2, (unsigned int)4>, int, T2)",
+            1404,
+            2,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 2
+        },
+        {
+          "signature": [
+            "void at::native::<unnamed>::CatArrayBatchedCopy_vectorized<at::native::<unnamed>::OpaqueType<(unsigned int)4>, unsigned int, (int)2, (int)128, (int)1, (int)16, (int)4>(char *, at::native::<unnamed>::CatArrInputTensorMetadata<T1, T2, T4, T5>, at::native::<unnamed>::TensorSizeStride<T2, (unsigned int)4>, int, T2)",
+            1664,
+            2,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "void at::native::<unnamed>::CatArrayBatchedCopy_vectorized<at::native::<unnamed>::OpaqueType<(unsigned int)4>, unsigned int, (int)2, (int)128, (int)1, (int)16, (int)4>(char *, at::native::<unnamed>::CatArrInputTensorMetadata<T1, T2, T4, T5>, at::native::<unnamed>::TensorSizeStride<T2, (unsigned int)4>, int, T2)",
+            2176,
+            2,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 3
+        },
+        {
+          "signature": [
+            "void at::native::elementwise_kernel<(int)128, (int)2, void at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase &)::[lambda() (instance 3)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float) (instance 1)]>(at::TensorIteratorBase &, const T1 &)::[lambda(int) (instance 1)]>(int, T3)",
+            2,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "void at::native::elementwise_kernel<(int)128, (int)2, void at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase &)::[lambda() (instance 3)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float) (instance 1)]>(at::TensorIteratorBase &, const T1 &)::[lambda(int) (instance 1)]>(int, T3)",
+            6,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "void at::native::elementwise_kernel<(int)128, (int)2, void at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase &)::[lambda() (instance 3)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float) (instance 1)]>(at::TensorIteratorBase &, const T1 &)::[lambda(int) (instance 1)]>(int, T3)",
+            8,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 2
+        },
+        {
+          "signature": [
+            "void at::native::index_elementwise_kernel<(int)128, (int)4, void at::native::gpu_index_kernel<void at::native::index_kernel_impl<at::native::OpaqueType<(int)4>>(at::TensorIteratorBase &, c10::ArrayRef<long>, c10::ArrayRef<long>)::[lambda(char *, const char *, long) (instance 1)]>(at::TensorIteratorBase &, c10::ArrayRef<long>, c10::ArrayRef<long>, const T1 &, bool)::[lambda(int) (instance 1)]>(long, T3)",
+            351,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "void at::native::index_elementwise_kernel<(int)128, (int)4, void at::native::gpu_index_kernel<void at::native::index_kernel_impl<at::native::OpaqueType<(int)4>>(at::TensorIteratorBase &, c10::ArrayRef<long>, c10::ArrayRef<long>)::[lambda(char *, const char *, long) (instance 1)]>(at::TensorIteratorBase &, c10::ArrayRef<long>, c10::ArrayRef<long>, const T1 &, bool)::[lambda(int) (instance 1)]>(long, T3)",
+            1053,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "void at::native::index_elementwise_kernel<(int)128, (int)4, void at::native::gpu_index_kernel<void at::native::index_kernel_impl<at::native::OpaqueType<(int)4>>(at::TensorIteratorBase &, c10::ArrayRef<long>, c10::ArrayRef<long>)::[lambda(char *, const char *, long) (instance 1)]>(at::TensorIteratorBase &, c10::ArrayRef<long>, c10::ArrayRef<long>, const T1 &, bool)::[lambda(int) (instance 1)]>(long, T3)",
+            1404,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 2
+        },
+        {
+          "signature": [
+            "void at::native::unrolled_elementwise_kernel<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase &)::[lambda() (instance 3)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float) (instance 1)], std::array<char *, (unsigned long)2>, (int)4, TrivialOffsetCalculator<(int)1, unsigned int>, TrivialOffsetCalculator<(int)1, unsigned int>, at::native::memory::LoadWithCast<(int)1>, at::native::memory::StoreWithCast<(int)1>>(int, T1, T2, T4, T5, T6, T7)",
+            1664,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "void at::native::unrolled_elementwise_kernel<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase &)::[lambda() (instance 3)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float) (instance 1)], std::array<char *, (unsigned long)2>, (int)4, TrivialOffsetCalculator<(int)1, unsigned int>, TrivialOffsetCalculator<(int)1, unsigned int>, at::native::memory::LoadWithCast<(int)1>, at::native::memory::StoreWithCast<(int)1>>(int, T1, T2, T4, T5, T6, T7)",
+            4992,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "void at::native::unrolled_elementwise_kernel<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase &)::[lambda() (instance 3)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float) (instance 1)], std::array<char *, (unsigned long)2>, (int)4, TrivialOffsetCalculator<(int)1, unsigned int>, TrivialOffsetCalculator<(int)1, unsigned int>, at::native::memory::LoadWithCast<(int)1>, at::native::memory::StoreWithCast<(int)1>>(int, T1, T2, T4, T5, T6, T7)",
+            6656,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 2
+        },
+        {
+          "signature": [
+            "void at::native::vectorized_elementwise_kernel<(int)4, at::native::<unnamed>::launch_clamp_scalar(at::TensorIteratorBase &, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::[lambda() (instance 1)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float) (instance 1)], std::array<char *, (unsigned long)2>, (bool)0>(int, T2, T3)",
+            128,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 2
+        },
+        {
+          "signature": [
+            "void at::native::vectorized_elementwise_kernel<(int)4, at::native::<unnamed>::launch_clamp_scalar(at::TensorIteratorBase &, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::[lambda() (instance 1)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float) (instance 1)], std::array<char *, (unsigned long)2>, (bool)0>(int, T2, T3)",
+            256,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 2
+        },
+        {
+          "signature": [
+            "void at::native::vectorized_elementwise_kernel<(int)4, at::native::<unnamed>::launch_clamp_scalar(at::TensorIteratorBase &, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::[lambda() (instance 1)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float) (instance 1)], std::array<char *, (unsigned long)2>, (bool)0>(int, T2, T3)",
+            384,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 2
+        },
+        {
+          "signature": [
+            "void at::native::vectorized_elementwise_kernel<(int)4, at::native::<unnamed>::launch_clamp_scalar(at::TensorIteratorBase &, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::[lambda() (instance 1)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float) (instance 1)], std::array<char *, (unsigned long)2>, (bool)0>(int, T2, T3)",
+            512,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 4
+        },
+        {
+          "signature": [
+            "void at::native::vectorized_elementwise_kernel<(int)4, at::native::<unnamed>::launch_clamp_scalar(at::TensorIteratorBase &, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::[lambda() (instance 1)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float) (instance 1)], std::array<char *, (unsigned long)2>, (bool)0>(int, T2, T3)",
+            768,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 2
+        },
+        {
+          "signature": [
+            "void at::native::vectorized_elementwise_kernel<(int)4, at::native::<unnamed>::launch_clamp_scalar(at::TensorIteratorBase &, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::[lambda() (instance 1)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float) (instance 1)], std::array<char *, (unsigned long)2>, (bool)0>(int, T2, T3)",
+            1024,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 4
+        },
+        {
+          "signature": [
+            "void at::native::vectorized_elementwise_kernel<(int)4, at::native::sigmoid_kernel_cuda(at::TensorIteratorBase &)::[lambda() (instance 2)]::operator ()() const::[lambda() (instance 2)]::operator ()() const::[lambda(float) (instance 1)], std::array<char *, (unsigned long)2>, (bool)0>(int, T2, T3)",
+            1,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "void at::native::vectorized_elementwise_kernel<(int)4, at::native::sigmoid_kernel_cuda(at::TensorIteratorBase &)::[lambda() (instance 2)]::operator ()() const::[lambda() (instance 2)]::operator ()() const::[lambda(float) (instance 1)], std::array<char *, (unsigned long)2>, (bool)0>(int, T2, T3)",
+            2,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 3
+        },
+        {
+          "signature": [
+            "void cublasLt::splitKreduce_kernel<(int)32, (int)16, int, float, float, float, (bool)0, float, float, float, (bool)1, (bool)1, (bool)0>(cublasLt::cublasSplitKParams<T6>, const T4 *, const T9 *, T8 *, T5 *, const T6 *, const T6 *, const T10 *, const T4 *, T10 *, void *, long, T6 *, int *, T6 *, const T6 *, const T6 *, const T6 *, const T6 *)",
+            2,
+            32,
+            1,
+            32,
+            16,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "void gemv2T_kernel_val<int, int, float, float, float, float, (int)128, (int)16, (int)2, (int)2, (bool)0, (bool)0, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<float>, float>>(T13, T6, T6)",
+            192,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "void gemv2T_kernel_val<int, int, float, float, float, float, (int)128, (int)16, (int)2, (int)2, (bool)0, (bool)0, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<float>, float>>(T13, T6, T6)",
+            256,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 2
+        },
+        {
+          "signature": [
+            "volta_sgemm_128x32_tn",
+            4,
+            16,
+            1,
+            256,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "volta_sgemm_128x64_tn",
+            2,
+            8,
+            3,
+            128,
+            1,
+            1
+          ],
+          "count": 2
+        },
+        {
+          "signature": [
+            "volta_sgemm_128x64_tn",
+            2,
+            24,
+            2,
+            128,
+            1,
+            1
+          ],
+          "count": 2
+        },
+        {
+          "signature": [
+            "volta_sgemm_128x64_tn",
+            2,
+            32,
+            2,
+            128,
+            1,
+            1
+          ],
+          "count": 4
+        },
+        {
+          "signature": [
+            "volta_sgemm_128x64_tn",
+            4,
+            8,
+            2,
+            128,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "volta_sgemm_128x64_tn",
+            4,
+            24,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "volta_sgemm_128x64_tn",
+            4,
+            24,
+            2,
+            128,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "volta_sgemm_128x64_tn",
+            4,
+            32,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 2
+        },
+        {
+          "signature": [
+            "volta_sgemm_128x64_tn",
+            4,
+            32,
+            2,
+            128,
+            1,
+            1
+          ],
+          "count": 2
+        },
+        {
+          "signature": [
+            "volta_sgemm_32x128_tn",
+            2,
+            4,
+            4,
+            256,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "volta_sgemm_32x128_tn",
+            2,
+            12,
+            4,
+            256,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "volta_sgemm_32x128_tn",
+            2,
+            16,
+            4,
+            256,
+            1,
+            1
+          ],
+          "count": 2
+        },
+        {
+          "signature": [
+            "volta_sgemm_64x64_tn",
+            1,
+            1,
+            512,
+            64,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "volta_sgemm_64x64_tn",
+            1,
+            1,
+            1536,
+            64,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "volta_sgemm_64x64_tn",
+            1,
+            1,
+            2048,
+            64,
+            1,
+            1
+          ],
+          "count": 2
+        }
+      ],
+      "ordered_signature_sha256": "431ca02cc0dcfb1e7bae2f7d25e02bad030bb599a8b09615d81df5b058161407"
+    },
+    "sym": {
+      "kernel_count": 69,
+      "kernel_ms": 2.058884,
+      "copy_count": 0,
+      "copy_bytes": 0,
+      "memset_count": 15,
+      "memset_bytes": 3424,
+      "kernel_signatures": [
+        {
+          "signature": [
+            "std::enable_if<!T7, void>::type internal::gemvx::kernel<int, int, float, float, float, float, (bool)0, (bool)1, (bool)1, (bool)0, (int)6, (bool)0, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<float>, float>>(T13)",
+            128,
+            1,
+            1,
+            16,
+            4,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "void at::native::<unnamed>::CatArrayBatchedCopy_alignedK_contig<at::native::<unnamed>::OpaqueType<(unsigned int)4>, unsigned int, (int)2, (int)128, (int)1, (int)16>(T1 *, at::native::<unnamed>::CatArrInputTensorMetadata<T1, T2, T4, T5>, at::native::<unnamed>::TensorSizeStride<T2, (unsigned int)4>, int, T2)",
+            351,
+            2,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "void at::native::<unnamed>::CatArrayBatchedCopy_alignedK_contig<at::native::<unnamed>::OpaqueType<(unsigned int)4>, unsigned int, (int)2, (int)128, (int)1, (int)16>(T1 *, at::native::<unnamed>::CatArrInputTensorMetadata<T1, T2, T4, T5>, at::native::<unnamed>::TensorSizeStride<T2, (unsigned int)4>, int, T2)",
+            1053,
+            2,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "void at::native::<unnamed>::CatArrayBatchedCopy_alignedK_contig<at::native::<unnamed>::OpaqueType<(unsigned int)4>, unsigned int, (int)2, (int)128, (int)1, (int)16>(T1 *, at::native::<unnamed>::CatArrInputTensorMetadata<T1, T2, T4, T5>, at::native::<unnamed>::TensorSizeStride<T2, (unsigned int)4>, int, T2)",
+            1404,
+            2,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 2
+        },
+        {
+          "signature": [
+            "void at::native::<unnamed>::CatArrayBatchedCopy_vectorized<at::native::<unnamed>::OpaqueType<(unsigned int)4>, unsigned int, (int)2, (int)128, (int)1, (int)16, (int)4>(char *, at::native::<unnamed>::CatArrInputTensorMetadata<T1, T2, T4, T5>, at::native::<unnamed>::TensorSizeStride<T2, (unsigned int)4>, int, T2)",
+            1664,
+            2,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "void at::native::<unnamed>::CatArrayBatchedCopy_vectorized<at::native::<unnamed>::OpaqueType<(unsigned int)4>, unsigned int, (int)2, (int)128, (int)1, (int)16, (int)4>(char *, at::native::<unnamed>::CatArrInputTensorMetadata<T1, T2, T4, T5>, at::native::<unnamed>::TensorSizeStride<T2, (unsigned int)4>, int, T2)",
+            2176,
+            2,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 3
+        },
+        {
+          "signature": [
+            "void at::native::elementwise_kernel<(int)128, (int)2, void at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase &)::[lambda() (instance 3)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float) (instance 1)]>(at::TensorIteratorBase &, const T1 &)::[lambda(int) (instance 1)]>(int, T3)",
+            2,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "void at::native::elementwise_kernel<(int)128, (int)2, void at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase &)::[lambda() (instance 3)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float) (instance 1)]>(at::TensorIteratorBase &, const T1 &)::[lambda(int) (instance 1)]>(int, T3)",
+            6,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "void at::native::elementwise_kernel<(int)128, (int)2, void at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase &)::[lambda() (instance 3)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float) (instance 1)]>(at::TensorIteratorBase &, const T1 &)::[lambda(int) (instance 1)]>(int, T3)",
+            8,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 2
+        },
+        {
+          "signature": [
+            "void at::native::index_elementwise_kernel<(int)128, (int)4, void at::native::gpu_index_kernel<void at::native::index_kernel_impl<at::native::OpaqueType<(int)4>>(at::TensorIteratorBase &, c10::ArrayRef<long>, c10::ArrayRef<long>)::[lambda(char *, const char *, long) (instance 1)]>(at::TensorIteratorBase &, c10::ArrayRef<long>, c10::ArrayRef<long>, const T1 &, bool)::[lambda(int) (instance 1)]>(long, T3)",
+            351,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "void at::native::index_elementwise_kernel<(int)128, (int)4, void at::native::gpu_index_kernel<void at::native::index_kernel_impl<at::native::OpaqueType<(int)4>>(at::TensorIteratorBase &, c10::ArrayRef<long>, c10::ArrayRef<long>)::[lambda(char *, const char *, long) (instance 1)]>(at::TensorIteratorBase &, c10::ArrayRef<long>, c10::ArrayRef<long>, const T1 &, bool)::[lambda(int) (instance 1)]>(long, T3)",
+            1053,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "void at::native::index_elementwise_kernel<(int)128, (int)4, void at::native::gpu_index_kernel<void at::native::index_kernel_impl<at::native::OpaqueType<(int)4>>(at::TensorIteratorBase &, c10::ArrayRef<long>, c10::ArrayRef<long>)::[lambda(char *, const char *, long) (instance 1)]>(at::TensorIteratorBase &, c10::ArrayRef<long>, c10::ArrayRef<long>, const T1 &, bool)::[lambda(int) (instance 1)]>(long, T3)",
+            1404,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 2
+        },
+        {
+          "signature": [
+            "void at::native::unrolled_elementwise_kernel<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase &)::[lambda() (instance 3)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float) (instance 1)], std::array<char *, (unsigned long)2>, (int)4, TrivialOffsetCalculator<(int)1, unsigned int>, TrivialOffsetCalculator<(int)1, unsigned int>, at::native::memory::LoadWithCast<(int)1>, at::native::memory::StoreWithCast<(int)1>>(int, T1, T2, T4, T5, T6, T7)",
+            1664,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "void at::native::unrolled_elementwise_kernel<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase &)::[lambda() (instance 3)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float) (instance 1)], std::array<char *, (unsigned long)2>, (int)4, TrivialOffsetCalculator<(int)1, unsigned int>, TrivialOffsetCalculator<(int)1, unsigned int>, at::native::memory::LoadWithCast<(int)1>, at::native::memory::StoreWithCast<(int)1>>(int, T1, T2, T4, T5, T6, T7)",
+            4992,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "void at::native::unrolled_elementwise_kernel<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase &)::[lambda() (instance 3)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float) (instance 1)], std::array<char *, (unsigned long)2>, (int)4, TrivialOffsetCalculator<(int)1, unsigned int>, TrivialOffsetCalculator<(int)1, unsigned int>, at::native::memory::LoadWithCast<(int)1>, at::native::memory::StoreWithCast<(int)1>>(int, T1, T2, T4, T5, T6, T7)",
+            6656,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 2
+        },
+        {
+          "signature": [
+            "void at::native::vectorized_elementwise_kernel<(int)4, at::native::<unnamed>::launch_clamp_scalar(at::TensorIteratorBase &, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::[lambda() (instance 1)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float) (instance 1)], std::array<char *, (unsigned long)2>, (bool)0>(int, T2, T3)",
+            128,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 2
+        },
+        {
+          "signature": [
+            "void at::native::vectorized_elementwise_kernel<(int)4, at::native::<unnamed>::launch_clamp_scalar(at::TensorIteratorBase &, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::[lambda() (instance 1)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float) (instance 1)], std::array<char *, (unsigned long)2>, (bool)0>(int, T2, T3)",
+            256,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 2
+        },
+        {
+          "signature": [
+            "void at::native::vectorized_elementwise_kernel<(int)4, at::native::<unnamed>::launch_clamp_scalar(at::TensorIteratorBase &, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::[lambda() (instance 1)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float) (instance 1)], std::array<char *, (unsigned long)2>, (bool)0>(int, T2, T3)",
+            384,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 2
+        },
+        {
+          "signature": [
+            "void at::native::vectorized_elementwise_kernel<(int)4, at::native::<unnamed>::launch_clamp_scalar(at::TensorIteratorBase &, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::[lambda() (instance 1)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float) (instance 1)], std::array<char *, (unsigned long)2>, (bool)0>(int, T2, T3)",
+            512,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 4
+        },
+        {
+          "signature": [
+            "void at::native::vectorized_elementwise_kernel<(int)4, at::native::<unnamed>::launch_clamp_scalar(at::TensorIteratorBase &, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::[lambda() (instance 1)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float) (instance 1)], std::array<char *, (unsigned long)2>, (bool)0>(int, T2, T3)",
+            768,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 2
+        },
+        {
+          "signature": [
+            "void at::native::vectorized_elementwise_kernel<(int)4, at::native::<unnamed>::launch_clamp_scalar(at::TensorIteratorBase &, c10::Scalar, c10::Scalar, at::native::detail::ClampLimits)::[lambda() (instance 1)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float) (instance 1)], std::array<char *, (unsigned long)2>, (bool)0>(int, T2, T3)",
+            1024,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 4
+        },
+        {
+          "signature": [
+            "void at::native::vectorized_elementwise_kernel<(int)4, at::native::sigmoid_kernel_cuda(at::TensorIteratorBase &)::[lambda() (instance 2)]::operator ()() const::[lambda() (instance 2)]::operator ()() const::[lambda(float) (instance 1)], std::array<char *, (unsigned long)2>, (bool)0>(int, T2, T3)",
+            1,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "void at::native::vectorized_elementwise_kernel<(int)4, at::native::sigmoid_kernel_cuda(at::TensorIteratorBase &)::[lambda() (instance 2)]::operator ()() const::[lambda() (instance 2)]::operator ()() const::[lambda(float) (instance 1)], std::array<char *, (unsigned long)2>, (bool)0>(int, T2, T3)",
+            2,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 3
+        },
+        {
+          "signature": [
+            "void cublasLt::splitKreduce_kernel<(int)32, (int)16, int, float, float, float, (bool)0, float, float, float, (bool)1, (bool)1, (bool)0>(cublasLt::cublasSplitKParams<T6>, const T4 *, const T9 *, T8 *, T5 *, const T6 *, const T6 *, const T10 *, const T4 *, T10 *, void *, long, T6 *, int *, T6 *, const T6 *, const T6 *, const T6 *, const T6 *)",
+            2,
+            32,
+            1,
+            32,
+            16,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "void gemv2T_kernel_val<int, int, float, float, float, float, (int)128, (int)16, (int)2, (int)2, (bool)0, (bool)0, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<float>, float>>(T13, T6, T6)",
+            192,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "void gemv2T_kernel_val<int, int, float, float, float, float, (int)128, (int)16, (int)2, (int)2, (bool)0, (bool)0, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<float>, float>>(T13, T6, T6)",
+            256,
+            1,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 2
+        },
+        {
+          "signature": [
+            "volta_sgemm_128x32_tn",
+            4,
+            16,
+            1,
+            256,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "volta_sgemm_128x64_tn",
+            2,
+            8,
+            3,
+            128,
+            1,
+            1
+          ],
+          "count": 2
+        },
+        {
+          "signature": [
+            "volta_sgemm_128x64_tn",
+            2,
+            24,
+            2,
+            128,
+            1,
+            1
+          ],
+          "count": 2
+        },
+        {
+          "signature": [
+            "volta_sgemm_128x64_tn",
+            2,
+            32,
+            2,
+            128,
+            1,
+            1
+          ],
+          "count": 4
+        },
+        {
+          "signature": [
+            "volta_sgemm_128x64_tn",
+            4,
+            8,
+            2,
+            128,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "volta_sgemm_128x64_tn",
+            4,
+            24,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "volta_sgemm_128x64_tn",
+            4,
+            24,
+            2,
+            128,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "volta_sgemm_128x64_tn",
+            4,
+            32,
+            1,
+            128,
+            1,
+            1
+          ],
+          "count": 2
+        },
+        {
+          "signature": [
+            "volta_sgemm_128x64_tn",
+            4,
+            32,
+            2,
+            128,
+            1,
+            1
+          ],
+          "count": 2
+        },
+        {
+          "signature": [
+            "volta_sgemm_32x128_tn",
+            2,
+            4,
+            4,
+            256,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "volta_sgemm_32x128_tn",
+            2,
+            12,
+            4,
+            256,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "volta_sgemm_32x128_tn",
+            2,
+            16,
+            4,
+            256,
+            1,
+            1
+          ],
+          "count": 2
+        },
+        {
+          "signature": [
+            "volta_sgemm_64x64_tn",
+            1,
+            1,
+            512,
+            64,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "volta_sgemm_64x64_tn",
+            1,
+            1,
+            1536,
+            64,
+            1,
+            1
+          ],
+          "count": 1
+        },
+        {
+          "signature": [
+            "volta_sgemm_64x64_tn",
+            1,
+            1,
+            2048,
+            64,
+            1,
+            1
+          ],
+          "count": 2
+        }
+      ],
+      "ordered_signature_sha256": "431ca02cc0dcfb1e7bae2f7d25e02bad030bb599a8b09615d81df5b058161407"
+    },
+    "kernel_signatures_equal": true,
+    "kernel_sequence_equal": true
+  },
+  "by_kind": {
+    "pooled_embeddings": {
+      "torch": {
+        "calls": 3,
+        "wall_ms": 6.836285999999999,
+        "gpu_copy_ms": 1.206593,
+        "gpu_kernel_ms": 0.0,
+        "gpu_busy_ms": 1.206593,
+        "copy_bytes": 13631488,
+        "exclusive_ms": {
+          "cpu_transform": 0.0,
+          "staging_management": 0.0,
+          "device_management": 0.0,
+          "cuda_copy_api": 1.326576,
+          "cuda_wait_api": 0.25293299999999996,
+          "cuda_other_api": 0.019979,
+          "frontend_prepare": 0.0,
+          "frontend_execute": 0.0,
+          "native_other": 0.0,
+          "outer_host": 5.236797999999999
+        }
+      },
+      "sym": {
+        "calls": 3,
+        "wall_ms": 8.916208000000001,
+        "gpu_copy_ms": 1.150465,
+        "gpu_kernel_ms": 0.0,
+        "gpu_busy_ms": 1.150465,
+        "copy_bytes": 13631488,
+        "exclusive_ms": {
+          "cpu_transform": 2.700161,
+          "staging_management": 0.007235,
+          "device_management": 0.0,
+          "cuda_copy_api": 1.277622,
+          "cuda_wait_api": 0.218445,
+          "cuda_other_api": 0.096209,
+          "frontend_prepare": 1.517972,
+          "frontend_execute": 0.808308,
+          "native_other": 0.215697,
+          "outer_host": 2.0745590000000003
+        }
+      }
+    }
+  },
+  "totals": {
+    "torch": {
+      "calls": 3,
+      "wall_ms": 6.836285999999999,
+      "gpu_copy_ms": 1.206593,
+      "gpu_kernel_ms": 0.0,
+      "gpu_busy_ms": 1.206593,
+      "copy_bytes": 13631488,
+      "exclusive_ms": {
+        "cpu_transform": 0.0,
+        "staging_management": 0.0,
+        "device_management": 0.0,
+        "cuda_copy_api": 1.326576,
+        "cuda_wait_api": 0.25293299999999996,
+        "cuda_other_api": 0.019979,
+        "frontend_prepare": 0.0,
+        "frontend_execute": 0.0,
+        "native_other": 0.0,
+        "outer_host": 5.236797999999999
+      }
+    },
+    "sym": {
+      "calls": 3,
+      "wall_ms": 8.916208000000001,
+      "gpu_copy_ms": 1.150465,
+      "gpu_kernel_ms": 0.0,
+      "gpu_busy_ms": 1.150465,
+      "copy_bytes": 13631488,
+      "exclusive_ms": {
+        "cpu_transform": 2.700161,
+        "staging_management": 0.007235,
+        "device_management": 0.0,
+        "cuda_copy_api": 1.277622,
+        "cuda_wait_api": 0.218445,
+        "cuda_other_api": 0.096209,
+        "frontend_prepare": 1.517972,
+        "frontend_execute": 0.808308,
+        "native_other": 0.215697,
+        "outer_host": 2.0745590000000003
+      }
+    }
+  }
+}

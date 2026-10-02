@@ -1,0 +1,17 @@
+[
+  [
+    "taskset",
+    "-c",
+    "4-7,20-23",
+    "/tmp/sym-torch-cuda/bin/python",
+    "/tmp/sym-main-workload-profile/bench/issue189/run_matrix.py",
+    "--repo",
+    "/tmp/sym-pr162-pageable",
+    "--output",
+    "/tmp/sym-main-profile-results/measurements/matrix",
+    "--rounds",
+    "3",
+    "--variants",
+    "default,typed_reuse"
+  ]
+]

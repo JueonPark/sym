@@ -1,0 +1,51 @@
+[0/2] Re-checking globbed directories...
+[1/32] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/Version.cpp.o
+[2/32] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/TypedValue.cpp.o
+[3/32] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/Execute.cpp.o
+[4/32] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/CopyRun.cpp.o
+[5/32] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/Transpose.cpp.o
+[6/32] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/PinnedBufferPool.cpp.o
+[7/32] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/DispatchResources.cpp.o
+[8/32] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/ChunkSchedule.cpp.o
+[9/32] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/HostBackend.cpp.o
+[10/32] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/GatherPool.cpp.o
+[11/32] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/Decode.cpp.o
+/tmp/sym-main-workload-profile/libreloc/src/Decode.cpp: In function ‘bool reloc::{anonymous}::parseParam(reloc::{anonymous}::ByteReader&, size_t, reloc::StageParam&)’:
+/tmp/sym-main-workload-profile/libreloc/src/Decode.cpp:546:12: warning: ‘rank’ may be used uninitialized in this function [-Wmaybe-uninitialized]
+  546 |   out.rank = rank;
+      |   ~~~~~~~~~^~~~~~
+/tmp/sym-main-workload-profile/libreloc/src/Decode.cpp: In function ‘bool reloc::{anonymous}::parseLayoutBody(reloc::{anonymous}::ByteReader&, reloc::RelocationPlan&)’:
+/tmp/sym-main-workload-profile/libreloc/src/Decode.cpp:411:44: warning: ‘runtimePadCheck’ may be used uninitialized in this function [-Wmaybe-uninitialized]
+  411 |     plan.runtimePadCheck = runtimePadCheck != 0;
+      |                            ~~~~~~~~~~~~~~~~^~~~
+/tmp/sym-main-workload-profile/libreloc/src/Decode.cpp:410:26: warning: ‘noCopy’ may be used uninitialized in this function [-Wmaybe-uninitialized]
+  410 |     plan.noCopy = noCopy != 0;
+      |                   ~~~~~~~^~~~
+/tmp/sym-main-workload-profile/libreloc/src/Decode.cpp: In function ‘reloc::TypedDecodeResult reloc::decodeTypedPlan(const uint8_t*, size_t)’:
+/tmp/sym-main-workload-profile/libreloc/src/Decode.cpp:598:3: warning: ‘hasChannel’ may be used uninitialized in this function [-Wmaybe-uninitialized]
+  598 |   if (out.hasChannel) {
+      |   ^~
+/tmp/sym-main-workload-profile/libreloc/src/Decode.cpp:592:11: note: ‘hasChannel’ was declared here
+  592 |   uint8_t hasChannel;
+      |           ^~~~~~~~~~
+[12/32] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/Pipeline.cpp.o
+[13/32] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/TransferResources.cpp.o
+[14/32] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/Bind.cpp.o
+[15/32] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/TypedExecute.cpp.o
+[16/32] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/TransferResourcePolicy.cpp.o
+[17/32] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/Prefold.cpp.o
+[18/32] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/quant/QuantAVX2.cpp.o
+[19/32] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/quant/QuantAVX512.cpp.o
+[20/32] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/Dispatch.cpp.o
+[21/32] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/quant/Quant.cpp.o
+[22/32] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/Transfer.cpp.o
+[23/32] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/TransferResourceCache.cpp.o
+[24/32] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/CostModel.cpp.o
+[25/32] Building CUDA object libreloc/CMakeFiles/reloc_runtime.dir/cuda/CudaBackend.cu.o
+[26/32] Building CUDA object libreloc/CMakeFiles/reloc_runtime.dir/cuda/CudaKernels.cu.o
+[27/32] Linking CXX shared library libreloc/libreloc_runtime.so
+[28/32] Building CXX object libreloc/python/CMakeFiles/pyreloc_ext.dir/PyPrefold.cpp.o
+[29/32] Building CXX object libreloc/python/CMakeFiles/pyreloc_ext.dir/PyTransfer.cpp.o
+[30/32] Building CXX object libreloc/python/CMakeFiles/pyreloc_ext.dir/PyDispatch.cpp.o
+[31/32] Building CXX object libreloc/python/CMakeFiles/pyreloc_ext.dir/PyReloc.cpp.o
+[32/32] Linking CXX shared module python/pyreloc/_pyreloc.cpython-314-x86_64-linux-gnu.so

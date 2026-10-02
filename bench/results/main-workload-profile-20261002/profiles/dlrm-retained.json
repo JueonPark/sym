@@ -1,0 +1,230 @@
+{
+  "example": "dlrm_embeddings",
+  "devices": [
+    "cuda:0"
+  ],
+  "sizes": {
+    "embedding_dim": 64,
+    "tables": 26,
+    "rows": 100000,
+    "batches": [
+      2048,
+      2048,
+      1536,
+      512
+    ]
+  },
+  "checks": {
+    "pooled_embeddings_equal": {
+      "passed": 4,
+      "failed": 0
+    },
+    "predictions_equal": {
+      "passed": 4,
+      "failed": 0
+    },
+    "one_plan_for_every_batch_size": {
+      "passed": 1,
+      "failed": 0
+    },
+    "one_execution_per_batch": {
+      "passed": 1,
+      "failed": 0
+    },
+    "cpu_reference_row": {
+      "passed": 1,
+      "failed": 0
+    },
+    "observed_payload_matches_wire": {
+      "passed": 1,
+      "failed": 0
+    },
+    "no_fallbacks": {
+      "passed": 1,
+      "failed": 0
+    }
+  },
+  "counters": {
+    "dynamo_compiles": 1,
+    "plan_compiles": 1,
+    "symbol_binds": 0,
+    "runtime_executions": 4,
+    "typed_executions": 4,
+    "typed_payload_bytes": 20447232,
+    "fallbacks": {},
+    "exclusions": {}
+  },
+  "plan_compiles": 1,
+  "bytes": {
+    "pooled_embeddings": {
+      "transfers": 4,
+      "source": 40894464,
+      "wire": 20447232,
+      "destination": 20447232
+    }
+  },
+  "dispatches": {
+    "cpu_reference": 4
+  },
+  "timings_ms": {
+    "pooled_embeddings": {
+      "torch": {
+        "count": 4,
+        "first_call": 4.692,
+        "median": 2.101,
+        "total": 11.463
+      },
+      "sym": {
+        "count": 4,
+        "first_call": 274.344,
+        "median": 3.143,
+        "total": 283.234
+      }
+    }
+  },
+  "workload": {
+    "batch_sizes": [
+      2048,
+      2048,
+      1536,
+      512
+    ]
+  },
+  "notes": [
+    "Sym transposes and narrows on the CPU (cpu_reference is the only f32->f16 row), then copies float16",
+    "the PyTorch reference moves the same float16 bytes: the dtype choice halves the wire, not Sym",
+    "transfers are blocking; every Sym call includes per-call runtime setup",
+    "wire bytes follow from the recipe's dtype choice; equivalent PyTorch code moves the same bytes"
+  ],
+  "raw_transfer_samples_ms": {
+    "pooled_embeddings": {
+      "torch": [
+        4.692324437201023,
+        3.9896266534924507,
+        2.101241610944271,
+        0.6797043606638908
+      ],
+      "sym": [
+        274.3444833904505,
+        3.708421252667904,
+        3.143145702779293,
+        2.0378204062581062
+      ]
+    }
+  },
+  "typed_decisions": [
+    {
+      "implementation": "cpu_reference",
+      "source_bytes": 13631488,
+      "wire_bytes": 6815744,
+      "destination_bytes": 6815744,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 6815744,
+          "staging_capacity_bytes": 7864320,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": false
+        }
+      ]
+    },
+    {
+      "implementation": "cpu_reference",
+      "source_bytes": 13631488,
+      "wire_bytes": 6815744,
+      "destination_bytes": 6815744,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 6815744,
+          "staging_capacity_bytes": 7864320,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cpu_reference",
+      "source_bytes": 10223616,
+      "wire_bytes": 5111808,
+      "destination_bytes": 5111808,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 5111808,
+          "staging_capacity_bytes": 7864320,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cpu_reference",
+      "source_bytes": 3407872,
+      "wire_bytes": 1703936,
+      "destination_bytes": 1703936,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 1703936,
+          "staging_capacity_bytes": 7864320,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    }
+  ],
+  "typed_reuse": true,
+  "direct_typed_resources": {
+    "requests": 0,
+    "hits": 0,
+    "context_creations": 0,
+    "device_allocations": 0,
+    "host_allocations": 0,
+    "frees": 0,
+    "retained_bytes": 0,
+    "device_bytes": 0,
+    "host_bytes": 0,
+    "background_workers": 0,
+    "streams": 0,
+    "closed": false,
+    "quarantined": false,
+    "process_valid": true
+  },
+  "profiling": {
+    "torch_threads": 8,
+    "model_regions_per_path": 4,
+    "transfer_range_includes_completion": true,
+    "first_transfer_of_each_kind_excluded_in_analysis": true
+  },
+  "ok": true,
+  "summary": {
+    "checks_passed": 7,
+    "checks_total": 7,
+    "plan_compiles": 1,
+    "sym_transfers": 4,
+    "wire_bytes": 20447232,
+    "destination_bytes": 20447232,
+    "fallbacks": 0,
+    "steady_transfer_ms": {
+      "torch": 6.771,
+      "sym": 8.889
+    }
+  }
+}

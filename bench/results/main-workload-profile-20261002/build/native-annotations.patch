@@ -1,0 +1,98 @@
+diff --git a/libreloc/cuda/CudaBackend.cu b/libreloc/cuda/CudaBackend.cu
+index c788ee2..b896480 100644
+--- a/libreloc/cuda/CudaBackend.cu
++++ b/libreloc/cuda/CudaBackend.cu
+@@ -3,6 +3,7 @@
+ #ifdef RELOC_ENABLE_CUDA
+ 
+ #include "reloc/CudaBackend.h"
++#include "../src/Trace.h"
+ 
+ #include <cstdlib>
+ #include <cuda_runtime.h>
+@@ -51,6 +52,7 @@ bool CudaBackend::check(int status, const char *what) {
+ 
+ CudaBackend::CudaBackend(int numStreams, int device, bool pinnedStaging)
+     : pinnedStaging_(pinnedStaging) {
++  detail::TraceRange trace("reloc.backend.create", numStreams);
+   if (numStreams < 1)
+     numStreams = 1;
+   if (device < 0) {
+@@ -77,6 +79,7 @@ CudaBackend::CudaBackend(int numStreams, int device, bool pinnedStaging)
+ }
+ 
+ CudaBackend::~CudaBackend() {
++  detail::TraceRange trace("reloc.backend.destroy", 0);
+   DeviceScope scope(device_);
+   for (auto &kv : events_)
+     (void)cudaEventDestroy(asEvent(kv.second));
+@@ -86,6 +89,7 @@ CudaBackend::~CudaBackend() {
+ }
+ 
+ void *CudaBackend::allocStaging(size_t bytes) {
++  detail::TraceRange trace("reloc.staging.allocate", bytes);
+   if (!pinnedStaging_) {
+     void *p = std::malloc(bytes);
+     if (!p && error_.empty())
+@@ -100,6 +104,7 @@ void *CudaBackend::allocStaging(size_t bytes) {
+ }
+ 
+ void CudaBackend::freeStaging(void *p) {
++  detail::TraceRange trace("reloc.staging.free", 0);
+   if (!pinnedStaging_) {
+     std::free(p);
+     return;
+diff --git a/libreloc/src/Dispatch.cpp b/libreloc/src/Dispatch.cpp
+index 2c17a30..1a4af95 100644
+--- a/libreloc/src/Dispatch.cpp
++++ b/libreloc/src/Dispatch.cpp
+@@ -1,6 +1,7 @@
+ //===- Dispatch.cpp - plan-driven typed transform dispatch ----------------===//
+ 
+ #include "reloc/Dispatch.h"
++#include "Trace.h"
+ 
+ #include "reloc/ChunkSchedule.h"
+ #include "reloc/GatherPool.h"
+@@ -232,6 +233,7 @@ std::optional<TransferError> pipelineToDevice(const void *hostSrc,
+     }
+     return std::nullopt;
+   }
++  detail::TraceRange trace("reloc.typed.pipeline_to_device", 0);
+   BoundPlan dense = densePlan(elements, width);
+   const int nBuffers = std::max(1, options.nBuffers);
+   ChunkSchedule sched = planChunks(dense, nBuffers, options.chunkSizeOverride);
+@@ -304,6 +306,7 @@ std::optional<TransferError> hostProgram(const Program &program, uint32_t from,
+                                          uint32_t to, const void *src,
+                                          void *dst,
+                                          const TransferOptions &options) {
++  detail::TraceRange trace("reloc.typed.host_program", 0);
+   auto error = typed::executeHost(program, from, to, src, dst, options.gather,
+                                   options.gather ? 1 : options.gatherThreads);
+   if (error)
+diff --git a/libreloc/src/DispatchResources.cpp b/libreloc/src/DispatchResources.cpp
+index d2242c6..57fcedb 100644
+--- a/libreloc/src/DispatchResources.cpp
++++ b/libreloc/src/DispatchResources.cpp
+@@ -1,4 +1,5 @@
+ #include "reloc/DispatchResources.h"
++#include "Trace.h"
+ #include "TransferResourcePolicy.h"
+ #include "reloc/GatherPool.h"
+ #ifdef RELOC_ENABLE_CUDA
+@@ -30,6 +31,7 @@ class ScratchBackend : public CudaBackend {
+   std::string scratchError_;
+   TransferOptions options_;
+   void release(Block &b) {
++    detail::TraceRange trace(b.device ? "reloc.scratch.device_release" : "reloc.scratch.host_release", b.bytes);
+     if (b.device)
+       CudaBackend::freeDevice(b.pointer);
+     else if (b.pinned)
+@@ -41,6 +43,7 @@ class ScratchBackend : public CudaBackend {
+     b.pointer = nullptr;
+   }
+   void *allocate(size_t bytes, bool device) {
++    detail::TraceRange trace(device ? "reloc.scratch.device_acquire" : "reloc.scratch.host_acquire", bytes);
+     if (failed())
+       return nullptr;
+     size_t busyBytes = 0;

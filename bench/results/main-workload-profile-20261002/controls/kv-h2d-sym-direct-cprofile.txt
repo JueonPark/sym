@@ -1,0 +1,73 @@
+         11643 function calls in 0.042 seconds
+
+   Ordered by: cumulative time
+   List reduced from 95 to 65 due to restriction <65>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+       60    0.001    0.000    0.036    0.001 /tmp/sym-main-workload-profile/bench/workload_profile/controls.py:96(direct)
+       60    0.000    0.000    0.019    0.000 /tmp/sym-main-workload-profile/bench/workload_profile/controls.py:95(prepare)
+       60    0.002    0.000    0.019    0.000 /tmp/sym-main-profile-build/python/reloc_torch/transport.py:90(prepare_transfer)
+       60    0.002    0.000    0.016    0.000 /tmp/sym-main-profile-build/python/reloc_torch/transport.py:141(execute_transfer)
+       60    0.000    0.000    0.008    0.000 /tmp/sym-main-profile-build/python/reloc_torch/runtime.py:171(source_reason)
+       60    0.001    0.000    0.007    0.000 /tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/cuda/__init__.py:1271(synchronize)
+      120    0.001    0.000    0.006    0.000 /tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/cuda/_utils.py:605(_get_device_index)
+       60    0.002    0.000    0.005    0.000 /tmp/sym-main-profile-build/python/reloc_torch/compat.py:152(tensor_metadata)
+       60    0.000    0.000    0.005    0.000 /tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/cuda/__init__.py:712(__init__)
+      120    0.001    0.000    0.004    0.000 /tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/_utils.py:878(_get_device_index)
+       60    0.004    0.000    0.004    0.000 {built-in method pyreloc._pyreloc.execute_transfer}
+      120    0.002    0.000    0.004    0.000 /tmp/sym-main-profile-build/python/reloc_torch/transport.py:45(_storage_view)
+       60    0.000    0.000    0.004    0.000 /tmp/sym-main-profile-build/python/reloc_torch/compat.py:422(cuda_stream_handle)
+      240    0.002    0.000    0.003    0.000 /tmp/sym-main-profile-build/python/reloc_torch/compat.py:396(storage_span)
+      120    0.001    0.000    0.003    0.000 /tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/cuda/__init__.py:209(is_available)
+       60    0.000    0.000    0.003    0.000 /tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/_utils.py:852(_get_current_device_index)
+       60    0.001    0.000    0.003    0.000 /tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/cuda/__init__.py:1297(current_stream)
+       60    0.000    0.000    0.003    0.000 /tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/_utils.py:836(_get_device_attr)
+      120    0.001    0.000    0.003    0.000 /tmp/sym-main-profile-build/python/reloc_torch/compat.py:408(storage_snapshot)
+       60    0.000    0.000    0.003    0.000 /tmp/sym-main-profile-build/python/reloc_torch/runtime.py:188(bind_symbols)
+       60    0.000    0.000    0.002    0.000 /tmp/sym-main-profile-build/python/reloc_torch/artifact.py:127(bind_values)
+      120    0.000    0.000    0.002    0.000 /tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/cuda/__init__.py:205(_nvml_based_avail)
+       60    0.001    0.000    0.002    0.000 /tmp/sym-main-profile-build/python/reloc_torch/eligibility.py:43(_metadata_reason)
+     1500    0.002    0.000    0.002    0.000 {built-in method builtins.isinstance}
+       60    0.000    0.000    0.002    0.000 /tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/_utils.py:819(_get_available_device_type)
+      120    0.000    0.000    0.002    0.000 <frozen os>:818(getenv)
+      120    0.000    0.000    0.002    0.000 <frozen _collections_abc>:792(get)
+       60    0.000    0.000    0.002    0.000 /tmp/sym-main-profile-build/python/reloc_torch/transport.py:80(__post_init__)
+       60    0.000    0.000    0.002    0.000 /tmp/sym-main-profile-build/python/reloc_torch/transport.py:83(recheck)
+       60    0.001    0.000    0.002    0.000 /tmp/sym-main-profile-build/python/reloc_torch/artifact.py:711(_tensor_spec)
+       60    0.001    0.000    0.001    0.000 /tmp/sym-main-profile-build/python/reloc_torch/eligibility.py:74(_is_dense_contiguous)
+      120    0.000    0.000    0.001    0.000 <frozen os>:704(__getitem__)
+      180    0.000    0.000    0.001    0.000 /tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/cuda/__init__.py:563(_lazy_init)
+       60    0.001    0.000    0.001    0.000 /tmp/sym-main-profile-build/python/reloc_torch/runtime.py:245(destination_descriptor)
+       60    0.000    0.000    0.001    0.000 /tmp/sym-main-profile-build/python/reloc_torch/resources.py:16(_transfer_configuration)
+       60    0.000    0.000    0.001    0.000 /tmp/sym-main-profile-build/python/reloc_torch/runtime.py:207(bind_plan)
+       60    0.000    0.000    0.001    0.000 /tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/_utils.py:854(<lambda>)
+       60    0.001    0.000    0.001    0.000 {built-in method torch.empty_strided}
+      120    0.000    0.000    0.001    0.000 <frozen os>:786(encode)
+      240    0.000    0.000    0.001    0.000 /tmp/sym-main-profile-build/python/reloc_torch/compat.py:176(<genexpr>)
+       60    0.000    0.000    0.001    0.000 /tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/cuda/streams.py:37(__new__)
+      240    0.000    0.000    0.001    0.000 /tmp/sym-main-profile-build/python/reloc_torch/compat.py:180(<genexpr>)
+      180    0.000    0.000    0.001    0.000 /tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/cuda/__init__.py:514(is_initialized)
+       60    0.000    0.000    0.001    0.000 /tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/cuda/__init__.py:1265(current_device)
+      300    0.001    0.000    0.001    0.000 {built-in method builtins.getattr}
+       60    0.001    0.000    0.001    0.000 {built-in method pyreloc._pyreloc.bind}
+      360    0.001    0.000    0.001    0.000 {method 'stride' of 'torch._C.TensorBase' objects}
+      420    0.001    0.000    0.001    0.000 /tmp/sym-main-profile-build/python/reloc_torch/compat.py:148(_dimension)
+       60    0.001    0.000    0.001    0.000 {method 'is_pinned' of 'torch._C.TensorBase' objects}
+      360    0.000    0.000    0.000    0.000 {method 'storage_offset' of 'torch._C.TensorBase' objects}
+      360    0.000    0.000    0.000    0.000 {method 'element_size' of 'torch._C.TensorBase' objects}
+      300    0.000    0.000    0.000    0.000 {method 'untyped_storage' of 'torch._C.TensorBase' objects}
+      120    0.000    0.000    0.000    0.000 /tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/cuda/__init__.py:200(_is_compiled)
+      300    0.000    0.000    0.000    0.000 {method 'nbytes' of 'torch._C.StorageBase' objects}
+       60    0.000    0.000    0.000    0.000 {built-in method torch._C._cuda_synchronize}
+      240    0.000    0.000    0.000    0.000 {method 'data_ptr' of 'torch._C.StorageBase' objects}
+       60    0.000    0.000    0.000    0.000 {built-in method pyreloc._pyreloc.make_transfer}
+       60    0.000    0.000    0.000    0.000 <frozen abc>:117(__instancecheck__)
+      180    0.000    0.000    0.000    0.000 {built-in method torch._C._cuda_isInBadFork}
+      240    0.000    0.000    0.000    0.000 /tmp/sym-main-profile-build/python/reloc_torch/eligibility.py:61(<genexpr>)
+       60    0.000    0.000    0.000    0.000 <frozen importlib._bootstrap>:648(parent)
+       60    0.000    0.000    0.000    0.000 /tmp/sym-main-profile-build/python/reloc_torch/resources.py:94(native)
+       60    0.000    0.000    0.000    0.000 /tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/cuda/__init__.py:716(__enter__)
+      180    0.000    0.000    0.000    0.000 {method 'removeprefix' of 'str' objects}
+       60    0.000    0.000    0.000    0.000 /tmp/sym-torch-cuda/lib/python3.14/site-packages/torch/cuda/__init__.py:719(__exit__)
+
+

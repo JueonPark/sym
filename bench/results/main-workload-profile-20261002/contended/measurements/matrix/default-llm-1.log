@@ -1,0 +1,13 @@
+llm_offload: PASS (9/9 checks)
+  devices: cuda:0; sizes: {'vocab': 8192, 'd_model': 1024, 'heads': 16, 'layers': 8, 'd_ff': 4096, 'prompt': 32, 'new_tokens': 8}
+  sym transfers: 480; plan compiles: 3; typed dispatch rows: cuda_dequant_relocate=256; fallbacks/exclusions: 0
+  weights: 256 Sym transfers moved 768.00 MiB over the link for 3072.00 MiB of destination tensors (sources 768.00 MiB)
+  kv_evict: 112 Sym transfers moved 15.31 MiB over the link for 15.31 MiB of destination tensors (sources 15.31 MiB)
+  kv_restore: 112 Sym transfers moved 15.31 MiB over the link for 15.31 MiB of destination tensors (sources 15.31 MiB)
+  weights median per transfer: sym 1.52 ms / torch 0.75 ms (descriptive only)
+  kv_evict median per transfer: sym 0.56 ms / torch 0.09 ms (descriptive only)
+  kv_restore median per transfer: sym 0.56 ms / torch 1.27 ms (descriptive only)
+  note: calibration: /tmp/sym-pr162-pageable/calibration/epyc7351-2080ti.cal
+  note: weights: the PyTorch reference also moves int8 and dequantizes on the GPU, so the wires match whenever the runtime picks a GPU row; the dispatch rows show the cost model's choice
+  note: transfers are blocking, so weight streaming does not overlap compute; this toy model fits on the GPU anyway -- the example shows the mechanism, not a capacity win
+  note: wire bytes follow from the recipe's dtype choice; equivalent PyTorch code moves the same bytes

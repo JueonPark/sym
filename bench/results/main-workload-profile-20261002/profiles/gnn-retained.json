@@ -1,0 +1,256 @@
+{
+  "example": "gnn_minibatch",
+  "devices": [
+    "cuda:0"
+  ],
+  "sizes": {
+    "features": 128,
+    "nodes": 500000,
+    "avg_degree": 15,
+    "seeds": 1024,
+    "fanouts": [
+      10,
+      5
+    ],
+    "batches": 5
+  },
+  "checks": {
+    "node_features_equal": {
+      "passed": 5,
+      "failed": 0
+    },
+    "logits_equal": {
+      "passed": 5,
+      "failed": 0
+    },
+    "one_plan_for_every_row_count": {
+      "passed": 1,
+      "failed": 0
+    },
+    "rows_change_between_batches": {
+      "passed": 1,
+      "failed": 0
+    },
+    "one_execution_per_batch": {
+      "passed": 1,
+      "failed": 0
+    },
+    "cpu_reference_row": {
+      "passed": 1,
+      "failed": 0
+    },
+    "observed_payload_matches_wire": {
+      "passed": 1,
+      "failed": 0
+    },
+    "no_fallbacks": {
+      "passed": 1,
+      "failed": 0
+    }
+  },
+  "counters": {
+    "dynamo_compiles": 1,
+    "plan_compiles": 1,
+    "symbol_binds": 0,
+    "runtime_executions": 5,
+    "typed_executions": 5,
+    "typed_payload_bytes": 45654528,
+    "fallbacks": {},
+    "exclusions": {}
+  },
+  "plan_compiles": 1,
+  "bytes": {
+    "node_features": {
+      "transfers": 5,
+      "source": 91309056,
+      "wire": 45654528,
+      "destination": 45654528
+    }
+  },
+  "dispatches": {
+    "cpu_reference": 5
+  },
+  "timings_ms": {
+    "node_features": {
+      "torch": {
+        "count": 5,
+        "first_call": 4.464,
+        "median": 2.284,
+        "total": 14.067
+      },
+      "sym": {
+        "count": 5,
+        "first_call": 232.65,
+        "median": 3.638,
+        "total": 247.861
+      }
+    }
+  },
+  "workload": {
+    "rows_per_batch": [
+      35573,
+      36153,
+      34840,
+      36063,
+      35709
+    ]
+  },
+  "notes": [
+    "sampling, the feature gather and the index tensors' moves are PyTorch; Sym moves the feature block",
+    "the PyTorch reference moves the same float16 bytes: the dtype choice halves the wire, not Sym",
+    "transfers are blocking; every Sym call includes per-call runtime setup",
+    "wire bytes follow from the recipe's dtype choice; equivalent PyTorch code moves the same bytes"
+  ],
+  "raw_transfer_samples_ms": {
+    "node_features": {
+      "torch": [
+        4.464110359549522,
+        2.815050072968006,
+        2.2193267941474915,
+        2.2877873852849007,
+        2.2803619503974915
+      ],
+      "sym": [
+        232.6502436771989,
+        4.403464496135712,
+        3.5322466865181923,
+        3.6353422328829765,
+        3.639950416982174
+      ]
+    }
+  },
+  "typed_decisions": [
+    {
+      "implementation": "cpu_reference",
+      "source_bytes": 18213376,
+      "wire_bytes": 9106688,
+      "destination_bytes": 9106688,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 9106688,
+          "staging_capacity_bytes": 10485760,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": false
+        }
+      ]
+    },
+    {
+      "implementation": "cpu_reference",
+      "source_bytes": 18510336,
+      "wire_bytes": 9255168,
+      "destination_bytes": 9255168,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 9255168,
+          "staging_capacity_bytes": 10485760,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cpu_reference",
+      "source_bytes": 17838080,
+      "wire_bytes": 8919040,
+      "destination_bytes": 8919040,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 8919040,
+          "staging_capacity_bytes": 10485760,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cpu_reference",
+      "source_bytes": 18464256,
+      "wire_bytes": 9232128,
+      "destination_bytes": 9232128,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 9232128,
+          "staging_capacity_bytes": 10485760,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    },
+    {
+      "implementation": "cpu_reference",
+      "source_bytes": 18283008,
+      "wire_bytes": 9141504,
+      "destination_bytes": 9141504,
+      "staging": [
+        {
+          "policy": "auto",
+          "memory_kind": "pageable",
+          "wire_bytes": 9141504,
+          "staging_capacity_bytes": 10485760,
+          "buffer_count": 1,
+          "min_pinned_bytes": null,
+          "reason": "unconfigured_threshold",
+          "retention_eligible": true,
+          "reused": true
+        }
+      ]
+    }
+  ],
+  "typed_reuse": true,
+  "direct_typed_resources": {
+    "requests": 0,
+    "hits": 0,
+    "context_creations": 0,
+    "device_allocations": 0,
+    "host_allocations": 0,
+    "frees": 0,
+    "retained_bytes": 0,
+    "device_bytes": 0,
+    "host_bytes": 0,
+    "background_workers": 0,
+    "streams": 0,
+    "closed": false,
+    "quarantined": false,
+    "process_valid": true
+  },
+  "profiling": {
+    "torch_threads": 8,
+    "model_regions_per_path": 5,
+    "transfer_range_includes_completion": true,
+    "first_transfer_of_each_kind_excluded_in_analysis": true
+  },
+  "ok": true,
+  "summary": {
+    "checks_passed": 8,
+    "checks_total": 8,
+    "plan_compiles": 1,
+    "sym_transfers": 5,
+    "wire_bytes": 45654528,
+    "destination_bytes": 45654528,
+    "fallbacks": 0,
+    "steady_transfer_ms": {
+      "torch": 9.603,
+      "sym": 15.211
+    }
+  }
+}
