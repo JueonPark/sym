@@ -43,16 +43,36 @@ class ScratchBackend : public CudaBackend {
   void *allocate(size_t bytes, bool device) {
     if (failed())
       return nullptr;
-    bool pinned =
-        !device && usePinnedStaging(options_, bytes) &&
-        (options_.pinning != PinningPolicy::Auto || bytes <= retainedLimit_);
+    size_t busyBytes = 0;
+    for (const auto &b : blocks_)
+      if (b.busy)
+        busyBytes += b.bytes;
+    auto fitsRetention = [&](size_t capacity) {
+      return capacity <= retainedLimit_ &&
+             busyBytes <= retainedLimit_ - capacity;
+    };
+    auto decision = selectStaging(options_, bytes, fitsRetention(bytes));
+    const bool pinned = !device && decision.pinned;
+    auto record = [&](size_t capacity, bool reused) {
+      if (!device && options_.staging) {
+        decision.capacityBytes = capacity;
+        decision.buffers = 1;
+        decision.reused = reused;
+        decision.retentionEligible = fitsRetention(capacity);
+        options_.staging->push_back(decision);
+      }
+    };
     Block *best = nullptr;
     for (auto &b : blocks_)
       if (!b.busy && b.device == device && b.pinned == pinned &&
-          b.bytes >= bytes && (!best || b.bytes < best->bytes))
+          b.bytes >= bytes &&
+          (!pinned || options_.pinning != PinningPolicy::Auto ||
+           fitsRetention(b.bytes)) &&
+          (!best || b.bytes < best->bytes))
         best = &b;
     if (best) {
       best->busy = true;
+      record(best->bytes, true);
       return best->pointer;
     }
     // Small shape changes should not pay another CUDA/pinned allocation.
@@ -63,7 +83,7 @@ class ScratchBackend : public CudaBackend {
     if (bytes >= (size_t(1) << 20) &&
         bytes <= std::numeric_limits<size_t>::max() - bytes / 8 - quantum) {
       size_t grown = ((bytes + bytes / 8 + quantum - 1) / quantum) * quantum;
-      if (grown <= retainedLimit_ && (!liveLimit_ || grown <= liveLimit_))
+      if (fitsRetention(grown) && (!liveLimit_ || grown <= liveLimit_))
         capacity = grown;
     }
     // Drop idle capacity before growing. Busy blocks stay owned until the
@@ -99,6 +119,7 @@ class ScratchBackend : public CudaBackend {
       ++deviceAllocations;
     else
       ++hostAllocations;
+    record(capacity, false);
     return p;
   }
 
@@ -112,6 +133,7 @@ public:
       release(b);
   }
   void begin(const TransferOptions &options) { options_ = options; }
+  void endReporting() { options_.staging = nullptr; }
   void *allocDevice(size_t bytes) override { return allocate(bytes, true); }
   void freeDevice(void *) override {}
   void *allocStaging(size_t bytes) override { return allocate(bytes, false); }
@@ -290,8 +312,6 @@ TransferOutcome Resources::execute(DispatchRequest &request, int device,
   auto &c = *impl_->context;
   c.owners = std::move(owners);
   auto execution = options;
-  if (!impl_->retainedLimit && execution.pinning == PinningPolicy::Auto)
-    execution.pinning = PinningPolicy::Pageable;
   if (!execution.gather)
     execution.gather = c.workers.get();
   c.backend.begin(execution);
@@ -303,6 +323,8 @@ TransferOutcome Resources::execute(DispatchRequest &request, int device,
   } catch (...) {
     out.error = fail("backend_failure", "typed dispatch threw");
   }
+  // Error quarantine must not keep a pointer into the caller's request report.
+  c.backend.endReporting();
   // Healthy dispatch waits for each submitted copy/kernel. Errors and throwing
   // helpers require an independent completion proof before freeing anything.
   if (out.error && c.backend.quiesce() == QueueCompletion::Unknown) {

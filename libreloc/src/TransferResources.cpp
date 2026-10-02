@@ -20,6 +20,7 @@ struct TransferContext::Impl : detail::QuarantineNode {
   std::shared_ptr<void> owners;
   TransferDirection direction = TransferDirection::HostToDevice;
   TransferCompletion completion = TransferCompletion::NotLaunched;
+  uint64_t reportedStagingPool = 0;
 };
 
 TransferContext::TransferContext(std::unique_ptr<CopyBackend> backend) {
@@ -116,6 +117,14 @@ TransferOutcome detail::TransferContextAccess::execute(
   state.owners = std::move(bufferOwners);
   std::optional<TransferError> error;
   try {
+    if (options.staging && !options.staging->empty()) {
+      auto &d = options.staging->back();
+      d.capacityBytes = context.stats_.stagingBytes;
+      d.buffers = context.stats_.activeSlots;
+      d.reused =
+          state.reportedStagingPool == context.stats_.stagingPoolCreations;
+    }
+    state.reportedStagingPool = context.stats_.stagingPoolCreations;
     error = executePreparedTransfer(
         request, requirements, options, *state.backend, *state.staging,
         options.gather ? options.gather : state.workers.get(),

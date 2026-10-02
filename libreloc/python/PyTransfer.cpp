@@ -97,6 +97,7 @@ struct PythonTransferRequest {
   // Accessed only under the GIL. Avoid reading native.consumed while native
   // execution can write it, and reject concurrent use of the same request.
   bool executing = false;
+  std::vector<reloc::StagingDecision> staging;
 };
 
 PythonTransferRequest makeTransfer(const reloc::BoundPlan &bound,
@@ -121,7 +122,7 @@ void executeTransferPy(PythonTransferRequest &wrapped,
                        std::shared_ptr<reloc::GatherPool> pool,
                        std::shared_ptr<reloc::TransferResourceCache> resources,
                        const py::object &owners, const std::string &pinning,
-                       size_t minPinnedBytes) {
+                       std::optional<size_t> minPinnedBytes) {
   if (resources)
     checkProcess(*resources); // before any inherited pool locks
   if (wrapped.executing)
@@ -154,8 +155,8 @@ void executeTransferPy(PythonTransferRequest &wrapped,
   options.nBuffers = nBuffers;
   options.pinning = parsePinning(pinning);
   options.minPinnedBytes = minPinnedBytes;
-  if (!resources && options.pinning == reloc::PinningPolicy::Auto)
-    options.pinning = reloc::PinningPolicy::Pageable;
+  wrapped.staging.clear();
+  options.staging = &wrapped.staging;
   options.gatherThreads = static_cast<unsigned>(gatherThreads);
   options.gather = pool.get();
   if (!callerStream.is_none()) {
@@ -187,16 +188,22 @@ void executeTransferPy(PythonTransferRequest &wrapped,
       error = reloc::executeTransferCached(request, *resources, cached, token)
                   .error;
     } else {
+      auto decision = reloc::selectStaging(
+          options,
+          request.direction == reloc::TransferDirection::HostToDevice
+              ? request.destinationBytes
+              : request.sourceSpanBytes,
+          false);
+      if (!cuda) {
+        decision.pinned = false;
+        decision.reason = "host_backend";
+      }
+      wrapped.staging.push_back(decision);
       std::unique_ptr<reloc::CopyBackend> backend;
       if (cuda) {
 #ifdef RELOC_ENABLE_CUDA
-        backend = std::make_unique<reloc::CudaBackend>(
-            nStreams, device,
-            reloc::usePinnedStaging(
-                options,
-                request.direction == reloc::TransferDirection::HostToDevice
-                    ? request.destinationBytes
-                    : request.sourceSpanBytes));
+        backend = std::make_unique<reloc::CudaBackend>(nStreams, device,
+                                                       decision.pinned);
 #else
         raise(
             {"backend_failure", "pyreloc was built without RELOC_ENABLE_CUDA"});
@@ -344,6 +351,14 @@ void registerTransferBindings(py::module_ &m) {
                                return r.executing || r.native.consumed;
                              })
       .def_property_readonly(
+          "staging",
+          [](const PythonTransferRequest &r) {
+            if (r.executing)
+              throw py::value_error(
+                  "staging report is unavailable during execution");
+            return stagingReport(r.staging);
+          })
+      .def_property_readonly(
           "source",
           [](const PythonTransferRequest &r) { return r.native.source; })
       .def_property_readonly("destination", [](const PythonTransferRequest &r) {
@@ -432,7 +447,7 @@ void registerTransferBindings(py::module_ &m) {
       py::arg("n_streams") = 2, py::arg("gather_threads") = 1,
       py::arg("gather_pool") = nullptr, py::arg("resources") = nullptr,
       py::arg("owners") = py::none(), py::arg("pinning") = "auto",
-      py::arg("min_pinned_bytes") = size_t(8) << 20,
+      py::arg("min_pinned_bytes") = py::none(),
       "Run the forward transfer and block until this request's work has "
       "completed. caller_stream (a cudaStream_t handle; 0 is the legacy "
       "default stream, None means no producer to order after) is recorded "

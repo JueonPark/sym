@@ -235,9 +235,13 @@ and request construction. No successful invocation's tensor data or executable
 request enters these caches.
 
 `pinning="auto"` is the frontend default; `"pinned"` and `"pageable"` force the
-allocation policy. Auto uses pageable staging for ephemeral calls and allocations
+allocation policy. `min_pinned_bytes=None` is the default: auto uses pageable
+staging until a threshold has been explicitly configured for the deployment.
+No hardware-independent threshold or machine detection is implied. An explicit
+threshold is the caller's calibration choice for its device, direction, layout,
+thread/NUMA placement and reuse pattern. Auto also uses pageable staging for ephemeral calls and allocations
 that cannot be retained. For retained layout staging it pins when actual wire
-bytes are at least `min_pinned_bytes` (default **8 MiB**), independently of rounded
+bytes are at least an explicitly configured `min_pinned_bytes`, independently of rounded
 slot capacity or buffer count. H2D uses result bytes; D2H uses source reach. Typed
 scratch uses each allocation's bytes; small scale uploads are classified
 separately from weights. An existing dense input uploads directly without being
@@ -250,3 +254,33 @@ so a size threshold is not a guarantee of benefit for every call. Direction,
 layout, expected reuse, host-memory pressure, and device-specific calibration
 belong in the subsequent cost model. Pageable CUDA copies can block internally;
 selecting pageable staging does not promise CPU/DMA overlap.
+
+Managed layout requests expose `request.staging` after execution; typed calls
+also include `staging` in `DispatchResult.report`. Each scalar-only record has
+`policy`, `memory_kind`, `wire_bytes`, `staging_capacity_bytes`, `buffer_count`,
+`min_pinned_bytes`, `reason`, `retention_eligible`, and `reused`. A layout record
+describes its whole staging ring; typed records describe individual host
+allocations, including parameter uploads. `wire_bytes` controls selection;
+capacity includes rounding/headroom. Direct uploads that need no Sym staging
+produce no allocation record. Capacity zero means allocation was not observed
+(e.g. a rejected/failed allocation or legacy raw-pointer execution).
+
+`reason` is one of `forced_pinned`, `forced_pageable`, `unconfigured_threshold`,
+`ephemeral_staging`, `below_threshold`, `configured_size_gate`, or `host_backend`.
+Retention eligibility means the allocation can fit the retention budget with
+currently busy scratch; it does not promise another call or a cache hit. Typed
+scratch checks aggregate busy capacity, including device scratch, before making
+this decision. Reports are request-local, hold no tensors and cannot be read
+while native execution is in progress. Frontend `stats()` aggregates successful
+calls under `staging_decisions` and `staging_reuse` without keeping reports alive.
+
+The previously measured 8 MiB threshold is an example configuration for the
+EPYC 7351 / RTX 2080 Ti workload profile, not a library default:
+
+```python
+# Enable only after measuring this deployment's direction/layout/reuse profile.
+transfer_options = {"pinning": "auto", "min_pinned_bytes": 8 << 20}
+```
+
+Without that explicit configuration, unknown deployments use pageable staging.
+The low-level C++ `TransferOptions.pinning` legacy default remains `Pinned`.

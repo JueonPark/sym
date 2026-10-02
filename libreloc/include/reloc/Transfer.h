@@ -108,6 +108,16 @@ validateTransfer(const BoundPlan &bound, const BufferView &source,
 
 enum class PinningPolicy { Auto, Pinned, Pageable };
 
+/// Scalar-only explanation of one staging allocation (or a layout ring).
+/// Capacity is filled after allocation; zero means allocation was not observed.
+struct StagingDecision {
+  PinningPolicy policy = PinningPolicy::Auto;
+  bool pinned = false, retentionEligible = false, reused = false;
+  size_t wireBytes = 0, capacityBytes = 0, buffers = 0;
+  std::optional<size_t> threshold;
+  std::string reason;
+};
+
 struct TransferOptions {
   int nBuffers = 4;             // pinned staging ring size (H2D)
   size_t chunkSizeOverride = 0; // 0 = heuristic
@@ -120,13 +130,41 @@ struct TransferOptions {
   // The blocking caller must retain it until completion is established.
   bool directDenseUpload = true;
   PinningPolicy pinning = PinningPolicy::Pinned;
-  size_t minPinnedBytes = size_t(8) << 20;
+  // Auto needs an explicitly configured/calibrated threshold. Omission is
+  // conservative pageable selection, not a universal hardware-independent gate.
+  std::optional<size_t> minPinnedBytes;
+  // Optional per-invocation diagnostics. Never retained by an idle context.
+  std::vector<StagingDecision> *staging = nullptr;
 };
 
-inline bool usePinnedStaging(const TransferOptions &options, size_t wireBytes) {
-  return options.pinning == PinningPolicy::Pinned ||
-         (options.pinning == PinningPolicy::Auto &&
-          wireBytes >= options.minPinnedBytes);
+inline StagingDecision selectStaging(const TransferOptions &options,
+                                     size_t wireBytes, bool retainable) {
+  StagingDecision d;
+  d.policy = options.pinning;
+  d.wireBytes = wireBytes;
+  d.threshold = options.minPinnedBytes;
+  d.retentionEligible = retainable;
+  if (options.pinning == PinningPolicy::Pinned) {
+    d.pinned = true;
+    d.reason = "forced_pinned";
+  } else if (options.pinning == PinningPolicy::Pageable)
+    d.reason = "forced_pageable";
+  else if (!options.minPinnedBytes)
+    d.reason = "unconfigured_threshold";
+  else if (!retainable)
+    d.reason = "ephemeral_staging";
+  else if (wireBytes < *options.minPinnedBytes)
+    d.reason = "below_threshold";
+  else {
+    d.pinned = true;
+    d.reason = "configured_size_gate";
+  }
+  return d;
+}
+
+inline bool usePinnedStaging(const TransferOptions &options, size_t wireBytes,
+                             bool retainable = true) {
+  return selectStaging(options, wireBytes, retainable).pinned;
 }
 
 /// Execute a validated request through `backend` and block until this

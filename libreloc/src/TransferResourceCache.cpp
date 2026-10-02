@@ -548,6 +548,8 @@ TransferOutcome run(TransferRequest &request, const CacheRequest &r,
                 TransferCompletion::NotLaunched};
       entry.state = ResourceState::Leased;
     }
+    if (r.options.staging)
+      r.options.staging->push_back(r.staging);
     auto result = TransferContextAccess::execute(
         request, *entry.context, r.options, r.execution, std::move(owners));
     lease.healthy = !result.error && entry.context->stats().reusable;

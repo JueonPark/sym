@@ -42,6 +42,7 @@ struct CacheRequest {
   size_t bytes = 0;
   unsigned workers = 0;
   bool cacheable = false;
+  StagingDecision staging;
 };
 
 std::variant<size_t, TransferError> roundStagingCapacity(size_t bytes);

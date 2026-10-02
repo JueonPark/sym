@@ -92,6 +92,7 @@ struct Report {
   int64_t deviceTempBytes = 0;
   uint32_t artifactVersion = 1; // the typed wire format version
   bool executed = false;
+  std::vector<StagingDecision> staging;
 };
 
 struct Options {

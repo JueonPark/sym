@@ -31,6 +31,8 @@ def _transfer_configuration(resources, options):
                 if not isinstance(value, pyreloc.GatherPool):
                     raise TypeError("gather_pool must be GatherPool or None")
         elif name in {"n_buffers", "n_streams", "gather_threads", "min_pinned_bytes"}:
+            if name == "min_pinned_bytes" and value is None:
+                continue
             if isinstance(value, bool):
                 raise TypeError(f"{name} must be an integer")
             try:

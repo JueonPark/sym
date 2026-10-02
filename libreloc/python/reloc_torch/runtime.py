@@ -70,6 +70,7 @@ class PreparedCall:
     request: object = None
     # C4: the scalar-only R3 report the adapter attaches after a typed dispatch.
     report: object = None
+    staging: tuple = ()
     _snapshot: tuple = field(init=False, repr=False, compare=False)
     _consumed: bool = field(default=False, init=False, repr=False, compare=False)
 
@@ -445,8 +446,11 @@ class TransportAdapter:
         if typed:
             result = self._dispatch().execute_typed_transfer(call.request, resources=resources, **self._transfer_options)
             call.report = result.report
+            call.staging = getattr(call.request, "staging", ())
             return result.tensor
-        return self._module.execute_transfer(call.request, resources=resources, **self._transfer_options)
+        result = self._module.execute_transfer(call.request, resources=resources, **self._transfer_options)
+        call.staging = getattr(call.request, "staging", ())
+        return result
 
     def _dispatch(self):
         return importlib.import_module(f"{__package__}.dispatch")
@@ -559,6 +563,7 @@ def execute_or_fallback(entry, src, symbols, device, *, non_blocking=False, decl
             ) from error
         if getattr(call, "report", None) is not None:
             entry.diagnostics.record_dispatch(call.report)
+        entry.diagnostics.record_staging(getattr(call, "staging", ()))
         return verify_result(result, src, promised)
 
 

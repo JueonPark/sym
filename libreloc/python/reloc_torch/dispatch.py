@@ -100,6 +100,7 @@ class PreparedTypedTransfer:
     program: object = None
     request: object = None
     consumed: bool = False
+    staging: tuple = field(default=(), init=False)
     _storage: tuple = field(init=False, repr=False)
     _execution_lock: object = field(default_factory=Lock, init=False, repr=False, compare=False)
 
@@ -207,7 +208,7 @@ def prepare_typed_transfer(
 
 
 def execute_typed_transfer(request, *, n_buffers=4, n_streams=2, gather_threads=None, gather_pool=None,
-                           pinning="auto", min_pinned_bytes=8 << 20,
+                           pinning="auto", min_pinned_bytes=None,
                            direct_dense_upload=True, resources=None):
     if not request._execution_lock.acquire(blocking=False):
         raise RuntimeError("typed transfer request is already executing")
@@ -277,6 +278,8 @@ def _execute_typed_transfer(request, *, n_buffers, n_streams, gather_threads,
         )
     except pyreloc.TransferError as error:
         raise RuntimeError(f"{request.direction} typed dispatch failed: {error}") from error
+    finally:
+        request.staging = tuple(native.report.get("staging", ()))
     report = dict(report)
     report["placement_reason"] = request.selected["placement_reason"]
     report["policy"] = request.selected["policy"]
