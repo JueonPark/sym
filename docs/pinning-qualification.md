@@ -6,6 +6,9 @@ pageable default when no threshold is supplied. #200 introduced the policy;
 qualifies mode changes and ownership. The proposed adaptive model is documented
 in [pinning-cost-model.md](pinning-cost-model.md) and tracked separately in #208.
 
+[Standalone visual report (download HTML)](https://raw.githubusercontent.com/JueonPark/sym/72f9d89fcc06090bddb0f4620ec59b805d574b97/bench/results/issue-189-qualification/report.html)
+· [Raw calls, plots, traces and validation](https://github.com/JueonPark/sym/tree/72f9d89fcc06090bddb0f4620ec59b805d574b97/bench/results/issue-189-qualification)
+
 ## Calibration scope
 
 The qualification machine is an AMD EPYC 7351 and RTX 2080 Ti (GPU 0), CUDA 12.6,
