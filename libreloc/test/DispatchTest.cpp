@@ -527,8 +527,9 @@ TEST(Dispatch, BackendFailuresPropagateWithoutASecondPath) {
     DispatchRequest request = mustPrepareDispatch(
         plan, view(src.data(), src.size(), {16}, 4),
         view(dst.data(), dst.size(), {16}, 4), direction, options);
-    auto error =
-        reloc::dispatch::executeDispatch(request, backend, TransferOptions{});
+    TransferOptions transfer;
+    transfer.directDenseUpload = false;
+    auto error = reloc::dispatch::executeDispatch(request, backend, transfer);
     ASSERT_TRUE(error.has_value());
     EXPECT_EQ(error->code, "backend_failure");
     EXPECT_TRUE(request.consumed);

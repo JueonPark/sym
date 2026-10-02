@@ -221,10 +221,22 @@ std::optional<TransferError> pipelineToDevice(const void *hostSrc,
                                               uint32_t width,
                                               CopyBackend &backend,
                                               const TransferOptions &options) {
+  if (options.directDenseUpload) {
+    backend.copyAsync(0, deviceDst, hostSrc,
+                      static_cast<size_t>(elements) * width,
+                      CopyDir::HostToDevice);
+    backend.waitEvent(backend.recordEvent(0));
+    if (backend.failed()) {
+      backend.quiesce();
+      return backendFailure(backend, "dense host-to-device copy failed");
+    }
+    return std::nullopt;
+  }
   BoundPlan dense = densePlan(elements, width);
   const int nBuffers = std::max(1, options.nBuffers);
   ChunkSchedule sched = planChunks(dense, nBuffers, options.chunkSizeOverride);
-  PinnedBufferPool pool(backend, nBuffers, sched.maxChunkBytes);
+  PinnedBufferPool pool(backend, std::min<int>(nBuffers, sched.chunks.size()),
+                        sched.maxChunkBytes);
   if (!pool.valid()) {
     std::string detail = "pinned staging allocation failed for " +
                          std::to_string(nBuffers) + " x " +
