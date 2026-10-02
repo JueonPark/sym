@@ -305,10 +305,11 @@ class TransportAdapter:
     While that module is absent every preflight is the expected exclusion
     ``runtime_unavailable``: the original region runs and nothing launches.
 
-    ``transfer_resources=AUTO`` lazily owns a layout-transfer cache; an explicit
+    ``transfer_resources=AUTO`` lazily owns layout and typed resources; an explicit
     TransferResources is borrowed. None (the default) keeps per-call resources.
     Entry lifetimes never control this owner's lifetime; call close() to drain
-    an owned cache. Typed transfers keep their separate dispatch policy.
+    an owned cache. Typed scratch has its own explicit limits and one exclusive
+    context; typed placement still uses the separate dispatch policy.
     """
 
     REQUEST_ATTRIBUTES = ("bindings", "destination")
@@ -416,11 +417,11 @@ class TransportAdapter:
         typed = getattr(call.compiled, "typed", False)
         with self._lock:
             self._require_open()
-            if not typed and self._owns_resources and self._resources is None:
+            if self._owns_resources and self._resources is None:
                 self._resources = TransferResources()
             resources = self._resources
         if typed:
-            result = self._dispatch().execute_typed_transfer(call.request, **self._transfer_options)
+            result = self._dispatch().execute_typed_transfer(call.request, resources=resources, **self._transfer_options)
             call.report = result.report
             return result.tensor
         return self._module.execute_transfer(call.request, resources=resources, **self._transfer_options)

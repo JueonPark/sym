@@ -45,3 +45,12 @@ if(SYM_BUILD_TESTS)
   set_tests_properties(pyreloc-transfer-harness-import PROPERTIES
     ENVIRONMENT "PYTHONPATH=${CMAKE_BINARY_DIR}/python")
 endif()
+
+# Local CUDA fault qualification; excluded from wheels/install targets.
+if(SYM_BUILD_TESTS AND RELOC_ENABLE_CUDA AND UNIX AND NOT APPLE)
+  add_library(typed_dispatch_faults SHARED tests/DispatchFaultShim.cpp)
+  target_include_directories(typed_dispatch_faults PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
+  target_link_libraries(typed_dispatch_faults PRIVATE ${CMAKE_DL_LIBS})
+  set_target_properties(typed_dispatch_faults PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/python)
+endif()

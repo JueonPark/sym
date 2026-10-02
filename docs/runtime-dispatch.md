@@ -185,3 +185,36 @@ on contiguous innermost runs. The outer traversal still performs the layout
 change and padding; unaligned runs, strided innermost axes, and multiple stages
 keep the scalar path. `execute_typed_transfer` defaults to the thread count used
 at preparation. Frontend `transfer_options` are also passed to typed execution.
+
+`TransferResources` now also owns one exclusive typed CUDA context. Frontend
+`AUTO` creates it lazily. Direct callers opt in explicitly:
+
+```python
+with TransferResources(max_typed_retained_bytes=64 << 20) as resources:
+    for source, parameters in inputs:
+        request = prepare_typed_transfer(compiled, source, "cuda:0",
+                                         parameters=parameters)
+        output = execute_typed_transfer(request, resources=resources).tensor
+```
+
+Each call receives a fresh output and a fresh single-use request. Device scratch,
+host scratch, streams, and workers may survive between calls. Large scratch
+allocations receive 12.5% growth headroom, rounded to 256 KiB, within the
+configured retention and live-byte limits; this does not change wire bytes. Every input and
+parameter upload is refreshed. No scratch allocation is recycled until all work
+in that dispatch has completed. CPU affinity, device, stream count, or worker
+count changes retire the context. Native kernel launches select the backend's
+device and restore the caller's current device on exit. Concurrent typed calls through one owner
+serialize; separate owners allow independent execution.
+
+The existing layout limits remain unchanged. Typed limits are **additional,
+separate budgets**: `max_typed_retained_bytes=64 MiB` bounds host plus device
+scratch between calls; `max_typed_live_bytes=0` means no extra live-byte cap
+(set a positive value to enforce one); `max_typed_background_workers=64` and
+`max_typed_streams=8` bound execution resources. Above-retention-budget scratch
+is temporary. The layout cache's context counts and admission timeout do not
+apply to this single typed context. Inspect `resources.stats()["typed"]` for
+allocation counts, retained bytes, hits, workers and streams. `clear()` and
+`close()` drain both resource families. Unknown completion quarantines scratch
+and tensor owners and permanently disables that typed owner; fork-inherited
+owners reject use before entering inherited locks or CUDA.

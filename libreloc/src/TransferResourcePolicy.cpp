@@ -35,6 +35,8 @@ std::vector<unsigned long> affinity() {
 }
 } // namespace
 
+std::vector<unsigned long> currentCpuAffinity() { return affinity(); }
+
 ProcessIdentity currentProcessIdentity() {
   return {int64_t(getpid()), processEpoch.load(std::memory_order_relaxed)};
 }

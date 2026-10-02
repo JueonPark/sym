@@ -3,6 +3,7 @@
 #include "PyDispatch.h"
 
 #include "reloc/Dispatch.h"
+#include "reloc/DispatchResources.h"
 #include "reloc/GatherPool.h"
 #include "reloc/HostBackend.h"
 #ifdef RELOC_ENABLE_CUDA
@@ -133,10 +134,26 @@ reloc::dispatch::DispatchRequest prepareDispatch(
   return std::get<reloc::dispatch::DispatchRequest>(std::move(prepared));
 }
 
-py::dict executeDispatchPy(reloc::dispatch::DispatchRequest &request,
-                           const py::object &callerStream, int nBuffers,
-                           int nStreams, int gatherThreads,
-                           std::shared_ptr<reloc::GatherPool> pool) {
+py::dict
+executeDispatchPy(reloc::dispatch::DispatchRequest &request,
+                  const py::object &callerStream, int nBuffers, int nStreams,
+                  int gatherThreads, std::shared_ptr<reloc::GatherPool> pool,
+                  std::shared_ptr<reloc::dispatch::Resources> resources,
+                  const py::object &owners) {
+  if (request.executing)
+    raise({"already_executed", "typed request is executing"});
+  request.executing = true;
+  struct Reset {
+    bool &value;
+    ~Reset() { value = false; }
+  } reset{request.executing};
+  std::shared_ptr<py::object> token;
+  if (resources || !owners.is_none()) {
+    if (!py::isinstance<py::tuple>(owners) || py::len(owners) != 2 ||
+        owners[py::int_(0)].is_none() || owners[py::int_(1)].is_none())
+      throw py::value_error("owners must strongly own source and destination");
+    token = std::make_shared<py::object>(owners);
+  }
   if (nBuffers < 1)
     throw py::value_error("n_buffers must be >= 1");
   if (nStreams < 1)
@@ -166,8 +183,18 @@ py::dict executeDispatchPy(reloc::dispatch::DispatchRequest &request,
     py::gil_scoped_release release;
     if (cuda) {
 #ifdef RELOC_ENABLE_CUDA
-      reloc::CudaBackend backend(nStreams, device);
-      error = reloc::dispatch::executeDispatch(request, backend, options);
+      if (resources) {
+        error =
+            resources->execute(request, device, nStreams, options, token).error;
+      } else if (token) {
+        reloc::dispatch::Resources ephemeral(0);
+        error =
+            ephemeral.execute(request, device, nStreams, options, token).error;
+      } else {
+        // Raw callers retain their buffers and backend lifetimes themselves.
+        reloc::CudaBackend backend(nStreams, device);
+        error = reloc::dispatch::executeDispatch(request, backend, options);
+      }
 #else
       (void)device;
       error = reloc::TransferError{
@@ -229,6 +256,59 @@ py::dict prefoldSpec(const reloc::TypedBoundPlan &bound) {
 } // namespace
 
 void registerDispatchBindings(py::module_ &m) {
+  using Resources = reloc::dispatch::Resources;
+  py::class_<Resources, std::shared_ptr<Resources>>(m, "DispatchResources")
+      .def(py::init<size_t, size_t, unsigned, unsigned>(), py::kw_only(),
+           py::arg("max_retained_bytes") = size_t(64) << 20,
+           py::arg("max_live_bytes") = 0,
+           py::arg("max_background_workers") = 64, py::arg("max_streams") = 8)
+      .def("stats",
+           [](Resources &r) {
+             reloc::dispatch::ResourceStats s;
+             {
+               py::gil_scoped_release release;
+               s = r.stats();
+             }
+             py::dict out;
+             out["requests"] = s.requests;
+             out["hits"] = s.hits;
+             out["context_creations"] = s.contexts;
+             out["device_allocations"] = s.deviceAllocations;
+             out["host_allocations"] = s.hostAllocations;
+             out["frees"] = s.frees;
+             out["retained_bytes"] = s.retainedBytes;
+             out["device_bytes"] = s.deviceBytes;
+             out["host_bytes"] = s.hostBytes;
+             out["background_workers"] = s.backgroundWorkers;
+             out["streams"] = s.streams;
+             out["closed"] = s.closed;
+             out["quarantined"] = s.quarantined;
+             out["process_valid"] = s.processValid;
+             return out;
+           })
+      .def("clear",
+           [](Resources &r) {
+             std::optional<reloc::TransferError> error;
+             {
+               py::gil_scoped_release release;
+               error = r.clear();
+             }
+             if (error)
+               raise(*error);
+           })
+      .def("close",
+           [](Resources &r) {
+             std::optional<reloc::TransferError> error;
+             {
+               py::gil_scoped_release release;
+               error = r.close();
+             }
+             if (error)
+               raise(*error);
+           })
+      .def("__reduce_ex__", [](const Resources &, int) {
+        throw py::type_error("dispatch resources cannot be serialized");
+      });
   py::class_<reloc::dispatch::DispatchRequest>(
       m, "DispatchRequest",
       "A prepared, single-use typed dispatch: the checked program, both "
@@ -283,6 +363,7 @@ void registerDispatchBindings(py::module_ &m) {
         py::kw_only(), py::arg("caller_stream") = py::none(),
         py::arg("n_buffers") = 4, py::arg("n_streams") = 2,
         py::arg("gather_threads") = 1, py::arg("gather_pool") = nullptr,
+        py::arg("resources") = nullptr, py::arg("owners") = py::none(),
         "Run the selected row and block until this request's work completed; "
         "returns the report with payload_bytes_transferred filled in. "
         "caller_stream orders every private stream after the caller's "

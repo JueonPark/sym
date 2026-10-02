@@ -26,6 +26,7 @@ decision are errors, never fallback signals. Requests are single-use.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from threading import Lock
 from types import MappingProxyType
 
 import pyreloc
@@ -99,6 +100,7 @@ class PreparedTypedTransfer:
     request: object = None
     consumed: bool = False
     _storage: tuple = field(init=False, repr=False)
+    _execution_lock: object = field(default_factory=Lock, init=False, repr=False, compare=False)
 
     def __post_init__(self):
         self._storage = compat.storage_snapshot(self.source)
@@ -202,10 +204,31 @@ def prepare_typed_transfer(
     )
 
 
-def execute_typed_transfer(request, *, n_buffers=4, n_streams=2, gather_threads=None, gather_pool=None):
+def execute_typed_transfer(request, *, n_buffers=4, n_streams=2, gather_threads=None, gather_pool=None,
+                           resources=None):
+    if not request._execution_lock.acquire(blocking=False):
+        raise RuntimeError("typed transfer request is already executing")
+    try:
+        return _execute_typed_transfer(request, n_buffers=n_buffers, n_streams=n_streams,
+            gather_threads=gather_threads, gather_pool=gather_pool,
+            resources=resources)
+    finally:
+        request._execution_lock.release()
+
+
+def _execute_typed_transfer(request, *, n_buffers, n_streams, gather_threads,
+                            gather_pool, resources):
     """Allocate the destination, recheck, order after the caller stream, run
     exactly the prepared implementation and complete."""
     import torch
+    from .resources import TransferResources, _transfer_configuration
+
+    _transfer_configuration(resources, {"n_buffers": n_buffers, "n_streams": n_streams,
+        "gather_threads": request.threads if gather_threads is None else gather_threads,
+        "gather_pool": gather_pool})
+    if resources is not None and not isinstance(resources, TransferResources):
+        raise TypeError("resources must be TransferResources or None")
+    native_resources = None if resources is None else resources.native_typed
 
     if gather_threads is None:
         gather_threads = request.threads
@@ -243,6 +266,7 @@ def execute_typed_transfer(request, *, n_buffers=4, n_streams=2, gather_threads=
             n_streams=n_streams,
             gather_threads=gather_threads,
             gather_pool=gather_pool,
+            resources=native_resources, owners=(request.source, out),
         )
     except pyreloc.TransferError as error:
         raise RuntimeError(f"{request.direction} typed dispatch failed: {error}") from error

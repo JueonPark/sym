@@ -116,6 +116,7 @@ struct DispatchRequest {
   Implementation selected;
   Report report;
   bool consumed = false;
+  bool executing = false; // Python entry guard, held while the GIL is released
 };
 
 /// The outcome of applying a policy to the eligible rows.
