@@ -333,6 +333,7 @@ TransferOutcome Resources::execute(DispatchRequest &request, int device,
   }
   return out;
 #else
+  (void)device;
   return {fail("backend_failure", "typed CUDA resources require a CUDA build")};
 #endif
 }
