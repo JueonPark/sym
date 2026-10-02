@@ -4,8 +4,8 @@
 
 #include "reloc/CudaBackend.h"
 
-#include <cuda_runtime.h>
 #include <cstdlib>
+#include <cuda_runtime.h>
 
 namespace reloc {
 namespace {
@@ -224,11 +224,13 @@ bool CudaBackend::recordLaunchStatus(const char *what) {
   return check(cudaGetLastError(), what);
 }
 
-CudaBackend::LaunchScope::LaunchScope(CudaBackend &backend) : backend_(backend) {
+CudaBackend::LaunchScope::LaunchScope(CudaBackend &backend)
+    : backend_(backend) {
   if (!backend_.check(cudaGetDevice(&previous_), "cudaGetDevice(launch)"))
     return;
   if (previous_ != backend_.device_)
-    switched_ = backend_.check(cudaSetDevice(backend_.device_), "cudaSetDevice(launch)");
+    switched_ = backend_.check(cudaSetDevice(backend_.device_),
+                               "cudaSetDevice(launch)");
 }
 
 CudaBackend::LaunchScope::~LaunchScope() {

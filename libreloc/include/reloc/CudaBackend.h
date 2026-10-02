@@ -67,6 +67,7 @@ public:
     ~LaunchScope();
     LaunchScope(const LaunchScope &) = delete;
     LaunchScope &operator=(const LaunchScope &) = delete;
+
   private:
     CudaBackend &backend_;
     int previous_ = -1;

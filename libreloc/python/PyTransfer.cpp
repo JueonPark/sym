@@ -190,10 +190,13 @@ void executeTransferPy(PythonTransferRequest &wrapped,
       std::unique_ptr<reloc::CopyBackend> backend;
       if (cuda) {
 #ifdef RELOC_ENABLE_CUDA
-        backend = std::make_unique<reloc::CudaBackend>(nStreams, device,
-            reloc::usePinnedStaging(options,
-              request.direction == reloc::TransferDirection::HostToDevice
-                ? request.destinationBytes : request.sourceSpanBytes));
+        backend = std::make_unique<reloc::CudaBackend>(
+            nStreams, device,
+            reloc::usePinnedStaging(
+                options,
+                request.direction == reloc::TransferDirection::HostToDevice
+                    ? request.destinationBytes
+                    : request.sourceSpanBytes));
 #else
         raise(
             {"backend_failure", "pyreloc was built without RELOC_ENABLE_CUDA"});

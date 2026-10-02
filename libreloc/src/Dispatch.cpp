@@ -451,9 +451,11 @@ std::optional<TransferError> executeCuda(DispatchRequest &request,
 
   if (row.id == kCpuStagesCudaStages) {
     const uint32_t k = row.wireBoundary;
-    const size_t wireBytes = static_cast<size_t>(typed::bytesAt(program, k, true));
+    const size_t wireBytes =
+        static_cast<size_t>(typed::bytesAt(program, k, true));
     StagingGuard wire{backend, backend.allocStaging(wireBytes)};
-    if (!wire.buffer) return backendFailure(backend, "host scratch allocation failed");
+    if (!wire.buffer)
+      return backendFailure(backend, "host scratch allocation failed");
     if (auto error = hostProgram(program, 0, k, src, wire.buffer, options))
       return error;
     void *dWire = scratch.allocDevice(static_cast<int64_t>(wireBytes));
@@ -829,7 +831,8 @@ prepareDispatch(const TypedBoundPlan &plan, const BufferView &source,
   auto prepared = typed::prepareProgram(plan);
   if (auto *error = std::get_if<typed::ExecutionError>(&prepared))
     return fromExecution(*error);
-  return prepareDispatch(std::get<Program>(prepared), source, destination, direction, options);
+  return prepareDispatch(std::get<Program>(prepared), source, destination,
+                         direction, options);
 }
 
 std::variant<DispatchRequest, TransferError>
@@ -892,9 +895,10 @@ std::optional<TransferError> executeDispatch(DispatchRequest &request,
 
   if (request.selected.id == kCpuReference) {
     if (request.direction == TransferDirection::HostToDevice) {
-      StagingGuard result{backend, backend.allocStaging(
-          static_cast<size_t>(program.plan.destinationBytes))};
-      if (!result.buffer) return backendFailure(backend, "host scratch allocation failed");
+      StagingGuard result{backend, backend.allocStaging(static_cast<size_t>(
+                                       program.plan.destinationBytes))};
+      if (!result.buffer)
+        return backendFailure(backend, "host scratch allocation failed");
       if (auto error =
               hostProgram(program, 0, stageCount, src, result.buffer, options))
         return error;

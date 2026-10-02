@@ -93,13 +93,13 @@ reloc::typed::Program checkedProgram(const reloc::TypedBoundPlan &bound) {
     raise({error->code, error->message});
   return std::get<reloc::typed::Program>(std::move(prepared));
 }
-const reloc::typed::Program &checkedProgram(const reloc::typed::Program &program) {
+const reloc::typed::Program &
+checkedProgram(const reloc::typed::Program &program) {
   return program;
 }
 
 template <typename Plan>
-py::dict queryCapability(const Plan &bound,
-                         const std::string &direction,
+py::dict queryCapability(const Plan &bound, const std::string &direction,
                          const std::string &device) {
   if (device != "host" && device != "cuda")
     throw py::value_error("device must be 'host' or 'cuda', got '" + device +
@@ -123,11 +123,12 @@ py::dict queryCapability(const Plan &bound,
 }
 
 template <typename Plan>
-reloc::dispatch::DispatchRequest prepareDispatch(
-    const Plan &bound, const reloc::BufferView &source,
-    const reloc::BufferView &destination, const std::string &direction,
-    const std::string &policy, const reloc::costmodel::CostModel *calibration,
-    int threads, const std::string &implementation) {
+reloc::dispatch::DispatchRequest
+prepareDispatch(const Plan &bound, const reloc::BufferView &source,
+                const reloc::BufferView &destination,
+                const std::string &direction, const std::string &policy,
+                const reloc::costmodel::CostModel *calibration, int threads,
+                const std::string &implementation) {
   if (threads < 1)
     throw py::value_error("threads must be >= 1");
   reloc::dispatch::Options options;
@@ -144,17 +145,21 @@ reloc::dispatch::DispatchRequest prepareDispatch(
   return std::get<reloc::dispatch::DispatchRequest>(std::move(prepared));
 }
 
-py::dict executeDispatchPy(reloc::dispatch::DispatchRequest &request,
-                           const py::object &callerStream, int nBuffers,
-                           int nStreams, int gatherThreads,
-                           std::shared_ptr<reloc::GatherPool> pool,
-                           const std::string &pinning, size_t minPinnedBytes,
-                           bool directDenseUpload,
-                           std::shared_ptr<reloc::dispatch::Resources> resources,
-                           const py::object &owners) {
-  if (request.executing) raise({"already_executed", "typed request is executing"});
+py::dict
+executeDispatchPy(reloc::dispatch::DispatchRequest &request,
+                  const py::object &callerStream, int nBuffers, int nStreams,
+                  int gatherThreads, std::shared_ptr<reloc::GatherPool> pool,
+                  const std::string &pinning, size_t minPinnedBytes,
+                  bool directDenseUpload,
+                  std::shared_ptr<reloc::dispatch::Resources> resources,
+                  const py::object &owners) {
+  if (request.executing)
+    raise({"already_executed", "typed request is executing"});
   request.executing = true;
-  struct Reset { bool &value; ~Reset() { value = false; } } reset{request.executing};
+  struct Reset {
+    bool &value;
+    ~Reset() { value = false; }
+  } reset{request.executing};
   std::shared_ptr<py::object> token;
   if (resources || !owners.is_none()) {
     if (!py::isinstance<py::tuple>(owners) || py::len(owners) != 2 ||
@@ -195,13 +200,16 @@ py::dict executeDispatchPy(reloc::dispatch::DispatchRequest &request,
     if (cuda) {
 #ifdef RELOC_ENABLE_CUDA
       if (resources) {
-        error = resources->execute(request, device, nStreams, options, token).error;
+        error =
+            resources->execute(request, device, nStreams, options, token).error;
       } else if (token) {
         reloc::dispatch::Resources ephemeral(0);
-        error = ephemeral.execute(request, device, nStreams, options, token).error;
+        error =
+            ephemeral.execute(request, device, nStreams, options, token).error;
       } else {
         // Raw callers retain their buffers and backend lifetimes themselves.
-        reloc::CudaBackend backend(nStreams, device,
+        reloc::CudaBackend backend(
+            nStreams, device,
             reloc::usePinnedStaging(options, request.selected.wireBytes));
         error = reloc::dispatch::executeDispatch(request, backend, options);
       }
@@ -221,9 +229,8 @@ py::dict executeDispatchPy(reloc::dispatch::DispatchRequest &request,
 }
 
 template <typename Plan>
-py::dict selectDispatch(const Plan &bound,
-                        const std::string &direction, const std::string &device,
-                        const std::string &policy,
+py::dict selectDispatch(const Plan &bound, const std::string &direction,
+                        const std::string &device, const std::string &policy,
                         const reloc::costmodel::CostModel *calibration,
                         int threads, const std::string &implementation) {
   if (device != "host" && device != "cuda")
@@ -268,39 +275,60 @@ py::dict prefoldSpec(const reloc::TypedBoundPlan &bound) {
 
 void registerDispatchBindings(py::module_ &m) {
   py::class_<reloc::typed::Program>(m, "TypedProgram");
-  m.def("prepare_typed_program",
-        [](const reloc::TypedBoundPlan &p) { return checkedProgram(p); }, py::arg("bound"));
+  m.def(
+      "prepare_typed_program",
+      [](const reloc::TypedBoundPlan &p) { return checkedProgram(p); },
+      py::arg("bound"));
   using Resources = reloc::dispatch::Resources;
   py::class_<Resources, std::shared_ptr<Resources>>(m, "DispatchResources")
       .def(py::init<size_t, size_t, unsigned, unsigned>(), py::kw_only(),
            py::arg("max_retained_bytes") = size_t(64) << 20,
-           py::arg("max_live_bytes") = 0, py::arg("max_background_workers") = 64,
-           py::arg("max_streams") = 8)
-      .def("stats", [](Resources &r) {
-        reloc::dispatch::ResourceStats s;
-        { py::gil_scoped_release release; s = r.stats(); }
-        py::dict out;
-        out["requests"] = s.requests; out["hits"] = s.hits;
-        out["context_creations"] = s.contexts;
-        out["device_allocations"] = s.deviceAllocations;
-        out["host_allocations"] = s.hostAllocations; out["frees"] = s.frees;
-        out["retained_bytes"] = s.retainedBytes;
-        out["device_bytes"] = s.deviceBytes; out["host_bytes"] = s.hostBytes;
-        out["background_workers"] = s.backgroundWorkers;
-        out["streams"] = s.streams; out["closed"] = s.closed;
-        out["quarantined"] = s.quarantined; out["process_valid"] = s.processValid;
-        return out;
-      })
-      .def("clear", [](Resources &r) {
-        std::optional<reloc::TransferError> error;
-        { py::gil_scoped_release release; error = r.clear(); }
-        if (error) raise(*error);
-      })
-      .def("close", [](Resources &r) {
-        std::optional<reloc::TransferError> error;
-        { py::gil_scoped_release release; error = r.close(); }
-        if (error) raise(*error);
-      })
+           py::arg("max_live_bytes") = 0,
+           py::arg("max_background_workers") = 64, py::arg("max_streams") = 8)
+      .def("stats",
+           [](Resources &r) {
+             reloc::dispatch::ResourceStats s;
+             {
+               py::gil_scoped_release release;
+               s = r.stats();
+             }
+             py::dict out;
+             out["requests"] = s.requests;
+             out["hits"] = s.hits;
+             out["context_creations"] = s.contexts;
+             out["device_allocations"] = s.deviceAllocations;
+             out["host_allocations"] = s.hostAllocations;
+             out["frees"] = s.frees;
+             out["retained_bytes"] = s.retainedBytes;
+             out["device_bytes"] = s.deviceBytes;
+             out["host_bytes"] = s.hostBytes;
+             out["background_workers"] = s.backgroundWorkers;
+             out["streams"] = s.streams;
+             out["closed"] = s.closed;
+             out["quarantined"] = s.quarantined;
+             out["process_valid"] = s.processValid;
+             return out;
+           })
+      .def("clear",
+           [](Resources &r) {
+             std::optional<reloc::TransferError> error;
+             {
+               py::gil_scoped_release release;
+               error = r.clear();
+             }
+             if (error)
+               raise(*error);
+           })
+      .def("close",
+           [](Resources &r) {
+             std::optional<reloc::TransferError> error;
+             {
+               py::gil_scoped_release release;
+               error = r.close();
+             }
+             if (error)
+               raise(*error);
+           })
       .def("__reduce_ex__", [](const Resources &, int) {
         throw py::type_error("dispatch resources cannot be serialized");
       });
@@ -325,43 +353,43 @@ void registerDispatchBindings(py::module_ &m) {
       .def_readonly("destination",
                     &reloc::dispatch::DispatchRequest::destination);
 
-  m.def("query_capability", &queryCapability<reloc::TypedBoundPlan>, py::arg("bound"),
-        py::arg("direction"), py::arg("device") = "host",
+  m.def("query_capability", &queryCapability<reloc::TypedBoundPlan>,
+        py::arg("bound"), py::arg("direction"), py::arg("device") = "host",
         "Pure capability query for a typed bound plan: {'eligible': [rows "
         "with implementation/wire_boundary/wire_bytes/method], 'excluded': "
         "[{implementation, reason}]}. `device` is the device end ('host' or "
         "'cuda'). Consults no cost model; raises TransferError when no "
         "reference path exists (unsupported_stage).");
-  m.def("query_capability", &queryCapability<reloc::typed::Program>, py::arg("bound"),
-        py::arg("direction"), py::arg("device") = "host",
+  m.def("query_capability", &queryCapability<reloc::typed::Program>,
+        py::arg("bound"), py::arg("direction"), py::arg("device") = "host",
         "Pure capability query for a typed bound plan: {'eligible': [rows "
         "with implementation/wire_boundary/wire_bytes/method], 'excluded': "
         "[{implementation, reason}]}. `device` is the device end ('host' or "
         "'cuda'). Consults no cost model; raises TransferError when no "
         "reference path exists (unsupported_stage).");
-  m.def("select_dispatch", &selectDispatch<reloc::TypedBoundPlan>, py::arg("bound"),
-        py::arg("direction"), py::arg("device") = "host", py::kw_only(),
-        py::arg("policy") = "auto",
-        py::arg("calibration") =
-            static_cast<const reloc::costmodel::CostModel *>(nullptr),
-        py::arg("threads") = 8, py::arg("implementation") = "",
-        "Pure selection without buffers: the row the policy picks for this "
-        "program, direction and device end, with 'policy' and "
-        "'placement_reason'. A bridge fixes the row here and forces exactly "
-        "it in prepare_dispatch once the destination exists.");
-  m.def("select_dispatch", &selectDispatch<reloc::typed::Program>, py::arg("bound"),
-        py::arg("direction"), py::arg("device") = "host", py::kw_only(),
-        py::arg("policy") = "auto",
-        py::arg("calibration") =
-            static_cast<const reloc::costmodel::CostModel *>(nullptr),
-        py::arg("threads") = 8, py::arg("implementation") = "",
-        "Pure selection without buffers: the row the policy picks for this "
-        "program, direction and device end, with 'policy' and "
-        "'placement_reason'. A bridge fixes the row here and forces exactly "
-        "it in prepare_dispatch once the destination exists.");
-  m.def("prepare_dispatch", &prepareDispatch<reloc::TypedBoundPlan>, py::arg("bound"),
-        py::arg("source"), py::arg("destination"), py::arg("direction"),
+  m.def("select_dispatch", &selectDispatch<reloc::TypedBoundPlan>,
+        py::arg("bound"), py::arg("direction"), py::arg("device") = "host",
         py::kw_only(), py::arg("policy") = "auto",
+        py::arg("calibration") =
+            static_cast<const reloc::costmodel::CostModel *>(nullptr),
+        py::arg("threads") = 8, py::arg("implementation") = "",
+        "Pure selection without buffers: the row the policy picks for this "
+        "program, direction and device end, with 'policy' and "
+        "'placement_reason'. A bridge fixes the row here and forces exactly "
+        "it in prepare_dispatch once the destination exists.");
+  m.def("select_dispatch", &selectDispatch<reloc::typed::Program>,
+        py::arg("bound"), py::arg("direction"), py::arg("device") = "host",
+        py::kw_only(), py::arg("policy") = "auto",
+        py::arg("calibration") =
+            static_cast<const reloc::costmodel::CostModel *>(nullptr),
+        py::arg("threads") = 8, py::arg("implementation") = "",
+        "Pure selection without buffers: the row the policy picks for this "
+        "program, direction and device end, with 'policy' and "
+        "'placement_reason'. A bridge fixes the row here and forces exactly "
+        "it in prepare_dispatch once the destination exists.");
+  m.def("prepare_dispatch", &prepareDispatch<reloc::TypedBoundPlan>,
+        py::arg("bound"), py::arg("source"), py::arg("destination"),
+        py::arg("direction"), py::kw_only(), py::arg("policy") = "auto",
         py::arg("calibration") =
             static_cast<const reloc::costmodel::CostModel *>(nullptr),
         py::arg("threads") = 8, py::arg("implementation") = "",
@@ -371,9 +399,9 @@ void registerDispatchBindings(py::module_ &m) {
         "otherwise takes the reference with a recorded reason; "
         "`implementation` forces an eligible row by label. Raises "
         "TransferError('<code>: <detail>'); allocates and launches nothing.");
-  m.def("prepare_dispatch", &prepareDispatch<reloc::typed::Program>, py::arg("bound"),
-        py::arg("source"), py::arg("destination"), py::arg("direction"),
-        py::kw_only(), py::arg("policy") = "auto",
+  m.def("prepare_dispatch", &prepareDispatch<reloc::typed::Program>,
+        py::arg("bound"), py::arg("source"), py::arg("destination"),
+        py::arg("direction"), py::kw_only(), py::arg("policy") = "auto",
         py::arg("calibration") =
             static_cast<const reloc::costmodel::CostModel *>(nullptr),
         py::arg("threads") = 8, py::arg("implementation") = "",
@@ -387,9 +415,10 @@ void registerDispatchBindings(py::module_ &m) {
         py::kw_only(), py::arg("caller_stream") = py::none(),
         py::arg("n_buffers") = 4, py::arg("n_streams") = 2,
         py::arg("gather_threads") = 1, py::arg("gather_pool") = nullptr,
-        py::arg("pinning") = "auto", py::arg("min_pinned_bytes") = size_t(8) << 20,
-        py::arg("direct_dense_upload") = true,
-        py::arg("resources") = nullptr, py::arg("owners") = py::none(),
+        py::arg("pinning") = "auto",
+        py::arg("min_pinned_bytes") = size_t(8) << 20,
+        py::arg("direct_dense_upload") = true, py::arg("resources") = nullptr,
+        py::arg("owners") = py::none(),
         "Run the selected row and block until this request's work completed; "
         "returns the report with payload_bytes_transferred filled in. "
         "caller_stream orders every private stream after the caller's "

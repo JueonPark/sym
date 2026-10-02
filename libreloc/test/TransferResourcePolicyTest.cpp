@@ -167,12 +167,16 @@ TEST(TransferResourcePolicy, PinningUsesWireSizeAndSeparatesAllocationKinds) {
   CachedTransferOptions options;
   options.transfer.pinning = PinningPolicy::Auto;
   options.transfer.minPinnedBytes = 64;
-  auto req = request(b, reinterpret_cast<void *>(1), reinterpret_cast<void *>(2));
-  auto describe = [&] { return std::get<detail::CacheRequest>(
-      detail::describeCachedTransfer(req, options, {})); };
+  auto req =
+      request(b, reinterpret_cast<void *>(1), reinterpret_cast<void *>(2));
+  auto describe = [&] {
+    return std::get<detail::CacheRequest>(
+        detail::describeCachedTransfer(req, options, {}));
+  };
   auto h2d = describe();
   EXPECT_EQ(req.destinationBytes, 32u);
-  EXPECT_FALSE(h2d.key.backend.pinned); // capacity rounds to 256 KiB, wire is 32 B
+  EXPECT_FALSE(
+      h2d.key.backend.pinned); // capacity rounds to 256 KiB, wire is 32 B
   req.direction = TransferDirection::DeviceToHost;
   auto d2h = describe();
   EXPECT_EQ(d2h.execution.sourceBytes, 88u);

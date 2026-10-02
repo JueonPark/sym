@@ -205,8 +205,8 @@ void walk(WalkState &state, size_t depth, int64_t iBegin, int64_t iEnd,
   if (depth == r - 1) {
     if (state.narrowRun) {
       const auto *src = state.src + (srcOff + iBegin) * sizeof(float);
-      auto *dst = state.dst +
-                  (dstOff + iBegin + state.lo[depth]) * sizeof(uint16_t);
+      auto *dst =
+          state.dst + (dstOff + iBegin + state.lo[depth]) * sizeof(uint16_t);
       // Scalar bit loads also support unaligned raw views; retain that path.
       if (reinterpret_cast<uintptr_t>(src) % alignof(float) == 0 &&
           reinterpret_cast<uintptr_t>(dst) % alignof(uint16_t) == 0) {
@@ -467,12 +467,11 @@ std::optional<ExecutionError> executeHost(const Program &program, uint32_t from,
       state.range.needsCoordinates = true;
   for (const PadRegion &p : layout.padRegions)
     state.lo[p.axis] = p.lo;
-  state.narrowRun = to == from + 1 &&
-                    program.stages[from].transform == ValueTransformKind::Cast &&
-                    isF32(program.stages[from].input) &&
-                    isF16(program.stages[from].output) &&
-                    layout.srcStrides.back() == 1 &&
-                    layout.dstStrides.back() == 1;
+  state.narrowRun =
+      to == from + 1 &&
+      program.stages[from].transform == ValueTransformKind::Cast &&
+      isF32(program.stages[from].input) && isF16(program.stages[from].output) &&
+      layout.srcStrides.back() == 1 && layout.dstStrides.back() == 1;
 
   const int64_t outer = layout.extents.front();
   int64_t innerSpan = 0;

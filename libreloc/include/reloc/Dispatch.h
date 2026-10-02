@@ -137,7 +137,8 @@ selectImplementation(const TypedBoundPlan &plan, TransferDirection direction,
 /// Reuse checked arithmetic within one invocation. Program must come from
 /// typed::prepareProgram; parameters are still freshly bound each invocation.
 std::variant<Selection, TransferError>
-selectImplementation(const typed::Program &, TransferDirection, const Options &);
+selectImplementation(const typed::Program &, TransferDirection,
+                     const Options &);
 std::variant<DispatchRequest, TransferError>
 prepareDispatch(const typed::Program &, const BufferView &, const BufferView &,
                 TransferDirection, const Options &);
