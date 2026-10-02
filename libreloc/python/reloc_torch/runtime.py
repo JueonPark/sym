@@ -384,8 +384,13 @@ class TransportAdapter:
         if getattr(compiled, "typed", False):
             # C4: typed recipes run through R3's dispatch bridge; parameters
             # are CPU tensors bound by declared name and snapshotted there.
+            pool = self._transfer_options.get("gather_pool")
+            threads = (pool.threads if pool is not None else
+                       self._transfer_options.get("gather_threads", 8))
+            if threads == 0:
+                threads = os.cpu_count() or 1
             request = self._dispatch().prepare_typed_transfer(
-                compiled, src, device, parameters=dict(parameters or {}),
+                compiled, src, device, parameters=dict(parameters or {}), threads=threads,
             )
         else:
             request = self._module.prepare_transfer(compiled, src, device, non_blocking=non_blocking)
@@ -415,7 +420,7 @@ class TransportAdapter:
                 self._resources = TransferResources()
             resources = self._resources
         if typed:
-            result = self._dispatch().execute_typed_transfer(call.request)
+            result = self._dispatch().execute_typed_transfer(call.request, **self._transfer_options)
             call.report = result.report
             return result.tensor
         return self._module.execute_transfer(call.request, resources=resources, **self._transfer_options)

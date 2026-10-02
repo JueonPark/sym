@@ -283,6 +283,43 @@ TEST(TypedExecute, WideningCastIsExactOnTheWitnessBits) {
             (std::vector<uint32_t>{0x80000000, 0x7F800000, 0x3F800000, 0}));
 }
 
+TEST(TypedExecute, NarrowingContiguousRunsTransposeVectorTailAndUnaligned) {
+  // Three 17-element runs per batch: each exercises SIMD and a scalar tail.
+  // Independent half bit witnesses cover ties, subnormals, signed zero/Inf.
+  Program p = mustPrepare(mustBind(typed_goldens::kCastPadHex, {}));
+  p.plan.fills.clear();
+  p.plan.layout.padRegions.clear();
+  p.plan.sourceExtents = {2, 3, 17};
+  p.plan.resultExtents = {3, 2, 17};
+  p.sourceElements = p.resultElements = 102;
+  p.resultStrides = {34, 17, 1};
+  p.plan.layout.extents = {3, 2, 17};
+  p.plan.layout.srcStrides = {17, 51, 1};
+  p.plan.layout.dstStrides = {34, 17, 1};
+  const std::vector<uint32_t> bits = {0x33800000, 0x33000000, 0x33400000,
+                                      0x38800000, 0x477fe000, 0x477ff000,
+                                      0x3f801000, 0x80000000, 0xff800000};
+  const std::vector<uint16_t> halves = {1,      0,      1,      0x400, 0x7bff,
+                                        0x7c00, 0x3c00, 0x8000, 0xfc00};
+  std::vector<uint32_t> src(102);
+  std::vector<uint16_t> expected(102);
+  for (int b = 0; b < 2; ++b)
+    for (int c = 0; c < 3; ++c)
+      for (int k = 0; k < 17; ++k) {
+        int i = (b * 3 + c) * 17 + k;
+        src[i] = bits[i % bits.size()];
+        expected[(c * 2 + b) * 17 + k] = halves[i % halves.size()];
+      }
+  EXPECT_EQ(valuesOf<uint16_t>(run(p, 0, 1, bytesOf(src))), expected);
+  EXPECT_EQ(valuesOf<uint16_t>(run(p, 0, 1, bytesOf(src), 3)), expected);
+  std::vector<uint8_t> unalignedSrc(409), unalignedDst(205, 0xab);
+  std::memcpy(unalignedSrc.data() + 1, src.data(), 408);
+  EXPECT_FALSE(reloc::typed::executeHost(p, 0, 1, unalignedSrc.data() + 1,
+                                         unalignedDst.data() + 1));
+  EXPECT_EQ(std::memcmp(unalignedDst.data() + 1, expected.data(), 204), 0);
+  EXPECT_EQ(unalignedDst.front(), 0xab);
+}
+
 //===----------------------------------------------------------------------===//
 // Per-channel parameters under a layout that moves the channel axis.
 //===----------------------------------------------------------------------===//
