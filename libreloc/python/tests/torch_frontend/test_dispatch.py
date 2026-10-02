@@ -225,7 +225,7 @@ def test_typed_resources_refresh_inputs_and_parameters_and_bound_retention(
 
     compiled = compiler.compile(dequantize_matrix_recipe)
     retained = []
-    with TransferResources(max_typed_retained_bytes=65536) as resources:
+    with TransferResources(max_typed_retained_bytes=8192) as resources:
         for n, scale in [(4096, .25), (2048, .5), (4096, 2.)]:
             src = (torch.arange(n) % 127).to(torch.int8).reshape(-1, 2)
             params = {'s': torch.tensor(scale), 'zp': torch.tensor(0, dtype=torch.int32)}
@@ -241,7 +241,7 @@ def test_typed_resources_refresh_inputs_and_parameters_and_bound_retention(
         stats = resources.stats()['typed']
         assert stats['hits'] == 2 and stats['context_creations'] == 1
         assert stats['device_allocations'] == 2  # wire + freshly uploaded scalar
-        assert stats['retained_bytes'] <= 65536
+        assert stats['retained_bytes'] <= 8192
         for output, expected in retained:
             assert torch.equal(output.cpu(), expected)  # outputs never recycled
         resources.clear()
