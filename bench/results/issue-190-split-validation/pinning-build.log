@@ -1,0 +1,43 @@
+[0/2] Re-checking globbed directories...
+[1/2] Re-running CMake...
+-- Building with -fPIC
+-- Configuring done (0.5s)
+-- Generating done (0.1s)
+-- Build files have been written to: /tmp/sym-priority-split-build
+[0/2] Re-checking globbed directories...
+[1/26] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/TransferResourcePolicy.cpp.o
+[2/26] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/TransferResources.cpp.o
+[3/26] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/Pipeline.cpp.o
+[4/26] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/DispatchResources.cpp.o
+[5/26] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/TransferResourceCache.cpp.o
+[6/26] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/Transfer.cpp.o
+[7/26] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/Dispatch.cpp.o
+[8/26] Building CUDA object libreloc/CMakeFiles/reloc_runtime.dir/cuda/CudaBackend.cu.o
+[9/26] Linking CXX shared library libreloc/libreloc_runtime.so
+[10/26] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/CudaBackendTest.cpp.o
+[11/26] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/TransferTest.cpp.o
+[12/26] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/TypedBindTest.cpp.o
+[13/26] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/CudaPipelineTest.cpp.o
+[14/26] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/TransferExecutionTest.cpp.o
+[15/26] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/TransferResourcePolicyTest.cpp.o
+[16/26] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/CudaTransferResourcesTest.cpp.o
+[17/26] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/TransferResourcesTest.cpp.o
+[18/26] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/DispatchTest.cpp.o
+/tmp/sym-priority-split/libreloc/test/DispatchTest.cpp: In member function ‘virtual void {anonymous}::Dispatch_CapabilityListsOnlyImplementedRows_Test::TestBody()’:
+/tmp/sym-priority-split/libreloc/test/DispatchTest.cpp:214:8: warning: suggest explicit braces to avoid ambiguous ‘else’ [-Wdangling-else]
+  214 |     if (row.label() == "cpu_stages_cuda_stages@1")
+      |        ^
+/tmp/sym-priority-split/libreloc/test/DispatchTest.cpp:216:8: warning: suggest explicit braces to avoid ambiguous ‘else’ [-Wdangling-else]
+  216 |     if (row.label() == "cpu_reference")
+      |        ^
+/tmp/sym-priority-split/libreloc/test/DispatchTest.cpp:218:8: warning: suggest explicit braces to avoid ambiguous ‘else’ [-Wdangling-else]
+  218 |     if (row.id == "cuda_relocate_f32")
+      |        ^
+[19/26] Building CXX object libreloc/python/CMakeFiles/pyreloc_transfer_test.dir/tests/TransferResourceHarness.cpp.o
+[20/26] Building CXX object libreloc/python/CMakeFiles/pyreloc_ext.dir/PyTransfer.cpp.o
+[21/26] Building CXX object libreloc/python/CMakeFiles/pyreloc_ext.dir/PyReloc.cpp.o
+[22/26] Building CXX object libreloc/python/CMakeFiles/pyreloc_ext.dir/PyDispatch.cpp.o
+[23/26] Linking CXX shared module python/_reloc_transfer_test.cpython-314-x86_64-linux-gnu.so
+[24/26] Linking CXX shared module python/pyreloc/_pyreloc.cpython-314-x86_64-linux-gnu.so
+[25/26] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/TransferResourceCacheTest.cpp.o
+[26/26] Linking CXX executable libreloc/test/libreloc-test

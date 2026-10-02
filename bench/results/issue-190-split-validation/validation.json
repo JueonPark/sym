@@ -1,0 +1,77 @@
+{
+  "created_utc": "2026-10-02T04:21:41.188427+00:00",
+  "base_main": "463d9683d67ba39c389b69bc85cc5447d60808a0",
+  "equivalent_combined_implementation": "b82a4717d153a72634e2c1617f654e43a8adb19b",
+  "same_source_tests_and_benchmark_scripts": true,
+  "only_final_tree_difference": "docs/runtime-dispatch.md: reorder explanations into patch order and remove misleading single-issue heading",
+  "compiler_exporter": "/tmp/sym-perf189-build/sym/tools/sym-reloc-export (unchanged compiler source)",
+  "build": "Release, CUDA 12.6.3, NVTX disabled; native and full Python suites run serially per intermediate branch",
+  "performance": "Prior three-round data remains in ../issue-189-implementation. These are fresh split-branch correctness checks, not new timing measurements.",
+  "stages": {
+    "simd": {
+      "number": 196,
+      "url": "https://github.com/JueonPark/sym/pull/196",
+      "issue": 192,
+      "base": "main",
+      "head": "perf/190-simd",
+      "commit": "3e54f59fef62f6b3640017ac87adb14f817f2f5f",
+      "native_passed": 316,
+      "native_skipped": 2,
+      "python_passed": 866,
+      "python_skipped": 4,
+      "clang_format": "passed"
+    },
+    "resources": {
+      "number": 197,
+      "url": "https://github.com/JueonPark/sym/pull/197",
+      "issue": 194,
+      "base": "perf/190-simd",
+      "head": "perf/190-typed-resources",
+      "commit": "9628b4dfbd553333b9e4defe477edef65cef3001",
+      "native_passed": 316,
+      "native_skipped": 2,
+      "python_passed": 872,
+      "python_skipped": 4,
+      "clang_format": "passed"
+    },
+    "upload": {
+      "number": 198,
+      "url": "https://github.com/JueonPark/sym/pull/198",
+      "issue": 193,
+      "base": "perf/190-typed-resources",
+      "head": "perf/190-direct-upload",
+      "commit": "9509048fee516b5b8ef6b9d786c49d9d027b9e36",
+      "native_passed": 316,
+      "native_skipped": 2,
+      "python_passed": 872,
+      "python_skipped": 4,
+      "clang_format": "passed"
+    },
+    "metadata": {
+      "number": 199,
+      "url": "https://github.com/JueonPark/sym/pull/199",
+      "issue": 195,
+      "base": "perf/190-direct-upload",
+      "head": "perf/190-metadata",
+      "commit": "6f836deae5824112568b1ae5db0090f049478616",
+      "native_passed": 316,
+      "native_skipped": 2,
+      "python_passed": 873,
+      "python_skipped": 4,
+      "clang_format": "passed"
+    },
+    "pinning": {
+      "number": 200,
+      "url": "https://github.com/JueonPark/sym/pull/200",
+      "issue": 189,
+      "base": "perf/190-metadata",
+      "head": "perf/189-pinning-policy",
+      "commit": "0744c5ab7a851e49db7afb8374544d5974495660",
+      "native_passed": 317,
+      "native_skipped": 2,
+      "python_passed": 875,
+      "python_skipped": 4,
+      "clang_format": "passed"
+    }
+  }
+}

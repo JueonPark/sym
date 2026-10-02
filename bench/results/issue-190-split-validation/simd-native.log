@@ -1,0 +1,801 @@
+[==========] Running 318 tests from 50 test suites.
+[----------] Global test environment set-up.
+[----------] 3 tests from LibrelocScaffolding
+[ RUN      ] LibrelocScaffolding.WireFormatVersionIsFrozenV0
+[       OK ] LibrelocScaffolding.WireFormatVersionIsFrozenV0 (0 ms)
+[ RUN      ] LibrelocScaffolding.TypedWireFormatVersionIsV1
+[       OK ] LibrelocScaffolding.TypedWireFormatVersionIsV1 (0 ms)
+[ RUN      ] LibrelocScaffolding.VersionStringMentionsWireFormat
+[       OK ] LibrelocScaffolding.VersionStringMentionsWireFormat (0 ms)
+[----------] 3 tests from LibrelocScaffolding (0 ms total)
+
+[----------] 33 tests from Decode
+[ RUN      ] Decode.IdentityGoldenDecodesStructurally
+[       OK ] Decode.IdentityGoldenDecodesStructurally (0 ms)
+[ RUN      ] Decode.ReferenceGoldenDecodesStructurally
+[       OK ] Decode.ReferenceGoldenDecodesStructurally (0 ms)
+[ RUN      ] Decode.PadGoldenDecodesStructurally
+[       OK ] Decode.PadGoldenDecodesStructurally (0 ms)
+[ RUN      ] Decode.DegradedGoldenDecodesStructurally
+[       OK ] Decode.DegradedGoldenDecodesStructurally (0 ms)
+[ RUN      ] Decode.RejectsBadMagic
+[       OK ] Decode.RejectsBadMagic (0 ms)
+[ RUN      ] Decode.RejectsWrongVersion
+[       OK ] Decode.RejectsWrongVersion (0 ms)
+[ RUN      ] Decode.RejectsTruncation
+[       OK ] Decode.RejectsTruncation (0 ms)
+[ RUN      ] Decode.RejectsTrailingBytes
+[       OK ] Decode.RejectsTrailingBytes (0 ms)
+[ RUN      ] Decode.RejectsHostileCountWithoutAllocating
+[       OK ] Decode.RejectsHostileCountWithoutAllocating (0 ms)
+[ RUN      ] Decode.RejectsBadStrideCount
+[       OK ] Decode.RejectsBadStrideCount (0 ms)
+[ RUN      ] Decode.RejectsEmptyExpressionStream
+[       OK ] Decode.RejectsEmptyExpressionStream (0 ms)
+[ RUN      ] Decode.RejectsStackUnderflow
+[       OK ] Decode.RejectsStackUnderflow (0 ms)
+[ RUN      ] Decode.RejectsUnknownOpcode
+[       OK ] Decode.RejectsUnknownOpcode (0 ms)
+[ RUN      ] Decode.RejectsStackSurplus
+[       OK ] Decode.RejectsStackSurplus (0 ms)
+[ RUN      ] Decode.RejectsPushSymOutOfRange
+[       OK ] Decode.RejectsPushSymOutOfRange (0 ms)
+[ RUN      ] Decode.RejectsPushDimInPlanContext
+[       OK ] Decode.RejectsPushDimInPlanContext (0 ms)
+[ RUN      ] Decode.RejectsPushSymInInverse
+[       OK ] Decode.RejectsPushSymInInverse (0 ms)
+[ RUN      ] Decode.RejectsBadElementKind
+[       OK ] Decode.RejectsBadElementKind (0 ms)
+[ RUN      ] Decode.RejectsBadBitwidthCombo
+[       OK ] Decode.RejectsBadBitwidthCombo (0 ms)
+[ RUN      ] Decode.RejectsPermOutOfRange
+[       OK ] Decode.RejectsPermOutOfRange (0 ms)
+[ RUN      ] Decode.RejectsInverseArityMismatch
+[       OK ] Decode.RejectsInverseArityMismatch (0 ms)
+[ RUN      ] Decode.RejectsBadContiguityByte
+[       OK ] Decode.RejectsBadContiguityByte (0 ms)
+[ RUN      ] Decode.RejectsBadFlagByte
+[       OK ] Decode.RejectsBadFlagByte (0 ms)
+[ RUN      ] Decode.RejectsPadFillDstAxisOutOfRange
+[       OK ] Decode.RejectsPadFillDstAxisOutOfRange (0 ms)
+[ RUN      ] Decode.RejectsAlignmentAxisOutOfRange
+[       OK ] Decode.RejectsAlignmentAxisOutOfRange (0 ms)
+[ RUN      ] Decode.RejectsPushDimIndexOutOfRange
+[       OK ] Decode.RejectsPushDimIndexOutOfRange (0 ms)
+[ RUN      ] Decode.RejectsPermSizeMismatch
+[       OK ] Decode.RejectsPermSizeMismatch (0 ms)
+[ RUN      ] Decode.RejectsBadContiguityCount
+[       OK ] Decode.RejectsBadContiguityCount (0 ms)
+[ RUN      ] Decode.RejectsBadRuntimePadCheckFlag
+[       OK ] Decode.RejectsBadRuntimePadCheckFlag (0 ms)
+[ RUN      ] Decode.RejectsInverseNumResultsMismatch
+[       OK ] Decode.RejectsInverseNumResultsMismatch (0 ms)
+[ RUN      ] Decode.FuzzTruncationAndBitFlipsNoCrash
+[       OK ] Decode.FuzzTruncationAndBitFlipsNoCrash (72 ms)
+[ RUN      ] Decode.RejectsRankZeroPlanAtTheAxesSection
+[       OK ] Decode.RejectsRankZeroPlanAtTheAxesSection (0 ms)
+[ RUN      ] Decode.RejectsDestinationRankDifferentFromTheAxisCount
+[       OK ] Decode.RejectsDestinationRankDifferentFromTheAxisCount (0 ms)
+[----------] 33 tests from Decode (72 ms total)
+
+[----------] 24 tests from TypedDecode
+[ RUN      ] TypedDecode.QuantizeTransposeGoldenDecodesStructurally
+[       OK ] TypedDecode.QuantizeTransposeGoldenDecodesStructurally (0 ms)
+[ RUN      ] TypedDecode.PadQuantizeGoldenDecodesStructurally
+[       OK ] TypedDecode.PadQuantizeGoldenDecodesStructurally (0 ms)
+[ RUN      ] TypedDecode.DequantCastGoldenDecodesStructurally
+[       OK ] TypedDecode.DequantCastGoldenDecodesStructurally (0 ms)
+[ RUN      ] TypedDecode.LayoutDecoderRejectsV1WithUnsupportedVersion
+[       OK ] TypedDecode.LayoutDecoderRejectsV1WithUnsupportedVersion (0 ms)
+[ RUN      ] TypedDecode.TypedDecoderRejectsV0
+[       OK ] TypedDecode.TypedDecoderRejectsV0 (0 ms)
+[ RUN      ] TypedDecode.PeekVersionRejectsBadHeaders
+[       OK ] TypedDecode.PeekVersionRejectsBadHeaders (0 ms)
+[ RUN      ] TypedDecode.RejectsUnknownTransform
+[       OK ] TypedDecode.RejectsUnknownTransform (0 ms)
+[ RUN      ] TypedDecode.RejectsUnknownPolicy
+[       OK ] TypedDecode.RejectsUnknownPolicy (0 ms)
+[ RUN      ] TypedDecode.RejectsPolicyThatDoesNotMatchTheTransform
+[       OK ] TypedDecode.RejectsPolicyThatDoesNotMatchTheTransform (0 ms)
+[ RUN      ] TypedDecode.RejectsSignlessQuantizeOutput
+[       OK ] TypedDecode.RejectsSignlessQuantizeOutput (0 ms)
+[ RUN      ] TypedDecode.RejectsInvalidSignednessByte
+[       OK ] TypedDecode.RejectsInvalidSignednessByte (0 ms)
+[ RUN      ] TypedDecode.RejectsInvalidParameterKind
+[       OK ] TypedDecode.RejectsInvalidParameterKind (0 ms)
+[ RUN      ] TypedDecode.RejectsInvalidInlineScales
+[       OK ] TypedDecode.RejectsInvalidInlineScales (0 ms)
+[ RUN      ] TypedDecode.RejectsPerChannelAxisWithRankZeroScale
+[       OK ] TypedDecode.RejectsPerChannelAxisWithRankZeroScale (0 ms)
+[ RUN      ] TypedDecode.RejectsChannelFlagWithoutAMap
+[       OK ] TypedDecode.RejectsChannelFlagWithoutAMap (0 ms)
+[ RUN      ] TypedDecode.RejectsFillStageOutOfRange
+[       OK ] TypedDecode.RejectsFillStageOutOfRange (0 ms)
+[ RUN      ] TypedDecode.RejectsFillWithoutALayoutPad
+[       OK ] TypedDecode.RejectsFillWithoutALayoutPad (0 ms)
+[ RUN      ] TypedDecode.RejectsFillTypeNotMatchingItsEntryStage
+[       OK ] TypedDecode.RejectsFillTypeNotMatchingItsEntryStage (0 ms)
+[ RUN      ] TypedDecode.RejectsFillThatDoesNotFoldToTheFusedFill
+[       OK ] TypedDecode.RejectsFillThatDoesNotFoldToTheFusedFill (0 ms)
+[ RUN      ] TypedDecode.RejectsZeroStages
+[       OK ] TypedDecode.RejectsZeroStages (0 ms)
+[ RUN      ] TypedDecode.RejectsRankZeroInlineParameterWithSeveralValues
+[       OK ] TypedDecode.RejectsRankZeroInlineParameterWithSeveralValues (0 ms)
+[ RUN      ] TypedDecode.RejectsHostileStageCountWithoutAllocating
+[       OK ] TypedDecode.RejectsHostileStageCountWithoutAllocating (0 ms)
+[ RUN      ] TypedDecode.RejectsTruncationAndTrailingBytes
+[       OK ] TypedDecode.RejectsTruncationAndTrailingBytes (0 ms)
+[ RUN      ] TypedDecode.FuzzTruncationAndBitFlipsNoCrash
+[       OK ] TypedDecode.FuzzTruncationAndBitFlipsNoCrash (88 ms)
+[----------] 24 tests from TypedDecode (88 ms total)
+
+[----------] 2 tests from TypedValue
+[ RUN      ] TypedValue.FoldFillFollowsTheC1Tables
+[       OK ] TypedValue.FoldFillFollowsTheC1Tables (0 ms)
+[ RUN      ] TypedValue.WideningIsExactOnTheWitnessBits
+[       OK ] TypedValue.WideningIsExactOnTheWitnessBits (0 ms)
+[----------] 2 tests from TypedValue (0 ms total)
+
+[----------] 9 tests from Eval
+[ RUN      ] Eval.Constant
+[       OK ] Eval.Constant (0 ms)
+[ RUN      ] Eval.SymbolResolvesByIndex
+[       OK ] Eval.SymbolResolvesByIndex (0 ms)
+[ RUN      ] Eval.BinaryArithmetic
+[       OK ] Eval.BinaryArithmetic (0 ms)
+[ RUN      ] Eval.FloorDivRoundsTowardNegInfinity
+[       OK ] Eval.FloorDivRoundsTowardNegInfinity (0 ms)
+[ RUN      ] Eval.ModTakesDivisorSign
+[       OK ] Eval.ModTakesDivisorSign (0 ms)
+[ RUN      ] Eval.DivideByZeroIsError
+[       OK ] Eval.DivideByZeroIsError (0 ms)
+[ RUN      ] Eval.OverflowIsError
+[       OK ] Eval.OverflowIsError (0 ms)
+[ RUN      ] Eval.PushDimIsErrorInPlanContext
+[       OK ] Eval.PushDimIsErrorInPlanContext (0 ms)
+[ RUN      ] Eval.StackUnderflowIsError
+[       OK ] Eval.StackUnderflowIsError (0 ms)
+[----------] 9 tests from Eval (0 ms total)
+
+[----------] 24 tests from Bind
+[ RUN      ] Bind.RejectsUnboundSymbol
+[       OK ] Bind.RejectsUnboundSymbol (0 ms)
+[ RUN      ] Bind.RejectsExtraSymbol
+[       OK ] Bind.RejectsExtraSymbol (0 ms)
+[ RUN      ] Bind.DivisibilityViolationIsHardError
+[       OK ] Bind.DivisibilityViolationIsHardError (0 ms)
+[ RUN      ] Bind.DegradedPadRangePassesForAlignedFormula
+[       OK ] Bind.DegradedPadRangePassesForAlignedFormula (0 ms)
+[ RUN      ] Bind.StrategyOverrideBypassesHeuristic
+[       OK ] Bind.StrategyOverrideBypassesHeuristic (0 ms)
+[ RUN      ] Bind.RejectsNonByteMultipleBitwidth
+[       OK ] Bind.RejectsNonByteMultipleBitwidth (0 ms)
+[ RUN      ] Bind.RejectsPadAxisOutOfRangeForDstExtents
+[       OK ] Bind.RejectsPadAxisOutOfRangeForDstExtents (0 ms)
+[ RUN      ] Bind.ReferencePlanN32768CoalescesToThreeAxes
+[       OK ] Bind.ReferencePlanN32768CoalescesToThreeAxes (0 ms)
+[ RUN      ] Bind.CoalescingPreservesOffsetMapSmall
+[       OK ] Bind.CoalescingPreservesOffsetMapSmall (1 ms)
+[ RUN      ] Bind.DegradedPadRangeFailsWhenRelationBroken
+[       OK ] Bind.DegradedPadRangeFailsWhenRelationBroken (0 ms)
+[ RUN      ] Bind.DegradedNegativePadWidthRejected
+[       OK ] Bind.DegradedNegativePadWidthRejected (0 ms)
+[ RUN      ] Bind.ZeroExtentRejected
+[       OK ] Bind.ZeroExtentRejected (0 ms)
+[ RUN      ] Bind.NegativeStrideRejected
+[       OK ] Bind.NegativeStrideRejected (0 ms)
+[ RUN      ] Bind.RejectsRankZeroPlan
+[       OK ] Bind.RejectsRankZeroPlan (0 ms)
+[ RUN      ] Bind.EvaluationOverflowRejected
+[       OK ] Bind.EvaluationOverflowRejected (0 ms)
+[ RUN      ] Bind.BindCostUnderBudget
+[ bind cost ] 1142.16 ns/bind
+[       OK ] Bind.BindCostUnderBudget (1142 ms)
+[ RUN      ] Bind.NegativePadWidthRejectedWithoutRuntimeCheck
+[       OK ] Bind.NegativePadWidthRejectedWithoutRuntimeCheck (0 ms)
+[ RUN      ] Bind.AlignmentAxisRemappedThroughCoalescing
+[       OK ] Bind.AlignmentAxisRemappedThroughCoalescing (0 ms)
+[ RUN      ] Bind.AlignmentAxisRemappedTrailingAxis
+[       OK ] Bind.AlignmentAxisRemappedTrailingAxis (0 ms)
+[ RUN      ] Bind.AlignmentAxisOutOfRangeRejected
+[       OK ] Bind.AlignmentAxisOutOfRangeRejected (0 ms)
+[ RUN      ] Bind.PadDstAxisOutOfRangeRejected
+[       OK ] Bind.PadDstAxisOutOfRangeRejected (0 ms)
+[ RUN      ] Bind.CostModelDecisionPopulatedWhenModelPassed
+[       OK ] Bind.CostModelDecisionPopulatedWhenModelPassed (0 ms)
+[ RUN      ] Bind.CalibrationOverrideChangesSelectedStrategy
+[       OK ] Bind.CalibrationOverrideChangesSelectedStrategy (0 ms)
+[ RUN      ] Bind.NoModelLeavesDecisionEmptyAndStrategyUnchanged
+[       OK ] Bind.NoModelLeavesDecisionEmptyAndStrategyUnchanged (0 ms)
+[----------] 24 tests from Bind (1144 ms total)
+
+[----------] 10 tests from TypedBind
+[ RUN      ] TypedBind.SourceWireAndDestinationBytesAreDistinct
+[       OK ] TypedBind.SourceWireAndDestinationBytesAreDistinct (0 ms)
+[ RUN      ] TypedBind.PaddedFootprintCountsPadsFromTheirEntryStage
+[       OK ] TypedBind.PaddedFootprintCountsPadsFromTheirEntryStage (0 ms)
+[ RUN      ] TypedBind.ZeroNegativeAndOverflowingExtentsFailBeforeAnything
+[       OK ] TypedBind.ZeroNegativeAndOverflowingExtentsFailBeforeAnything (0 ms)
+[ RUN      ] TypedBind.SymbolMismatchesAreHardErrors
+[       OK ] TypedBind.SymbolMismatchesAreHardErrors (0 ms)
+[ RUN      ] TypedBind.RuntimeParameterIsSnapshottedAndValidated
+[       OK ] TypedBind.RuntimeParameterIsSnapshottedAndValidated (0 ms)
+[ RUN      ] TypedBind.MissingExtraAndMismatchedParametersFail
+[       OK ] TypedBind.MissingExtraAndMismatchedParametersFail (0 ms)
+[ RUN      ] TypedBind.RebindingASymbolicChannelRevalidatesTheLength
+[       OK ] TypedBind.RebindingASymbolicChannelRevalidatesTheLength (0 ms)
+[ RUN      ] TypedBind.RuntimeZeroPointIsRangeChecked
+[       OK ] TypedBind.RuntimeZeroPointIsRangeChecked (0 ms)
+[ RUN      ] TypedBind.LayoutOnlyTransferPathRefusesTheTypedLayout
+[       OK ] TypedBind.LayoutOnlyTransferPathRefusesTheTypedLayout (0 ms)
+[ RUN      ] TypedBind.LayoutOnlyBindOfTheSamePlanIsNotTyped
+[       OK ] TypedBind.LayoutOnlyBindOfTheSamePlanIsNotTyped (0 ms)
+[----------] 10 tests from TypedBind (0 ms total)
+
+[----------] 12 tests from TypedExecute
+[ RUN      ] TypedExecute.QuantizeThenDequantizeRetainsTheIntermediateRounding
+[       OK ] TypedExecute.QuantizeThenDequantizeRetainsTheIntermediateRounding (0 ms)
+[ RUN      ] TypedExecute.PadBeforeAndAfterQuantizeCarryDifferentFills
+[       OK ] TypedExecute.PadBeforeAndAfterQuantizeCarryDifferentFills (0 ms)
+[ RUN      ] TypedExecute.NarrowingCastWitnessBitsAndPadAfterCast
+[       OK ] TypedExecute.NarrowingCastWitnessBitsAndPadAfterCast (0 ms)
+[ RUN      ] TypedExecute.WideningCastIsExactOnTheWitnessBits
+[       OK ] TypedExecute.WideningCastIsExactOnTheWitnessBits (0 ms)
+[ RUN      ] TypedExecute.NarrowingContiguousRunsTransposeVectorTailAndUnaligned
+[       OK ] TypedExecute.NarrowingContiguousRunsTransposeVectorTailAndUnaligned (0 ms)
+[ RUN      ] TypedExecute.PerChannelIndexFollowsTheResultCoordinates
+[       OK ] TypedExecute.PerChannelIndexFollowsTheResultCoordinates (0 ms)
+[ RUN      ] TypedExecute.EqualSizedAxesDoNotConcealAWrongChannelMapping
+[       OK ] TypedExecute.EqualSizedAxesDoNotConcealAWrongChannelMapping (0 ms)
+[ RUN      ] TypedExecute.RuntimeScaleAndZeroPointDequantizeBits
+[       OK ] TypedExecute.RuntimeScaleAndZeroPointDequantizeBits (0 ms)
+[ RUN      ] TypedExecute.DequantizeThenNarrowingCastKeepsBothRoundings
+[       OK ] TypedExecute.DequantizeThenNarrowingCastKeepsBothRoundings (0 ms)
+[ RUN      ] TypedExecute.UnsupportedStagesAreRejectedAtPreparation
+[       OK ] TypedExecute.UnsupportedStagesAreRejectedAtPreparation (0 ms)
+[ RUN      ] TypedExecute.ChannelSelectionOutsideTheParameterFails
+[       OK ] TypedExecute.ChannelSelectionOutsideTheParameterFails (0 ms)
+[ RUN      ] TypedExecute.ApplyStageIsTheReferenceArithmetic
+[       OK ] TypedExecute.ApplyStageIsTheReferenceArithmetic (0 ms)
+[----------] 12 tests from TypedExecute (1 ms total)
+
+[----------] 9 tests from Dispatch
+[ RUN      ] Dispatch.CapabilityListsOnlyImplementedRows
+[       OK ] Dispatch.CapabilityListsOnlyImplementedRows (0 ms)
+[ RUN      ] Dispatch.HostToHostReferenceMatchesExecuteHostAndReports
+[       OK ] Dispatch.HostToHostReferenceMatchesExecuteHostAndReports (0 ms)
+[ RUN      ] Dispatch.DeviceToHostReferenceStagesThenExecutes
+[       OK ] Dispatch.DeviceToHostReferenceStagesThenExecutes (0 ms)
+[ RUN      ] Dispatch.AutoFallsBackToTheReferenceWithARecordedReason
+[       OK ] Dispatch.AutoFallsBackToTheReferenceWithARecordedReason (0 ms)
+[ RUN      ] Dispatch.AutoTranslatesAdviceOnlyToEligibleRows
+[       OK ] Dispatch.AutoTranslatesAdviceOnlyToEligibleRows (0 ms)
+[ RUN      ] Dispatch.ViewsAndProgramsAreCheckedBeforeSelection
+[       OK ] Dispatch.ViewsAndProgramsAreCheckedBeforeSelection (0 ms)
+[ RUN      ] Dispatch.BackendFailuresPropagateWithoutASecondPath
+[       OK ] Dispatch.BackendFailuresPropagateWithoutASecondPath (0 ms)
+[ RUN      ] Dispatch.PrefoldSpecMatchesOnlyTheS8QuantizeVariants
+[       OK ] Dispatch.PrefoldSpecMatchesOnlyTheS8QuantizeVariants (0 ms)
+[ RUN      ] Dispatch.SelectionWithoutBuffersMatchesPreparation
+[       OK ] Dispatch.SelectionWithoutBuffersMatchesPreparation (0 ms)
+[----------] 9 tests from Dispatch (1 ms total)
+
+[----------] 2 tests from CudaDispatch
+[ RUN      ] CudaDispatch.EveryEligibleHostToDeviceRowMatchesTheReference
+[       OK ] CudaDispatch.EveryEligibleHostToDeviceRowMatchesTheReference (713 ms)
+[ RUN      ] CudaDispatch.EveryEligibleDeviceToHostRowMatchesTheReference
+[       OK ] CudaDispatch.EveryEligibleDeviceToHostRowMatchesTheReference (21 ms)
+[----------] 2 tests from CudaDispatch (734 ms total)
+
+[----------] 16 tests from Execute
+[ RUN      ] Execute.TransposeFp32
+[       OK ] Execute.TransposeFp32 (0 ms)
+[ RUN      ] Execute.ContiguousInnerRunFp32
+[       OK ] Execute.ContiguousInnerRunFp32 (0 ms)
+[ RUN      ] Execute.TransposeInt8AndFp16
+[       OK ] Execute.TransposeInt8AndFp16 (0 ms)
+[ RUN      ] Execute.TransposeWithPaddingUsesGenericWalker
+[       OK ] Execute.TransposeWithPaddingUsesGenericWalker (0 ms)
+[ RUN      ] Execute.PadFp32FillVerified
+[       OK ] Execute.PadFp32FillVerified (0 ms)
+[ RUN      ] Execute.ViewPublishNoCopy
+[       OK ] Execute.ViewPublishNoCopy (0 ms)
+[ RUN      ] Execute.GatherChunkCoversOuterSubrange
+[       OK ] Execute.GatherChunkCoversOuterSubrange (0 ms)
+[ RUN      ] Execute.ScatterChunkCoversOuterSubrange
+[       OK ] Execute.ScatterChunkCoversOuterSubrange (0 ms)
+[ RUN      ] Execute.ReferencePlanN4096
+[       OK ] Execute.ReferencePlanN4096 (593 ms)
+[ RUN      ] Execute.MisalignedSourceStaysExact
+[       OK ] Execute.MisalignedSourceStaysExact (0 ms)
+[ RUN      ] Execute.ThreadedMatchesSingleThread
+[       OK ] Execute.ThreadedMatchesSingleThread (0 ms)
+[ RUN      ] Execute.ThreadedTransposeAndPadExact
+[       OK ] Execute.ThreadedTransposeAndPadExact (0 ms)
+[ RUN      ] Execute.ThreadedOverlappingDstMatchesSingleThread
+[       OK ] Execute.ThreadedOverlappingDstMatchesSingleThread (0 ms)
+[ RUN      ] Execute.D2HRoundTripsH2D
+[       OK ] Execute.D2HRoundTripsH2D (0 ms)
+[ RUN      ] Execute.D2HRank1RoundTripsH2D
+[       OK ] Execute.D2HRank1RoundTripsH2D (0 ms)
+[ RUN      ] Execute.NonZeroFillGoldenRoundTripsEndToEnd
+[       OK ] Execute.NonZeroFillGoldenRoundTripsEndToEnd (0 ms)
+[----------] 16 tests from Execute (594 ms total)
+
+[----------] 1 test from CopyRun
+[ RUN      ] CopyRun.Avx2MatchesScalarAllLengths
+[       OK ] CopyRun.Avx2MatchesScalarAllLengths (0 ms)
+[----------] 1 test from CopyRun (0 ms total)
+
+[----------] 5 tests from Transpose
+[ RUN      ] Transpose.TileTailsUnalignedAndSpecialBits
+[       OK ] Transpose.TileTailsUnalignedAndSpecialBits (1 ms)
+[ RUN      ] Transpose.PartialRowsDoNotTouchNeighbors
+[       OK ] Transpose.PartialRowsDoNotTouchNeighbors (0 ms)
+[ RUN      ] Transpose.RejectUnsupportedPlansBeforeAccessingBuffers
+[       OK ] Transpose.RejectUnsupportedPlansBeforeAccessingBuffers (0 ms)
+[ RUN      ] Transpose.ThreadedWorkerTailsMatchOracle
+[       OK ] Transpose.ThreadedWorkerTailsMatchOracle (0 ms)
+[ RUN      ] Transpose.PipelineRebasedChunksAndPersistentWorkersMatchOracle
+[       OK ] Transpose.PipelineRebasedChunksAndPersistentWorkersMatchOracle (23 ms)
+[----------] 5 tests from Transpose (25 ms total)
+
+[----------] 7 tests from Backend
+[ RUN      ] Backend.AllocCopyEventMovesBytes
+[       OK ] Backend.AllocCopyEventMovesBytes (0 ms)
+[ RUN      ] Backend.ZeroEventIsAlwaysComplete
+[       OK ] Backend.ZeroEventIsAlwaysComplete (0 ms)
+[ RUN      ] Backend.CopyHookGatesCompletion
+[       OK ] Backend.CopyHookGatesCompletion (1 ms)
+[ RUN      ] Backend.MultipleQueuesReportCount
+[       OK ] Backend.MultipleQueuesReportCount (0 ms)
+[ RUN      ] Backend.QuiesceDrainsExecutingAndQueuedCopiesAfterEventFailure
+[       OK ] Backend.QuiesceDrainsExecutingAndQueuedCopiesAfterEventFailure (201 ms)
+[ RUN      ] Backend.SuccessfulWaitsBoundEventMetadataAndAllowRepeatedWaits
+[       OK ] Backend.SuccessfulWaitsBoundEventMetadataAndAllowRepeatedWaits (67 ms)
+[ RUN      ] Backend.ConcurrentWaitersCanObserveTheSameRetiredEvent
+[       OK ] Backend.ConcurrentWaitersCanObserveTheSameRetiredEvent (0 ms)
+[----------] 7 tests from Backend (270 ms total)
+
+[----------] 2 tests from CudaBackend
+[ RUN      ] CudaBackend.QuiesceDrainsEveryStreamDespiteStickyError
+[       OK ] CudaBackend.QuiesceDrainsEveryStreamDespiteStickyError (224 ms)
+[ RUN      ] CudaBackend.FailedCleanupPreservesErrorAndStillAttemptsLaterStreams
+[       OK ] CudaBackend.FailedCleanupPreservesErrorAndStillAttemptsLaterStreams (54 ms)
+[----------] 2 tests from CudaBackend (278 ms total)
+
+[----------] 3 tests from Pool
+[ RUN      ] Pool.AllocatesDistinctBuffersRoundRobin
+[       OK ] Pool.AllocatesDistinctBuffersRoundRobin (0 ms)
+[ RUN      ] Pool.AcquireIsEventGated
+[       OK ] Pool.AcquireIsEventGated (34 ms)
+[ RUN      ] Pool.DrainWaitsForAllEvents
+[       OK ] Pool.DrainWaitsForAllEvents (0 ms)
+[----------] 3 tests from Pool (34 ms total)
+
+[----------] 10 tests from GatherPool
+[ RUN      ] GatherPool.ParallelForCoversRangeExactlyOnce
+[       OK ] GatherPool.ParallelForCoversRangeExactlyOnce (18 ms)
+[ RUN      ] GatherPool.MinRowsFloorLimitsPartitionCount
+[       OK ] GatherPool.MinRowsFloorLimitsPartitionCount (0 ms)
+[ RUN      ] GatherPool.SingleThreadRunsInlineOnCaller
+[       OK ] GatherPool.SingleThreadRunsInlineOnCaller (0 ms)
+[ RUN      ] GatherPool.ReusableAcrossDispatches
+[       OK ] GatherPool.ReusableAcrossDispatches (1 ms)
+[ RUN      ] GatherPool.ConcurrentDispatchesSerialize
+[       OK ] GatherPool.ConcurrentDispatchesSerialize (0 ms)
+[ RUN      ] GatherPool.CloseIsIdempotentAndObservable
+[       OK ] GatherPool.CloseIsIdempotentAndObservable (0 ms)
+[ RUN      ] GatherPool.ZeroThreadsResolvesToHardwareConcurrency
+[       OK ] GatherPool.ZeroThreadsResolvesToHardwareConcurrency (2 ms)
+[ RUN      ] GatherPool.BorrowedPoolClosedAfterAdmissionRunsLaterDispatchInline
+[       OK ] GatherPool.BorrowedPoolClosedAfterAdmissionRunsLaterDispatchInline (1 ms)
+[ RUN      ] GatherPool.ConcurrentCloseWaitsForRunningWorkers
+[       OK ] GatherPool.ConcurrentCloseWaitsForRunningWorkers (100 ms)
+[ RUN      ] GatherPool.ThrowingCallerOrWorkerStillCompletesTheOtherRange
+[       OK ] GatherPool.ThrowingCallerOrWorkerStillCompletesTheOtherRange (100 ms)
+[----------] 10 tests from GatherPool (226 ms total)
+
+[----------] 7 tests from ChunkSchedule
+[ RUN      ] ChunkSchedule.TinyOverrideForcesManyChunks
+[       OK ] ChunkSchedule.TinyOverrideForcesManyChunks (0 ms)
+[ RUN      ] ChunkSchedule.HeuristicClampsToMinForSmallTensor
+[       OK ] ChunkSchedule.HeuristicClampsToMinForSmallTensor (0 ms)
+[ RUN      ] ChunkSchedule.HeuristicTargetsEightChunksPerBuffer
+[       OK ] ChunkSchedule.HeuristicTargetsEightChunksPerBuffer (0 ms)
+[ RUN      ] ChunkSchedule.HeuristicCapsPoolFootprintAtReferenceScale
+[       OK ] ChunkSchedule.HeuristicCapsPoolFootprintAtReferenceScale (0 ms)
+[ RUN      ] ChunkSchedule.HeuristicFloorStopsShredding
+[       OK ] ChunkSchedule.HeuristicFloorStopsShredding (0 ms)
+[ RUN      ] ChunkSchedule.OuterPadCountsPadRowsAndClampsValid
+[       OK ] ChunkSchedule.OuterPadCountsPadRowsAndClampsValid (0 ms)
+[ RUN      ] ChunkSchedule.OverlappingRowsFallBackToSingleChunk
+[       OK ] ChunkSchedule.OverlappingRowsFallBackToSingleChunk (0 ms)
+[----------] 7 tests from ChunkSchedule (0 ms total)
+
+[----------] 12 tests from Pipeline
+[ RUN      ] Pipeline.H2DByteExactMatrix
+[       OK ] Pipeline.H2DByteExactMatrix (255 ms)
+[ RUN      ] Pipeline.H2DInterleavingStress
+[       OK ] Pipeline.H2DInterleavingStress (8 ms)
+[ RUN      ] Pipeline.H2DSingleBufferSerializes
+[       OK ] Pipeline.H2DSingleBufferSerializes (1 ms)
+[ RUN      ] Pipeline.H2DParallelGatherEngagesWorkers
+[       OK ] Pipeline.H2DParallelGatherEngagesWorkers (206 ms)
+[ RUN      ] Pipeline.H2DNonDisjointDstStaysExactWithThreads
+[       OK ] Pipeline.H2DNonDisjointDstStaysExactWithThreads (0 ms)
+[ RUN      ] Pipeline.CallerOwnedGatherPoolReusedAcrossCalls
+[       OK ] Pipeline.CallerOwnedGatherPoolReusedAcrossCalls (101 ms)
+[ RUN      ] Pipeline.D2HByteExactMatrix
+[       OK ] Pipeline.D2HByteExactMatrix (246 ms)
+[ RUN      ] Pipeline.RoundTripH2DThenD2H
+[       OK ] Pipeline.RoundTripH2DThenD2H (8 ms)
+[ RUN      ] Pipeline.D2HParallelScatterEngagesWorkers
+[       OK ] Pipeline.D2HParallelScatterEngagesWorkers (202 ms)
+[ RUN      ] Pipeline.D2HAliasedSrcSerializesScatter
+[       OK ] Pipeline.D2HAliasedSrcSerializesScatter (0 ms)
+[ RUN      ] Pipeline.D2HCallerOwnedGatherPool
+[       OK ] Pipeline.D2HCallerOwnedGatherPool (118 ms)
+[ RUN      ] Pipeline.CallerOwnedPoolReusedAcrossCalls
+[       OK ] Pipeline.CallerOwnedPoolReusedAcrossCalls (3 ms)
+[----------] 12 tests from Pipeline (1154 ms total)
+
+[----------] 12 tests from Transfer
+[ RUN      ] Transfer.SourceOrDestinationOneByteShortFailsBeforeAnyCopy
+[       OK ] Transfer.SourceOrDestinationOneByteShortFailsBeforeAnyCopy (0 ms)
+[ RUN      ] Transfer.LargeCheckedProductsReportOverflowNotWraparound
+[       OK ] Transfer.LargeCheckedProductsReportOverflowNotWraparound (0 ms)
+[ RUN      ] Transfer.UnsupportedViewsAreRejectedWithStableCodes
+[       OK ] Transfer.UnsupportedViewsAreRejectedWithStableCodes (0 ms)
+[ RUN      ] Transfer.PadOnlyRegionsNeverReadSourceBytes
+[       OK ] Transfer.PadOnlyRegionsNeverReadSourceBytes (0 ms)
+[ RUN      ] Transfer.HostToHostForwardMatchesReferenceAndIsSingleUse
+[       OK ] Transfer.HostToHostForwardMatchesReferenceAndIsSingleUse (0 ms)
+[ RUN      ] Transfer.DeviceToHostForwardStagesThenGathers
+[       OK ] Transfer.DeviceToHostForwardStagesThenGathers (0 ms)
+[ RUN      ] Transfer.IdentityPlanStillMovesBytes
+[       OK ] Transfer.IdentityPlanStillMovesBytes (0 ms)
+[ RUN      ] Transfer.BackendFailuresPropagateWithoutRetry
+[       OK ] Transfer.BackendFailuresPropagateWithoutRetry (0 ms)
+[ RUN      ] Transfer.HostToDeviceStagingFailureIsReportedNotDereferenced
+[       OK ] Transfer.HostToDeviceStagingFailureIsReportedNotDereferenced (0 ms)
+[ RUN      ] Transfer.CudaViewOnAnotherDeviceFailsBeforeAnyWork
+[       OK ] Transfer.CudaViewOnAnotherDeviceFailsBeforeAnyWork (0 ms)
+[ RUN      ] Transfer.SourceOnlyValidationMatchesFullValidation
+[       OK ] Transfer.SourceOnlyValidationMatchesFullValidation (0 ms)
+[ RUN      ] Transfer.HostBackendDefaultsSatisfyTheExtendedContract
+[       OK ] Transfer.HostBackendDefaultsSatisfyTheExtendedContract (0 ms)
+[----------] 12 tests from Transfer (1 ms total)
+
+[----------] 7 tests from TransferExecution
+[ RUN      ] TransferExecution.RequirementsPreserveScheduleAndReduceOnlyActiveSlots
+[       OK ] TransferExecution.RequirementsPreserveScheduleAndReduceOnlyActiveSlots (0 ms)
+[ RUN      ] TransferExecution.LargeRowsSerializedSchedulesAndHugeOverrideAreChecked
+[       OK ] TransferExecution.LargeRowsSerializedSchedulesAndHugeOverrideAreChecked (0 ms)
+[ RUN      ] TransferExecution.CheckedCoreRejectsUndersizedOrForeignStagingBeforeCopy
+[       OK ] TransferExecution.CheckedCoreRejectsUndersizedOrForeignStagingBeforeCopy (0 ms)
+[ RUN      ] TransferExecution.AliasedSerializedDestinationIsRejectedBeforeAllocation
+[       OK ] TransferExecution.AliasedSerializedDestinationIsRejectedBeforeAllocation (0 ms)
+[ RUN      ] TransferExecution.ErrorsAfterEnqueueDrainBeforeFreeAndNeverReplay
+[       OK ] TransferExecution.ErrorsAfterEnqueueDrainBeforeFreeAndNeverReplay (201 ms)
+[ RUN      ] TransferExecution.SecondGatherOverlapsPendingCopyOnlyWithTwoBuffers
+[       OK ] TransferExecution.SecondGatherOverlapsPendingCopyOnlyWithTwoBuffers (50 ms)
+[ RUN      ] TransferExecution.PartialConstructionRollsBackAndChangedViewsAreRechecked
+[       OK ] TransferExecution.PartialConstructionRollsBackAndChangedViewsAreRechecked (0 ms)
+[----------] 7 tests from TransferExecution (253 ms total)
+
+[----------] 8 tests from TransferResources
+[ RUN      ] TransferResources.RepeatedLayoutsAreExactAndOnlyResourcesAreRetained
+[       OK ] TransferResources.RepeatedLayoutsAreExactAndOnlyResourcesAreRetained (1 ms)
+[ RUN      ] TransferResources.GrowthKeepsBackendWorkersAndPerRequestStreamOrdering
+[       OK ] TransferResources.GrowthKeepsBackendWorkersAndPerRequestStreamOrdering (0 ms)
+[ RUN      ] TransferResources.LargeStagingAndParallelChunksExecuteWithActualCapacity
+[       OK ] TransferResources.LargeStagingAndParallelChunksExecuteWithActualCapacity (1430 ms)
+[ RUN      ] TransferResources.ForwardD2HRevalidatesSourceSpanIncludingOffsetAndGaps
+[       OK ] TransferResources.ForwardD2HRevalidatesSourceSpanIncludingOffsetAndGaps (0 ms)
+[ RUN      ] TransferResources.RejectionsLaunchNothingAndFailedConstructionRetires
+[       OK ] TransferResources.RejectionsLaunchNothingAndFailedConstructionRetires (0 ms)
+[ RUN      ] TransferResources.EventFailureKeepsOwnersUntilQuiescenceCompletes
+[       OK ] TransferResources.EventFailureKeepsOwnersUntilQuiescenceCompletes (101 ms)
+[ RUN      ] TransferResources.UnknownCompletionOutlivesContextAndDiscardedError
+[       OK ] TransferResources.UnknownCompletionOutlivesContextAndDiscardedError (0 ms)
+[ RUN      ] TransferResources.BorrowedWorkersAreNeitherClosedNorRetained
+[       OK ] TransferResources.BorrowedWorkersAreNeitherClosedNorRetained (0 ms)
+[----------] 8 tests from TransferResources (1535 ms total)
+
+[----------] 5 tests from TransferResourcePolicy
+[ RUN      ] TransferResourcePolicy.CapacityRoundingIsCheckedAndPreservesSchedule
+[       OK ] TransferResourcePolicy.CapacityRoundingIsCheckedAndPreservesSchedule (0 ms)
+[ RUN      ] TransferResourcePolicy.KeysDescribeResourcesRatherThanRequestValues
+[       OK ] TransferResourcePolicy.KeysDescribeResourcesRatherThanRequestValues (0 ms)
+[ RUN      ] TransferResourcePolicy.PreparedCapacityCanGrowWithoutReplanningOrRecreatingWorkers
+[       OK ] TransferResourcePolicy.PreparedCapacityCanGrowWithoutReplanningOrRecreatingWorkers (0 ms)
+[ RUN      ] TransferResourcePolicy.ForwardD2HCapacityUsesSourceReachAndDevicePreflight
+[       OK ] TransferResourcePolicy.ForwardD2HCapacityUsesSourceReachAndDevicePreflight (0 ms)
+[ RUN      ] TransferResourcePolicy.CallbackMarkerCoversWorkersInlineAndExceptions
+[       OK ] TransferResourcePolicy.CallbackMarkerCoversWorkersInlineAndExceptions (0 ms)
+[----------] 5 tests from TransferResourcePolicy (0 ms total)
+
+[----------] 23 tests from TransferResourceCache
+[ RUN      ] TransferResourceCache.LazyReuseProcessesCurrentDataAndRetainsOnlyResources
+[       OK ] TransferResourceCache.LazyReuseProcessesCurrentDataAndRetainsOnlyResources (2 ms)
+[ RUN      ] TransferResourceCache.GrowthKeepsFullReservationAcrossFreeAndAllocation
+[       OK ] TransferResourceCache.GrowthKeepsFullReservationAcrossFreeAndAllocation (3 ms)
+[ RUN      ] TransferResourceCache.ChoosesSmallestSufficientCapacityAndEvictsIdleLru
+[       OK ] TransferResourceCache.ChoosesSmallestSufficientCapacityAndEvictsIdleLru (1 ms)
+[ RUN      ] TransferResourceCache.WaitersAreFifoAndAContextIsExclusive
+[       OK ] TransferResourceCache.WaitersAreFifoAndAContextIsExclusive (0 ms)
+[ RUN      ] TransferResourceCache.ImpossibleLimitsRejectWithoutWaitingOrChangingThreads
+[       OK ] TransferResourceCache.ImpossibleLimitsRejectWithoutWaitingOrChangingThreads (0 ms)
+[ RUN      ] TransferResourceCache.TimeoutRemovesWaiterAndLaterCallsStillWork
+[       OK ] TransferResourceCache.TimeoutRemovesWaiterAndLaterCallsStillWork (50 ms)
+[ RUN      ] TransferResourceCache.ClearRetiresOldBuildingAndExecutingGenerations
+[       OK ] TransferResourceCache.ClearRetiresOldBuildingAndExecutingGenerations (21 ms)
+[ RUN      ] TransferResourceCache.CloseWaitsForConstructionAndRejectsItsPublication
+[       OK ] TransferResourceCache.CloseWaitsForConstructionAndRejectsItsPublication (10 ms)
+[ RUN      ] TransferResourceCache.CloseWakesWaitersAndWaitsForTheActiveLease
+[       OK ] TransferResourceCache.CloseWakesWaitersAndWaitsForTheActiveLease (10 ms)
+[ RUN      ] TransferResourceCache.EvictionKeepsRetiringCapacityChargedUntilFreeFinishes
+[       OK ] TransferResourceCache.EvictionKeepsRetiringCapacityChargedUntilFreeFinishes (0 ms)
+[ RUN      ] TransferResourceCache.OversizeRequestsUseAccountedEphemeralContexts
+[       OK ] TransferResourceCache.OversizeRequestsUseAccountedEphemeralContexts (1 ms)
+[ RUN      ] TransferResourceCache.PartialConstructionRollsBackEveryReservation
+[       OK ] TransferResourceCache.PartialConstructionRollsBackEveryReservation (1 ms)
+[ RUN      ] TransferResourceCache.PerDeviceLimitsAllowIndependentActiveDevices
+[       OK ] TransferResourceCache.PerDeviceLimitsAllowIndependentActiveDevices (10 ms)
+[ RUN      ] TransferResourceCache.QuarantineStaysChargedDisablesDeviceAndOutlivesCache
+[       OK ] TransferResourceCache.QuarantineStaysChargedDisablesDeviceAndOutlivesCache (0 ms)
+[ RUN      ] TransferResourceCache.BorrowedWorkersAndRecursiveCallsHaveExplicitLifetimes
+[       OK ] TransferResourceCache.BorrowedWorkersAndRecursiveCallsHaveExplicitLifetimes (0 ms)
+[ RUN      ] TransferResourceCache.ForkInheritedCacheRejectsBeforeLocksAndCanBeAbandoned
+[       OK ] TransferResourceCache.ForkInheritedCacheRejectsBeforeLocksAndCanBeAbandoned (14 ms)
+[ RUN      ] TransferResourceCache.PreflightRejectsWithoutClaimButClosedAdmissionConsumes
+[       OK ] TransferResourceCache.PreflightRejectsWithoutClaimButClosedAdmissionConsumes (0 ms)
+[ RUN      ] TransferResourceCache.BorrowedPoolCanCloseWhileItsRequestWaitsForAdmission
+[       OK ] TransferResourceCache.BorrowedPoolCanCloseWhileItsRequestWaitsForAdmission (16 ms)
+[ RUN      ] TransferResourceCache.CachedExecutionPreservesTwoBufferOverlap
+[       OK ] TransferResourceCache.CachedExecutionPreservesTwoBufferOverlap (30 ms)
+[ RUN      ] TransferResourceCache.ActualCallerAffinityIsPartOfCompatibility
+[       OK ] TransferResourceCache.ActualCallerAffinityIsPartOfCompatibility (0 ms)
+[ RUN      ] TransferResourceCache.ConcurrentChangingShapesStayWithinPhysicalAndReservedLimits
+[       OK ] TransferResourceCache.ConcurrentChangingShapesStayWithinPhysicalAndReservedLimits (69 ms)
+[ RUN      ] TransferResourceCache.ClearAndCloseDuringGrowthRetireTheOldGeneration
+[       OK ] TransferResourceCache.ClearAndCloseDuringGrowthRetireTheOldGeneration (13 ms)
+[ RUN      ] TransferResourceCache.WarmedCopyFailuresDrainBeforeRetiringAndNeverReplay
+[       OK ] TransferResourceCache.WarmedCopyFailuresDrainBeforeRetiringAndNeverReplay (42 ms)
+[----------] 23 tests from TransferResourceCache (303 ms total)
+
+[----------] 2 tests from CudaTransferResources
+[ RUN      ] CudaTransferResources.ReusePreservesDataAndFreshProducerOrdering
+[       OK ] CudaTransferResources.ReusePreservesDataAndFreshProducerOrdering (331 ms)
+[ RUN      ] CudaTransferResources.CacheReusesAllocationsAndOrdersEveryProducer
+[       OK ] CudaTransferResources.CacheReusesAllocationsAndOrdersEveryProducer (330 ms)
+[----------] 2 tests from CudaTransferResources (662 ms total)
+
+[----------] 1 test from CudaPipeline
+[ RUN      ] CudaPipeline.H2DMatchesCpuAndRoundTrips
+[       OK ] CudaPipeline.H2DMatchesCpuAndRoundTrips (7331 ms)
+[----------] 1 test from CudaPipeline (7331 ms total)
+
+[----------] 1 test from CudaCopy
+[ RUN      ] CudaCopy.RoundTripOddCount
+[       OK ] CudaCopy.RoundTripOddCount (16 ms)
+[----------] 1 test from CudaCopy (16 ms total)
+
+[----------] 2 tests from CudaRelocateNaive
+[ RUN      ] CudaRelocateNaive.TransposeMatchesCpu
+[       OK ] CudaRelocateNaive.TransposeMatchesCpu (4 ms)
+[ RUN      ] CudaRelocateNaive.Rank3MatchesCpu
+[       OK ] CudaRelocateNaive.Rank3MatchesCpu (0 ms)
+[----------] 2 tests from CudaRelocateNaive (5 ms total)
+
+[----------] 3 tests from CudaRelocateTiled
+[ RUN      ] CudaRelocateTiled.TransposeShapesMatchCpu
+[       OK ] CudaRelocateTiled.TransposeShapesMatchCpu (17 ms)
+[ RUN      ] CudaRelocateTiled.NonTransposePlanFallsBackBitExact
+[       OK ] CudaRelocateTiled.NonTransposePlanFallsBackBitExact (0 ms)
+[ RUN      ] CudaRelocateTiled.TiledIdenticalToNaive
+[       OK ] CudaRelocateTiled.TiledIdenticalToNaive (4 ms)
+[----------] 3 tests from CudaRelocateTiled (22 ms total)
+
+[----------] 1 test from CudaQuantize
+[ RUN      ] CudaQuantize.BitExactVsCpuScalar
+[       OK ] CudaQuantize.BitExactVsCpuScalar (0 ms)
+[----------] 1 test from CudaQuantize (0 ms total)
+
+[----------] 1 test from CudaDequant
+[ RUN      ] CudaDequant.ExactVsHostReference
+[       OK ] CudaDequant.ExactVsHostReference (0 ms)
+[----------] 1 test from CudaDequant (0 ms total)
+
+[----------] 1 test from CudaConvertF16F32
+[ RUN      ] CudaConvertF16F32.ExactWideningOfCpuConvertOutput
+[       OK ] CudaConvertF16F32.ExactWideningOfCpuConvertOutput (1 ms)
+[----------] 1 test from CudaConvertF16F32 (1 ms total)
+
+[----------] 1 test from CudaDequantRelocate
+[ RUN      ] CudaDequantRelocate.MatchesHostOracle
+[       OK ] CudaDequantRelocate.MatchesHostOracle (2 ms)
+[----------] 1 test from CudaDequantRelocate (2 ms total)
+
+[----------] 1 test from CudaUnpack
+[ RUN      ] CudaUnpack.InverseOfCpuPack
+[       OK ] CudaUnpack.InverseOfCpuPack (2 ms)
+[----------] 1 test from CudaUnpack (2 ms total)
+
+[----------] 3 tests from CudaTypedSemantics
+[ RUN      ] CudaTypedSemantics.SymmetricRneQuantizeWitnessVectors
+[       OK ] CudaTypedSemantics.SymmetricRneQuantizeWitnessVectors (0 ms)
+[ RUN      ] CudaTypedSemantics.AffineDequantizeWitnessBits
+[       OK ] CudaTypedSemantics.AffineDequantizeWitnessBits (0 ms)
+[ RUN      ] CudaTypedSemantics.ExactWideningWitnessBits
+[       OK ] CudaTypedSemantics.ExactWideningWitnessBits (0 ms)
+[----------] 3 tests from CudaTypedSemantics (1 ms total)
+
+[----------] 1 test from CudaScatterRandom
+[ RUN      ] CudaScatterRandom.PermutationRoundTrips
+[       OK ] CudaScatterRandom.PermutationRoundTrips (33 ms)
+[----------] 1 test from CudaScatterRandom (33 ms total)
+
+[----------] 4 tests from QuantDispatch
+[ RUN      ] QuantDispatch.ScalarAndAutoAlwaysSupported
+[       OK ] QuantDispatch.ScalarAndAutoAlwaysSupported (0 ms)
+[ RUN      ] QuantDispatch.KernelVariantTableMatchesIssue74
+[       OK ] QuantDispatch.KernelVariantTableMatchesIssue74 (0 ms)
+[ RUN      ] QuantDispatch.ResolveAutoPicksAnImplementedSupportedTier
+[       OK ] QuantDispatch.ResolveAutoPicksAnImplementedSupportedTier (0 ms)
+[ RUN      ] QuantDispatch.ResolveExplicitIsIdentity
+[       OK ] QuantDispatch.ResolveExplicitIsIdentity (0 ms)
+[----------] 4 tests from QuantDispatch (0 ms total)
+
+[----------] 3 tests from QuantizePack
+[ RUN      ] QuantizePack.ScalarMatchesReferencePerChannel
+[       OK ] QuantizePack.ScalarMatchesReferencePerChannel (0 ms)
+[ RUN      ] QuantizePack.ScalarSpecialValues
+[       OK ] QuantizePack.ScalarSpecialValues (0 ms)
+[ RUN      ] QuantizePack.SimdVariantsBitExactVsScalar
+[       OK ] QuantizePack.SimdVariantsBitExactVsScalar (0 ms)
+[----------] 3 tests from QuantizePack (0 ms total)
+
+[----------] 2 tests from ConvertF32F16
+[ RUN      ] ConvertF32F16.ScalarSpecials
+[       OK ] ConvertF32F16.ScalarSpecials (0 ms)
+[ RUN      ] ConvertF32F16.SimdVariantsBitExactVsScalar
+[       OK ] ConvertF32F16.SimdVariantsBitExactVsScalar (1 ms)
+[----------] 2 tests from ConvertF32F16 (1 ms total)
+
+[----------] 5 tests from GatherQuantize
+[ RUN      ] GatherQuantize.ScalarMatchesNaiveWalk2D
+[       OK ] GatherQuantize.ScalarMatchesNaiveWalk2D (0 ms)
+[ RUN      ] GatherQuantize.ContiguousInnerFastPath
+[       OK ] GatherQuantize.ContiguousInnerFastPath (0 ms)
+[ RUN      ] GatherQuantize.ScalarMatchesNaiveWalk3D
+[       OK ] GatherQuantize.ScalarMatchesNaiveWalk3D (0 ms)
+[ RUN      ] GatherQuantize.ChunkedEqualsWholeRange
+[       OK ] GatherQuantize.ChunkedEqualsWholeRange (0 ms)
+[ RUN      ] GatherQuantize.SimdVariantsBitExactVsScalar
+/tmp/sym-priority-split/libreloc/test/QuantTest.cpp:322: Skipped
+AVX-512 unsupported on this host
+
+[  SKIPPED ] GatherQuantize.SimdVariantsBitExactVsScalar (0 ms)
+[----------] 5 tests from GatherQuantize (0 ms total)
+
+[----------] 2 tests from PackS8S4
+[ RUN      ] PackS8S4.ScalarPacksAndSaturates
+[       OK ] PackS8S4.ScalarPacksAndSaturates (0 ms)
+[ RUN      ] PackS8S4.Avx512BitExactVsScalar
+/tmp/sym-priority-split/libreloc/test/QuantTest.cpp:387: Skipped
+AVX-512 unsupported on this host
+
+[  SKIPPED ] PackS8S4.Avx512BitExactVsScalar (0 ms)
+[----------] 2 tests from PackS8S4 (0 ms total)
+
+[----------] 5 tests from TypedSemantics
+[ RUN      ] TypedSemantics.SymmetricRneQuantizeWitnessVectors
+[       OK ] TypedSemantics.SymmetricRneQuantizeWitnessVectors (0 ms)
+[ RUN      ] TypedSemantics.ReciprocalScaleIsFormedOnceInBinary32
+[       OK ] TypedSemantics.ReciprocalScaleIsFormedOnceInBinary32 (0 ms)
+[ RUN      ] TypedSemantics.PerChannelAxisIsTheOperandAxisNotTheKernelChannel
+[       OK ] TypedSemantics.PerChannelAxisIsTheOperandAxisNotTheKernelChannel (0 ms)
+[ RUN      ] TypedSemantics.IeeeRneNarrowingWitnessVectors
+[       OK ] TypedSemantics.IeeeRneNarrowingWitnessVectors (0 ms)
+[ RUN      ] TypedSemantics.AffineDequantizeReferenceBits
+[       OK ] TypedSemantics.AffineDequantizeReferenceBits (0 ms)
+[----------] 5 tests from TypedSemantics (0 ms total)
+
+[----------] 2 tests from QuantParallel
+[ RUN      ] QuantParallel.AllWrappersMatchSerial
+[       OK ] QuantParallel.AllWrappersMatchSerial (81 ms)
+[ RUN      ] QuantParallel.NonDisjointDstRowsFallBackInline
+[       OK ] QuantParallel.NonDisjointDstRowsFallBackInline (0 ms)
+[----------] 2 tests from QuantParallel (81 ms total)
+
+[----------] 2 tests from PrefoldWins
+[ RUN      ] PrefoldWins.AmortizationArithmetic
+[       OK ] PrefoldWins.AmortizationArithmetic (0 ms)
+[ RUN      ] PrefoldWins.DegenerateReuseCounts
+[       OK ] PrefoldWins.DegenerateReuseCounts (0 ms)
+[----------] 2 tests from PrefoldWins (0 ms total)
+
+[----------] 5 tests from PrefoldArtifactTest
+[ RUN      ] PrefoldArtifactTest.GatherQuantMatchesScalarKernel
+[       OK ] PrefoldArtifactTest.GatherQuantMatchesScalarKernel (0 ms)
+[ RUN      ] PrefoldArtifactTest.QuantPackMatchesScalarKernel
+[       OK ] PrefoldArtifactTest.QuantPackMatchesScalarKernel (0 ms)
+[ RUN      ] PrefoldArtifactTest.PreconditionViolationsReturnInvalid
+[       OK ] PrefoldArtifactTest.PreconditionViolationsReturnInvalid (0 ms)
+[ RUN      ] PrefoldArtifactTest.MoveTransfersOwnership
+[       OK ] PrefoldArtifactTest.MoveTransfersOwnership (0 ms)
+[ RUN      ] PrefoldArtifactTest.SharedBackendOutlivesTheCallerReference
+[       OK ] PrefoldArtifactTest.SharedBackendOutlivesTheCallerReference (0 ms)
+[----------] 5 tests from PrefoldArtifactTest (0 ms total)
+
+[----------] 5 tests from CostModelParse
+[ RUN      ] CostModelParse.MinimalFileRoundTrips
+[       OK ] CostModelParse.MinimalFileRoundTrips (0 ms)
+[ RUN      ] CostModelParse.RejectsMissingOrWrongVersionHeader
+[       OK ] CostModelParse.RejectsMissingOrWrongVersionHeader (0 ms)
+[ RUN      ] CostModelParse.RejectsMalformedLines
+[       OK ] CostModelParse.RejectsMalformedLines (0 ms)
+[ RUN      ] CostModelParse.RejectsDuplicateKeys
+[       OK ] CostModelParse.RejectsDuplicateKeys (0 ms)
+[ RUN      ] CostModelParse.LoadReportsUnreadablePath
+[       OK ] CostModelParse.LoadReportsUnreadablePath (0 ms)
+[----------] 5 tests from CostModelParse (0 ms total)
+
+[----------] 1 test from CostModelClassify
+[ RUN      ] CostModelClassify.MapsLToPattern
+[       OK ] CostModelClassify.MapsLToPattern (0 ms)
+[----------] 1 test from CostModelClassify (0 ms total)
+
+[----------] 2 tests from CostModelCpuBw
+[ RUN      ] CostModelCpuBw.FigureRstarComposition
+[       OK ] CostModelCpuBw.FigureRstarComposition (0 ms)
+[ RUN      ] CostModelCpuBw.PipeKeyPreferredAtR05Contiguous
+[       OK ] CostModelCpuBw.PipeKeyPreferredAtR05Contiguous (0 ms)
+[----------] 2 tests from CostModelCpuBw (0 ms total)
+
+[----------] 6 tests from CostModelPathCosts
+[ RUN      ] CostModelPathCosts.AffineFormsAndK
+[       OK ] CostModelPathCosts.AffineFormsAndK (0 ms)
+[ RUN      ] CostModelPathCosts.SerialPlacementSumsLinkAndHbm
+[       OK ] CostModelPathCosts.SerialPlacementSumsLinkAndHbm (0 ms)
+[ RUN      ] CostModelPathCosts.FillDrainTermFromChunksKey
+[       OK ] CostModelPathCosts.FillDrainTermFromChunksKey (0 ms)
+[ RUN      ] CostModelPathCosts.RecvComposesIntoBKernelMultiplier
+[       OK ] CostModelPathCosts.RecvComposesIntoBKernelMultiplier (0 ms)
+[ RUN      ] CostModelPathCosts.RecvAbsentOrOffGridReducesToPattern
+[       OK ] CostModelPathCosts.RecvAbsentOrOffGridReducesToPattern (0 ms)
+[ RUN      ] CostModelPathCosts.RecvComposesWithFillDrain
+[       OK ] CostModelPathCosts.RecvComposesWithFillDrain (0 ms)
+[----------] 6 tests from CostModelPathCosts (0 ms total)
+
+[----------] 10 tests from CostModelDecide
+[ RUN      ] CostModelDecide.SerialKillsRoneSlopeTie
+[       OK ] CostModelDecide.SerialKillsRoneSlopeTie (0 ms)
+[ RUN      ] CostModelDecide.PlacementRecordedOnDecision
+[       OK ] CostModelDecide.PlacementRecordedOnDecision (0 ms)
+[ RUN      ] CostModelDecide.MethodNameStrings
+[       OK ] CostModelDecide.MethodNameStrings (0 ms)
+[ RUN      ] CostModelDecide.PicksWinnerAndThreshold
+[       OK ] CostModelDecide.PicksWinnerAndThreshold (0 ms)
+[ RUN      ] CostModelDecide.SizeIndependentDecisionHasNoThreshold
+[       OK ] CostModelDecide.SizeIndependentDecisionHasNoThreshold (0 ms)
+[ RUN      ] CostModelDecide.PrefoldArmDelegatesToV4Rule
+[       OK ] CostModelDecide.PrefoldArmDelegatesToV4Rule (0 ms)
+[ RUN      ] CostModelDecide.PrefoldNeverReplacesFasterPlainA
+[       OK ] CostModelDecide.PrefoldNeverReplacesFasterPlainA (0 ms)
+[ RUN      ] CostModelDecide.AllocMsGatesPrefoldAndScalesSlope
+[       OK ] CostModelDecide.AllocMsGatesPrefoldAndScalesSlope (0 ms)
+[ RUN      ] CostModelDecide.BroadcastKAndPrefoldCombine
+[       OK ] CostModelDecide.BroadcastKAndPrefoldCombine (0 ms)
+[ RUN      ] CostModelDecide.ThresholdAgreesWithBruteForce
+[       OK ] CostModelDecide.ThresholdAgreesWithBruteForce (0 ms)
+[----------] 10 tests from CostModelDecide (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 318 tests from 50 test suites ran. (14890 ms total)
+[  PASSED  ] 316 tests.
+[  SKIPPED ] 2 tests, listed below:
+[  SKIPPED ] GatherQuantize.SimdVariantsBitExactVsScalar
+[  SKIPPED ] PackS8S4.Avx512BitExactVsScalar

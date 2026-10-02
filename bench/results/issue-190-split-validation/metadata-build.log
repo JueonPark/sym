@@ -1,0 +1,25 @@
+[0/2] Re-checking globbed directories...
+[1/2] Re-running CMake...
+-- Building with -fPIC
+-- Configuring done (0.5s)
+-- Generating done (0.1s)
+-- Build files have been written to: /tmp/sym-priority-split-build
+[0/2] Re-checking globbed directories...
+[1/8] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/DispatchResources.cpp.o
+[2/8] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/Dispatch.cpp.o
+[3/8] Linking CXX shared library libreloc/libreloc_runtime.so
+[4/8] Linking CXX shared module python/_reloc_transfer_test.cpython-314-x86_64-linux-gnu.so
+[5/8] Building CXX object libreloc/python/CMakeFiles/pyreloc_ext.dir/PyDispatch.cpp.o
+[6/8] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/DispatchTest.cpp.o
+/tmp/sym-priority-split/libreloc/test/DispatchTest.cpp: In member function ‘virtual void {anonymous}::Dispatch_CapabilityListsOnlyImplementedRows_Test::TestBody()’:
+/tmp/sym-priority-split/libreloc/test/DispatchTest.cpp:214:8: warning: suggest explicit braces to avoid ambiguous ‘else’ [-Wdangling-else]
+  214 |     if (row.label() == "cpu_stages_cuda_stages@1")
+      |        ^
+/tmp/sym-priority-split/libreloc/test/DispatchTest.cpp:216:8: warning: suggest explicit braces to avoid ambiguous ‘else’ [-Wdangling-else]
+  216 |     if (row.label() == "cpu_reference")
+      |        ^
+/tmp/sym-priority-split/libreloc/test/DispatchTest.cpp:218:8: warning: suggest explicit braces to avoid ambiguous ‘else’ [-Wdangling-else]
+  218 |     if (row.id == "cuda_relocate_f32")
+      |        ^
+[7/8] Linking CXX shared module python/pyreloc/_pyreloc.cpython-314-x86_64-linux-gnu.so
+[8/8] Linking CXX executable libreloc/test/libreloc-test

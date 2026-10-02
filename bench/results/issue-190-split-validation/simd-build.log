@@ -1,0 +1,93 @@
+[0/2] Re-checking globbed directories...
+[1/61] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/Version.cpp.o
+[2/61] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/TypedValue.cpp.o
+[3/61] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/CopyRun.cpp.o
+[4/61] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/Execute.cpp.o
+[5/61] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/PinnedBufferPool.cpp.o
+[6/61] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/Transpose.cpp.o
+[7/61] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/ChunkSchedule.cpp.o
+[8/61] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/HostBackend.cpp.o
+[9/61] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/GatherPool.cpp.o
+[10/61] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/Pipeline.cpp.o
+[11/61] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/Decode.cpp.o
+/tmp/sym-priority-split/libreloc/src/Decode.cpp: In function ‘bool reloc::{anonymous}::parseParam(reloc::{anonymous}::ByteReader&, size_t, reloc::StageParam&)’:
+/tmp/sym-priority-split/libreloc/src/Decode.cpp:546:12: warning: ‘rank’ may be used uninitialized in this function [-Wmaybe-uninitialized]
+  546 |   out.rank = rank;
+      |   ~~~~~~~~~^~~~~~
+/tmp/sym-priority-split/libreloc/src/Decode.cpp: In function ‘bool reloc::{anonymous}::parseLayoutBody(reloc::{anonymous}::ByteReader&, reloc::RelocationPlan&)’:
+/tmp/sym-priority-split/libreloc/src/Decode.cpp:411:44: warning: ‘runtimePadCheck’ may be used uninitialized in this function [-Wmaybe-uninitialized]
+  411 |     plan.runtimePadCheck = runtimePadCheck != 0;
+      |                            ~~~~~~~~~~~~~~~~^~~~
+/tmp/sym-priority-split/libreloc/src/Decode.cpp:410:26: warning: ‘noCopy’ may be used uninitialized in this function [-Wmaybe-uninitialized]
+  410 |     plan.noCopy = noCopy != 0;
+      |                   ~~~~~~~^~~~
+/tmp/sym-priority-split/libreloc/src/Decode.cpp: In function ‘reloc::TypedDecodeResult reloc::decodeTypedPlan(const uint8_t*, size_t)’:
+/tmp/sym-priority-split/libreloc/src/Decode.cpp:598:3: warning: ‘hasChannel’ may be used uninitialized in this function [-Wmaybe-uninitialized]
+  598 |   if (out.hasChannel) {
+      |   ^~
+/tmp/sym-priority-split/libreloc/src/Decode.cpp:592:11: note: ‘hasChannel’ was declared here
+  592 |   uint8_t hasChannel;
+      |           ^~~~~~~~~~
+[12/61] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/TransferResources.cpp.o
+[13/61] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/TransferResourcePolicy.cpp.o
+[14/61] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/Bind.cpp.o
+[15/61] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/TypedExecute.cpp.o
+[16/61] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/Dispatch.cpp.o
+[17/61] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/Prefold.cpp.o
+[18/61] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/quant/QuantAVX2.cpp.o
+[19/61] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/quant/QuantAVX512.cpp.o
+[20/61] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/quant/Quant.cpp.o
+[21/61] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/Transfer.cpp.o
+[22/61] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/TransferResourceCache.cpp.o
+[23/61] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/CostModel.cpp.o
+[24/61] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/VersionTest.cpp.o
+[25/61] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/EvalTest.cpp.o
+[26/61] Building CUDA object libreloc/CMakeFiles/reloc_runtime.dir/cuda/CudaBackend.cu.o
+[27/61] Building CUDA object libreloc/CMakeFiles/reloc_runtime.dir/cuda/CudaKernels.cu.o
+[28/61] Linking CXX shared library libreloc/libreloc_runtime.so
+[29/61] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/BindTest.cpp.o
+[30/61] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/TypedBindTest.cpp.o
+[31/61] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/TypedDecodeTest.cpp.o
+[32/61] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/DecodeTest.cpp.o
+[33/61] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/ExecuteTest.cpp.o
+[34/61] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/TransposeTest.cpp.o
+[35/61] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/TypedExecuteTest.cpp.o
+/tmp/sym-priority-split/libreloc/test/TypedExecuteTest.cpp:64:7: warning: ‘float {anonymous}::floatOf(uint32_t)’ defined but not used [-Wunused-function]
+   64 | float floatOf(uint32_t bits) {
+      |       ^~~~~~~
+[36/61] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/PoolTest.cpp.o
+[37/61] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/BackendTest.cpp.o
+[38/61] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/CudaBackendTest.cpp.o
+[39/61] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/PipelineTest.cpp.o
+[40/61] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/ChunkScheduleTest.cpp.o
+[41/61] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/GatherPoolTest.cpp.o
+[42/61] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/DispatchTest.cpp.o
+/tmp/sym-priority-split/libreloc/test/DispatchTest.cpp: In member function ‘virtual void {anonymous}::Dispatch_CapabilityListsOnlyImplementedRows_Test::TestBody()’:
+/tmp/sym-priority-split/libreloc/test/DispatchTest.cpp:214:8: warning: suggest explicit braces to avoid ambiguous ‘else’ [-Wdangling-else]
+  214 |     if (row.label() == "cpu_stages_cuda_stages@1")
+      |        ^
+/tmp/sym-priority-split/libreloc/test/DispatchTest.cpp:216:8: warning: suggest explicit braces to avoid ambiguous ‘else’ [-Wdangling-else]
+  216 |     if (row.label() == "cpu_reference")
+      |        ^
+/tmp/sym-priority-split/libreloc/test/DispatchTest.cpp:218:8: warning: suggest explicit braces to avoid ambiguous ‘else’ [-Wdangling-else]
+  218 |     if (row.id == "cuda_relocate_f32")
+      |        ^
+[43/61] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/CudaPipelineTest.cpp.o
+[44/61] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/TransferTest.cpp.o
+[45/61] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/TransferResourcePolicyTest.cpp.o
+[46/61] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/TransferExecutionTest.cpp.o
+[47/61] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/CudaTransferResourcesTest.cpp.o
+[48/61] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/TransferResourcesTest.cpp.o
+[49/61] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/PrefoldTest.cpp.o
+[50/61] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/CudaKernelsTest.cpp.o
+[51/61] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/QuantTest.cpp.o
+[52/61] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/CostModelTest.cpp.o
+[53/61] Building CXX object libreloc/python/CMakeFiles/pyreloc_ext.dir/PyPrefold.cpp.o
+[54/61] Building CXX object libreloc/python/CMakeFiles/pyreloc_transfer_test.dir/tests/TransferResourceHarness.cpp.o
+[55/61] Building CXX object libreloc/python/CMakeFiles/pyreloc_ext.dir/PyTransfer.cpp.o
+[56/61] Building CXX object libreloc/python/CMakeFiles/pyreloc_ext.dir/PyDispatch.cpp.o
+[57/61] Building CXX object libreloc/python/CMakeFiles/pyreloc_ext.dir/PyReloc.cpp.o
+[58/61] Linking CXX shared module python/_reloc_transfer_test.cpython-314-x86_64-linux-gnu.so
+[59/61] Linking CXX shared module python/pyreloc/_pyreloc.cpython-314-x86_64-linux-gnu.so
+[60/61] Building CXX object libreloc/test/CMakeFiles/libreloc-test.dir/TransferResourceCacheTest.cpp.o
+[61/61] Linking CXX executable libreloc/test/libreloc-test
