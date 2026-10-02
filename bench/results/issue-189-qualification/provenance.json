@@ -1,0 +1,53 @@
+{
+  "qualification_source": "f81399dacce33afdbb2e8fdda202a1d20285d3ea",
+  "runtime_source": "b6298bcf11ff4e78cb4a93186deec143f3123dc4",
+  "runtime_note": "Normal and NVTX runtimes were built from the #206 implementation before rebases. Listed rebases and squash merge have byte-identical tracked source trees. #207 adds tests only; #205 changes benchmark scripts/docs only.",
+  "equivalent_source_trees": [
+    {
+      "before": "8405535ca09373f40f2f4496aedf0fecae1ef196",
+      "after": "d113e5b7dea5d77ca28fb4c3dcf26f6b500888a8",
+      "tree": "5a1d25b6322ea3c5223def3617d38c7650c719bd"
+    },
+    {
+      "before": "d113e5b7dea5d77ca28fb4c3dcf26f6b500888a8",
+      "after": "b6298bcf11ff4e78cb4a93186deec143f3123dc4",
+      "tree": "5a1d25b6322ea3c5223def3617d38c7650c719bd"
+    },
+    {
+      "before": "28f95ce32668c5d51f60bb1ecb95b2bf5bba03f3",
+      "after": "b66d78d38d64a4194aa5ab966646ffa7482a33b2",
+      "tree": "eaa0b7d392e8cf40b6e5d9065c13e36b2fd0b302"
+    },
+    {
+      "before": "b66d78d38d64a4194aa5ab966646ffa7482a33b2",
+      "after": "44566d50e6ec163039986768a89585f29dc47de1",
+      "tree": "eaa0b7d392e8cf40b6e5d9065c13e36b2fd0b302"
+    }
+  ],
+  "workload_source": "cdc44e278eac08d51abc6e1fd13123a5a46a26b8",
+  "workload_files_verified": true,
+  "measurement_note": "Sweeps recorded dirty source because benchmark scripts and docs were not committed yet. Their recorded script hashes match archived inputs; all runtime changes were committed. No timing jobs ran concurrently with tests or other timing jobs.",
+  "qualification_tests": "901 Python passed, 4 skipped; 318 native passed, 2 skipped; all 12 CTest tests passed",
+  "build_limit": "The initial all-target build attempted unrelated R-track benchmarks using global default sm_52 and hit an unsupported double atomicAdd in dma_engine.cu. All qualification/test targets subsequently built, and all 12 CTest checks passed. The runtime explicitly builds sm_75/sm_89.",
+  "files": {
+    "inputs/analyze_resource_overlap.py": "be776943c46f1fd6d8b2b5f660a37ef00e2bb2a3e360798af5eb8958886e451f",
+    "inputs/measure_example.py": "a79caf0d2db30fe8632452a268269f6cf8850c050a44ed771dc42ea9c8321886",
+    "inputs/pinning_sweep.py": "7159f0a8bf26035d3ac3fb6a7976df6e7f5c8d034e23aecc0444324ba3e97e3b",
+    "inputs/profile_pinning.py": "9e7f518b00a0cfe4be7b495fcffa8221c6d4dd0387c5afccbbd5043ee4f4f250",
+    "inputs/qualification_report.py": "d43fe61e3bb92daf95e32b89bc632c93901eb788781503d04e1ddfe18748b3e4",
+    "inputs/run_matrix.py": "d636be4a40650dc8c991fb94b2d94ebffa373e3841e81566ac13c2584100c07f",
+    "inputs/run_profiles.executed.py": "9c0ef33d586077821ade8998258555f9ee7fc99cbe4eb7156edc462af513cbb7",
+    "inputs/workloads/README.md": "fc8098c09ff30b4d583bab879648dd20dcf43a99dca84bda009c8fc97d196d77",
+    "inputs/workloads/common.py": "634497017e87a6fd414f3f97f55f0fed6a65dd106e3f64ad3e08912d16ddf892",
+    "inputs/workloads/dlrm_embeddings.py": "5bf33f87297fe3a37ca2149b408d0dc6c3cf70e8b4dbb142a65d66cff374e8f3",
+    "inputs/workloads/gnn_minibatch.py": "3c7d68307ccfad4d52352dbba5255b81f618385e5992d42f1f74b289506dc783",
+    "inputs/workloads/llm_offload.py": "fdf9a4e507d665766142d3ec60d18e47da7e530507fe4558cf64b7352eed177f",
+    "inputs/workloads/moe_experts.py": "485c74c535bd615ee18554a1caff5f37067c055bdaf72e9344573254ec279872",
+    "inputs/workloads/run_workloads.py": "3a5b44a187d1eb94015cdb09b7a0da50dc09454721c132bb71f81cbeab5cbcaa",
+    "inputs/workloads/tests/conftest.py": "6af2fc2dcebd3a2ce6333b4328e9f0cc07a17112f303ff4dab2aedb9d6466fc9",
+    "inputs/workloads/tests/test_workload_cli.py": "f9c07000269a84749b30e964673706b68de629d850b40c83204d06e440d46ad9",
+    "inputs/workloads/tests/test_workload_common.py": "71a4201f1ce3d5fe6161faecdc9aad1f39817742faa6b0403d542e2ee422031f",
+    "inputs/workloads/tests/test_workload_examples_gpu.py": "7beef60837f51c47ac9e4f0d6098ea18b830bb88ec2255ad33f3157e91ed3ca8",
+    "inputs/workloads/tests/test_workload_runner.py": "9cb3f95afb4f63008861f2adb3ac432be8d554b9e4eda12fb3bf50a6a91705e4"
+  }
+}

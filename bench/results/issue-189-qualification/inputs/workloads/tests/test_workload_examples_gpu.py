@@ -1,0 +1,82 @@
+"""End to end: every workload example passes its own checks through the runner (GPU)."""
+import json
+import os
+import pathlib
+import subprocess
+import sys
+
+import pytest
+import torch
+
+import run_workloads
+
+pytestmark = [pytest.mark.gpu, pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable")]
+
+# The checks each example must report, all passing. Pinning the names keeps an
+# example from passing by checking less.
+EXPECTED_CHECKS = {
+    "dlrm": {"pooled_embeddings_equal", "predictions_equal", "one_plan_for_every_batch_size",
+             "one_execution_per_batch", "cpu_reference_row", "observed_payload_matches_wire", "no_fallbacks"},
+    "gnn": {"node_features_equal", "logits_equal", "one_plan_for_every_row_count", "rows_change_between_batches",
+            "one_execution_per_batch", "cpu_reference_row", "observed_payload_matches_wire", "no_fallbacks"},
+    "llm": {"weights_equal", "kv_evict_equal", "kv_restore_equal", "tokens_equal", "logits_equal",
+            "one_weight_artifact_for_every_matrix_shape", "one_kv_plan_per_direction",
+            "one_kv_execution_per_transfer", "no_fallbacks"},
+    "moe": {"expert_weights_equal", "outputs_equal", "routing_identical", "only_active_experts_fetched",
+            "every_device_received_experts", "one_weight_artifact_for_both_shapes"},
+}
+
+
+def build_dir():
+    if os.environ.get("SYM_BUILD"):
+        return pathlib.Path(os.environ["SYM_BUILD"])
+    if os.environ.get("SYM_RELOC_EXPORT"):
+        return pathlib.Path(os.environ["SYM_RELOC_EXPORT"]).parents[2]
+    pytest.skip("set SYM_BUILD (or SYM_RELOC_EXPORT) to a CUDA-enabled build")
+
+
+def run_runner(tmp_path, *args):
+    proc = subprocess.run([sys.executable, run_workloads.__file__, "--build", str(build_dir()), "--python",
+                           sys.executable, "--output-dir", str(tmp_path), *args],
+                          capture_output=True, text=True, timeout=3600)
+    logs = "\n".join(path.read_text() for path in sorted(tmp_path.glob("*.log")))
+    return proc, proc.stdout + proc.stderr + logs
+
+
+def load(tmp_path, name):
+    return json.loads((tmp_path / f"{name}.json").read_text())
+
+
+@pytest.mark.parametrize("name", sorted(EXPECTED_CHECKS))
+def test_each_example_passes_its_checks_at_quick_size(tmp_path, name):
+    proc, output = run_runner(tmp_path, "--quick", "--only", name)
+    assert proc.returncode == 0, output
+    report = load(tmp_path, name)
+    assert report["ok"] is True
+    assert EXPECTED_CHECKS[name] <= set(report["checks"]), sorted(report["checks"])
+    assert report["summary"]["checks_passed"] == report["summary"]["checks_total"]
+
+
+@pytest.mark.skipif(torch.cuda.device_count() < 2, reason="needs two GPUs")
+def test_llm_runs_on_a_device_that_is_not_the_default(tmp_path):
+    proc, output = run_runner(tmp_path, "--quick", "--only", "llm", "--devices", "cuda:1")
+    assert proc.returncode == 0, output
+    report = load(tmp_path, "llm")
+    assert report["ok"] is True and report["devices"] == ["cuda:1"]
+
+
+@pytest.mark.skipif(torch.cuda.device_count() < 2, reason="needs two GPUs")
+def test_moe_spreads_experts_over_every_listed_device(tmp_path):
+    devices = ",".join(f"cuda:{index}" for index in range(min(torch.cuda.device_count(), 4)))
+    proc, output = run_runner(tmp_path, "--quick", "--only", "moe", "--devices", devices)
+    assert proc.returncode == 0, output
+    fetches = load(tmp_path, "moe")["workload"]["fetches_per_device"]
+    assert set(fetches) == set(devices.split(",")) and all(fetches.values()), fetches
+
+
+def test_moe_without_calibration_uses_the_cpu_reference_row(tmp_path):
+    proc, output = run_runner(tmp_path, "--quick", "--only", "moe", "--calibration", "none")
+    assert proc.returncode == 0, output
+    report = load(tmp_path, "moe")
+    assert set(report["dispatches"]) == {"cpu_reference"}
+    assert "calibration: none" in report["notes"]

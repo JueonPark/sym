@@ -1,0 +1,93 @@
+[0/2] Re-checking globbed directories...
+[1/74] Building SymPasses.h.inc...
+[2/74] Building RelocPasses.h.inc...
+[3/74] Building RelocDialect.cpp.inc...
+[4/74] Building SymDialect.h.inc...
+[5/74] Building SymDialect.cpp.inc...
+[6/74] Building RelocDialect.h.inc...
+[7/74] Building SymTypes.cpp.inc...
+[8/74] Building SymTypes.h.inc...
+[9/74] Building SymAttributes.cpp.inc...
+[10/74] Building RelocAttributes.cpp.inc...
+[11/74] Building SymAttributes.h.inc...
+[12/74] Building RelocAttributes.h.inc...
+[13/74] Building SymOps.cpp.inc...
+[14/74] Building SymOps.h.inc...
+[15/74] Building SymInterfaces.cpp.inc...
+[16/74] Building RelocEnums.cpp.inc...
+[17/74] Building SymInterfaces.h.inc...
+[18/74] Building RelocEnums.h.inc...
+[19/74] Building CXX object bench/CMakeFiles/bench-bind-cost.dir/bind_cost.cpp.o
+[20/74] Building CXX object bench/CMakeFiles/bench-gather-bw.dir/gather_bw.cpp.o
+[21/74] Building CXX object libreloc/examples/CMakeFiles/reloc-run-artifact.dir/RunArtifact.cpp.o
+[22/74] Building CXX object bench/CMakeFiles/bench-cpu-rooflines.dir/rtrack/cpu_rooflines.cpp.o
+[23/74] Building CXX object bench/CMakeFiles/bench-protocol-test.dir/ProtocolTest.cpp.o
+[24/74] Building RelocOps.cpp.inc...
+[25/74] Building RelocOps.h.inc...
+[26/74] Building CXX object bench/CMakeFiles/bench-quant-bw.dir/quant_bw.cpp.o
+[27/74] Building CXX object sym/dialect/sym/IR/CMakeFiles/obj.MLIRSymDialect.dir/SymInterfaces.cpp.o
+[28/74] Building CXX object sym/dialect/sym/IR/CMakeFiles/obj.MLIRSymDialect.dir/SymAttributes.cpp.o
+[29/74] Building CXX object sym/dialect/sym/IR/CMakeFiles/obj.MLIRSymDialect.dir/SymUtils.cpp.o
+[30/74] Building CXX object sym/dialect/sym/IR/CMakeFiles/obj.MLIRSymDialect.dir/SymDialect.cpp.o
+[31/74] Building CXX object sym/dialect/sym/Transforms/CMakeFiles/obj.MLIRSymTransforms.dir/SymbolicShapeInference.cpp.o
+[32/74] Building CXX object sym/dialect/sym/IR/CMakeFiles/obj.MLIRSymDialect.dir/SymExtensions.cpp.o
+[33/74] Linking CXX static library sym/dialect/sym/IR/libMLIRSymDialect.a
+[34/74] Linking CXX static library sym/dialect/sym/Transforms/libMLIRSymTransforms.a
+[35/74] Building CXX object sym/dialect/reloc/IR/CMakeFiles/obj.MLIRRelocDialect.dir/RelocDialect.cpp.o
+[36/74] Building CXX object sym/dialect/reloc/IR/CMakeFiles/obj.MLIRRelocDialect.dir/RelocSerialization.cpp.o
+[37/74] Building CXX object sym/dialect/reloc/IR/CMakeFiles/obj.MLIRRelocDialect.dir/RelocUtils.cpp.o
+[38/74] Building CXX object sym/dialect/reloc/Transforms/CMakeFiles/obj.MLIRRelocTransforms.dir/PlanBuilder.cpp.o
+[39/74] Building CXX object sym/dialect/reloc/Transforms/CMakeFiles/obj.MLIRRelocTransforms.dir/PlanCanonicalize.cpp.o
+[40/74] Linking CXX executable libreloc/examples/reloc-run-artifact
+[41/74] Linking CXX executable bench/bench-protocol-test
+[42/74] Linking CXX executable bench/bench-bind-cost
+[43/74] Linking CXX executable bench/bench-gather-bw
+[44/74] Linking CXX executable bench/bench-quant-bw
+[45/74] Linking CXX executable bench/bench-cpu-rooflines
+[46/74] Building CXX object sym/dialect/reloc/Transforms/CMakeFiles/obj.MLIRRelocTransforms.dir/TestRelocTransfer.cpp.o
+[47/74] Building CXX object sym/dialect/reloc/IR/CMakeFiles/obj.MLIRRelocDialect.dir/RelocOps.cpp.o
+[48/74] Building CXX object sym/dialect/reloc/IR/CMakeFiles/obj.MLIRRelocDialect.dir/RelocAttributes.cpp.o
+/tmp/sym-pinning-qualification/sym/dialect/reloc/IR/RelocAttributes.cpp: In static member function ‘static Ret llvm::function_ref<Ret(Params ...)>::callback_fn(intptr_t, Params ...) [with Callable = parseConstraintsBlock(mlir::AsmParser&, llvm::SmallVectorImpl<mlir::reloc::DivisibilityAttr>&, llvm::SmallVectorImpl<mlir::reloc::AlignmentAttr>&, llvm::SmallVectorImpl<bool>&, bool&, bool&)::<lambda()>; Ret = llvm::ParseResult; Params = {}]’:
+/tmp/sym-pinning-qualification/sym/dialect/reloc/IR/RelocAttributes.cpp:419:49: warning: ‘flag’ may be used uninitialized [-Wmaybe-uninitialized]
+  419 |                                            bool flag;
+      |                                                 ^~~~
+[49/74] Linking CXX static library sym/dialect/reloc/IR/libMLIRRelocDialect.a
+[50/74] Building CXX object sym/dialect/reloc/Transforms/CMakeFiles/obj.MLIRRelocTransforms.dir/RelocFold.cpp.o
+[51/74] Building CXX object sym/dialect/reloc/Transforms/CMakeFiles/obj.MLIRRelocTransforms.dir/TestRelocUtils.cpp.o
+[52/74] Linking CXX static library sym/dialect/reloc/Transforms/libMLIRRelocTransforms.a
+[53/74] Building CXX object bench/CMakeFiles/bench-rtrack-test.dir/rtrack/RtrackTest.cpp.o
+[54/74] Building CUDA object bench/CMakeFiles/bench-multigpu-h2d.dir/rtrack/multigpu_h2d.cu.o
+[55/74] Linking CXX executable bench/bench-rtrack-test
+[56/74] Linking CUDA executable bench/bench-multigpu-h2d
+[57/74] Building CUDA object bench/CMakeFiles/bench-poc-transpose.dir/poc_transpose.cu.o
+[58/74] Linking CUDA executable bench/bench-poc-transpose
+[59/74] Building CXX object sym/tools/CMakeFiles/sym-reloc-export.dir/RelocExportMain.cpp.o
+[60/74] Building CUDA object bench/CMakeFiles/bench-dma-engine.dir/rtrack/dma_engine.cu.o
+FAILED: bench/CMakeFiles/bench-dma-engine.dir/rtrack/dma_engine.cu.o 
+/tmp/sym-cuda-toolkit-12.6.3/bin/nvcc -forward-unknown-to-host-compiler -ccbin=/usr/bin/g++ -D_DEBUG -D_GLIBCXX_ASSERTIONS -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -I/home/jueonpark/sym/build/llvm-project/src/llvm/include -I/home/jueonpark/sym/build/llvm-project/build/include -I/home/jueonpark/sym/build/llvm-project/src/mlir/include -I/home/jueonpark/sym/build/llvm-project/build/tools/mlir/include -I/tmp/sym-pinning-qualification/include -I/tmp/sym-pinning-build/include -I/tmp/sym-pinning-qualification/bench -isystem /tmp/sym-cuda-toolkit-12.6.3/targets/x86_64-linux/include -O3 -DNDEBUG -std=c++17 "--generate-code=arch=compute_52,code=[compute_52,sm_52]"   -D_DEBUG -D_GLIBCXX_ASSERTIONS -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -MD -MT bench/CMakeFiles/bench-dma-engine.dir/rtrack/dma_engine.cu.o -MF bench/CMakeFiles/bench-dma-engine.dir/rtrack/dma_engine.cu.o.d -x cu -c /tmp/sym-pinning-qualification/bench/rtrack/dma_engine.cu -o bench/CMakeFiles/bench-dma-engine.dir/rtrack/dma_engine.cu.o
+/tmp/sym-pinning-qualification/bench/rtrack/dma_engine.cu(57): error: no instance of overloaded function "atomicAdd" matches the argument list
+            argument types are: (double *, double)
+    atomicAdd(out, acc);
+    ^
+/tmp/sym-cuda-toolkit-12.6.3/targets/x86_64-linux/include/sm_20_atomic_functions.hpp(82): note #3326-D: function "atomicAdd(float *, float)" does not match because argument #1 does not match parameter
+  static __inline__ __attribute__((device)) float atomicAdd(float *address, float val)
+                                                  ^
+/tmp/sym-cuda-toolkit-12.6.3/targets/x86_64-linux/include/device_atomic_functions.hpp(224): note #3326-D: function "atomicAdd(unsigned long long *, unsigned long long)" does not match because argument #1 does not match parameter
+  static __inline__ __attribute__((device)) unsigned long long int atomicAdd(unsigned long long int *address, unsigned long long int val)
+                                                                   ^
+/tmp/sym-cuda-toolkit-12.6.3/targets/x86_64-linux/include/device_atomic_functions.hpp(110): note #3326-D: function "atomicAdd(unsigned int *, unsigned int)" does not match because argument #1 does not match parameter
+  static __inline__ __attribute__((device)) unsigned int atomicAdd(unsigned int *address, unsigned int val)
+                                                         ^
+/tmp/sym-cuda-toolkit-12.6.3/targets/x86_64-linux/include/device_atomic_functions.hpp(105): note #3326-D: function "atomicAdd(int *, int)" does not match because argument #1 does not match parameter
+  static __inline__ __attribute__((device)) int atomicAdd(int *address, int val)
+                                                ^
+
+1 error detected in the compilation of "/tmp/sym-pinning-qualification/bench/rtrack/dma_engine.cu".
+[61/74] Building CUDA object bench/CMakeFiles/bench-hiding-ratio.dir/rtrack/hiding_ratio.cu.o
+[62/74] Linking CXX executable sym/tools/sym-reloc-export
+[63/74] Building CUDA object bench/CMakeFiles/bench-e2e-overlap.dir/rtrack/e2e_overlap.cu.o
+[64/74] Building CUDA object bench/CMakeFiles/bench-rtrack.dir/rtrack/rtrack_bench.cu.o
+[65/74] Building CUDA object bench/CMakeFiles/bench-multigpu-reloc.dir/rtrack/multigpu_reloc.cu.o
+[66/74] Building CXX object unittest/reloc/CMakeFiles/reloc-plan-builder-test.dir/PlanBuilderTest.cpp.o
+[67/74] Building CXX object sym/tools/CMakeFiles/sym-opt.dir/SymOptMain.cpp.o
+ninja: build stopped: subcommand failed.
