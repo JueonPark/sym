@@ -7,7 +7,11 @@ out=Path(a.output);out.mkdir(parents=True,exist_ok=True)
 variants={'default':[], 'typed_reuse':['--typed-reuse'],
           'staged_pageable':['--typed-reuse','--staged-upload','--pinning','pageable'],
           'direct_pageable':['--typed-reuse','--pinning','pageable'],
-          'cold_metadata':['--typed-reuse','--cold-metadata']}
+          'cold_metadata':['--typed-reuse','--cold-metadata'],
+          'auto_default':['--typed-reuse','--pinning','auto'],
+          'auto_configured':['--typed-reuse','--pinning','auto','--min-pinned-bytes','8388608'],
+          'pinned':['--typed-reuse','--pinning','pinned'],
+          'pageable':['--typed-reuse','--pinning','pageable']}
 variants={key:variants[key] for key in a.variants.split(',')}
 rows=[]
 for round_id in range(a.rounds):

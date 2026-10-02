@@ -31,6 +31,7 @@ def main():
     parser.add_argument('--devices', default='cuda:0')
     parser.add_argument('--typed-reuse', action='store_true', help='Pass an explicit owner to direct dispatch calls; frontend AUTO is unchanged.')
     parser.add_argument('--pinning', choices=['auto', 'pinned', 'pageable'])
+    parser.add_argument('--min-pinned-bytes', type=int)
     parser.add_argument('--staged-upload', action='store_true')
     parser.add_argument('--cold-metadata', action='store_true')
     args = parser.parse_args()
@@ -50,10 +51,12 @@ def main():
         if args.typed_reuse:
             kwargs.setdefault('resources', direct_owner)
         if args.pinning: kwargs['pinning'] = args.pinning
+        if args.min_pinned_bytes is not None: kwargs['min_pinned_bytes'] = args.min_pinned_bytes
         if args.staged_upload: kwargs['direct_dense_upload'] = False
         return typed_execute(request, **kwargs)
     def execute_layout(request, **kwargs):
         if args.pinning: kwargs['pinning'] = args.pinning
+        if args.min_pinned_bytes is not None: kwargs['min_pinned_bytes'] = args.min_pinned_bytes
         return layout_execute(request, **kwargs)
     dispatch.execute_typed_transfer = execute_typed
     transport.execute_transfer = execute_layout
@@ -86,7 +89,7 @@ def main():
 
     def finish(report, output=None):
         report.data['candidate_options'] = dict(typed_reuse=args.typed_reuse,
-            pinning=args.pinning, staged_upload=args.staged_upload, cold_metadata=args.cold_metadata)
+            pinning=args.pinning, min_pinned_bytes=args.min_pinned_bytes, staged_upload=args.staged_upload, cold_metadata=args.cold_metadata)
         if direct_owner is not None:
             report.data['direct_typed_resources'] = direct_owner.stats()['typed']
             direct_owner.close()

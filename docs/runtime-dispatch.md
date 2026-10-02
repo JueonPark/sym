@@ -284,3 +284,8 @@ transfer_options = {"pinning": "auto", "min_pinned_bytes": 8 << 20}
 
 Without that explicit configuration, unknown deployments use pageable staging.
 The low-level C++ `TransferOptions.pinning` legacy default remains `Pinned`.
+
+Measured scope, cold/warm results and reproduction commands are in
+[pinning qualification](pinning-qualification.md). The proposed adaptive
+extension is described in [the pinning cost-model design](pinning-cost-model.md);
+that model is not implemented by the initial size gate.
