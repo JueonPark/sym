@@ -1,6 +1,7 @@
 //===- PyDispatch.cpp - typed dispatch bindings (R3, issue #147) ----------===//
 
 #include "PyDispatch.h"
+#include "PyPinning.h"
 
 #include "reloc/Dispatch.h"
 #include "reloc/DispatchResources.h"
@@ -148,6 +149,7 @@ py::dict
 executeDispatchPy(reloc::dispatch::DispatchRequest &request,
                   const py::object &callerStream, int nBuffers, int nStreams,
                   int gatherThreads, std::shared_ptr<reloc::GatherPool> pool,
+                  const std::string &pinning, size_t minPinnedBytes,
                   bool directDenseUpload,
                   std::shared_ptr<reloc::dispatch::Resources> resources,
                   const py::object &owners) {
@@ -175,6 +177,8 @@ executeDispatchPy(reloc::dispatch::DispatchRequest &request,
     throw py::value_error("gather_pool is closed");
   reloc::TransferOptions options;
   options.nBuffers = nBuffers;
+  options.pinning = parsePinning(pinning);
+  options.minPinnedBytes = minPinnedBytes;
   options.directDenseUpload = directDenseUpload;
   options.gatherThreads = static_cast<unsigned>(gatherThreads);
   options.gather = pool.get();
@@ -204,7 +208,9 @@ executeDispatchPy(reloc::dispatch::DispatchRequest &request,
             ephemeral.execute(request, device, nStreams, options, token).error;
       } else {
         // Raw callers retain their buffers and backend lifetimes themselves.
-        reloc::CudaBackend backend(nStreams, device);
+        reloc::CudaBackend backend(
+            nStreams, device,
+            reloc::usePinnedStaging(options, request.selected.wireBytes));
         error = reloc::dispatch::executeDispatch(request, backend, options);
       }
 #else
@@ -409,6 +415,8 @@ void registerDispatchBindings(py::module_ &m) {
         py::kw_only(), py::arg("caller_stream") = py::none(),
         py::arg("n_buffers") = 4, py::arg("n_streams") = 2,
         py::arg("gather_threads") = 1, py::arg("gather_pool") = nullptr,
+        py::arg("pinning") = "auto",
+        py::arg("min_pinned_bytes") = size_t(8) << 20,
         py::arg("direct_dense_upload") = true, py::arg("resources") = nullptr,
         py::arg("owners") = py::none(),
         "Run the selected row and block until this request's work completed; "

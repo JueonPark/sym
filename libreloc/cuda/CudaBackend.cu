@@ -4,6 +4,7 @@
 
 #include "reloc/CudaBackend.h"
 
+#include <cstdlib>
 #include <cuda_runtime.h>
 
 namespace reloc {
@@ -48,7 +49,8 @@ bool CudaBackend::check(int status, const char *what) {
   return false;
 }
 
-CudaBackend::CudaBackend(int numStreams, int device) {
+CudaBackend::CudaBackend(int numStreams, int device, bool pinnedStaging)
+    : pinnedStaging_(pinnedStaging) {
   if (numStreams < 1)
     numStreams = 1;
   if (device < 0) {
@@ -84,6 +86,12 @@ CudaBackend::~CudaBackend() {
 }
 
 void *CudaBackend::allocStaging(size_t bytes) {
+  if (!pinnedStaging_) {
+    void *p = std::malloc(bytes);
+    if (!p && error_.empty())
+      error_ = "pageable staging allocation failed";
+    return p;
+  }
   DeviceScope scope(device_);
   void *p = nullptr;
   if (!check(cudaHostAlloc(&p, bytes, cudaHostAllocDefault), "cudaHostAlloc"))
@@ -92,6 +100,10 @@ void *CudaBackend::allocStaging(size_t bytes) {
 }
 
 void CudaBackend::freeStaging(void *p) {
+  if (!pinnedStaging_) {
+    std::free(p);
+    return;
+  }
   if (p == nullptr)
     return;
   DeviceScope scope(device_);

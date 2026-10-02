@@ -21,20 +21,23 @@ def _transfer_configuration(resources, options):
         raise TypeError("transfer_options must be a mapping or None")
     options = dict(options) if options is not None else {}
     for name, value in options.items():
-        if name == "gather_pool":
+        if name == "pinning":
+            if value not in ("auto", "pinned", "pageable"):
+                raise ValueError("pinning must be auto, pinned or pageable")
+        elif name == "gather_pool":
             if value is not None:
                 import pyreloc
 
                 if not isinstance(value, pyreloc.GatherPool):
                     raise TypeError("gather_pool must be GatherPool or None")
-        elif name in {"n_buffers", "n_streams", "gather_threads"}:
+        elif name in {"n_buffers", "n_streams", "gather_threads", "min_pinned_bytes"}:
             if isinstance(value, bool):
                 raise TypeError(f"{name} must be an integer")
             try:
                 value = operator.index(value)
             except TypeError:
                 raise TypeError(f"{name} must be an integer") from None
-            minimum = 0 if name == "gather_threads" else 1
+            minimum = 0 if name in {"gather_threads", "min_pinned_bytes"} else 1
             if not minimum <= value <= (1 << 31) - 1:
                 raise ValueError(f"{name} must be between {minimum} and 2147483647")
             options[name] = value

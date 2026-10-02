@@ -503,7 +503,8 @@ std::unique_ptr<CopyBackend> makeBackend(const TransferBackendConfig &config) {
   if (config.kind == MemoryKind::Host)
     return std::make_unique<HostBackend>(config.streams);
 #ifdef RELOC_ENABLE_CUDA
-  return std::make_unique<CudaBackend>(config.streams, config.device);
+  return std::make_unique<CudaBackend>(config.streams, config.device,
+                                       config.pinned);
 #else
   throw std::runtime_error("CUDA backend is not available in this build");
 #endif

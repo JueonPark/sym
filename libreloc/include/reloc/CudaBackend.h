@@ -1,6 +1,6 @@
 //===- CudaBackend.h - CopyBackend over the CUDA Runtime API ----*- C++ -*-===//
 //
-// Pinned staging (cudaHostAlloc), cudaMemcpyAsync on non-blocking streams, and
+// Pinned or pageable staging, cudaMemcpyAsync on non-blocking streams, and
 // cudaEvent completion. Compiled only when RELOC_ENABLE_CUDA; its tests run
 // locally on the desktop GPU, never in CI. CUDA handles are erased to void* so
 // this header pulls in no CUDA headers (keeps the MLIR-free include scan and
@@ -27,7 +27,8 @@ namespace reloc {
 class CudaBackend : public CopyBackend {
 public:
   /// `device` < 0 uses the current device at construction and pins it.
-  explicit CudaBackend(int numStreams = 2, int device = -1);
+  explicit CudaBackend(int numStreams = 2, int device = -1,
+                       bool pinnedStaging = true);
   ~CudaBackend() override;
 
   CudaBackend(const CudaBackend &) = delete;
@@ -82,6 +83,7 @@ private:
   uint64_t nextEvent_ = 1;
   int device_ = -1;
   std::string error_;
+  bool pinnedStaging_ = true;
 };
 
 /// Resolve the CUDA device that owns `pointer` (cudaPointerGetAttributes).

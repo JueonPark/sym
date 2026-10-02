@@ -218,8 +218,9 @@ def dequantize_matrix_recipe(dequantize_recipe):
 
 
 @pytest.mark.gpu
+@pytest.mark.parametrize('pinning', ['auto', 'pinned', 'pageable'])
 def test_typed_resources_refresh_inputs_and_parameters_and_bound_retention(
-        compiler, dequantize_matrix_recipe, cuda_device):
+        compiler, dequantize_matrix_recipe, cuda_device, pinning):
     import weakref
     from reloc_torch import TransferResources
 
@@ -232,7 +233,7 @@ def test_typed_resources_refresh_inputs_and_parameters_and_bound_retention(
             request = api().prepare_typed_transfer(compiled, src, cuda_device,
                 parameters=params, implementation='cuda_dequant_relocate', threads=1)
             ref = weakref.ref(src)
-            result = api().execute_typed_transfer(request, resources=resources)
+            result = api().execute_typed_transfer(request, resources=resources, pinning=pinning)
             expected = src.t().contiguous().float() * scale
             assert torch.equal(result.tensor.cpu(), expected)
             retained.append((result.tensor, expected))
