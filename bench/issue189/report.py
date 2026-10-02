@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Build standalone HTML and exportable figures from recorded measurements."""
-import argparse, html, json, statistics
+import argparse, base64, html, json, statistics
 from pathlib import Path
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 p=argparse.ArgumentParser();p.add_argument('--results',type=Path,required=True);a=p.parse_args();root=a.results
 rows=json.loads((root/'matrix/summary.json').read_text())
@@ -34,7 +35,9 @@ for ex in examples:
 (root/'summary.json').write_text(json.dumps(summary,indent=2)+'\n')
 plt.rcParams.update({'font.size':11,'axes.spines.top':False,'axes.spines.right':False,'axes.titlesize':14,'figure.facecolor':'white'})
 colors=['#8995a5','#3d789f','#237c68','#bd6622']
+pdf=PdfPages(root/'figures.pdf')
 def save(fig,name):
+ pdf.savefig(fig,bbox_inches='tight')
  fig.savefig(root/(name+'.png'),dpi=175,bbox_inches='tight');fig.savefig(root/(name+'.svg'),bbox_inches='tight');plt.close(fig)
 fig,axes=plt.subplots(2,2,figsize=(12,8),layout='constrained')
 for ax,ex,name in zip(axes.flat,examples,names):
@@ -84,7 +87,7 @@ text='''<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewpor
 <table><thead><tr><th>Workload</th><th>Main pinned</th><th>Main pageable</th><th>Updated default calls</th><th>Updated + direct-call reuse</th><th>Torch</th></tr></thead><tbody>'''+''.join(trs)+'''</tbody></table>
 <p>“Default calls” uses unchanged PR #162 workload bodies. “Direct-call reuse” passes <code>resources=owner</code> to the weight fetcher's existing direct dispatch calls. DLRM/GNN already use frontend AUTO; their difference between those two columns is run variation. The GPU computations, shapes, precisions, wire bytes and correctness checks are unchanged.</p>
 <img src="comparison.svg" alt="Completed transfer totals by workload"><p><a href="comparison.png">Download PNG</a></p>
-<h2>Including first calls</h2><p>These totals include first-call graph compilation and setup whenever they occur inside the original transfer timer. For short workloads this dominates and substantially reduces the apparent speedup. None of these numbers include model compute.</p><table><thead><tr><th>Workload</th><th>Main pageable</th><th>Updated default</th><th>Updated + direct-call reuse</th><th>Torch</th></tr></thead><tbody>'''+'' .join(cold)+'''</tbody></table>
+<h2>Including first calls</h2><p>These totals include first-call graph compilation and setup whenever they occur inside the original transfer timer. For short workloads this dominates and substantially reduces the apparent speedup. None of these numbers include model compute.</p><table><thead><tr><th>Workload</th><th>Main pageable</th><th>Updated default</th><th>Updated + direct-call reuse</th><th>Torch</th></tr></thead><tbody>'''+''.join(cold)+'''</tbody></table>
 <h2>What changed</h2><ol>
 <li><b>CPU conversion:</b> eligible single-stage FP32→FP16 contiguous runs use Sym's existing SIMD converter. The outer layout traversal and pad semantics remain intact. Execution honors preparation/frontend thread settings. Other stage/layout combinations retain the scalar path.</li>
 <li><b>Dense uploads:</b> upload from the existing host allocation instead of copying through another Sym staging buffer. Completion and ownership protection are retained; CUDA may internally stage pageable inputs.</li>
@@ -99,5 +102,10 @@ text='''<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewpor
 <h2>Reproducibility and limits</h2><p>EPYC 7351, RTX 2080 Ti GPU 0, affinity 4–7 and 20–23, eight Torch threads, one interop thread, CUDA 12.6.3, Torch 2.14.0+cu126. Release builds, profiling disabled during timing. Variants run serially in shuffled order. The machine's clocks are not locked. Each workload retains its original Torch-first order and dynamic shapes; totals are not fixed-shape latency distributions. Raw per-transfer samples and per-run resource counters are included.</p>
 <p><a href="summary.json">Summary data</a> · <a href="pinning-sweep.json">Pinning samples</a> · <a href="environment.json">Environment and source hashes</a> · <a href="validation.json">Validation</a></p>
 </html>'''
+pdf.close()
+for name in ['comparison','ablations','pinning']:
+    encoded=base64.b64encode((root/(name+'.svg')).read_bytes()).decode('ascii')
+    text=text.replace('src="'+name+'.svg"','src="data:image/svg+xml;base64,'+encoded+'"')
+text=text.replace('<a href="summary.json">Summary data</a>', '<a href="figures.pdf">Charts PDF</a> · <a href="summary.json">Summary data</a>')
 (root/'report.html').write_text(text)
 print(json.dumps({e:{k:summary[e][k]['sym']['median'] for k in ['main_pageable','default','typed_reuse']} for e in examples},indent=2))
