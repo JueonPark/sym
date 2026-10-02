@@ -114,6 +114,9 @@ struct TransferOptions {
   bool hasCallerStream = false; // order after callerStream (may be 0 ==
                                 // the legacy default stream)
   const void *callerStream = nullptr;
+  // Typed dispatch only: an already-dense host buffer needs no layout gather.
+  // The blocking caller must retain it until completion is established.
+  bool directDenseUpload = true;
 };
 
 /// Execute a validated request through `backend` and block until this

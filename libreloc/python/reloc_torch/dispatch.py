@@ -205,19 +205,19 @@ def prepare_typed_transfer(
 
 
 def execute_typed_transfer(request, *, n_buffers=4, n_streams=2, gather_threads=None, gather_pool=None,
-                           resources=None):
+                           direct_dense_upload=True, resources=None):
     if not request._execution_lock.acquire(blocking=False):
         raise RuntimeError("typed transfer request is already executing")
     try:
         return _execute_typed_transfer(request, n_buffers=n_buffers, n_streams=n_streams,
             gather_threads=gather_threads, gather_pool=gather_pool,
-            resources=resources)
+            direct_dense_upload=direct_dense_upload, resources=resources)
     finally:
         request._execution_lock.release()
 
 
 def _execute_typed_transfer(request, *, n_buffers, n_streams, gather_threads,
-                            gather_pool, resources):
+                            gather_pool, direct_dense_upload, resources):
     """Allocate the destination, recheck, order after the caller stream, run
     exactly the prepared implementation and complete."""
     import torch
@@ -266,6 +266,7 @@ def _execute_typed_transfer(request, *, n_buffers, n_streams, gather_threads,
             n_streams=n_streams,
             gather_threads=gather_threads,
             gather_pool=gather_pool,
+            direct_dense_upload=direct_dense_upload,
             resources=native_resources, owners=(request.source, out),
         )
     except pyreloc.TransferError as error:

@@ -244,7 +244,10 @@ TransferOutcome Resources::execute(DispatchRequest &request, int device,
   if (!owners)
     return {
         fail("invalid_options", "typed execution needs strong buffer owners")};
-  unsigned threads = options.gather ? 1 : options.gatherThreads;
+  const bool gpuOnly = options.directDenseUpload &&
+                       (request.selected.id == kCudaDequantRelocate ||
+                        request.selected.id == kCudaRelocateF32);
+  unsigned threads = options.gather || gpuOnly ? 1 : options.gatherThreads;
   if (!threads)
     threads = std::max(1u, std::thread::hardware_concurrency());
   if (threads - 1 > impl_->maxWorkers || streams < 1 ||

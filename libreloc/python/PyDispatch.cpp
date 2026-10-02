@@ -138,6 +138,7 @@ py::dict
 executeDispatchPy(reloc::dispatch::DispatchRequest &request,
                   const py::object &callerStream, int nBuffers, int nStreams,
                   int gatherThreads, std::shared_ptr<reloc::GatherPool> pool,
+                  bool directDenseUpload,
                   std::shared_ptr<reloc::dispatch::Resources> resources,
                   const py::object &owners) {
   if (request.executing)
@@ -164,6 +165,7 @@ executeDispatchPy(reloc::dispatch::DispatchRequest &request,
     throw py::value_error("gather_pool is closed");
   reloc::TransferOptions options;
   options.nBuffers = nBuffers;
+  options.directDenseUpload = directDenseUpload;
   options.gatherThreads = static_cast<unsigned>(gatherThreads);
   options.gather = pool.get();
   if (!callerStream.is_none()) {
@@ -363,7 +365,8 @@ void registerDispatchBindings(py::module_ &m) {
         py::kw_only(), py::arg("caller_stream") = py::none(),
         py::arg("n_buffers") = 4, py::arg("n_streams") = 2,
         py::arg("gather_threads") = 1, py::arg("gather_pool") = nullptr,
-        py::arg("resources") = nullptr, py::arg("owners") = py::none(),
+        py::arg("direct_dense_upload") = true, py::arg("resources") = nullptr,
+        py::arg("owners") = py::none(),
         "Run the selected row and block until this request's work completed; "
         "returns the report with payload_bytes_transferred filled in. "
         "caller_stream orders every private stream after the caller's "

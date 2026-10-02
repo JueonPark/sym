@@ -218,3 +218,11 @@ allocation counts, retained bytes, hits, workers and streams. `clear()` and
 `close()` drain both resource families. Unknown completion quarantines scratch
 and tensor owners and permanently disables that typed owner; fork-inherited
 owners reject use before entering inherited locks or CUDA.
+
+Dense typed H2D buffers upload directly from their current host allocation. The
+blocking call keeps source/output owners alive through completion. This removes
+Sym's extra host memcpy; CUDA may still stage pageable memory internally.
+`direct_dense_upload=False` retains the staged path for controlled comparisons.
+Layout-only transpose/gather transfers retain the chunked CPU/PCIe pipeline.
+This change does not add CPU-stage/DMA overlap to the whole-buffer typed CPU
+reference path.
