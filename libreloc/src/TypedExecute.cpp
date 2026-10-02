@@ -1,4 +1,4 @@
-//===- TypedExecute.cpp - scalar reference execution of typed plans -------===//
+//===- TypedExecute.cpp - CPU reference execution of typed plans -------===//
 
 #include "reloc/TypedExecute.h"
 
@@ -142,6 +142,7 @@ struct WalkState {
   uint32_t widthFrom;
   uint32_t widthTo;
   std::vector<int64_t> lo; // pad lo per coalesced axis
+  bool narrowRun = false;
   std::atomic<bool> failed{false};
   std::mutex mutex;
   ExecutionError error;
@@ -202,6 +203,18 @@ void walk(WalkState &state, size_t depth, int64_t iBegin, int64_t iEnd,
   const BoundPlan &b = state.program.plan.layout;
   const size_t r = b.extents.size();
   if (depth == r - 1) {
+    if (state.narrowRun) {
+      const auto *src = state.src + (srcOff + iBegin) * sizeof(float);
+      auto *dst =
+          state.dst + (dstOff + iBegin + state.lo[depth]) * sizeof(uint16_t);
+      // Scalar bit loads also support unaligned raw views; retain that path.
+      if (reinterpret_cast<uintptr_t>(src) % alignof(float) == 0 &&
+          reinterpret_cast<uintptr_t>(dst) % alignof(uint16_t) == 0) {
+        quant::convertF32F16(reinterpret_cast<const float *>(src),
+                             reinterpret_cast<uint16_t *>(dst), iEnd - iBegin);
+        return;
+      }
+    }
     for (int64_t i = iBegin; i < iEnd; ++i) {
       if (state.failed.load(std::memory_order_relaxed))
         return;
@@ -454,6 +467,11 @@ std::optional<ExecutionError> executeHost(const Program &program, uint32_t from,
       state.range.needsCoordinates = true;
   for (const PadRegion &p : layout.padRegions)
     state.lo[p.axis] = p.lo;
+  state.narrowRun =
+      to == from + 1 &&
+      program.stages[from].transform == ValueTransformKind::Cast &&
+      isF32(program.stages[from].input) && isF16(program.stages[from].output) &&
+      layout.srcStrides.back() == 1 && layout.dstStrides.back() == 1;
 
   const int64_t outer = layout.extents.front();
   int64_t innerSpan = 0;

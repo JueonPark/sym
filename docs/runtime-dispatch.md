@@ -34,7 +34,7 @@ flows source scalar → stage 0 → … → stage S−1 → its destination cell
 per-channel stage selects its parameter with the channel map evaluated over
 the **logical result coordinates** (C2). Pads carry the original fill folded
 to whatever boundary they are observed at. `reloc::typed::executeHost`
-([TypedExecute.h](../libreloc/include/reloc/TypedExecute.h)) is the scalar
+([TypedExecute.h](../libreloc/include/reloc/TypedExecute.h)) is the CPU
 reference for the whole program and for any contiguous stage range
 `[from, to)`: it reads the dense source layout at boundary `from`, writes the
 dense padded result layout at boundary `to`, and refuses a cut where a pad
@@ -176,3 +176,12 @@ parameters 8; the D2H reference moves 64 bytes of source.
   runs every eligible H2D and D2H row on the GPU against the reference.
 - `libreloc/python/tests/test_typed_dispatch.py` (Torch-free, real exporter,
   NumPy oracle) and `torch_frontend/test_dispatch.py` (bridge; `gpu` rows).
+
+
+## Transfer overhead controls
+
+Eligible single-stage FP32 to FP16 conversions use the existing SIMD converter
+on contiguous innermost runs. The outer traversal still performs the layout
+change and padding; unaligned runs, strided innermost axes, and multiple stages
+keep the scalar path. `execute_typed_transfer` defaults to the thread count used
+at preparation. Frontend `transfer_options` are also passed to typed execution.

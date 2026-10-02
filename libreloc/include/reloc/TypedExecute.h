@@ -1,11 +1,13 @@
-//===- TypedExecute.h - scalar reference execution of typed plans -*- C++
+//===- TypedExecute.h - CPU reference execution of typed plans -*- C++
 //-*-===//
 //
 // R3 (issue #147), Task 1: the standalone CPU reference for C3's typed bound
 // plans. A Program is the checked, immutable form of a TypedBoundPlan: every
 // stage's C1 arithmetic with its parameters as host scalars (the reciprocal
 // of a quantize scale formed once, in binary32, from the declared scale),
-// plus the coordinate bookkeeping that per-channel stages need. executeHost
+// plus the coordinate bookkeeping that per-channel stages need. Qualified
+// contiguous f32->f16 cast runs use the existing SIMD converters; the scalar
+// walker remains the fallback for other layouts/stage ranges. executeHost
 // runs the layout and any contiguous range of stages on dense host buffers;
 // the same function is the forced `original_cpu` baseline and the CPU half
 // of every partitioned path in Dispatch.h. MLIR/Torch/GPU-free; no cost
