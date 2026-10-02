@@ -172,7 +172,8 @@ def test_large_fused_weights_do_not_pin_tiny_scale_upload(compiler, cuda_device)
             result = dispatch.execute_typed_transfer(request, resources=owner,
                                                      min_pinned_bytes=64 << 10)
             row, = request.staging
-            assert row["wire_bytes"] == 8
+            # Fused ABI broadcasts the scalar to one FP32 scale per input column.
+            assert row["wire_bytes"] == shape[1] * 4
             assert row["memory_kind"] == "pageable"
             assert row["reason"] == "below_threshold"
             assert row["reused"] == bool(i)
