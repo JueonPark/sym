@@ -1,0 +1,128 @@
+[
+  {
+    "example": "gnn",
+    "variant": "default",
+    "round": 0,
+    "torch": 9.963,
+    "sym": 21.287
+  },
+  {
+    "example": "gnn",
+    "variant": "cold_metadata",
+    "round": 0,
+    "torch": 9.544,
+    "sym": 21.713
+  },
+  {
+    "example": "gnn",
+    "variant": "typed_reuse",
+    "round": 0,
+    "torch": 9.738,
+    "sym": 21.468
+  },
+  {
+    "example": "moe",
+    "variant": "typed_reuse",
+    "round": 0,
+    "torch": 75.75,
+    "sym": 123.578
+  },
+  {
+    "example": "gnn",
+    "variant": "staged_pageable",
+    "round": 0,
+    "torch": 9.591,
+    "sym": 16.205
+  },
+  {
+    "example": "llm",
+    "variant": "typed_reuse",
+    "round": 0,
+    "torch": 185.231,
+    "sym": 355.23
+  },
+  {
+    "example": "moe",
+    "variant": "cold_metadata",
+    "round": 0,
+    "torch": 75.908,
+    "sym": 167.963
+  },
+  {
+    "example": "dlrm",
+    "variant": "cold_metadata",
+    "round": 0,
+    "torch": 6.477,
+    "sym": 8.38
+  },
+  {
+    "example": "llm",
+    "variant": "default",
+    "round": 0,
+    "torch": 183.202,
+    "sym": 457.207
+  },
+  {
+    "example": "llm",
+    "variant": "direct_pageable",
+    "round": 0,
+    "torch": 180.146,
+    "sym": 353.069
+  },
+  {
+    "example": "llm",
+    "variant": "staged_pageable",
+    "round": 0,
+    "torch": 186.377,
+    "sym": 435.256
+  },
+  {
+    "example": "gnn",
+    "variant": "direct_pageable",
+    "round": 0,
+    "torch": 9.602,
+    "sym": 13.777
+  },
+  {
+    "example": "llm",
+    "variant": "cold_metadata",
+    "round": 0,
+    "torch": 178.583,
+    "sym": 472.851
+  },
+  {
+    "example": "dlrm",
+    "variant": "default",
+    "round": 0,
+    "torch": 5.604,
+    "sym": 7.453
+  },
+  {
+    "example": "moe",
+    "variant": "staged_pageable",
+    "round": 0,
+    "torch": 75.437,
+    "sym": 163.853
+  },
+  {
+    "example": "dlrm",
+    "variant": "direct_pageable",
+    "round": 0,
+    "torch": 5.596,
+    "sym": 7.646
+  },
+  {
+    "example": "moe",
+    "variant": "default",
+    "round": 0,
+    "torch": 75.72,
+    "sym": 204.695
+  },
+  {
+    "example": "dlrm",
+    "variant": "typed_reuse",
+    "round": 0,
+    "torch": 5.56,
+    "sym": 7.306
+  }
+]

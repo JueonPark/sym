@@ -1,0 +1,289 @@
+{
+  "example": "dlrm_embeddings",
+  "devices": [
+    "cuda:0"
+  ],
+  "sizes": {
+    "embedding_dim": 64,
+    "tables": 26,
+    "rows": 100000,
+    "batches": [
+      2048,
+      2048,
+      1536,
+      512
+    ]
+  },
+  "checks": {
+    "pooled_embeddings_equal": {
+      "passed": 4,
+      "failed": 0
+    },
+    "predictions_equal": {
+      "passed": 4,
+      "failed": 0
+    },
+    "one_plan_for_every_batch_size": {
+      "passed": 1,
+      "failed": 0
+    },
+    "one_execution_per_batch": {
+      "passed": 1,
+      "failed": 0
+    },
+    "cpu_reference_row": {
+      "passed": 1,
+      "failed": 0
+    },
+    "observed_payload_matches_wire": {
+      "passed": 1,
+      "failed": 0
+    },
+    "no_fallbacks": {
+      "passed": 1,
+      "failed": 0
+    }
+  },
+  "counters": {
+    "dynamo_compiles": 1,
+    "plan_compiles": 1,
+    "symbol_binds": 0,
+    "runtime_executions": 4,
+    "typed_executions": 4,
+    "typed_payload_bytes": 20447232,
+    "fallbacks": {},
+    "exclusions": {}
+  },
+  "plan_compiles": 1,
+  "bytes": {
+    "pooled_embeddings": {
+      "transfers": 4,
+      "source": 40894464,
+      "wire": 20447232,
+      "destination": 20447232
+    }
+  },
+  "dispatches": {
+    "cpu_reference": 4
+  },
+  "timings_ms": {
+    "pooled_embeddings": {
+      "torch": {
+        "count": 4,
+        "first_call": 3.462,
+        "median": 2.075,
+        "total": 9.022
+      },
+      "sym": {
+        "count": 4,
+        "first_call": 250.475,
+        "median": 2.621,
+        "total": 257.781
+      }
+    }
+  },
+  "workload": {
+    "batch_sizes": [
+      2048,
+      2048,
+      1536,
+      512
+    ]
+  },
+  "notes": [
+    "Sym transposes and narrows on the CPU (cpu_reference is the only f32->f16 row), then copies float16",
+    "the PyTorch reference moves the same float16 bytes: the dtype choice halves the wire, not Sym",
+    "transfers are blocking; every Sym call includes per-call runtime setup",
+    "wire bytes follow from the recipe's dtype choice; equivalent PyTorch code moves the same bytes"
+  ],
+  "resource_snapshot_before_close": {
+    "contexts": 0,
+    "building": 0,
+    "leased": 0,
+    "idle": 0,
+    "retiring": 0,
+    "quarantined": 0,
+    "allocated_staging_bytes": 0,
+    "reserved_staging_bytes": 0,
+    "retained_allocated_bytes": 0,
+    "retained_reserved_bytes": 0,
+    "background_workers": 0,
+    "reserved_workers": 0,
+    "streams": 0,
+    "quarantine_bytes": 0,
+    "outstanding_events": 0,
+    "requests": 0,
+    "hits": 0,
+    "growths": 0,
+    "misses": 0,
+    "evictions": 0,
+    "ephemeral": 0,
+    "waits": 0,
+    "timeouts": 0,
+    "failures": 0,
+    "quarantines": 0,
+    "waiters": 0,
+    "staging_allocations": 0,
+    "staging_frees": 0,
+    "stream_creations": 0,
+    "stream_destructions": 0,
+    "worker_creations": 0,
+    "worker_joins": 0,
+    "event_creations": 0,
+    "event_retirements": 0,
+    "peak_live_staging_bytes": 0,
+    "peak_allocated_staging_bytes": 0,
+    "generation": 0,
+    "closed": false,
+    "process_valid": true,
+    "devices": [],
+    "typed": {
+      "requests": 4,
+      "hits": 3,
+      "context_creations": 1,
+      "device_allocations": 0,
+      "host_allocations": 1,
+      "frees": 0,
+      "retained_bytes": 6815744,
+      "device_bytes": 0,
+      "host_bytes": 6815744,
+      "background_workers": 7,
+      "streams": 2,
+      "closed": false,
+      "quarantined": false,
+      "process_valid": true
+    }
+  },
+  "candidate_options": {
+    "typed_reuse": true,
+    "pinning": null,
+    "staged_upload": false,
+    "cold_metadata": false
+  },
+  "direct_typed_resources": {
+    "requests": 0,
+    "hits": 0,
+    "context_creations": 0,
+    "device_allocations": 0,
+    "host_allocations": 0,
+    "frees": 0,
+    "retained_bytes": 0,
+    "device_bytes": 0,
+    "host_bytes": 0,
+    "background_workers": 0,
+    "streams": 0,
+    "closed": false,
+    "quarantined": false,
+    "process_valid": true
+  },
+  "raw_transfer_samples_ms": {
+    "pooled_embeddings": {
+      "torch": [
+        3.4621786326169968,
+        2.8231022879481316,
+        2.0751748234033585,
+        0.6615407764911652
+      ],
+      "sym": [
+        250.47548487782478,
+        2.8878943994641304,
+        2.6214569807052612,
+        1.7961543053388596
+      ]
+    }
+  },
+  "measurement": {
+    "policy": "default",
+    "torch_threads": 8,
+    "torch_interop_threads": 1,
+    "cpu_affinity": [
+      4,
+      5,
+      6,
+      7,
+      20,
+      21,
+      22,
+      23
+    ],
+    "torch": "2.14.0+cu126",
+    "python": "3.14.7 (main, Sep  1 2026, 14:18:09) [Clang 22.1.3 ]",
+    "timing_scope": "CPU wall time of transfer function through device completion; allocation, conversion, validation/binding and any first-call compile inside the function are included. Model computation, data preparation and byte-exact comparison are outside the transfer timer.",
+    "order": "Unchanged example: entire Torch pass precedes Sym pass; untimed Torch oracle checks follow each Sym transfer.",
+    "summary_rule": "Sum of all transfers after omitting the first call of each kind; this mixes changing shapes and is not a fixed-shape steady-state microbenchmark."
+  },
+  "backend_resources_after_close": [
+    {
+      "contexts": 0,
+      "building": 0,
+      "leased": 0,
+      "idle": 0,
+      "retiring": 0,
+      "quarantined": 0,
+      "allocated_staging_bytes": 0,
+      "reserved_staging_bytes": 0,
+      "retained_allocated_bytes": 0,
+      "retained_reserved_bytes": 0,
+      "background_workers": 0,
+      "reserved_workers": 0,
+      "streams": 0,
+      "quarantine_bytes": 0,
+      "outstanding_events": 0,
+      "requests": 0,
+      "hits": 0,
+      "growths": 0,
+      "misses": 0,
+      "evictions": 0,
+      "ephemeral": 0,
+      "waits": 0,
+      "timeouts": 0,
+      "failures": 0,
+      "quarantines": 0,
+      "waiters": 0,
+      "staging_allocations": 0,
+      "staging_frees": 0,
+      "stream_creations": 0,
+      "stream_destructions": 0,
+      "worker_creations": 0,
+      "worker_joins": 0,
+      "event_creations": 0,
+      "event_retirements": 0,
+      "peak_live_staging_bytes": 0,
+      "peak_allocated_staging_bytes": 0,
+      "generation": 1,
+      "closed": true,
+      "process_valid": true,
+      "devices": [],
+      "typed": {
+        "requests": 4,
+        "hits": 3,
+        "context_creations": 1,
+        "device_allocations": 0,
+        "host_allocations": 1,
+        "frees": 1,
+        "retained_bytes": 0,
+        "device_bytes": 0,
+        "host_bytes": 0,
+        "background_workers": 0,
+        "streams": 0,
+        "closed": true,
+        "quarantined": false,
+        "process_valid": true
+      }
+    }
+  ],
+  "ok": true,
+  "summary": {
+    "checks_passed": 7,
+    "checks_total": 7,
+    "plan_compiles": 1,
+    "sym_transfers": 4,
+    "wire_bytes": 20447232,
+    "destination_bytes": 20447232,
+    "fallbacks": 0,
+    "steady_transfer_ms": {
+      "torch": 5.56,
+      "sym": 7.306
+    }
+  }
+}

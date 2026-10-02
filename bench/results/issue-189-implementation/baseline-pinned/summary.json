@@ -1,0 +1,86 @@
+[
+  {
+    "example": "dlrm",
+    "variant": "default",
+    "round": 0,
+    "torch": 5.596,
+    "sym": 236.89
+  },
+  {
+    "example": "gnn",
+    "variant": "default",
+    "round": 0,
+    "torch": 9.306,
+    "sym": 539.627
+  },
+  {
+    "example": "llm",
+    "variant": "default",
+    "round": 0,
+    "torch": 185.164,
+    "sym": 5081.882
+  },
+  {
+    "example": "moe",
+    "variant": "default",
+    "round": 0,
+    "torch": 75.443,
+    "sym": 2296.883
+  },
+  {
+    "example": "llm",
+    "variant": "default",
+    "round": 1,
+    "torch": 183.485,
+    "sym": 5053.532
+  },
+  {
+    "example": "gnn",
+    "variant": "default",
+    "round": 1,
+    "torch": 9.611,
+    "sym": 537.744
+  },
+  {
+    "example": "moe",
+    "variant": "default",
+    "round": 1,
+    "torch": 75.645,
+    "sym": 2297.037
+  },
+  {
+    "example": "dlrm",
+    "variant": "default",
+    "round": 1,
+    "torch": 5.548,
+    "sym": 226.231
+  },
+  {
+    "example": "dlrm",
+    "variant": "default",
+    "round": 2,
+    "torch": 6.51,
+    "sym": 226.573
+  },
+  {
+    "example": "llm",
+    "variant": "default",
+    "round": 2,
+    "torch": 184.971,
+    "sym": 5055.752
+  },
+  {
+    "example": "moe",
+    "variant": "default",
+    "round": 2,
+    "torch": 75.653,
+    "sym": 2298.377
+  },
+  {
+    "example": "gnn",
+    "variant": "default",
+    "round": 2,
+    "torch": 9.318,
+    "sym": 532.228
+  }
+]

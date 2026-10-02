@@ -1,0 +1,9 @@
+gnn_minibatch: PASS (8/8 checks)
+  devices: cuda:0; sizes: {'features': 128, 'nodes': 500000, 'avg_degree': 15, 'seeds': 1024, 'fanouts': [10, 5], 'batches': 5}
+  sym transfers: 5; plan compiles: 1; typed dispatch rows: cpu_reference=5; fallbacks/exclusions: 0
+  node_features: 5 Sym transfers moved 43.54 MiB over the link for 43.54 MiB of destination tensors (sources 87.08 MiB)
+  node_features median per transfer: sym 132.93 ms / torch 2.23 ms (descriptive only)
+  note: sampling, the feature gather and the index tensors' moves are PyTorch; Sym moves the feature block
+  note: the PyTorch reference moves the same float16 bytes: the dtype choice halves the wire, not Sym
+  note: transfers are blocking; every Sym call includes per-call runtime setup
+  note: wire bytes follow from the recipe's dtype choice; equivalent PyTorch code moves the same bytes

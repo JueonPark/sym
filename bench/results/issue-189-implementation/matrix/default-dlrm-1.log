@@ -1,0 +1,9 @@
+dlrm_embeddings: PASS (7/7 checks)
+  devices: cuda:0; sizes: {'embedding_dim': 64, 'tables': 26, 'rows': 100000, 'batches': [2048, 2048, 1536, 512]}
+  sym transfers: 4; plan compiles: 1; typed dispatch rows: cpu_reference=4; fallbacks/exclusions: 0
+  pooled_embeddings: 4 Sym transfers moved 19.50 MiB over the link for 19.50 MiB of destination tensors (sources 39.00 MiB)
+  pooled_embeddings median per transfer: sym 2.68 ms / torch 2.06 ms (descriptive only)
+  note: Sym transposes and narrows on the CPU (cpu_reference is the only f32->f16 row), then copies float16
+  note: the PyTorch reference moves the same float16 bytes: the dtype choice halves the wire, not Sym
+  note: transfers are blocking; every Sym call includes per-call runtime setup
+  note: wire bytes follow from the recipe's dtype choice; equivalent PyTorch code moves the same bytes

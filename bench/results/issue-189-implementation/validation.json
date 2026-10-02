@@ -1,0 +1,27 @@
+{
+  "native": {
+    "passed": 317,
+    "skipped": 2,
+    "log": "native-tests.txt"
+  },
+  "python": {
+    "passed": 875,
+    "skipped": 4,
+    "log": "python-tests.txt"
+  },
+  "cuda_fault_modes": [
+    "event failure with completed quiescence releases owners",
+    "unknown quiescence quarantines owners and disables reuse"
+  ],
+  "multi_device": "cuda:0 -> cuda:1 -> cuda:0, caller current device restored",
+  "mlir_free": true,
+  "cpu_only_resources_syntax_check": true,
+  "full_workload_runs": 84,
+  "all_workload_checks_passed": true,
+  "check_observations": 14532,
+  "fallbacks": 0,
+  "pinning_sweeps": {
+    "h2d": true,
+    "d2h": true
+  }
+}
