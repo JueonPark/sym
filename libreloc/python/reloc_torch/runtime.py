@@ -415,7 +415,7 @@ class TransportAdapter:
                 self._resources = TransferResources()
             resources = self._resources
         if typed:
-            result = self._dispatch().execute_typed_transfer(call.request)
+            result = self._dispatch().execute_typed_transfer(call.request, **self._transfer_options)
             call.report = result.report
             return result.tensor
         return self._module.execute_transfer(call.request, resources=resources, **self._transfer_options)

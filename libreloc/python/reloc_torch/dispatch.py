@@ -202,10 +202,13 @@ def prepare_typed_transfer(
     )
 
 
-def execute_typed_transfer(request, *, n_buffers=4, n_streams=2, gather_threads=1, gather_pool=None):
+def execute_typed_transfer(request, *, n_buffers=4, n_streams=2, gather_threads=None, gather_pool=None):
     """Allocate the destination, recheck, order after the caller stream, run
     exactly the prepared implementation and complete."""
     import torch
+
+    if gather_threads is None:
+        gather_threads = request.threads
 
     if request.consumed:
         raise RuntimeError("typed transfer request was already executed")
