@@ -9,6 +9,7 @@
 
 #include "TransferTestSupport.h"
 #include "reloc/Execute.h"
+#include "../src/Transpose.h"
 #include "gtest/gtest.h"
 
 #include <algorithm>
@@ -111,6 +112,41 @@ TEST(StackedGather, SixteenInputsWithOddExtents) {
   // stack(16 x [7, 3], 1): logical [16, 7, 3] -> [7, 16, 3].
   expectAllRanges(transfer_test::layout({7, 16, 3}, {3, 21, 1}, {48, 3, 1}, 4),
                   16, 21);
+}
+
+// stack(N x [Z], last dim) of 4-byte elements: the [N, Z] -> [Z, N] transpose
+// the tiled kernel serves, one source row per input.
+BoundPlan lastDimStack(int64_t count, int64_t segment) {
+  return transfer_test::layout({segment, count}, {1, segment}, {count, 1}, 4);
+}
+
+TEST(StackedGather, LastDimFourByteStacksTakeTheTiledPath) {
+  for (int64_t count : {1, 3, 8, 9, 16})
+    for (int64_t segment : {1, 7, 64, 100}) {
+      BoundPlan b = lastDimStack(count, segment);
+      Inputs in(count, segment, 4);
+      std::vector<uint8_t> probe(static_cast<size_t>(b.totalBytes), 0xCD);
+      EXPECT_TRUE(reloc::detail::tryGatherTranspose32Stacked(
+          b, in.source(segment), probe.data(), 0, b.extents[0]))
+          << count << " x " << segment;
+      expectAllRanges(b, count, segment);
+    }
+}
+
+TEST(StackedGather, TiledPathRejectsPlansItCannotServe) {
+  Inputs in(3, 8, 4);
+  std::vector<uint8_t> dst(256, 0xCD);
+  const std::vector<uint8_t> untouched(dst);
+  BoundPlan narrow = transfer_test::layout({8, 3}, {1, 8}, {3, 1}, 2);
+  BoundPlan padded = transfer_test::layout({8, 3}, {1, 8}, {4, 1}, 4,
+                                           {PadRegion{1, 0, 1, 0}});
+  BoundPlan partial =
+      transfer_test::layout({4, 6}, {1, 4}, {6, 1}, 4); // rows of 4, inputs of 8
+  for (const BoundPlan *b : {&narrow, &padded, &partial}) {
+    EXPECT_FALSE(reloc::detail::tryGatherTranspose32Stacked(
+        *b, in.source(8), dst.data(), 0, b->extents[0]));
+    EXPECT_EQ(dst, untouched);
+  }
 }
 
 } // namespace

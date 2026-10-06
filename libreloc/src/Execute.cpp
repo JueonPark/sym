@@ -198,6 +198,9 @@ void gatherChunk(const BoundPlan &bound, const StackedSource &source,
   assert(r >= 1 && "bound plan has no axes");
   assert(source.count >= 1 && source.segmentElements >= 1 &&
          "stacked source has no inputs");
+  if (detail::tryGatherTranspose32Stacked(bound, source, dst, outerBegin,
+                                          outerEnd))
+    return;
   std::vector<int64_t> lo(r, 0);
   for (const PadRegion &p : bound.padRegions)
     lo[p.axis] = p.lo;

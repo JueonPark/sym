@@ -4,6 +4,7 @@
 
 #include "reloc/Bind.h"
 #include "reloc/CopyRun.h"
+#include "reloc/Execute.h"
 
 #include <algorithm>
 #include <cstring>
@@ -23,15 +24,33 @@ namespace {
 constexpr int64_t kBlock = 32;
 constexpr int64_t kBytes = 4;
 
+// Where source row c (destination column c) of a transpose window starts:
+// one buffer with a fixed row pitch, or one pointer per row (the inputs of a
+// last-dim torch.stack).
+struct StridedRows {
+  const uint8_t *src;
+  int64_t stride; // elements between consecutive source rows
+  const uint8_t *operator()(int64_t c) const {
+    return src + c * stride * kBytes;
+  }
+};
+
+struct TableRows {
+  const uint8_t *const *rows;
+  int64_t offset; // bytes from each row's element 0 to this window
+  const uint8_t *operator()(int64_t c) const { return rows[c] + offset; }
+};
+
 #ifdef RELOC_TRANSPOSE_AVX2
 constexpr int64_t kTile = 8;
+template <class Rows>
 __attribute__((target("avx2"), always_inline)) inline void
-transpose8x8(const uint8_t *src, uint8_t *dst, int64_t srcStride,
+transpose8x8(const Rows &rowAt, int64_t c, int64_t r, uint8_t *dst,
              int64_t dstStride) {
   __m256i input[8], pairs[8], quads[8];
   for (int i = 0; i < 8; ++i)
     input[i] = _mm256_loadu_si256(
-        reinterpret_cast<const __m256i *>(src + i * srcStride * kBytes));
+        reinterpret_cast<const __m256i *>(rowAt(c + i) + r * kBytes));
   for (int i = 0; i < 8; i += 2) {
     pairs[i] = _mm256_unpacklo_epi32(input[i], input[i + 1]);
     pairs[i + 1] = _mm256_unpackhi_epi32(input[i], input[i + 1]);
@@ -52,10 +71,10 @@ transpose8x8(const uint8_t *src, uint8_t *dst, int64_t srcStride,
   }
 }
 
-__attribute__((target("avx2"))) void transpose32Avx2(const uint8_t *src,
-                                                     uint8_t *dst, int64_t rows,
-                                                     int64_t columns,
-                                                     int64_t srcStride) {
+template <class Rows>
+__attribute__((target("avx2"))) void
+transpose32Avx2(const Rows &rowAt, uint8_t *dst, int64_t rows,
+                int64_t columns) {
   for (int64_t rb = 0; rb < rows; rb += kBlock) {
     const int64_t re = rb + std::min(kBlock, rows - rb);
     for (int64_t cb = 0; cb < columns; cb += kBlock) {
@@ -64,28 +83,26 @@ __attribute__((target("avx2"))) void transpose32Avx2(const uint8_t *src,
       for (; re - r >= kTile; r += kTile) {
         int64_t c = cb;
         for (; ce - c >= kTile; c += kTile)
-          transpose8x8(src + (c * srcStride + r) * kBytes,
-                       dst + (r * columns + c) * kBytes, srcStride, columns);
+          transpose8x8(rowAt, c, r, dst + (r * columns + c) * kBytes, columns);
         // Column tail: a full set of destination rows, fewer than 8 columns.
         for (; c < ce; ++c)
           for (int64_t rr = r; rr < r + kTile; ++rr)
             std::memcpy(dst + (rr * columns + c) * kBytes,
-                        src + (c * srcStride + rr) * kBytes, kBytes);
+                        rowAt(c) + rr * kBytes, kBytes);
       }
       // Row tail, including worker/chunk boundaries inside a register tile.
       for (; r < re; ++r)
         for (int64_t c = cb; c < ce; ++c)
-          std::memcpy(dst + (r * columns + c) * kBytes,
-                      src + (c * srcStride + r) * kBytes, kBytes);
+          std::memcpy(dst + (r * columns + c) * kBytes, rowAt(c) + r * kBytes,
+                      kBytes);
     }
   }
 }
 #endif
 
-} // namespace
-
-void transpose32Scalar(const uint8_t *src, uint8_t *dst, int64_t rows,
-                       int64_t columns, int64_t srcStride) {
+template <class Rows>
+void transpose32ScalarRows(const Rows &rowAt, uint8_t *dst, int64_t rows,
+                           int64_t columns) {
   for (int64_t rb = 0; rb < rows; rb += kBlock) {
     const int64_t re = rb + std::min(kBlock, rows - rb);
     for (int64_t cb = 0; cb < columns; cb += kBlock) {
@@ -94,10 +111,17 @@ void transpose32Scalar(const uint8_t *src, uint8_t *dst, int64_t rows,
         for (int64_t c = cb; c < ce; ++c)
           // Constant width folds to an unaligned load/store without a tiny
           // runtime-sized memcpy call, and preserves every bit of any dtype.
-          std::memcpy(dst + (r * columns + c) * kBytes,
-                      src + (c * srcStride + r) * kBytes, kBytes);
+          std::memcpy(dst + (r * columns + c) * kBytes, rowAt(c) + r * kBytes,
+                      kBytes);
     }
   }
+}
+
+} // namespace
+
+void transpose32Scalar(const uint8_t *src, uint8_t *dst, int64_t rows,
+                       int64_t columns, int64_t srcStride) {
+  transpose32ScalarRows(StridedRows{src, srcStride}, dst, rows, columns);
 }
 
 bool tryGatherTranspose32(const BoundPlan &bound, const uint8_t *src,
@@ -127,11 +151,47 @@ bool tryGatherTranspose32(const BoundPlan &bound, const uint8_t *src,
   }
 #ifdef RELOC_TRANSPOSE_AVX2
   if (copyRunAvx2Available()) {
-    transpose32Avx2(src, dst, rows, columns, bound.srcStrides[1]);
+    transpose32Avx2(StridedRows{src, bound.srcStrides[1]}, dst, rows, columns);
     return true;
   }
 #endif
-  transpose32Scalar(src, dst, rows, columns, bound.srcStrides[1]);
+  transpose32ScalarRows(StridedRows{src, bound.srcStrides[1]}, dst, rows,
+                        columns);
+  return true;
+}
+
+bool tryGatherTranspose32Stacked(const BoundPlan &bound,
+                                 const StackedSource &source, uint8_t *dst,
+                                 int64_t outerBegin, int64_t outerEnd) {
+  // Exactly the [N, Z] -> [Z, N] transpose of the logical source: each source
+  // row is one whole input, so the row table replaces the row pitch.
+  if (bound.typed || bound.elementSize != kBytes || !bound.padRegions.empty() ||
+      bound.extents.size() != 2 || bound.srcStrides.size() != 2 ||
+      bound.dstStrides.size() != 2 ||
+      bound.extents[0] != source.segmentElements ||
+      bound.extents[1] != source.count || bound.srcStrides[0] != 1 ||
+      bound.srcStrides[1] != source.segmentElements ||
+      bound.dstStrides[0] != bound.extents[1] || bound.dstStrides[1] != 1)
+    return false;
+  if (outerBegin >= outerEnd)
+    return true;
+  const int64_t rows = outerEnd - outerBegin;
+  const int64_t columns = bound.extents[1];
+  dst += outerBegin * columns * kBytes;
+  const TableRows rowAt{source.bases, outerBegin * kBytes};
+  // One input is one contiguous source row. (Unlike the strided kernel, Z == 1
+  // with several inputs is not contiguous: rows live in separate buffers.)
+  if (columns == 1) {
+    copyRun(dst, rowAt(0), static_cast<size_t>(rows * kBytes));
+    return true;
+  }
+#ifdef RELOC_TRANSPOSE_AVX2
+  if (copyRunAvx2Available()) {
+    transpose32Avx2(rowAt, dst, rows, columns);
+    return true;
+  }
+#endif
+  transpose32ScalarRows(rowAt, dst, rows, columns);
   return true;
 }
 
