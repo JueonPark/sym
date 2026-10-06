@@ -1,4 +1,6 @@
 """Torch-free stacked transfer bindings (torch.stack support)."""
+import weakref
+
 import numpy as np
 import pytest
 
@@ -61,3 +63,27 @@ def test_stacked_validation_errors_carry_stable_codes():
         pyreloc.validate_stacked_sources(bound, [], "h2d")
     with pytest.raises(pyreloc.TransferError, match="^direction_mismatch"):
         pyreloc.make_stacked_transfer(bound, views, target, "d2h")
+
+
+def test_stacked_cached_transfer_releases_owners_and_is_single_use():
+    bound = bound_golden("pad")
+    inputs, views, expected = split(bound, 5)
+    dst, target = destination(bound)
+    request = pyreloc.make_stacked_transfer(bound, views, target, "h2d")
+    references = [weakref.ref(part) for part in inputs]
+    with pyreloc.TransferResourceCache() as cache:
+        for owners in [None, (tuple(inputs),), (tuple(inputs), None), [tuple(inputs), dst]]:
+            with pytest.raises(ValueError, match="owners"):
+                pyreloc.execute_transfer(request, resources=cache, owners=owners)
+            assert not request.consumed
+        del owners
+        pyreloc.execute_transfer(request, resources=cache, owners=(tuple(inputs), dst),
+                                 n_buffers=2, gather_threads=2)
+        np.testing.assert_array_equal(dst, expected)
+        assert request.consumed
+        with pytest.raises(pyreloc.TransferError, match="^already_executed"):
+            pyreloc.execute_transfer(request, resources=cache, owners=(tuple(inputs), dst))
+        # Neither the cache nor the consumed request retains an input.
+        del inputs
+        assert all(ref() is None for ref in references)
+        assert cache.stats()['requests'] == 1
