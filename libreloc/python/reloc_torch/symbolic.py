@@ -179,6 +179,51 @@ def dense_strides(shape):
     return tuple(reversed(strides))
 
 
+def _monomials(value):
+    """``{factors: coefficient}`` polynomial of ``value``, distributing every
+    Mul over Add recursively (``factors`` is a repr-sorted tuple of atomic
+    terms: Symbol, or an opaque FloorDiv/Mod). Comparison-only: never used to
+    construct, store or re-emit an expression (see ``algebraic_equal``)."""
+    match expression(value):
+        case Const(number):
+            return {(): number}
+        case Symbol(_) as atom:
+            return {(atom,): 1}
+        case Add(lhs, rhs):
+            result = {}
+            for polynomial in (_monomials(lhs), _monomials(rhs)):
+                for factors, coefficient in polynomial.items():
+                    result[factors] = result.get(factors, 0) + coefficient
+            return result
+        case Mul(lhs, rhs):
+            result = {}
+            for left_factors, left_coefficient in _monomials(lhs).items():
+                for right_factors, right_coefficient in _monomials(rhs).items():
+                    factors = tuple(sorted((*left_factors, *right_factors), key=repr))
+                    coefficient = left_coefficient * right_coefficient
+                    result[factors] = result.get(factors, 0) + coefficient
+            return result
+        case (FloorDiv(_, _) | Mod(_, _)) as atom:
+            return {(atom,): 1}
+    raise UnsupportedSymbolicExpr('unknown expression')
+
+
+def algebraic_equal(a, b):
+    """True when ``a`` and ``b`` are the same polynomial once every Mul is
+    distributed over its Add operands (e.g. ``Mul(Add(Const(3), Symbol('s1')),
+    Const(2))`` and ``Add(Mul(Const(2), Symbol('s1')), Const(6))`` compare
+    equal here). SymPy distributes a number over an Add on construction, so a
+    stride read back from a real traced tensor already arrives expanded,
+    while ``dense_strides`` keeps its exact factored form; this gives callers
+    that must compare the two a way to do it without changing how any
+    expression is built, cached or serialized. Comparison only: the expanded
+    form is never constructed back into an ``Expr``, stored in a recipe, or
+    returned to a caller."""
+    def normalize(polynomial):
+        return {factors: coefficient for factors, coefficient in polynomial.items() if coefficient != 0}
+    return normalize(_monomials(a)) == normalize(_monomials(b))
+
+
 def infer_reshape(source_shape, target_shape):
     shape = tuple(expression(d) for d in target_shape)
     inferred = [i for i, d in enumerate(shape) if d == Const(-1)]

@@ -478,6 +478,40 @@ def test_symbolic_modulo_one_recipe_matches_compiler_normalization(compiler):
     np.testing.assert_array_equal(actual, np.arange(7, dtype=np.float32))
 
 
+def test_rank3_padded_dimension_keeps_factored_strides_and_round_trips(compiler):
+    """Pins a regression from a since-reverted commit (885d618): dense_strides()/emit_mlir() must keep the exact
+    factored Mul(Add(...), Const(...)) form for a rank-3 recipe whose padded
+    (symbolic) axis is multiplied by an outer Const axis. 885d618 made
+    dense_strides() (and so a fresh recomputation inside emit_mlir) return an
+    expanded polynomial instead, so a recipe's own (then-stale) stored
+    strides no longer matched structurally and CompiledRecipe.from_bytes of
+    an artifact saved before that change raised destination_layout. A live
+    round trip alone cannot tell "still factored" from "already
+    self-consistently expanded" (both sides would use today's dense_strides
+    either way), so this asserts the factored shape directly first."""
+    from reloc_torch import CompiledRecipe
+    from reloc_torch.mlir_emit import emit_mlir
+    from reloc_torch.recipe import Fill, Pad, Recipe, TensorSpec
+    from reloc_torch.symbolic import Add, Const, Mul, Symbol, dense_strides
+
+    source_shape = (Symbol("s0"), Const(4), Symbol("s1"))
+    destination_shape = (Symbol("s0"), Const(4), Add(Const(3), Symbol("s1")))
+    recipe = Recipe(
+        TensorSpec(source_shape, dense_strides(source_shape), Const(0), "float32"),
+        (Pad(2, Const(1), Const(2), Fill("float32", 0)),),
+        TensorSpec(destination_shape, dense_strides(destination_shape), Const(0), "float32"),
+        "h2d",
+    )
+    assert isinstance(recipe.destination.strides[0], Mul)
+    emit_mlir(recipe)  # must not raise UnsupportedSymbolicExpr('destination_layout')
+
+    restored = CompiledRecipe.from_bytes(compiler.compile(recipe).to_bytes())
+    assert restored.recipe == recipe
+    source = torch.arange(2 * 4 * 5, dtype=torch.float32).reshape(2, 4, 5)
+    actual, _ = _relocate(restored, source, (2, 4, 8))
+    np.testing.assert_array_equal(actual, np.pad(source.numpy(), ((0, 0), (0, 0), (1, 2))))
+
+
 def test_portable_artifact_reloads_and_executes_in_fresh_process(
     compiler, split_transpose_recipe, tmp_path
 ):

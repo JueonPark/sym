@@ -21,7 +21,7 @@ import struct
 from . import compat
 from .recipe import (TYPED_OPERATIONS, BindingParam, Cast, Dequantize, Fill, InlineParam, Pad, Recipe,
                      Reshape, TensorSpec, Transpose)
-from .symbolic import (Const, SymbolSource, UnsupportedSymbolicExpr, dense_strides,
+from .symbolic import (Const, SymbolSource, UnsupportedSymbolicExpr, algebraic_equal, dense_strides,
                        expression, infer_reshape, operation_shape, symbol_sources)
 
 
@@ -453,7 +453,25 @@ def _chain(src, context, members, operations, shape, stack_inputs=0):
     # an explicit bind_recipe guard, not a shape hint read here.
     actual = context.tensor_spec(compat.graph_value(members[-1]), require_dense=False, positive_shape=shape)
     _require(actual.shape == shape, 'unsupported_symbolic_expr')
-    _require(actual.strides == strides and actual.offset == offset, 'destination_layout')
+    if stack_inputs:
+        # Stack-scoped only: a stacked chain's extra Const axis
+        # can multiply a padded symbolic dimension into a compound stride, and
+        # SymPy distributes a number over an Add on construction, so the real
+        # traced ``actual.strides`` can arrive already expanded while ours
+        # (built through dense_strides) stays factored; algebraic_equal
+        # compares the two polynomials rather than their raw trees. The
+        # single-source path keeps its exact structural comparison below
+        # unconditionally, so existing (non-stack) import decisions do not
+        # change; a single-source false negative of the same kind is a
+        # separate follow-up.
+        matches = (
+            len(actual.strides) == len(strides)
+            and all(algebraic_equal(a, b) for a, b in zip(actual.strides, strides))
+            and algebraic_equal(actual.offset, offset)
+        )
+    else:
+        matches = actual.strides == strides and actual.offset == offset
+    _require(matches, 'destination_layout')
     _require(actual.dtype == current_dtype, 'typed_transform_unavailable')
     destination = TensorSpec(shape, strides, offset, current_dtype)
     if stack_inputs:

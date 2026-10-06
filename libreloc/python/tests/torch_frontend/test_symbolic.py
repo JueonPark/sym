@@ -93,6 +93,42 @@ def test_symbolic_conversion_structural_arithmetic_and_divisor_rejection():
         ctx.expression(n // (n + 1))
 
 
+def test_algebraic_equal_distributes_mul_over_add_both_operand_orders():
+    """Comparison-only polynomial equality: used solely by the stacked
+    destination check; dense_strides/add/mul never distribute."""
+    s = api()
+    three_plus_s1 = s.Add(s.Const(3), s.Symbol('s1'))
+    factored = s.Mul(three_plus_s1, s.Const(2))             # (3 + s1) * 2
+    factored_swapped = s.Mul(s.Const(2), three_plus_s1)     # 2 * (3 + s1)
+    expanded = s.Add(s.Mul(s.Const(2), s.Symbol('s1')), s.Const(6))  # 2*s1 + 6
+    # const x sum, both operand orders.
+    assert s.algebraic_equal(factored, expanded)
+    assert s.algebraic_equal(expanded, factored)
+    assert s.algebraic_equal(factored_swapped, expanded)
+
+    a_plus_1 = s.Add(s.Symbol('a'), s.Const(1))
+    b_plus_2 = s.Add(s.Symbol('b'), s.Const(2))
+    sum_times_sum = s.Mul(a_plus_1, b_plus_2)               # (a + 1) * (b + 2)
+    sum_times_sum_swapped = s.Mul(b_plus_2, a_plus_1)       # (b + 2) * (a + 1)
+    expanded_both = s.Add(                                  # a*b + 2*a + b + 2
+        s.Add(s.Add(s.Mul(s.Symbol('a'), s.Symbol('b')), s.Mul(s.Symbol('a'), s.Const(2))),
+              s.Mul(s.Const(1), s.Symbol('b'))),
+        s.Const(2),
+    )
+    # sum x sum, both operand orders.
+    assert s.algebraic_equal(sum_times_sum, expanded_both)
+    assert s.algebraic_equal(sum_times_sum_swapped, expanded_both)
+
+    off_by_one = s.Add(s.Mul(s.Const(2), s.Symbol('s1')), s.Const(5))  # 2*s1 + 5
+    assert not s.algebraic_equal(factored, off_by_one)
+    different_symbol = s.Add(s.Mul(s.Const(2), s.Symbol('s2')), s.Const(6))  # 2*s2 + 6
+    assert not s.algebraic_equal(factored, different_symbol)
+    # Comparison-only: mul() itself still returns a factored Mul(Add, Const),
+    # never the expanded form.
+    result = s.mul(three_plus_s1, s.Const(2))
+    assert isinstance(result, s.Mul) and result != expanded
+
+
 def test_reshape_rejects_multiple_inference_and_dynamic_factor():
     s = api()
     for target in ((-1, -1), (-1, s.Symbol('s1')), (0, -1)):

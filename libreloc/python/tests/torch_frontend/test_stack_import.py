@@ -190,6 +190,105 @@ def test_dynamo_torch_stack_call_is_canonicalized_and_imported():
     assert candidate.recipe.operations == (Transpose((1, 0, 2)),)
 
 
+def test_dynamo_padded_stack_chain_imports_as_a_stacked_candidate():
+    """Pins the exact chain the GPU acceptance test exercises
+    (torch.nn.functional.pad(torch.stack([a, b], 1), (1, 2)).to("cuda")); it must
+    import as one stacked candidate, not fall back via destination_layout. A
+    stacked chain's extra Const stack-count axis multiplies a padded
+    symbolic dimension's compound (Const + Symbol) extent into its
+    destination stride; SymPy's real traced value for that stride arrives
+    already distributed over the Add while dense_strides keeps ours
+    factored, so a stack-scoped algebraic comparison is required here."""
+    graphs = []
+
+    def record(gm, example_inputs):
+        graphs.append((gm, example_inputs))
+        return gm.forward
+
+    torch.compile(lambda a, b: torch.nn.functional.pad(torch.stack([a, b], 1), (1, 2)),
+                 backend=record, dynamic=True, fullgraph=True)(torch.ones(48, 80), torch.ones(48, 80))
+    gm, example_inputs = graphs[0]
+    stack = next(n for n in gm.graph.nodes if n.target is torch.stack)
+    output = next(n for n in gm.graph.nodes if n.op == "output")
+    with gm.graph.inserting_before(output):
+        tail = gm.graph.call_method("to", (output.args[0][0], "cuda"))
+    output.args = ((tail,),)
+    gm.recompile()
+    report = importer().import_graph(gm, example_inputs)
+    assert not report.exclusions
+    candidate, = report.candidates
+    assert candidate.source == stack.name
+    assert len(candidate.sources) == 2
+    assert candidate.recipe.stack_inputs == 2
+    assert candidate.recipe.direction == "h2d"
+
+
+def test_dynamo_closure_captured_dim_imports_with_the_right_move_axis_operation():
+    """Pins 196e29a: Dynamo's unspecialized-int tracing can lift a plain
+    closure-captured dim into a graph node (an `l_dim_` SymInt graph input)
+    even though torch.compile sees the same concrete value on every call --
+    exactly what happens when dim is an outer (e.g. parametrized test)
+    function's argument, as in test_stack_transfers_gpu.py. The importer
+    must resolve it to a constant and pick the matching move-axis
+    operation, not reject it as unsupported_symbolic_expr."""
+    def make_fn(dim):
+        def fn(x, y):
+            return torch.stack([x, y], dim)
+        return fn
+
+    graphs = []
+
+    def record(gm, example_inputs):
+        graphs.append((gm, example_inputs))
+        return gm.forward
+
+    torch.compile(make_fn(1), backend=record, dynamic=True, fullgraph=True)(torch.ones(4, 6), torch.ones(4, 6))
+    gm, example_inputs = graphs[0]
+    stack = next(n for n in gm.graph.nodes if n.target is torch.stack)
+    # Confirms this really exercises the Node-lifted dim 196e29a fixed (a
+    # closure read), not a plain literal embedded in the callee's bytecode.
+    assert hasattr(stack.args[1], "op")
+    output = next(n for n in gm.graph.nodes if n.op == "output")
+    with gm.graph.inserting_before(output):
+        tail = gm.graph.call_method("to", (output.args[0][0], "cuda"))
+    output.args = ((tail,),)
+    gm.recompile()
+    report = importer().import_graph(gm, example_inputs)
+    assert not report.exclusions
+    candidate, = report.candidates
+    assert candidate.recipe.stack_inputs == 2
+    assert candidate.recipe.operations == (Transpose((1, 0, 2)),)  # dim=1's move-axis permutation
+
+
+def test_dynamo_genuinely_dynamic_dim_is_excluded_as_unsupported_symbolic_expr():
+    """Pins 196e29a's boundary: a dim that is actually shape-dependent (not
+    merely unspecialized-but-constant) must still be rejected -- it cannot
+    fold to a plain int, so it can never select a concrete move-axis
+    permutation. The importer reports unsupported_symbolic_expr (the same
+    reason a non-constant dim already gave before 196e29a; that commit only
+    stopped rejecting a dim that folds to a constant)."""
+    def fn(x, y):
+        dim = x.shape[0] % 2  # a genuine Mod(Symbol, 2): never a Const
+        return torch.stack([x, y], dim)
+
+    graphs = []
+
+    def record(gm, example_inputs):
+        graphs.append((gm, example_inputs))
+        return gm.forward
+
+    torch.compile(fn, backend=record, dynamic=True, fullgraph=True)(torch.ones(4, 6), torch.ones(4, 6))
+    gm, example_inputs = graphs[0]
+    output = next(n for n in gm.graph.nodes if n.op == "output")
+    with gm.graph.inserting_before(output):
+        tail = gm.graph.call_method("to", (output.args[0][0], "cuda"))
+    output.args = ((tail,),)
+    gm.recompile()
+    report = importer().import_graph(gm, example_inputs)
+    assert not report.candidates
+    assert {e.reason for e in report.exclusions} == {"unsupported_symbolic_expr"}
+
+
 def test_copy_then_stack_stays_n_independent_identity_candidates():
     report = importer().import_graph(capture(lambda x, y: torch.stack([transfer(x), transfer(y)], 1)))
     assert len(report.candidates) == 2
