@@ -108,7 +108,7 @@ class RuntimeAdapter(Protocol):
 class ExecutionEntry:
     """A compiled recipe, its saved original region, adapter and diagnostics."""
 
-    def __init__(self, *, compiled, original, runtime, diagnostics, symbolic_bindings=(), extent_guards=(), closed_event=None):
+    def __init__(self, *, compiled, original, runtime, diagnostics, symbolic_bindings=(), extent_guards=(), closed_event=None, min_stack_bytes=0):
         self.compiled = compiled
         self.original = original
         self.runtime = runtime
@@ -119,6 +119,7 @@ class ExecutionEntry:
         self._closed = False
         self._closed_event = closed_event
         self.fallback_calls = 0
+        self.min_stack_bytes = int(min_stack_bytes)
         self._lock = threading.Lock()
 
     @property
@@ -158,6 +159,16 @@ class ExecutionEntry:
         return tuple(
             expression(expr).evaluate(bindings) for _, expr in self.symbolic_bindings
         )
+
+    @property
+    def stack_inputs(self):
+        return getattr(self.compiled.recipe, "stack_inputs", 0)
+
+    def fallback_stacked(self, sources, *symbols):
+        """Run the saved original region once over every stacked input."""
+        with self._lock:
+            self.fallback_calls += 1
+        return self.original(*sources, *self.scalar_arguments(symbols))
 
 
 def interception_suspended():
@@ -511,13 +522,14 @@ class TransportAdapter:
         return importlib.import_module(f"{__package__}.dispatch")
 
 
-def _derived_symbols(entry, src):
+def _derived_symbols(entry, src, axis_offset=0):
     values = []
     for name in entry.compiled.symbols:
         source = next((s for s in entry.compiled.symbol_sources if s.name == name), None)
-        if source is None or source.axis >= src.dim():
+        axis = None if source is None else source.axis - axis_offset
+        if axis is None or not 0 <= axis < src.dim():
             return None
-        values.append(int(src.shape[source.axis]))
+        values.append(int(src.shape[axis]))
     return values
 
 
@@ -622,6 +634,108 @@ def execute_or_fallback(entry, src, symbols, device, *, non_blocking=False, decl
         return verify_result(result, src, promised)
 
 
+def _verify_stacked(result, sources, promised):
+    import torch
+
+    if isinstance(result, torch.Tensor) and any(compat.tensors_alias(result, s) for s in sources[1:]):
+        raise RuntimeError("reloc_torch result must not alias its input")
+    return verify_result(result, sources[0], promised)
+
+
+def _fallback_stacked(entry, sources, symbols, reason, promised=None):
+    if symbols is None:
+        symbols = ()
+        if entry.symbolic_bindings:
+            # Logical axis k of the stacked source is input axis k - 1.
+            symbols = _derived_symbols(entry, sources[0], axis_offset=1)
+            if symbols is None:
+                raise RuntimeError(
+                    "cannot evaluate the original region's scalar placeholders for "
+                    f"stacked inputs of rank {sources[0].dim()} (recipe symbols {entry.compiled.symbols})"
+                )
+    entry.diagnostics.record_fallback(reason)
+    result = entry.fallback_stacked(sources, *symbols)
+    return result if promised is None else _verify_stacked(result, sources, promised)
+
+
+def execute_stacked_or_fallback(entry, sources, symbols, device, *, declared=None):
+    """The stacked twin of execute_or_fallback (torch.stack fused into an H2D
+    transfer). Every input passes the shared guards; equality of dtype,
+    device and shape, the logical binding, the size gate and the adapter
+    preflight all run before any allocation or launch, and every expected
+    rejection runs the original region exactly once."""
+    import torch
+
+    if entry.closed:
+        raise RuntimeError("execution entry is closed")
+    device = torch.device(device)
+    sources = tuple(sources)
+    count = entry.stack_inputs
+    if count < 1 or len(sources) != count:
+        raise RuntimeError(
+            f"expected {count} stacked sources for {entry.describe()}, got {len(sources)}"
+        )
+    with suspend_interception():
+        for src in sources:
+            reason = source_reason(src)
+            if reason is not None:
+                return _fallback_stacked(entry, sources, symbols, reason, declared)
+        first = sources[0]
+        for reason, differs in (
+            ("stack_dtype_mismatch", lambda s: s.dtype != first.dtype),
+            ("unsupported_device", lambda s: s.device != first.device),
+            ("stack_shape_mismatch", lambda s: s.shape != first.shape),
+        ):
+            if any(differs(s) for s in sources):
+                return _fallback_stacked(entry, sources, symbols, reason, declared)
+        try:
+            bindings = bind_stacked_symbols(entry.compiled, sources)
+            destination = destination_descriptor(entry.compiled, bindings, device)
+            for guard in entry.extent_guards:
+                if expression(guard).evaluate(bindings, checked=True) < 2:
+                    raise UnsupportedRecipe("singleton_extent", f"{guard} binds below two")
+        except UnsupportedRecipe as error:
+            return _fallback_stacked(entry, sources, symbols, error.reason, declared)
+        except (KeyError, GuardError) as error:
+            return _fallback_stacked(entry, sources, symbols, getattr(error, "reason", "missing_symbol"), declared)
+        promised = destination if declared is None else declared
+        if count * first.numel() * first.element_size() < entry.min_stack_bytes:
+            return _fallback_stacked(entry, sources, symbols, "below_stack_threshold", promised)
+        if symbols is not None:
+            expected = [bindings[name] for name in entry.compiled.symbols]
+            if [int(value) for value in symbols] != expected:
+                return _fallback_stacked(entry, sources, symbols, "symbol_mismatch", promised)
+        if declared is not None and (
+            tuple(declared.shape) != destination.shape or tuple(declared.strides) != destination.strides
+        ):
+            raise RuntimeError(
+                f"declared output metadata {tuple(declared.shape)}/{tuple(declared.strides)} "
+                f"does not match the compiled stacked descriptor {destination.shape}/{destination.strides}"
+            )
+        try:
+            with _counting_binds(entry.diagnostics):
+                call = entry.runtime.preflight_stacked(entry.compiled, sources, device)
+        except UnsupportedRecipe as error:
+            return _fallback_stacked(entry, sources, symbols, error.reason, promised)
+        if call.bindings != bindings or tuple(call.destination.shape) != destination.shape:
+            raise RuntimeError("runtime adapter disagreed with the frontend binding")
+        call.recheck()
+        call.consume()
+        entry.diagnostics.increment("runtime_executions")
+        entry.diagnostics.increment("stacked_executions")
+        try:
+            result = entry.runtime.execute(call)
+        except Exception as error:
+            raise ExecutionError(
+                f"reloc_torch stacked {entry.direction} execution failed for "
+                f"{entry.describe()}: {error}",
+                direction=entry.direction,
+                handle=entry.handle,
+            ) from error
+        entry.diagnostics.record_staging(getattr(call, "staging", ()))
+        return _verify_stacked(result, sources, promised)
+
+
 __all__ = (
     "ConcreteDescriptor",
     "ExecutionEntry",
@@ -634,6 +748,7 @@ __all__ = (
     "bind_symbols",
     "destination_descriptor",
     "execute_or_fallback",
+    "execute_stacked_or_fallback",
     "interception_suspended",
     "load_plan",
     "prepare_host_call",
