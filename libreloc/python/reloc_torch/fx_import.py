@@ -19,10 +19,10 @@ import math
 import struct
 
 from . import compat
-from .recipe import (BindingParam, Cast, Dequantize, Fill, InlineParam, Pad, Recipe, Reshape,
-                     TensorSpec, Transpose)
+from .recipe import (TYPED_OPERATIONS, BindingParam, Cast, Dequantize, Fill, InlineParam, Pad, Recipe,
+                     Reshape, TensorSpec, Transpose)
 from .symbolic import (Const, SymbolSource, UnsupportedSymbolicExpr, dense_strides,
-                       expression, infer_reshape, operation_shape)
+                       expression, infer_reshape, operation_shape, symbol_sources)
 
 
 @dataclass(frozen=True)
@@ -54,6 +54,9 @@ class Candidate:
     # recipe's runtime parameters, in the recipe's declaration order; the
     # original callable takes them after the scalar placeholders.
     parameters: tuple = ()
+    # torch.stack: the stack's list operands in order (a name repeats when an
+    # input does); the original callable takes one source per position.
+    sources: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -108,7 +111,7 @@ def normalize_graph(gm, example_inputs=None):
             # Captured constants already carry metadata; do not invoke getters.
             pass
         elif old.op in ('call_function', 'call_method'):
-            source_value = values.get(node.args[0]) if node.args else None
+            source_value = values.get(node.args[0]) if node.args and hasattr(node.args[0], 'op') else None
             try:
                 target, args, kwargs = compat.fx_canonical_call(node, source_value)
                 node.op, node.target, node.args, node.kwargs = 'call_function', target, args, kwargs
@@ -126,7 +129,8 @@ def normalize_graph(gm, example_inputs=None):
                 # unsupported call look like an unknown target.
                 reason = str(error)
                 node.meta['reloc_reason'] = reason if reason in {
-                    'unrecognized_fx_target', 'metadata_unavailable', 'unsupported_padding'
+                    'unrecognized_fx_target', 'metadata_unavailable', 'unsupported_padding',
+                    'stack_out_argument'
                 } else 'normalization_failed'
                 value = None
         if value is not None:
@@ -181,11 +185,11 @@ def _require(condition, reason):
         raise _Reject(reason)
 
 
-def _safety(nodes, root, members):
+def _safety(nodes, root, members, inputs=()):
     """Known aliases form a conservative closure, including external views.
     Parameter inputs need no entry here: a write to one between the root and
     the tail is an unknown side effect in the scan below."""
-    involved = {root, *members}
+    involved = {root, *inputs, *members}
     aliases = set(involved)
     edges = []
     for node in nodes:
@@ -292,11 +296,9 @@ def _dequantize(node, value, current_dtype, shape, context, parameters):
     return Dequantize('float32', scale, zero_point, axis, 'affine')
 
 
-def _recipe(root, members):
+def _admit_source(source):
+    """Per-tensor admission shared by a region root and every stack input."""
     import torch
-    from torch.fx import map_arg
-    source = compat.graph_value(root)
-    _require(compat.is_tensor(source), root.meta.get('reloc_reason', 'metadata_unavailable'))
     _require(compat.is_fake_tensor(source) or compat.is_plain_tensor_or_parameter(source), 'tensor_subclass')
     _require(source.layout == torch.strided and not source.is_quantized, 'unsupported_layout')
     # Gradient-requiring only while autograd could record. Dynamo guards the
@@ -305,12 +307,31 @@ def _recipe(root, members):
     _require(not source.requires_grad or not torch.is_grad_enabled(), 'requires_grad')
     _require(len(source.shape) > 0, 'rank_zero')
     _require(not any(type(d) is int and d == 0 for d in source.shape), 'empty_tensor')
-    context = compat.SymbolicContext.from_tensor(source)
+
+
+def _dense_source(context, source):
     src = context.tensor_spec(source, require_dense=False)
     _require(src.offset == Const(0) and src.strides == dense_strides(src.shape), 'source_layout')
     _require(src.dtype in {'float32', 'float16', 'int8'}, 'unsupported_dtype')
-    operations, shape, direction = [], src.shape, None
-    strides, offset = src.strides, src.offset
+    return src
+
+
+def _recipe(root, members):
+    source = compat.graph_value(root)
+    _require(compat.is_tensor(source), root.meta.get('reloc_reason', 'metadata_unavailable'))
+    _admit_source(source)
+    context = compat.SymbolicContext.from_tensor(source)
+    src = _dense_source(context, source)
+    return _chain(src, context, members, (), src.shape)
+
+
+def _chain(src, context, members, operations, shape, stack_inputs=0):
+    """Fold `members` after a dense source whose layout chain so far is
+    `operations`, producing `shape` (dense in memory: a stack materializes)."""
+    import torch
+    from torch.fx import map_arg
+    operations, direction = list(operations), None
+    strides, offset = dense_strides(shape), Const(0)
     current_dtype = src.dtype
     parameters = {}
     extent_guards = []
@@ -435,20 +456,97 @@ def _recipe(root, members):
     _require(actual.strides == strides and actual.offset == offset, 'destination_layout')
     _require(actual.dtype == current_dtype, 'typed_transform_unavailable')
     destination = TensorSpec(shape, strides, offset, current_dtype)
-    recipe = Recipe(src, tuple(operations), destination, direction)
+    if stack_inputs:
+        _require(direction == 'h2d', 'stack_direction_unsupported')
+        _require(not any(isinstance(op, TYPED_OPERATIONS) for op in operations), 'typed_transform_unavailable')
+    recipe = Recipe(src, tuple(operations), destination, direction, stack_inputs)
     ordered = tuple(parameters[binding.name] for binding in recipe.parameter_bindings)
     return recipe, context, tuple(dict.fromkeys(extent_guards)), ordered
 
 
-def _extract(gm, root, members, context, parameters):
+def _stack_elements(stack):
+    """The stack's list operands, each a graph input with tensor metadata."""
+    tensors = stack.args[0] if stack.args else ()
+    _require(isinstance(tensors, (list, tuple)) and len(tensors) > 0, 'stack_input_not_root')
+    for node in tensors:
+        _require(hasattr(node, 'op') and node.op in ('placeholder', 'get_attr'), 'stack_input_not_root')
+        _require(compat.is_tensor(compat.graph_value(node)), node.meta.get('reloc_reason', 'metadata_unavailable'))
+    return tuple(tensors)
+
+
+def _stacked_recipe(stack, members):
+    """Recipe over the logical [N, *S] source of torch.stack(xs, dim): the
+    stack is "move axis 0 to dim", followed by the region's own chain."""
+    inputs = _stack_elements(stack)
+    # The stack's own normalization failed (e.g. out=, or an operand without
+    # metadata): report its reason only after every operand proved to be a
+    # graph input, so `stack_input_not_root` wins for computed operands.
+    _require('reloc_reason' not in stack.meta, stack.meta.get('reloc_reason'))
+    values = [compat.graph_value(node) for node in inputs]
+    first = values[0]
+    _require(all(v.dtype == first.dtype for v in values), 'stack_dtype_mismatch')
+    _require(all(v.device == first.device for v in values), 'unsupported_device')
+    _require(first.device.type == 'cpu', 'stack_direction_unsupported')
+    for value in values:
+        _admit_source(value)
+    context = compat.SymbolicContext.from_tensor(first)
+    element = _dense_source(context, first)
+    for value in values[1:]:
+        try:
+            other = context.tensor_spec(value, require_dense=False)
+        except UnsupportedSymbolicExpr:
+            raise _Reject('stack_shape_mismatch') from None
+        _require(other.shape == element.shape, 'stack_shape_mismatch')
+        _require(other.offset == Const(0) and other.strides == element.strides, 'source_layout')
+    rank = len(element.shape)
+    # Bound by schema: aten.stack.default may carry dim as a keyword.
+    dim = _options(stack).get('dim', 0)
+    _require(type(dim) is int, 'unsupported_symbolic_expr')
+    _require(-(rank + 1) <= dim <= rank, 'unsupported_permutation')
+    dim %= rank + 1
+    count = len(inputs)
+    logical = (Const(count), *element.shape)
+    src = TensorSpec(logical, dense_strides(logical), Const(0), element.dtype)
+    operations, shape = [], logical
+    if dim:
+        move = Transpose(tuple(range(1, dim + 1)) + (0,) + tuple(range(dim + 1, rank + 1)))
+        operations.append(move)
+        shape = operation_shape(logical, move)
+    recipe, context, guards, ordered = _chain(src, context, members, operations, shape, stack_inputs=count)
+    return recipe, context, guards, ordered, inputs
+
+
+def _stacked_candidate(gm, nodes, originals, stack, members):
+    """One candidate for stack(xs, dim) -> chain -> transfer."""
+    recipe, context, extent_guards, _, inputs = _stacked_recipe(stack, members)
+    region = [stack, *members]
+    _safety(nodes, stack, region, inputs)
+    original, bindings = _extract(gm, originals[stack.name], [originals[n.name] for n in region], context, (),
+                                  inputs=[originals[n.name] for n in inputs])
+    return Candidate(stack.name, members[-1].name, tuple(n.name for n in region), recipe,
+                     symbol_sources(recipe.source.shape), bindings, original, extent_guards,
+                     compat.graph_value(members[-1]).device, (), tuple(n.name for n in inputs))
+
+
+def _extract(gm, root, members, context, parameters, inputs=()):
     """node_copy retains exact raw call targets, options and exception behavior.
 
-    The extracted callable takes the source, then every scalar placeholder in
-    graph order, then every runtime parameter in recipe declaration order.
+    The extracted callable takes the source (one per stacked position), then
+    every scalar placeholder in graph order, then every runtime parameter in
+    recipe declaration order.
     """
     from torch.fx import Graph, GraphModule
     graph = Graph()
-    mapping = {root: graph.placeholder('src')}
+    if inputs:
+        # torch.stack: one placeholder per list position (an input may
+        # repeat); the stack node is rebuilt over them below. A scalar node
+        # reading an input (its size) reads the input's first position.
+        positions = [graph.placeholder(f'src{i}') for i in range(len(inputs))]
+        mapping = {}
+        for node, position in zip(inputs, positions):
+            mapping.setdefault(node, position)
+    else:
+        mapping = {root: graph.placeholder('src')}
     parameter_set = set(parameters)
     external, dependencies = [], set()
     def visit(node):
@@ -477,7 +575,10 @@ def _extract(gm, root, members, context, parameters):
         mapping[node] = graph.placeholder(node.name)
     for node in gm.graph.nodes:
         if node in dependencies:
-            mapping[node] = graph.node_copy(node, lambda n: mapping[n])
+            if inputs and node is root:
+                mapping[node] = graph.call_function(node.target, (positions, *node.args[1:]), dict(node.kwargs))
+            else:
+                mapping[node] = graph.node_copy(node, lambda n: mapping[n])
     graph.output(mapping[members[-1]])
     return GraphModule(gm, graph), tuple(bindings)
 
@@ -524,6 +625,9 @@ def import_graph(gm, example_inputs=None):
         seen.update(n for n in members if _transfer(n))
         try:
             _require(root is not None, 'metadata_unavailable')
+            if compat.fx_kind(root) == 'stack':
+                candidates.append(_stacked_candidate(gm, nodes, originals, root, members))
+                continue
             _safety(nodes, root, members)
             recipe, context, extent_guards, parameters = _recipe(root, members)
             original, bindings = _extract(gm, originals[root.name], [originals[n.name] for n in members], context,

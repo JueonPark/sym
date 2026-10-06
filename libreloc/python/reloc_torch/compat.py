@@ -534,6 +534,7 @@ def fx_kind(node):
         aten._unsafe_view.default: 'reshape',
         aten.clone.default: 'materialize', aten.contiguous.default: 'materialize',
         aten.constant_pad_nd.default: 'pad', aten.sym_size.int: 'scalar',
+        aten.stack.default: 'stack', torch.stack: 'stack',
         torch.transpose: 'transpose', torch.permute: 'permute',
         torch.reshape: 'reshape', torch.clone: 'materialize',
         torch.nn.functional.pad: 'pad', torch._C._nn.pad: 'pad',
@@ -574,6 +575,18 @@ def fx_canonical_call(node, source_value):
     kind = fx_kind(node)
     if kind is None:
         raise ValueError('unrecognized_fx_target')
+    if kind == 'stack' and node.target is torch.stack:
+        # Dynamo records torch.stack(tensors, dim=0, *, out=None) verbatim. An
+        # out= buffer is a caller-visible write the fused region cannot make.
+        kwargs = dict(node.kwargs)
+        if kwargs.pop('out', None) is not None:
+            raise ValueError('stack_out_argument')
+        args = list(node.args)
+        tensors = args[0] if args else kwargs.pop('tensors', None)
+        dim = args[1] if len(args) > 1 else kwargs.pop('dim', 0)
+        if not isinstance(tensors, (list, tuple)) or not tensors or kwargs:
+            raise ValueError('unrecognized_fx_target')
+        return aten.stack.default, (list(tensors), dim), {}
     if node.target in (aten.t.default, torch.t) or (node.op == 'call_method' and node.target == 't'):
         # Tensor.t() is transpose(0, 1) for rank 2 (and rank 0/1 identity,
         # which the rank check in the recipe rejects conservatively).
