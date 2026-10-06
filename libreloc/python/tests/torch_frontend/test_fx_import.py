@@ -518,17 +518,18 @@ def _dynamo_capture_with_a_device_move(fn, *inputs):
     return gm, example_inputs
 
 
-def test_single_source_padded_middle_dimension_keeps_96bcb81_destination_layout_exclusion():
+def test_single_source_padded_middle_dimension_keeps_its_destination_layout_exclusion():
     """A single-source region's import decision must not change. x has
     shape (s0, 4, s1) with the middle axis forced static
     (mark_static) and the others dynamic, so padding the last (symbolic)
     axis produces a destination stride that multiplies a padded Add(Const,
     Symbol) by the outer Const(4) axis -- the same structural shape as the
-    stacked case, but for a plain (non-stacked) region. At 96bcb81 this was
+    stacked case, but for a plain (non-stacked) region. Such a region is
     excluded as destination_layout (values were never wrong, only the
-    import decision); 885d618 accidentally made it fuse instead by changing
-    mul() globally. The stack-scoped fix must leave this exact exclusion in
-    place -- fixing it is a separate, single-source follow-up."""
+    import decision); a former global Mul-over-Add distribution in mul()
+    made it fuse instead. The stack-scoped algebraic stride comparison must
+    leave this exact exclusion in place -- fixing it is a separate,
+    single-source follow-up."""
     x = torch.ones(6, 4, 8)
     torch._dynamo.mark_dynamic(x, 0)
     torch._dynamo.mark_static(x, 1)

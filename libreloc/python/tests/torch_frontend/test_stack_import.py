@@ -224,12 +224,13 @@ def test_dynamo_padded_stack_chain_imports_as_a_stacked_candidate():
 
 
 def test_dynamo_closure_captured_dim_imports_with_the_right_move_axis_operation():
-    """Pins 196e29a: Dynamo's unspecialized-int tracing can lift a plain
-    closure-captured dim into a graph node (an `l_dim_` SymInt graph input)
-    even though torch.compile sees the same concrete value on every call --
-    exactly what happens when dim is an outer (e.g. parametrized test)
-    function's argument, as in test_stack_transfers_gpu.py. The importer
-    must resolve it to a constant and pick the matching move-axis
+    """Dynamo's unspecialized-int tracing can lift a plain closure-captured
+    dim into a graph node (an `l_dim_` SymInt graph input) -- exactly what
+    happens when dim is an outer (e.g. parametrized test) function's
+    argument, as in test_stack_transfers_gpu.py. Dynamo specializes and
+    guards that int: the graph is reused only for the same dim, and another
+    dim recompiles (test_stack_transfers_gpu.py pins that). The importer
+    must resolve it to its constant and pick the matching move-axis
     operation, not reject it as unsupported_symbolic_expr."""
     def make_fn(dim):
         def fn(x, y):
@@ -245,8 +246,8 @@ def test_dynamo_closure_captured_dim_imports_with_the_right_move_axis_operation(
     torch.compile(make_fn(1), backend=record, dynamic=True, fullgraph=True)(torch.ones(4, 6), torch.ones(4, 6))
     gm, example_inputs = graphs[0]
     stack = next(n for n in gm.graph.nodes if n.target is torch.stack)
-    # Confirms this really exercises the Node-lifted dim 196e29a fixed (a
-    # closure read), not a plain literal embedded in the callee's bytecode.
+    # Confirms this really exercises a Node-lifted dim (a closure read), not
+    # a plain literal embedded in the callee's bytecode.
     assert hasattr(stack.args[1], "op")
     output = next(n for n in gm.graph.nodes if n.op == "output")
     with gm.graph.inserting_before(output):
@@ -261,12 +262,12 @@ def test_dynamo_closure_captured_dim_imports_with_the_right_move_axis_operation(
 
 
 def test_dynamo_genuinely_dynamic_dim_is_excluded_as_unsupported_symbolic_expr():
-    """Pins 196e29a's boundary: a dim that is actually shape-dependent (not
-    merely unspecialized-but-constant) must still be rejected -- it cannot
-    fold to a plain int, so it can never select a concrete move-axis
-    permutation. The importer reports unsupported_symbolic_expr (the same
-    reason a non-constant dim already gave before 196e29a; that commit only
-    stopped rejecting a dim that folds to a constant)."""
+    """The boundary of resolving a lifted dim: a dim that is actually
+    shape-dependent (not merely unspecialized but constant) must still be
+    rejected -- it cannot fold to a plain int, so it can never select a
+    concrete move-axis permutation. The importer reports
+    unsupported_symbolic_expr; only a dim that folds to a constant is
+    resolved."""
     def fn(x, y):
         dim = x.shape[0] % 2  # a genuine Mod(Symbol, 2): never a Const
         return torch.stack([x, y], dim)

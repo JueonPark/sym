@@ -479,16 +479,17 @@ def test_symbolic_modulo_one_recipe_matches_compiler_normalization(compiler):
 
 
 def test_rank3_padded_dimension_keeps_factored_strides_and_round_trips(compiler):
-    """Pins a regression from a since-reverted commit (885d618): dense_strides()/emit_mlir() must keep the exact
-    factored Mul(Add(...), Const(...)) form for a rank-3 recipe whose padded
-    (symbolic) axis is multiplied by an outer Const axis. 885d618 made
-    dense_strides() (and so a fresh recomputation inside emit_mlir) return an
-    expanded polynomial instead, so a recipe's own (then-stale) stored
-    strides no longer matched structurally and CompiledRecipe.from_bytes of
-    an artifact saved before that change raised destination_layout. A live
-    round trip alone cannot tell "still factored" from "already
-    self-consistently expanded" (both sides would use today's dense_strides
-    either way), so this asserts the factored shape directly first."""
+    """dense_strides()/emit_mlir() must keep the exact factored
+    Mul(Add(...), Const(...)) form for a rank-3 recipe whose padded
+    (symbolic) axis is multiplied by an outer Const axis. A former global
+    Mul-over-Add distribution made dense_strides() (and so a fresh
+    recomputation inside emit_mlir) return an expanded polynomial instead,
+    so a recipe's own stored, factored strides no longer matched
+    structurally and CompiledRecipe.from_bytes of an artifact saved with
+    factored strides raised destination_layout. A live round trip alone
+    cannot tell "still factored" from "already self-consistently expanded"
+    (both sides would use today's dense_strides either way), so this
+    asserts the factored shape directly first."""
     from reloc_torch import CompiledRecipe
     from reloc_torch.mlir_emit import emit_mlir
     from reloc_torch.recipe import Fill, Pad, Recipe, TensorSpec
