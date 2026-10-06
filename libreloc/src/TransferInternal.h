@@ -39,6 +39,8 @@ std::optional<TransferError> executePreparedTransfer(
     const TransferOptions &options, CopyBackend &backend,
     PinnedBufferPool &pool, GatherPool *gather, TransferCompletion &completion);
 
+// `src` is ignored when `stacked` is set: the gather then reads the inputs
+// through the stacked source's pointer table.
 std::optional<TransferError>
 executeH2DPrepared(const BoundPlan &bound, const void *src, void *dst,
                    CopyBackend &backend, PinnedBufferPool &pool,

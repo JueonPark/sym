@@ -355,7 +355,8 @@ void registerTransferBindings(py::module_ &m) {
   py::class_<PythonTransferRequest>(
       m, "TransferRequest",
       "A validated, single-use forward transfer owning copies of the bound "
-      "plan and both views.")
+      "plan, the destination view and either the source view or every "
+      "stacked source view; source is unused for stacked requests.")
       .def_property_readonly("direction",
                              [](const PythonTransferRequest &r) {
                                return directionName(r.native.direction);

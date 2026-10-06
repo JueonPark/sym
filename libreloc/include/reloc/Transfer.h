@@ -75,14 +75,17 @@ struct TransferOutcome {
   TransferCompletion completion = TransferCompletion::NotLaunched;
 };
 
-/// A validated request. Owns copies of the bound plan and both views for the
-/// whole operation; single-use.
+/// A validated request. Owns copies of the bound plan, the destination and
+/// either `source` or every `stackSources` view for the whole operation;
+/// `source` is unused for stacked requests. Single-use.
 struct TransferRequest {
   BoundPlan bound;
   BufferView source;
   BufferView destination;
   TransferDirection direction = TransferDirection::HostToDevice;
-  size_t sourceSpanBytes = 0;  // bytes the plan may read from src offset
+  // Bytes the plan may read from the src offset (the sum over stackSources
+  // for stacked requests).
+  size_t sourceSpanBytes = 0;
   size_t destinationBytes = 0; // == bound.totalBytes
   bool consumed = false;
 
