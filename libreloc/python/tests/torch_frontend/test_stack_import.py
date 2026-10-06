@@ -149,6 +149,24 @@ def test_keyword_dim_of_an_aten_stack_is_honored():
     assert candidate.recipe.operations == (Transpose((1, 0, 2)),)
 
 
+@pytest.mark.parametrize("stack", [torch.stack, torch.ops.aten.stack.default], ids=["torch", "aten"])
+def test_keyword_tensors_form_imports_and_rebuilds_over_its_own_placeholders(stack):
+    def fn(x, y):
+        return stack(tensors=[x, y], dim=1).to("cuda")
+
+    gm = torch.fx.symbolic_trace(fn)
+    users = [(n, tuple(n.users)) for n in gm.graph.nodes]
+    candidate, = importer().import_graph(gm, (torch.ones(2, 3), torch.ones(2, 3))).candidates
+    assert [(n, tuple(n.users)) for n in gm.graph.nodes] == users  # the caller's graph is unchanged
+    assert candidate.sources == ("x", "y")
+    assert candidate.recipe.operations == (Transpose((1, 0, 2)),)
+    original = candidate.original.graph
+    placeholders = [n for n in original.nodes if n.op == "placeholder"]
+    rebuilt = next(n for n in original.nodes if n.target is stack)
+    assert (rebuilt.args, dict(rebuilt.kwargs)) == ((), {"tensors": placeholders, "dim": 1})
+    assert all(i.graph is original for n in original.nodes for i in n.all_input_nodes)
+
+
 def test_dynamo_torch_stack_call_is_canonicalized_and_imported():
     graphs = []
 
@@ -176,3 +194,19 @@ def test_copy_then_stack_stays_n_independent_identity_candidates():
     report = importer().import_graph(capture(lambda x, y: torch.stack([transfer(x), transfer(y)], 1)))
     assert len(report.candidates) == 2
     assert all(not c.sources and c.recipe.stack_inputs == 0 for c in report.candidates)
+
+
+def test_a_pure_stack_inside_a_single_source_region_is_no_side_effect():
+    def fn(x, a, b):
+        t = x.t()
+        s = torch.stack([a, b])
+        return transfer(torch.ops.aten.clone.default(t, memory_format=torch.contiguous_format)), s
+
+    report = importer().import_graph(capture(fn, torch.ones(3, 4), torch.ones(2, 5), torch.ones(2, 5)))
+    assert not report.exclusions
+    candidate, = report.candidates
+    assert (candidate.source, candidate.sources) == ("x_1", ())
+    recipe = candidate.recipe
+    assert recipe.stack_inputs == 0 and recipe.direction == "h2d"
+    assert recipe.operations == (Transpose((1, 0)),)
+    assert recipe.destination.shape == (Symbol("s1"), Symbol("s0"))

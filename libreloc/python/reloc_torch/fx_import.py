@@ -466,7 +466,9 @@ def _chain(src, context, members, operations, shape, stack_inputs=0):
 
 def _stack_elements(stack):
     """The stack's list operands, each a graph input with tensor metadata."""
-    tensors = stack.args[0] if stack.args else ()
+    # Positional or `tensors=`. Read from the slot, not by schema: a stack
+    # whose normalization failed is still an uncanonical torch.stack call.
+    tensors = stack.args[0] if stack.args else stack.kwargs.get('tensors', ())
     _require(isinstance(tensors, (list, tuple)) and len(tensors) > 0, 'stack_input_not_root')
     for node in tensors:
         _require(hasattr(node, 'op') and node.op in ('placeholder', 'get_attr'), 'stack_input_not_root')
@@ -535,7 +537,7 @@ def _extract(gm, root, members, context, parameters, inputs=()):
     every scalar placeholder in graph order, then every runtime parameter in
     recipe declaration order.
     """
-    from torch.fx import Graph, GraphModule
+    from torch.fx import Graph, GraphModule, map_arg
     graph = Graph()
     if inputs:
         # torch.stack: one placeholder per list position (an input may
@@ -576,7 +578,16 @@ def _extract(gm, root, members, context, parameters, inputs=()):
     for node in gm.graph.nodes:
         if node in dependencies:
             if inputs and node is root:
-                mapping[node] = graph.call_function(node.target, (positions, *node.args[1:]), dict(node.kwargs))
+                # The positions take the list's own slot (args[0] or
+                # tensors=); every other argument is remapped, so no caller
+                # node enters the extracted graph or gains a user there.
+                rest = {k: v for k, v in node.kwargs.items() if k != 'tensors'}
+                args, kwargs = map_arg((node.args[1:], rest), lambda n: mapping[n])
+                if node.args:
+                    args = (positions, *args)
+                else:
+                    kwargs = {'tensors': positions, **kwargs}
+                mapping[node] = graph.call_function(node.target, args, kwargs)
             else:
                 mapping[node] = graph.node_copy(node, lambda n: mapping[n])
     graph.output(mapping[members[-1]])
