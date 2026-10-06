@@ -89,6 +89,64 @@ void scatterWalk(const BoundPlan &b, uint8_t *src, const uint8_t *dst,
                 dstOff + (i + lo[depth]) * b.dstStrides[depth]);
 }
 
+// Innermost run of a stacked gather. Logical source offsets srcOff + i * s for
+// i in [iBegin, iEnd) live in input (offset / Z) at element (offset % Z), with
+// Z = segmentElements. Offsets are non-negative (bind() rejects negative
+// strides), so truncating division is floor division here.
+void copyRunStacked1D(const BoundPlan &b, const StackedSource &s, uint8_t *dst,
+                      int64_t innerLo, int64_t srcOff, int64_t dstOff,
+                      int64_t iBegin, int64_t iEnd) {
+  const size_t d = b.extents.size() - 1;
+  const uint32_t es = b.elementSize;
+  const int64_t ss = b.srcStrides[d], ds = b.dstStrides[d];
+  const int64_t z = s.segmentElements;
+  if (iBegin >= iEnd)
+    return;
+  if (ss % z == 0) {
+    // Each step moves by whole inputs (the stacked axis is innermost) or not
+    // at all: one table lookup per element, one in-input offset throughout.
+    const int64_t first = srcOff + iBegin * ss;
+    const int64_t step = ss / z, local = first % z;
+    int64_t input = first / z;
+    for (int64_t i = iBegin; i < iEnd; ++i, input += step)
+      std::memcpy(dst + (dstOff + (i + innerLo) * ds) * es,
+                  s.bases[input] + local * es, es);
+    return;
+  }
+  // Otherwise split the run where it crosses from one input into the next;
+  // dim-0 stacks merge into one long contiguous run and take this path.
+  for (int64_t i = iBegin; i < iEnd;) {
+    const int64_t offset = srcOff + i * ss;
+    const int64_t local = offset % z;
+    const int64_t n = std::min(iEnd - i, (z - local + ss - 1) / ss);
+    const uint8_t *src = s.bases[offset / z] + local * es;
+    if (ss == 1 && ds == 1) {
+      copyRun(dst + (dstOff + i + innerLo) * es, src,
+              static_cast<size_t>(n) * es);
+    } else {
+      for (int64_t j = 0; j < n; ++j)
+        std::memcpy(dst + (dstOff + (i + j + innerLo) * ds) * es,
+                    src + j * ss * es, es);
+    }
+    i += n;
+  }
+}
+
+// Mirror of walk over a stacked source; only the innermost run differs.
+void walkStacked(const BoundPlan &b, const StackedSource &s, uint8_t *dst,
+                 const std::vector<int64_t> &lo, size_t depth, int64_t iBegin,
+                 int64_t iEnd, int64_t srcOff, int64_t dstOff) {
+  const size_t r = b.extents.size();
+  if (depth == r - 1) {
+    copyRunStacked1D(b, s, dst, lo[depth], srcOff, dstOff, iBegin, iEnd);
+    return;
+  }
+  for (int64_t i = iBegin; i < iEnd; ++i)
+    walkStacked(b, s, dst, lo, depth + 1, 0, b.extents[depth + 1],
+                srcOff + i * b.srcStrides[depth],
+                dstOff + (i + lo[depth]) * b.dstStrides[depth]);
+}
+
 } // namespace
 
 void fillDst(const BoundPlan &bound, void *dstBaseV) {
@@ -131,6 +189,20 @@ void gatherChunk(const BoundPlan &bound, const void *srcBaseV, void *dstBaseV,
   // handled by fillDst. walk ranges the top axis to the chunk.
   walk(bound, src, dst, lo, /*depth=*/0, outerBegin, outerEnd,
        /*srcOff=*/0, /*dstOff=*/0);
+}
+
+void gatherChunk(const BoundPlan &bound, const StackedSource &source,
+                 void *dstBaseV, int64_t outerBegin, int64_t outerEnd) {
+  auto *dst = static_cast<uint8_t *>(dstBaseV);
+  const size_t r = bound.extents.size();
+  assert(r >= 1 && "bound plan has no axes");
+  assert(source.count >= 1 && source.segmentElements >= 1 &&
+         "stacked source has no inputs");
+  std::vector<int64_t> lo(r, 0);
+  for (const PadRegion &p : bound.padRegions)
+    lo[p.axis] = p.lo;
+  walkStacked(bound, source, dst, lo, /*depth=*/0, outerBegin, outerEnd,
+              /*srcOff=*/0, /*dstOff=*/0);
 }
 
 void executeH2D(const BoundPlan &bound, const void *srcBase, void *dstBase) {

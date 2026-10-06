@@ -11,6 +11,7 @@ add_executable(libreloc-test
   TypedExecuteTest.cpp
   DispatchTest.cpp
   ExecuteTest.cpp
+  StackedGatherTest.cpp
   TransposeTest.cpp
   BackendTest.cpp
   CudaBackendTest.cpp
