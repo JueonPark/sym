@@ -71,14 +71,20 @@ class PreparedCall:
     # C4: the scalar-only R3 report the adapter attaches after a typed dispatch.
     report: object = None
     staging: tuple = ()
+    # torch.stack: every stacked input in order (``src`` is ``sources[0]``);
+    # empty for single-source calls.
+    sources: tuple = ()
     _snapshot: tuple = field(init=False, repr=False, compare=False)
     _consumed: bool = field(default=False, init=False, repr=False, compare=False)
 
+    def _inputs(self):
+        return self.sources or (self.src,)
+
     def __post_init__(self):
-        self._snapshot = _metadata_snapshot(self.src)
+        self._snapshot = tuple(_metadata_snapshot(tensor) for tensor in self._inputs())
 
     def recheck(self):
-        if _metadata_snapshot(self.src) != self._snapshot:
+        if tuple(_metadata_snapshot(tensor) for tensor in self._inputs()) != self._snapshot:
             raise RuntimeError(
                 "stale prepared call: source metadata changed after preflight"
             )
@@ -193,6 +199,15 @@ def bind_symbols(compiled, src):
         return dict(validated[3])
     try:
         return compiled.bind_values(src)
+    except GuardError as error:
+        raise UnsupportedRecipe(error.reason, str(error)) from error
+
+
+def bind_stacked_symbols(compiled, sources):
+    """Exact name-to-value map of a stacked recipe's logical [N, *S] source,
+    guarded across every input (count, dtype, shape, dense, zero offset)."""
+    try:
+        return compiled.bind_stacked_values(tuple(sources))
     except GuardError as error:
         raise UnsupportedRecipe(error.reason, str(error)) from error
 
@@ -321,6 +336,24 @@ def prepare_host_call(compiled, src, device, *, non_blocking=False):
     return PreparedCall(compiled, src, bindings, bound, destination, non_blocking)
 
 
+def prepare_stacked_host_call(compiled, sources, device, *, non_blocking=False):
+    """prepare_host_call for a stacked recipe: every input passes the shared
+    metadata guards before one logical binding. Allocates and launches nothing."""
+    import torch
+
+    if non_blocking:
+        raise UnsupportedRecipe("nonblocking_unavailable", "blocking transfers only")
+    sources = tuple(sources)
+    for src in sources:
+        reason = source_reason(src)
+        if reason is not None:
+            raise UnsupportedRecipe(reason, f"source tensor rejected: {reason}")
+    bindings = bind_stacked_symbols(compiled, sources)
+    bound = bind_plan(compiled, bindings)
+    destination = destination_descriptor(compiled, bindings, torch.device(device))
+    return PreparedCall(compiled, sources[0], bindings, bound, destination, non_blocking, sources=sources)
+
+
 class TransportAdapter:
     """Production bridge to R2's ``reloc_torch.transport`` (issue #146).
 
@@ -433,6 +466,28 @@ class TransportAdapter:
         return PreparedCall(
             compiled, src, dict(request.bindings), getattr(request, "bound", None),
             destination, non_blocking, request=request,
+        )
+
+    def preflight_stacked(self, compiled, sources, device, *, non_blocking=False):
+        """Stacked twin of preflight (torch.stack): one request over every input."""
+        self._require_open()
+        import torch
+
+        if not self.available:
+            raise UnsupportedRecipe("runtime_unavailable", self.unavailable_reason)
+        if getattr(compiled, "typed", False):
+            raise UnsupportedRecipe("typed_transform_unavailable", "stacked recipes are layout-only")
+        sources = tuple(sources)
+        request = self._module.prepare_stacked_transfer(compiled, sources, device, non_blocking=non_blocking)
+        destination = request.destination
+        if not isinstance(destination, ConcreteDescriptor):
+            destination = ConcreteDescriptor(
+                tuple(destination.shape), tuple(destination.strides),
+                compat.dtype_name(destination.dtype), torch.device(destination.device),
+            )
+        return PreparedCall(
+            compiled, sources[0], dict(request.bindings), getattr(request, "bound", None),
+            destination, non_blocking, request=request, sources=sources,
         )
 
     def execute(self, call):
@@ -575,12 +630,14 @@ __all__ = (
     "RuntimeAdapter",
     "TransportAdapter",
     "bind_plan",
+    "bind_stacked_symbols",
     "bind_symbols",
     "destination_descriptor",
     "execute_or_fallback",
     "interception_suspended",
     "load_plan",
     "prepare_host_call",
+    "prepare_stacked_host_call",
     "source_reason",
     "suspend_interception",
     "verify_result",
