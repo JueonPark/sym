@@ -130,6 +130,13 @@ TEST(StackedGather, LastDimFourByteStacksTakeTheTiledPath) {
           b, in.source(segment), probe.data(), 0, b.extents[0]))
           << count << " x " << segment;
       expectAllRanges(b, count, segment);
+      // Long windows that start inside the inputs, so whole register tiles
+      // run at a nonzero window offset into every input row.
+      const int64_t outer = b.extents[0];
+      if (outer > 3) {
+        expectSameAsConcatenated(b, count, segment, 3, outer);
+        expectSameAsConcatenated(b, count, segment, outer / 2, outer);
+      }
     }
 }
 
@@ -140,9 +147,13 @@ TEST(StackedGather, TiledPathRejectsPlansItCannotServe) {
   BoundPlan narrow = transfer_test::layout({8, 3}, {1, 8}, {3, 1}, 2);
   BoundPlan padded =
       transfer_test::layout({8, 3}, {1, 8}, {4, 1}, 4, {PadRegion{1, 0, 1, 0}});
+  // Only the pad clause rejects this one: a leading pad row keeps the
+  // unpadded row pitch but shifts every valid row (108 bytes).
+  BoundPlan leadingRow =
+      transfer_test::layout({8, 3}, {1, 8}, {3, 1}, 4, {PadRegion{0, 1, 0, 0}});
   BoundPlan partial = transfer_test::layout({4, 6}, {1, 4}, {6, 1},
                                             4); // rows of 4, inputs of 8
-  for (const BoundPlan *b : {&narrow, &padded, &partial}) {
+  for (const BoundPlan *b : {&narrow, &padded, &leadingRow, &partial}) {
     EXPECT_FALSE(reloc::detail::tryGatherTranspose32Stacked(
         *b, in.source(8), dst.data(), 0, b->extents[0]));
     EXPECT_EQ(dst, untouched);
@@ -150,12 +161,11 @@ TEST(StackedGather, TiledPathRejectsPlansItCannotServe) {
 }
 
 // The remaining tests drive the generic stacked walker (walkStacked /
-// copyRunStacked1D), not the tiled fast path above, through branches the
-// plans in Task 1's tests never reached.
+// copyRunStacked1D), not the tiled fast path above, through its less common
+// branches.
 
 TEST(StackedGather, LeadingInnerPadShiftsValidCells) {
-  // A leading pad on the innermost axis (inner lo = 1): every prior test's
-  // padded plan padded the outer axis or only the inner axis's hi side.
+  // A leading pad on the innermost axis (inner lo = 1).
   expectAllRanges(
       transfer_test::layout({3, 4}, {4, 1}, {7, 1}, 2, {PadRegion{1, 1, 2, 0}}),
       3, 4);
@@ -166,6 +176,13 @@ TEST(StackedGather, StridedInnerRunSplitsAcrossInputs) {
   // 1 < stride < Z, so a single run of 3 elements crosses from one input
   // into the next mid-run instead of landing on an input boundary.
   expectAllRanges(transfer_test::layout({4, 3}, {1, 4}, {3, 1}, 4), 2, 6);
+}
+
+TEST(StackedGather, PerElementStepSkipsWholeInputs) {
+  // stack(4 x [3], 0).reshape(2, 6).t(): the inner stride 6 = 2Z moves two
+  // whole inputs per element (copyRunStacked1D's per-element step of 2).
+  for (uint32_t width : {1u, 2u, 4u})
+    expectAllRanges(transfer_test::layout({6, 2}, {1, 6}, {2, 1}, width), 4, 3);
 }
 
 TEST(StackedGather, ZeroInnerStrideBroadcastsAcrossRow) {
@@ -188,10 +205,17 @@ TEST(StackedGather, HugeStrideOnUnitInnerAxisStaysInBounds) {
 TEST(StackedGather, PaddedLastDimStackSkipsTiledPath) {
   // The same shape as LastDimReadsOneElementPerInput, but 4-byte and padded:
   // the tiled fast path rejects any padded plan, so this exercises the
-  // generic per-element path (source stride == Z, a multi-element step)
-  // at the width the fast path would otherwise have claimed.
+  // generic per-element path, one input per step (source stride == Z), at
+  // the width the fast path would otherwise have claimed. Pads: trailing and
+  // leading on the stack axis, then one leading row.
   expectAllRanges(
       transfer_test::layout({8, 3}, {1, 8}, {4, 1}, 4, {PadRegion{1, 0, 1, 0}}),
+      3, 8);
+  expectAllRanges(
+      transfer_test::layout({8, 3}, {1, 8}, {4, 1}, 4, {PadRegion{1, 1, 0, 0}}),
+      3, 8);
+  expectAllRanges(
+      transfer_test::layout({8, 3}, {1, 8}, {3, 1}, 4, {PadRegion{0, 1, 0, 0}}),
       3, 8);
 }
 
