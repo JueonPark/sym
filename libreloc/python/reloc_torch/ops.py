@@ -85,6 +85,12 @@ def _execute_typed(src, parameters, handle, symbols, out_shape, out_strides, dev
 
 
 def _execute_stacked(srcs, handle, symbols, out_shape, out_strides, device):
+    """reloc_torch::stack_transfer: the region ``torch.stack(srcs, dim)``,
+    its layout chain and host-to-device transfer, fused. Every tensor in
+    ``srcs`` must share one dtype, shape and device; the backend emits the op
+    only for such stacks. The declared output dtype is ``srcs[0]``'s, so a
+    direct call with mixed dtypes is unsupported: its PyTorch fallback
+    type-promotes and can then fail the output metadata check."""
     entry = lookup_handle(handle)
     device = torch.device(device)
     declared = ConcreteDescriptor(

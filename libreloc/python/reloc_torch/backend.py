@@ -27,9 +27,8 @@ from .runtime import ExecutionEntry, TransportAdapter, stack_below_threshold, st
 from .symbolic import Add, Const, FloorDiv, Mod, Mul, Symbol, dense_strides, expression
 
 
-# Fuse a host torch.stack only from this many input bytes. 32 MiB is
-# the smallest size where the spike measured a win over eager and Inductor on
-# the qualification box; bench/stack_fusion re-qualifies it (gate 4).
+# Default stack fusion threshold: fuse a host torch.stack only from this many
+# input bytes. bench/stack_fusion re-measures it.
 DEFAULT_MIN_STACK_BYTES = 32 << 20
 _ITEMSIZE = {"float32": 4, "float16": 2, "int8": 1}
 
@@ -98,6 +97,18 @@ class RelocBackend:
     sharing a lazy cache across compiled/eager layout calls. Explicit ``None``
     uses per-call resources. Resource owners and injected runtimes are borrowed;
     ``transfer_options`` copies the buffer/stream/gather execution settings.
+
+    Stack fusion: a host ``torch.stack`` of graph inputs whose result reaches
+    one host-to-device transfer through layout operations only becomes one
+    ``reloc_torch::stack_transfer`` that gathers every input straight into
+    the transfer, without materializing the stacked tensor on the host.
+    ``min_stack_bytes`` (default ``DEFAULT_MIN_STACK_BYTES``, 32 MiB of
+    stack inputs; 0 always fuses) gates it: a region whose shapes are static
+    is gated once when the graph is compiled, and one with dynamic shapes on
+    every call, where a call below the threshold runs the original region
+    in PyTorch. An injected runtime gets stacked regions only if it
+    implements the optional ``preflight_stacked`` (see
+    ``runtime.RuntimeAdapter``).
     """
 
     def __init__(
