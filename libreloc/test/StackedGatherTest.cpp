@@ -174,6 +174,17 @@ TEST(StackedGather, ZeroInnerStrideBroadcastsAcrossRow) {
   expectAllRanges(transfer_test::layout({4, 3}, {1, 0}, {3, 1}, 4), 2, 2);
 }
 
+TEST(StackedGather, HugeStrideOnUnitInnerAxisStaysInBounds) {
+  // A unit-extent axis adds nothing to the read reach, so validation accepts
+  // any stride on it. Neither the run length (Z = 2: the run-splitting path)
+  // nor the per-element input index (Z = 1: the per-element path) may
+  // overflow computing past the axis's only element.
+  expectAllRanges(transfer_test::layout({6, 1}, {1, INT64_MAX}, {1, 1}, 4), 3,
+                  2);
+  expectAllRanges(transfer_test::layout({3, 1}, {1, INT64_MAX}, {1, 1}, 4), 3,
+                  1);
+}
+
 TEST(StackedGather, PaddedLastDimStackSkipsTiledPath) {
   // The same shape as LastDimReadsOneElementPerInput, but 4-byte and padded:
   // the tiled fast path rejects any padded plan, so this exercises the

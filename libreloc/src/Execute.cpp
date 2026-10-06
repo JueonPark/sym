@@ -106,9 +106,11 @@ void copyRunStacked1D(const BoundPlan &b, const StackedSource &s, uint8_t *dst,
     // Each step moves by whole inputs (the stacked axis is innermost) or not
     // at all: one table lookup per element, one in-input offset throughout.
     const int64_t first = srcOff + iBegin * ss;
-    const int64_t step = ss / z, local = first % z;
-    int64_t input = first / z;
-    for (int64_t i = iBegin; i < iEnd; ++i, input += step) {
+    const int64_t step = ss / z, local = first % z, input0 = first / z;
+    for (int64_t i = iBegin; i < iEnd; ++i) {
+      // Indexed, not accumulated: a running sum would step once past the last
+      // element and overflow for a huge stride on a unit-extent axis.
+      const int64_t input = input0 + (i - iBegin) * step;
       assert(input < s.count && "stacked source index out of range");
       std::memcpy(dst + (dstOff + (i + innerLo) * ds) * es,
                   s.bases[input] + local * es, es);
@@ -122,7 +124,9 @@ void copyRunStacked1D(const BoundPlan &b, const StackedSource &s, uint8_t *dst,
   for (int64_t i = iBegin; i < iEnd;) {
     const int64_t offset = srcOff + i * ss;
     const int64_t local = offset % z;
-    const int64_t n = std::min(iEnd - i, (z - local + ss - 1) / ss);
+    // Elements left in this input, ceil((z - local) / ss), in a form that
+    // cannot overflow for strides near INT64_MAX (z - local >= 1).
+    const int64_t n = std::min(iEnd - i, (z - local - 1) / ss + 1);
     assert(offset / z < s.count && "stacked source index out of range");
     const uint8_t *src = s.bases[offset / z] + local * es;
     if (ss == 1 && ds == 1) {
