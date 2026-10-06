@@ -501,9 +501,21 @@ def _stacked_recipe(stack, members):
         _require(other.shape == element.shape, 'stack_shape_mismatch')
         _require(other.offset == Const(0) and other.strides == element.strides, 'source_layout')
     rank = len(element.shape)
-    # Bound by schema: aten.stack.default may carry dim as a keyword.
+    # Bound by schema: aten.stack.default may carry dim as a keyword. Dynamo's
+    # unspecialized-int tracing can lift even a closure-constant dim into a
+    # graph node; resolve it the same way a reshape/pad scalar is resolved and
+    # require it to fold to a plain constant, never an actual symbol (the
+    # permutation below is Python control flow over its concrete value).
     dim = _options(stack).get('dim', 0)
-    _require(type(dim) is int, 'unsupported_symbolic_expr')
+    if hasattr(dim, 'op'):
+        dim = compat.graph_value(dim)
+    if type(dim) is not int:
+        try:
+            dim = context.expression(dim)
+        except UnsupportedSymbolicExpr:
+            raise _Reject('unsupported_symbolic_expr') from None
+        _require(isinstance(dim, Const), 'unsupported_symbolic_expr')
+        dim = dim.value
     _require(-(rank + 1) <= dim <= rank, 'unsupported_permutation')
     dim %= rank + 1
     count = len(inputs)
