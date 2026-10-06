@@ -321,6 +321,10 @@ def bind_stacked_symbols(compiled, sources, uniform=False):
         raise UnsupportedRecipe(error.reason, str(error)) from error
 
 
+def _bind_uniform_stacked_symbols(compiled, sources):
+    return bind_stacked_symbols(compiled, sources, True)
+
+
 def load_plan(plan_bytes):
     """Decode the artifact's plan; decoding is cheap and keeps no hidden cache."""
     import pyreloc
@@ -670,11 +674,11 @@ def _derived_symbols(entry, src, axis_offset=0):
     return values
 
 
-def _bind_guarded(entry, device, bind, *args):
-    """Bind (``bind(entry.compiled, *args)``), derive the destination and
+def _bind_guarded(entry, device, bind, subject):
+    """Bind (``bind(entry.compiled, subject)``), derive the destination and
     check extent guards: the steps that must all succeed, in order, before a
     symbol check is meaningful. Shared by both call shapes; the binder and
-    its arguments are passed rather than wrapped, so the single-source hot
+    its argument are passed rather than wrapped, so the single-source hot
     path creates no closure. Raises ``UnsupportedRecipe`` with a normalized
     ``.reason`` for every expected rejection, including a bare
     ``KeyError``/``GuardError`` an extent guard's own expression evaluation
@@ -682,7 +686,7 @@ def _bind_guarded(entry, device, bind, *args):
     already normalize their own).
     """
     try:
-        bindings = bind(entry.compiled, *args)
+        bindings = bind(entry.compiled, subject)
         destination = destination_descriptor(entry.compiled, bindings, device)
         for guard in entry.extent_guards:
             if expression(guard).evaluate(bindings, checked=True) < 2:
@@ -720,14 +724,15 @@ _SINGLE_COUNTERS = ("runtime_executions",)
 _STACKED_COUNTERS = ("runtime_executions", "stacked_executions")
 
 
-def _launch(entry, call, bindings, destination, counters, label, verify, *subject):
+def _launch(entry, call, bindings, destination, counters, label, verify, subject, promised):
     """Once preflight has returned a call: the adapter-agreement check,
     recheck/consume, the execution counters, the ``ExecutionError`` wrap
     around the actual dispatch (never replayed), and the diagnostics
     recorded after a launch that completed. ``label`` prefixes the direction
     in the error message (``""`` or ``"stacked "``). ``verify(result,
-    *subject)`` applies the caller's own result and aliasing checks against
-    the promised metadata and returns the value handed back to the caller.
+    subject, promised)`` applies the caller's own result and aliasing checks
+    against the promised metadata and returns the value handed back to the
+    caller.
     """
     if call.bindings != bindings or tuple(call.destination.shape) != destination.shape:
         raise RuntimeError("runtime adapter disagreed with the frontend binding")
@@ -746,7 +751,7 @@ def _launch(entry, call, bindings, destination, counters, label, verify, *subjec
     if getattr(call, "report", None) is not None:
         entry.diagnostics.record_dispatch(call.report)
     entry.diagnostics.record_staging(getattr(call, "staging", ()))
-    return verify(result, *subject)
+    return verify(result, subject, promised)
 
 
 def _fallback(entry, src, symbols, reason, promised=None, parameters=()):
@@ -882,7 +887,8 @@ def execute_stacked_or_fallback(entry, sources, symbols, device, *, declared=Non
                 if any(differs(s) for s in sources):
                     return _fallback_stacked(entry, sources, symbols, reason, declared)
         try:
-            bindings, destination = _bind_guarded(entry, device, bind_stacked_symbols, sources, uniform)
+            bind = _bind_uniform_stacked_symbols if uniform else bind_stacked_symbols
+            bindings, destination = _bind_guarded(entry, device, bind, sources)
         except UnsupportedRecipe as error:
             return _fallback_stacked(entry, sources, symbols, error.reason, declared)
         promised = destination if declared is None else declared
