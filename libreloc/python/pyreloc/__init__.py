@@ -35,6 +35,7 @@ from ._pyreloc import (  # noqa: F401
     load_calibration,
     load_plan,
     load_typed_plan,
+    make_stacked_transfer,
     make_transfer,
     predict,
     prefold_s8,
@@ -44,6 +45,7 @@ from ._pyreloc import (  # noqa: F401
     relocate_inverse,
     select_dispatch,
     typed_prefold_spec,
+    validate_stacked_sources,
     validate_transfer_source,
     wire_version,
 )
