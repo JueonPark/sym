@@ -96,13 +96,36 @@ class PreparedCall:
 
 
 class RuntimeAdapter(Protocol):
-    """T3 / R2 bridge contract (shared contracts table)."""
+    """T3 / R2 bridge contract (shared contracts table).
+
+    ``preflight_stacked(compiled, sources, device, *, non_blocking=False)`` is
+    an optional method for host ``torch.stack`` regions. It receives a
+    stacked recipe (``Recipe.stack_inputs`` > 0) and every stack input in
+    order, raises ``UnsupportedRecipe`` for expected rejections, and returns a
+    ``PreparedCall`` with ``src`` = ``sources[0]``, ``sources`` = the inputs,
+    the exact bindings of the logical [N, *S] source and the destination;
+    ``execute`` then runs that call. An adapter without the method never gets
+    a stacked region: the backend leaves it in PyTorch (exclusion
+    ``runtime_unavailable``) and a stacked call made directly falls back.
+    """
 
     capability_identity: str
 
     def preflight(self, compiled, src, device, *, non_blocking=False) -> PreparedCall: ...
 
     def execute(self, call: PreparedCall): ...
+
+
+def stacked_preflight(runtime):
+    """The adapter's optional ``preflight_stacked``; ``runtime_unavailable``
+    when the adapter does not implement it (see ``RuntimeAdapter``)."""
+    preflight = getattr(runtime, "preflight_stacked", None)
+    if not callable(preflight):
+        raise UnsupportedRecipe(
+            "runtime_unavailable",
+            f"runtime adapter {type(runtime).__name__} does not implement preflight_stacked",
+        )
+    return preflight
 
 
 class ExecutionEntry:
@@ -764,8 +787,9 @@ def execute_stacked_or_fallback(entry, sources, symbols, device, *, declared=Non
         if reason is not None:
             return _fallback_stacked(entry, sources, symbols, reason, promised)
         try:
+            preflight = stacked_preflight(entry.runtime)
             with _counting_binds(entry.diagnostics):
-                call = entry.runtime.preflight_stacked(entry.compiled, sources, device)
+                call = preflight(entry.compiled, sources, device)
         except UnsupportedRecipe as error:
             return _fallback_stacked(entry, sources, symbols, error.reason, promised)
         return _launch(
@@ -793,6 +817,7 @@ __all__ = (
     "prepare_host_call",
     "prepare_stacked_host_call",
     "source_reason",
+    "stacked_preflight",
     "suspend_interception",
     "verify_result",
 )

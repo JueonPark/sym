@@ -134,6 +134,37 @@ def test_default_gate_keeps_small_stacks_in_pytorch(compiler, real_runtime):
     backend.close()
 
 
+class PreflightExecuteOnlyAdapter:
+    """A custom runtime implementing only the required RuntimeAdapter methods."""
+
+    capability_identity = "custom/preflight-execute-only"
+
+    def __init__(self, inner):
+        self._inner = inner
+
+    def preflight(self, compiled, src, device, **options):
+        return self._inner.preflight(compiled, src, device, **options)
+
+    def execute(self, call):
+        return self._inner.execute(call)
+
+
+def test_an_adapter_without_preflight_stacked_runs_the_stack_in_pytorch(compiler, real_runtime):
+    from reloc_torch.backend import RelocBackend
+
+    backend = RelocBackend(compiler=compiler, runtime=PreflightExecuteOnlyAdapter(real_runtime), min_stack_bytes=0)
+    compiled = torch.compile(lambda a, b: torch.stack([a, b], 1).to("cuda"), backend=backend, dynamic=True)
+    a, b = make_inputs(2, 64, 32, torch.float32)
+    with torch.no_grad():
+        actual = compiled(a, b)
+    expected = torch.stack([a, b], 1).cuda()
+    assert torch.equal(actual, expected) and actual.stride() == expected.stride()
+    stats = backend.stats()
+    assert stats["exclusions"] == {"runtime_unavailable": 1}
+    assert stats["replaced_regions"] == 0 and stats["stacked_executions"] == 0 and not stats["fallbacks"]
+    backend.close()
+
+
 def test_copy_then_stack_is_unchanged(stack_backend):
     compiled = torch.compile(lambda a, b: torch.stack([a.to("cuda"), b.to("cuda")], 1),
                              backend=stack_backend, dynamic=True)

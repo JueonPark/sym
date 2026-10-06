@@ -85,6 +85,23 @@ def test_size_gate_falls_back_below_and_executes_at_the_threshold(compiler):
     assert runtime.executions == 1
 
 
+def test_an_adapter_without_preflight_stacked_falls_back(compiler):
+    """A directly built entry over an adapter that implements only the
+    required preflight/execute falls back with runtime_unavailable, never
+    an AttributeError."""
+    from conftest import CountingRuntime
+
+    runtime = CountingRuntime()
+    entry = stacked_entry(compiler, runtime)
+    xs = inputs()
+    result = run(entry, xs)
+    expected = torch.stack(xs, 1)
+    assert torch.equal(result, expected) and result.stride() == expected.stride()
+    assert runtime.preflights == 0 and runtime.executions == 0 and len(entry.original_calls) == 1
+    stats = entry.diagnostics.snapshot()
+    assert stats["fallbacks"] == {"runtime_unavailable": 1} and stats["stacked_executions"] == 0
+
+
 def test_a_list_of_the_wrong_length_is_an_error_not_a_fallback(compiler):
     from reloc_torch.runtime import execute_stacked_or_fallback
 

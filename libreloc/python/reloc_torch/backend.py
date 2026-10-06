@@ -22,7 +22,7 @@ from .cache import DEFAULT_CAPACITY, REGISTRY, ArtifactCache, artifact_key
 from .diagnostics import Diagnostics
 from .recipe import Recipe, TensorSpec
 from .resources import AUTO, _transfer_configuration
-from .runtime import ExecutionEntry, TransportAdapter
+from .runtime import ExecutionEntry, TransportAdapter, stacked_preflight
 from .symbolic import Add, Const, FloorDiv, Mod, Mul, Symbol, dense_strides, expression
 
 
@@ -272,6 +272,10 @@ class RelocBackend:
                     self.diagnostics.record_exclusion("below_stack_threshold")
                     continue
             try:
+                if stacked:
+                    # An adapter without the optional preflight_stacked never
+                    # gets a stacked region: it stays in PyTorch.
+                    stacked_preflight(self.runtime)
                 compiled = self.compile_recipe(candidate.recipe)
             except UnsupportedRecipe as error:
                 self.diagnostics.record_exclusion(error.reason)

@@ -95,6 +95,30 @@ def test_cpu_stacked_region_executes_and_replays_only_itself(compiler):
     b.close()
 
 
+def test_an_adapter_without_preflight_stacked_keeps_the_stack_in_pytorch(compiler):
+    """preflight_stacked is optional in the RuntimeAdapter protocol: a custom
+    adapter that implements only preflight/execute never gets a stacked
+    region, so the region runs in PyTorch exactly as before stack fusion."""
+    from conftest import CountingRuntime
+    from reloc_torch.backend import RelocBackend
+
+    gm = capture(stacked_region, (4, 5), (4, 5), (4, 5))
+    runtime = CountingRuntime()
+    b = RelocBackend(compiler=compiler, runtime=runtime, importer=cpu_stacked_importer(gm), min_stack_bytes=0)
+    compiled = b(gm, None)
+    assert compiled.rewritten is gm
+    xs = [torch.arange(20.0).reshape(4, 5) + 100 * i for i in range(3)]
+    result = compiled(*xs)
+    expected = torch.stack(xs, 1)
+    assert torch.equal(result, expected) and result.stride() == expected.stride()
+    stats = b.stats()
+    assert stats["exclusions"] == {"runtime_unavailable": 1}
+    assert stats["replaced_regions"] == 0 and stats["plan_compiles"] == 0
+    assert stats["stacked_executions"] == 0 and stats["runtime_executions"] == 0 and not stats["fallbacks"]
+    assert runtime.preflights == 0 and runtime.executions == 0
+    b.close()
+
+
 def test_symbolic_inputs_are_gated_per_call(compiler):
     from reloc_torch.backend import RelocBackend
 
