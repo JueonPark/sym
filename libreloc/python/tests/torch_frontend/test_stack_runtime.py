@@ -112,3 +112,94 @@ def test_failures_after_launch_raise_execution_error_without_replay(compiler):
     with pytest.raises(ExecutionError, match="injected"):
         run(entry, inputs())
     assert not entry.original_calls
+
+
+def test_rejected_calls_with_no_symbols_replay_derived_scalar_placeholders(compiler):
+    """A guarded refactor regression pin: when the caller supplies no symbols
+    (``None``) and the entry carries symbolic_bindings, a fallback (here, the
+    size gate) must replay the original region once with ``(*sources, values)``
+    where ``values`` are derived from sources[0]: logical axis k of the
+    stacked [N, *S] source is input axis k - 1."""
+    from reloc_torch.runtime import execute_stacked_or_fallback
+    from reloc_torch.symbolic import Symbol
+
+    runtime = StackedCountingRuntime()
+    calls = []
+
+    def original(*args):
+        calls.append(args)
+        return torch.stack(args[:3], 1)
+
+    compiled = compiler.compile(stacked_recipe(count=3, dim=1))
+    entry = make_entry(
+        compiled, runtime, original,
+        symbolic_bindings=(("rows", Symbol("s0")), ("cols", Symbol("s1"))),
+    )
+    entry.min_stack_bytes = 10 ** 9  # far above any real stacked payload here
+    xs = inputs()
+    result = execute_stacked_or_fallback(entry, xs, None, torch.device("cpu"))
+    assert torch.equal(result, torch.stack(xs, 1))
+    assert runtime.executions == 0
+    assert len(calls) == 1
+    assert calls[0][:3] == tuple(xs)
+    assert calls[0][3:] == (xs[0].shape[0], xs[0].shape[1])
+    assert entry.diagnostics.snapshot()["fallbacks"] == {"below_stack_threshold": 1}
+
+
+def test_declared_metadata_mismatch_is_an_error_with_zero_replays_and_zero_launches(compiler):
+    from reloc_torch.runtime import ConcreteDescriptor, execute_stacked_or_fallback
+
+    runtime = StackedCountingRuntime()
+    entry = stacked_entry(compiler, runtime)
+    xs = inputs()
+    # The compiled descriptor for count=3, dim=1 is (4, 3, 5); this is a
+    # different shape entirely, so it can never match by accident.
+    declared = ConcreteDescriptor((3, 4, 5), (20, 5, 1), "float32", torch.device("cpu"))
+    with pytest.raises(RuntimeError, match="declared output metadata"):
+        execute_stacked_or_fallback(entry, xs, None, torch.device("cpu"), declared=declared)
+    assert runtime.executions == 0 and not entry.original_calls
+
+
+def test_closed_entry_raises_before_anything_else(compiler):
+    from reloc_torch.runtime import execute_stacked_or_fallback
+
+    runtime = StackedCountingRuntime()
+    entry = stacked_entry(compiler, runtime)
+    entry.close()
+    xs = inputs()
+    with pytest.raises(RuntimeError, match="closed"):
+        execute_stacked_or_fallback(entry, xs, None, torch.device("cpu"))
+    assert runtime.executions == 0 and runtime.preflights == 0 and not entry.original_calls
+
+
+def test_min_stack_bytes_via_the_constructor_gates_as_expected(compiler):
+    """min_stack_bytes set through the ExecutionEntry constructor keyword
+    (rather than assigned on the instance afterwards) gates identically."""
+    from reloc_torch.diagnostics import Diagnostics
+    from reloc_torch.runtime import ExecutionEntry
+
+    runtime = StackedCountingRuntime()
+    calls = []
+
+    def original(*args):
+        calls.append(args)
+        return torch.stack(args[:3], 1)
+
+    xs = inputs()
+    total = 3 * 4 * 5 * 4
+    below = ExecutionEntry(
+        compiled=compiler.compile(stacked_recipe(count=3, dim=1)),
+        original=original, runtime=runtime, diagnostics=Diagnostics(),
+        min_stack_bytes=total + 1,
+    )
+    assert torch.equal(run(below, xs), torch.stack(xs, 1))
+    assert runtime.executions == 0 and len(calls) == 1
+    assert below.diagnostics.snapshot()["fallbacks"] == {"below_stack_threshold": 1}
+
+    at = ExecutionEntry(
+        compiled=compiler.compile(stacked_recipe(count=3, dim=1)),
+        original=original, runtime=runtime, diagnostics=Diagnostics(),
+        min_stack_bytes=total,
+    )
+    assert torch.equal(run(at, xs), torch.stack(xs, 1))
+    assert runtime.executions == 1
