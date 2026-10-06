@@ -240,3 +240,32 @@ def test_inputs_changed_after_validation_are_checked_again(compiler, cuda_device
     stats = entry.diagnostics.snapshot()
     assert stats["fallbacks"] == ({} if reason is None else {reason: 1})
     assert stats["stacked_executions"] == (1 if reason is None else 0)
+
+
+@pytest.mark.parametrize("adopted", [False, True], ids=["taken_by_the_request", "adopted_from_preflight"])
+@pytest.mark.parametrize("mutate", [
+    lambda xs: xs[2].resize_(40),
+    lambda xs: xs[1].set_(torch.zeros(4, 5)),
+], ids=["resize_last", "set_middle"])
+def test_a_stacked_request_rechecks_every_input_before_execution(compiled, mutate, adopted):
+    """The request's recheck covers every stacked input, not only the
+    first: a resized or re-pointed later input makes it stale before any
+    native view of the old storage can be read."""
+    from reloc_torch.compat import storage_snapshot
+    from reloc_torch.runtime import bind_plan, bind_stacked_symbols, destination_descriptor
+    from reloc_torch.transport import PreparedTransfer, _storage_view, execute_transfer
+
+    xs = inputs()
+    bindings = bind_stacked_symbols(compiled, xs)
+    views = tuple(_storage_view(x, "host", -1) for x in xs)
+    request = PreparedTransfer(
+        compiled, xs[0], bindings, bind_plan(compiled, bindings),
+        destination_descriptor(compiled, bindings, torch.device("cpu")), "h2d", torch.device("cpu"),
+        views[0], 0, stack_sources=tuple(xs), stack_views=views,
+        stack_snapshots=tuple(storage_snapshot(x) for x in xs) if adopted else (),
+    )
+    request.recheck()
+    mutate(xs)
+    with pytest.raises(RuntimeError, match="stale transfer request"):
+        execute_transfer(request)
+    assert not request.consumed
