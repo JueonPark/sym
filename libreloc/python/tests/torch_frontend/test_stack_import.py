@@ -310,3 +310,63 @@ def test_a_pure_stack_inside_a_single_source_region_is_no_side_effect():
     assert recipe.stack_inputs == 0 and recipe.direction == "h2d"
     assert recipe.operations == (Transpose((1, 0)),)
     assert recipe.destination.shape == (Symbol("s1"), Symbol("s0"))
+
+
+class _Subclass(torch.Tensor):
+    pass
+
+
+_needs_cuda = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable")
+_needs_two_gpus = pytest.mark.skipif(torch.cuda.device_count() < 2, reason="needs two GPUs")
+
+
+def _pair(make):
+    return lambda: (make(), make())
+
+
+def _second(make):
+    return lambda: (torch.ones(3, 4), make())
+
+
+STACKED_ONLY_REASONS = [
+    # (tail after the stack, example inputs, the region's reason, normalization reasons)
+    pytest.param(lambda s: s.cpu(), _pair(lambda: torch.ones(3, 4, device="cuda")),
+                 "stack_direction_unsupported", set(), marks=_needs_cuda, id="d2h"),
+    pytest.param(lambda s: s.to("cuda:1"), _pair(lambda: torch.ones(3, 4, device="cuda:0")),
+                 "stack_direction_unsupported", set(), marks=_needs_two_gpus, id="d2d"),
+    pytest.param(lambda s: s.to("cuda"), _second(lambda: torch.ones(4, 3).t()),
+                 "source_layout", set(), id="noncontiguous_second"),
+    pytest.param(lambda s: s.to("cuda"), _second(lambda: torch.ones(13)[1:].view(3, 4)),
+                 "source_layout", set(), id="offset_second"),
+    pytest.param(lambda s: s.to("cuda"), _second(lambda: torch.ones(3, 4, requires_grad=True)),
+                 "requires_grad", set(), id="requires_grad_second"),
+    pytest.param(lambda s: s.to("cuda"), _second(lambda: torch.ones(3, 4).as_subclass(_Subclass)),
+                 "tensor_subclass", {"tensor_subclass", "metadata_unavailable"}, id="subclass_second"),
+    pytest.param(lambda s: s.to("cuda"), _pair(lambda: torch.tensor(1.0)),
+                 "rank_zero", set(), id="rank_zero"),
+    pytest.param(lambda s: s.to("cuda"), _pair(lambda: torch.ones(0, 4)),
+                 "empty_tensor", set(), id="empty"),
+    pytest.param(lambda s: s.to("cuda"), _pair(lambda: torch.ones(3, 4, dtype=torch.bfloat16)),
+                 "unsupported_dtype", set(), id="bfloat16"),
+    pytest.param(lambda s: s.to("cuda"), _pair(lambda: torch.ones(3, 4, dtype=torch.int32)),
+                 "unsupported_dtype", set(), id="int32"),
+    pytest.param(lambda s: s.to("cuda", non_blocking=True), _pair(lambda: torch.ones(3, 4)),
+                 "nonblocking_unavailable", set(), id="non_blocking"),
+]
+
+
+@pytest.mark.parametrize(("tail", "make", "reason", "normalization"), STACKED_ONLY_REASONS)
+def test_stacked_only_rejections_report_their_reason_exactly(tail, make, reason, normalization):
+    """A stacked region rejects a transfer that is not host-to-device and
+    checks every stack input on its own, not only the first. Shape and
+    dtype must agree across inputs (a mismatch is stack_dtype_mismatch or a
+    failed normalization first), so the rank, emptiness and dtype cases put
+    the property on every input; the others put it on the second input."""
+    from reloc_torch.fx_import import Exclusion
+
+    gm = torch.fx.symbolic_trace(lambda x, y: tail(torch.stack([x, y])))
+    report = importer().import_graph(gm, make())
+    assert not report.candidates
+    transfer = next(n for n in reversed(gm.graph.nodes) if n.op != "output")
+    assert report.exclusions[-1] == Exclusion(transfer.name, reason)  # the region's own decision
+    assert {e.reason for e in report.exclusions} == {reason} | normalization
