@@ -110,6 +110,7 @@ def _count_guards_binds_and_snapshots(monkeypatch):
 
     from reloc_torch import compat
     from reloc_torch import runtime as runtime_module
+    from reloc_torch import transport as transport_module
     from reloc_torch.artifact import CompiledRecipe
 
     counts = Counter()
@@ -120,10 +121,16 @@ def _count_guards_binds_and_snapshots(monkeypatch):
             return function(*args, **kwargs)
         return wrapper
 
-    monkeypatch.setattr(runtime_module, "source_reason", counted("source_reason", runtime_module.source_reason))
+    # Every name a guard or snapshot is reached through, including the
+    # module-level aliases runtime and transport hold.
+    source_reason = counted("source_reason", runtime_module.source_reason)
+    snapshot = counted("storage_snapshot", compat.storage_snapshot)
+    monkeypatch.setattr(runtime_module, "source_reason", source_reason)
+    monkeypatch.setattr(transport_module, "source_reason", source_reason)
     monkeypatch.setattr(CompiledRecipe, "bind_stacked_values",
                         counted("bind_stacked_values", CompiledRecipe.bind_stacked_values))
-    monkeypatch.setattr(compat, "storage_snapshot", counted("storage_snapshot", compat.storage_snapshot))
+    monkeypatch.setattr(compat, "storage_snapshot", snapshot)
+    monkeypatch.setattr(runtime_module, "_metadata_snapshot", snapshot)
     return counts
 
 
