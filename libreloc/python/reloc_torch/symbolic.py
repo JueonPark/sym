@@ -1,6 +1,7 @@
 """Torch-free integer expressions, source provenance, and binding guards."""
 from dataclasses import dataclass
 from functools import reduce
+import itertools
 
 
 class UnsupportedSymbolicExpr(ValueError):
@@ -132,9 +133,27 @@ def symbol_sources(shape):
     return tuple(sources)
 
 
+def _addends(value):
+    """Flat addend list of an ``Add`` tree built by ``add()`` (already
+    constant-folded and order-stable; this only undoes its left-leaning
+    ``reduce`` nesting)."""
+    terms = []
+
+    def collect(node):
+        if isinstance(node, Add):
+            collect(node.lhs)
+            collect(node.rhs)
+        else:
+            terms.append(node)
+
+    collect(value)
+    return terms
+
+
 def _commutative(kind, lhs, rhs):
     # Flatten and order by canonical frontend names, never capture symbol names.
     terms = []
+    sums = []  # Mul only: addend lists of Add factors, multiplied out below.
     constant = 0 if kind is Add else 1
 
     def collect(value):
@@ -145,6 +164,8 @@ def _commutative(kind, lhs, rhs):
             collect(value.rhs)
         elif isinstance(value, Const):
             constant = constant + value.value if kind is Add else constant * value.value
+        elif kind is Mul and isinstance(value, Add):
+            sums.append(_addends(value))
         else:
             terms.append(value)
 
@@ -152,6 +173,15 @@ def _commutative(kind, lhs, rhs):
     collect(rhs)
     if kind is Mul and constant == 0:
         return Const(0)
+    if sums:
+        # A Mul factor that is itself a sum (e.g. a padded dimension) must be
+        # multiplied out: SymPy distributes a number over an Add on
+        # construction (2*(s1+3) == 2*s1+6), so a stride built from the real
+        # traced output already arrives in that expanded form. Leaving our
+        # own Mul(Add(...), Const(...)) factored would make two provably
+        # equal strides compare structurally unequal.
+        monomials = [reduce(mul, (Const(constant), *terms, *combo)) for combo in itertools.product(*sums)]
+        return reduce(add, monomials)
     identity = 0 if kind is Add else 1
     if constant != identity or not terms:
         terms.append(Const(constant))
