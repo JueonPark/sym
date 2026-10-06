@@ -85,6 +85,42 @@ def test_size_gate_falls_back_below_and_executes_at_the_threshold(compiler):
     assert runtime.executions == 1
 
 
+@pytest.mark.parametrize(("make", "error"), [
+    (lambda xs: [xs[0], torch.ones(4, 10)[:, ::2], xs[2]], None),
+    (lambda xs: [xs[0], torch.ones(4, 6), xs[2]], "stack expects each tensor to be equal size"),
+])
+def test_size_gate_runs_before_any_per_input_work(compiler, monkeypatch, make, error):
+    """Below the threshold the call falls back from the input count and input
+    0's size alone: no input is guarded, snapshotted or bound, so even a
+    guard-failing input records below_stack_threshold, and an invalid stack
+    raises PyTorch's own error from the original region."""
+    from reloc_torch import compat
+    from reloc_torch import runtime as runtime_module
+
+    calls = []
+
+    def counted(name, function):
+        def wrapper(*args, **kwargs):
+            calls.append(name)
+            return function(*args, **kwargs)
+        return wrapper
+
+    for name in ("source_reason", "bind_stacked_symbols", "destination_descriptor"):
+        monkeypatch.setattr(runtime_module, name, counted(name, getattr(runtime_module, name)))
+    monkeypatch.setattr(compat, "storage_snapshot", counted("storage_snapshot", compat.storage_snapshot))
+    runtime = StackedCountingRuntime()
+    entry = stacked_entry(compiler, runtime, min_stack_bytes=10 ** 9)
+    xs = make(inputs())
+    if error is None:
+        assert torch.equal(run(entry, xs), torch.stack(xs, 1))
+    else:
+        with pytest.raises(RuntimeError, match=error):
+            run(entry, xs)
+    assert calls == []
+    assert runtime.preflights == 0 and runtime.executions == 0 and len(entry.original_calls) == 1
+    assert entry.diagnostics.snapshot()["fallbacks"] == {"below_stack_threshold": 1}
+
+
 def test_an_adapter_without_preflight_stacked_falls_back(compiler):
     """A directly built entry over an adapter that implements only the
     required preflight/execute falls back with runtime_unavailable, never

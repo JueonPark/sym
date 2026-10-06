@@ -11,6 +11,7 @@ its handle registrations; a backend ``close()`` releases them explicitly.
 from __future__ import annotations
 
 import copy
+import math
 import operator
 import os
 import threading
@@ -22,7 +23,7 @@ from .cache import DEFAULT_CAPACITY, REGISTRY, ArtifactCache, artifact_key
 from .diagnostics import Diagnostics
 from .recipe import Recipe, TensorSpec
 from .resources import AUTO, _transfer_configuration
-from .runtime import ExecutionEntry, TransportAdapter, stacked_preflight
+from .runtime import ExecutionEntry, TransportAdapter, stack_below_threshold, stacked_preflight
 from .symbolic import Add, Const, FloorDiv, Mod, Mul, Symbol, dense_strides, expression
 
 
@@ -266,11 +267,9 @@ class RelocBackend:
                 self.diagnostics.record_exclusion(reason)
                 continue
             stacked = bool(candidate.sources)
-            if stacked:
-                static = _static_stack_bytes(candidate.recipe)
-                if static is not None and static < self._min_stack_bytes:
-                    self.diagnostics.record_exclusion("below_stack_threshold")
-                    continue
+            if stacked and _below_static_threshold(candidate.recipe, self._min_stack_bytes):
+                self.diagnostics.record_exclusion("below_stack_threshold")
+                continue
             try:
                 if stacked:
                     # An adapter without the optional preflight_stacked never
@@ -377,16 +376,19 @@ def _emitter(graph, symbol_nodes):
     return emit
 
 
-def _static_stack_bytes(recipe):
-    """Input bytes of a stacked region when every extent is static, else None."""
-    total = _ITEMSIZE[recipe.source.dtype]
+def _below_static_threshold(recipe, min_stack_bytes):
+    """True when every extent of a stacked region is static and its input
+    bytes are below the size gate; a symbolic extent leaves the decision to
+    the per-call gate."""
+    extents = []
     for extent in recipe.source.shape:
         match expression(extent):
             case Const(value):
-                total *= value
+                extents.append(value)
             case _:
-                return None
-    return total
+                return False
+    count, *shape = extents  # the logical [N, *S] source
+    return stack_below_threshold(count, math.prod(shape), _ITEMSIZE[recipe.source.dtype], min_stack_bytes)
 
 
 def _insert_stack_transfer(graph, sources, tail, compiled, handle, device):

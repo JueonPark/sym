@@ -194,6 +194,14 @@ class ExecutionEntry:
         return self.original(*sources, *self.scalar_arguments(symbols))
 
 
+def stack_below_threshold(count, elements, itemsize, min_stack_bytes):
+    """The stack fusion size gate: a host ``torch.stack`` of ``count`` inputs
+    of ``elements`` elements of ``itemsize`` bytes each fuses only from
+    ``min_stack_bytes`` input bytes. The backend's static check and the
+    per-call check both use it, so the two gates cannot drift."""
+    return count * elements * itemsize < min_stack_bytes
+
+
 def interception_suspended():
     return getattr(_local, "depth", 0) > 0
 
@@ -748,10 +756,12 @@ def _fallback_stacked(entry, sources, symbols, reason, promised=None):
 
 def execute_stacked_or_fallback(entry, sources, symbols, device, *, declared=None):
     """The stacked twin of execute_or_fallback (torch.stack fused into an H2D
-    transfer). Every input passes the shared guards; equality of dtype,
-    device and shape, the logical binding, the size gate and the adapter
-    preflight all run before any allocation or launch, and every expected
-    rejection runs the original region exactly once."""
+    transfer). The size gate comes first and reads only the input count and
+    input 0's size, so a call below it runs the original region before any
+    per-input work. Above it every input passes the shared guards; equality
+    of dtype, device and shape, the logical binding and the adapter preflight
+    all run before any allocation or launch, and every expected rejection
+    runs the original region exactly once."""
     import torch
 
     if entry.closed:
@@ -764,11 +774,13 @@ def execute_stacked_or_fallback(entry, sources, symbols, device, *, declared=Non
             f"expected {count} stacked sources for {entry.describe()}, got {len(sources)}"
         )
     with suspend_interception():
+        first = sources[0]
+        if stack_below_threshold(count, first.numel(), first.element_size(), entry.min_stack_bytes):
+            return _fallback_stacked(entry, sources, symbols, "below_stack_threshold", declared)
         for src in sources:
             reason = source_reason(src)
             if reason is not None:
                 return _fallback_stacked(entry, sources, symbols, reason, declared)
-        first = sources[0]
         for reason, differs in (
             ("stack_dtype_mismatch", lambda s: s.dtype != first.dtype),
             ("unsupported_device", lambda s: s.device != first.device),
@@ -781,8 +793,6 @@ def execute_stacked_or_fallback(entry, sources, symbols, device, *, declared=Non
         except UnsupportedRecipe as error:
             return _fallback_stacked(entry, sources, symbols, error.reason, declared)
         promised = destination if declared is None else declared
-        if count * first.numel() * first.element_size() < entry.min_stack_bytes:
-            return _fallback_stacked(entry, sources, symbols, "below_stack_threshold", promised)
         reason = _reconcile(entry, bindings, destination, symbols, declared, descriptor_label="stacked")
         if reason is not None:
             return _fallback_stacked(entry, sources, symbols, reason, promised)
@@ -817,6 +827,7 @@ __all__ = (
     "prepare_host_call",
     "prepare_stacked_host_call",
     "source_reason",
+    "stack_below_threshold",
     "stacked_preflight",
     "suspend_interception",
     "verify_result",
