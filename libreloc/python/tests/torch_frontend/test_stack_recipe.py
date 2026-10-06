@@ -55,6 +55,21 @@ def test_serialization_round_trips_stack_inputs_and_keeps_plain_artifacts_unchan
         CompiledRecipe.from_bytes(json.dumps(bad).encode())
 
 
+def test_decode_recipe_rejects_non_object_recipe_payloads(compiler):
+    """A malformed artifact's "recipe" field can be any JSON value; decoding
+    one must fail with RuntimeError, never a raw TypeError from a membership
+    test (`"stack_inputs" in value`) performed before `value` is known to be
+    a dict."""
+    from reloc_torch.artifact import CompiledRecipe
+
+    stacked = compiler.compile(stacked_recipe())
+    payload = json.loads(stacked.to_bytes())
+    for bad_recipe in (None, 5, True, []):
+        bad = dict(payload, recipe=bad_recipe)
+        with pytest.raises(RuntimeError, match="recipe"):
+            CompiledRecipe.from_bytes(json.dumps(bad).encode())
+
+
 def test_bind_stacked_values_guards_every_input(compiler):
     compiled = compiler.compile(stacked_recipe())
     xs = [torch.ones(4, 5) for _ in range(3)]

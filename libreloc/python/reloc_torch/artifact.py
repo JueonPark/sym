@@ -864,6 +864,11 @@ def _decode_param(value, where):
 def _decode_recipe(value):
     from .recipe import Fill
 
+    # Establish dict-ness before any membership test on `value`: a malformed
+    # artifact's "recipe" field can be any JSON value, and `"x" in value`
+    # raises TypeError (not GuardError/RuntimeError) on a non-container.
+    if type(value) is not dict:
+        raise RuntimeError("compiler manifest has invalid recipe fields")
     keys = ("source", "operations", "destination", "direction")
     if "stack_inputs" in value:
         keys += ("stack_inputs",)
