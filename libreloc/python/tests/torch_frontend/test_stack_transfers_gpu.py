@@ -53,7 +53,10 @@ def test_large_stacks_cross_pipeline_chunks(stack_backend):
 
     xs = make_inputs(4, 1024, 1024, torch.float32)  # 16 MiB: several chunks
     with torch.no_grad():
-        assert torch.equal(torch.compile(fn, backend=stack_backend, dynamic=True)(*xs), torch.stack(xs, 1).cuda())
+        actual = torch.compile(fn, backend=stack_backend, dynamic=True)(*xs)
+    expected = torch.stack(xs, 1).cuda()
+    assert torch.equal(actual, expected) and actual.stride() == expected.stride()
+    assert stack_backend.stats()["stacked_executions"] == 1
 
 
 CHAINS = [
@@ -80,19 +83,40 @@ def test_stack_to_a_non_current_device(stack_backend):
     a, b = make_inputs(2, 64, 64, torch.float32)
     with torch.no_grad():
         actual = compiled(a, b)
+    expected = torch.stack([a, b], 1)
     assert actual.device == torch.device("cuda", 1)
-    assert torch.equal(actual.cpu(), torch.stack([a, b], 1))
+    assert torch.equal(actual.cpu(), expected) and actual.stride() == expected.stride()
+    assert stack_backend.stats()["stacked_executions"] == 1
 
 
 def test_result_is_ordered_on_a_non_default_caller_stream(stack_backend):
     compiled = torch.compile(lambda a, b: torch.stack([a, b], 1).to("cuda"), backend=stack_backend, dynamic=True)
     a, b = make_inputs(2, 256, 256, torch.float32)
+    with torch.no_grad():
+        # Warm up: Dynamo's first-call tracing/compiling alone takes tens of
+        # milliseconds, which would dwarf the sleep below and make the
+        # ordering assertion pass trivially regardless of correctness.
+        compiled(a, b)
+    torch.cuda.synchronize()
     stream = torch.cuda.Stream()
+    sleep_retired = torch.cuda.Event()
     with torch.no_grad(), torch.cuda.stream(stream):
         torch.cuda._sleep(50_000_000)  # queued work ahead of the transfer
-        doubled = compiled(a, b) * 2
+        sleep_retired.record(stream)
+        result = compiled(a, b)
+        # The transfer's own dispatch blocks the host until its copy
+        # completes; if it is correctly ordered after whatever the caller
+        # already queued on this stream (same-stream FIFO order), the sleep
+        # recorded ahead of it on the same stream must have retired too by
+        # the time the call returns. A transfer issued on an unrelated idle
+        # stream would return in microseconds, long before the 50 ms sleep,
+        # and this assertion is what would catch that (values alone cannot:
+        # the sleep has no data dependency on the transfer).
+        assert sleep_retired.query()
+        doubled = result * 2
     stream.synchronize()
     assert torch.equal(doubled.cpu(), torch.stack([a, b], 1) * 2)
+    assert stack_backend.stats()["stacked_executions"] == 2  # the warmup call and the timed one
 
 
 def test_default_gate_keeps_small_stacks_in_pytorch(compiler, real_runtime):
