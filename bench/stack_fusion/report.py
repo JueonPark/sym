@@ -34,18 +34,30 @@ def evaluate(data):
     def wins(c):
         return med[(*c, "FB")] < as_written(c)
 
+    def at_or_above(size, predicate):
+        """(result, note): FAIL with a note instead of a vacuous PASS when no
+        configuration reaches `size`."""
+        subset = [c for c in configs if c[0] >= size]
+        if not subset:
+            return False, f"no configuration at or above {size} MiB"
+        return all(predicate(c) for c in subset), None
+
     gate1 = bool(data.get("correct")) and bool(data.get("complete"))
-    gate2 = all(med[(*c, "FD")] <= 1.10 * med[(*c, "S1")] for c in configs if c[0] >= 8)
-    gate3 = all(wins(c) for c in configs if c[0] >= 32)
+    gate2, gate2_note = at_or_above(8, lambda c: med[(*c, "FD")] <= 1.10 * med[(*c, "S1")])
+    gate3, gate3_note = at_or_above(32, wins)
     sizes = sorted({c[0] for c in configs})
     threshold = next((s for s in sizes if all(wins(c) for c in configs if c[0] >= s)), None)
-    return med, configs, gate1, gate2, gate3, threshold, as_written
+    return med, configs, gate1, gate2, gate2_note, gate3, gate3_note, threshold, as_written
 
 
 def main(path):
     data = json.load(open(path))
-    med, configs, gate1, gate2, gate3, threshold, as_written = evaluate(data)
+    med, configs, gate1, gate2, gate2_note, gate3, gate3_note, threshold, as_written = evaluate(data)
     meta = data["metadata"]
+
+    def result(passed, note):
+        return "PASS" if passed else ("FAIL" if note is None else f"FAIL ({note})")
+
     print("# Fused host `torch.stack` → H2D: completed-call latency\n")
     print(f"Source `{meta['source_revision']}` (dirty: {meta['source_dirty']}); torch {meta['torch']}, "
           f"CUDA {meta['cuda']}; GPU {meta['gpu']}; affinity {meta['affinity']}; "
@@ -57,8 +69,8 @@ def main(path):
     print("## Gates\n")
     print("| Gate | Condition | Result |\n|---|---|---|")
     print(f"| 1 | every output exact, run complete | {'PASS' if gate1 else 'FAIL'} |")
-    print(f"| 2 | ≥ 8 MiB: FD ≤ 1.10 × S1 | {'PASS' if gate2 else 'FAIL'} |")
-    print(f"| 3 | ≥ 32 MiB: FB < min(B1, B3) | {'PASS' if gate3 else 'FAIL'} |")
+    print(f"| 2 | ≥ 8 MiB: FD ≤ 1.10 × S1 | {result(gate2, gate2_note)} |")
+    print(f"| 3 | ≥ 32 MiB: FB < min(B1, B3) | {result(gate3, gate3_note)} |")
     print(f"| 4 | smallest size where FB < min(B1, B3) from there up | "
           f"{'none' if threshold is None else f'{threshold} MiB'} |\n")
     print("## Latency (ms)\n")
@@ -78,4 +90,7 @@ def main(path):
 
 
 if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        print("usage: report.py <latency.json>", file=sys.stderr)
+        sys.exit(2)
     sys.exit(main(sys.argv[1]))

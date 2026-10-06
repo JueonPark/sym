@@ -179,7 +179,11 @@ def main():
                                                 pinned, fb_backend, gb_backend)
                         for name, fn in list(methods.items()):  # compile and allocate before any timing
                             try:
-                                fn()
+                                out = fn()
+                                torch.cuda.synchronize(args.device)
+                                if not torch.equal(out.cpu(), expected):
+                                    raise WrongResult(f"{name} produced a wrong result")
+                                del out
                             except WrongResult:
                                 raise
                             except Exception as error:
