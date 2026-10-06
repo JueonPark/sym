@@ -9,7 +9,7 @@ are exact bit patterns (``InlineParam``) or runtime bindings declared by
 name, dtype and extents (``BindingParam``); a recipe never holds a pointer.
 """
 from dataclasses import dataclass
-from .symbolic import Expr
+from .symbolic import Const, Expr, expression
 
 _TENSOR_DTYPES = {'float32': 32, 'float16': 16, 'int8': 8}
 _PARAM_DTYPES = {**_TENSOR_DTYPES, 'int32': 32}
@@ -148,11 +148,29 @@ class Recipe:
     operations: tuple[Transpose | Reshape | Pad | Cast | Quantize | Dequantize, ...]
     destination: TensorSpec
     direction: str
+    # torch.stack: N > 0 means `source` is the logical [N, *S] tensor whose
+    # axis-0 slices are N separate dense inputs of shape S (stacking at dim
+    # moves axis 0). Layout-only and host-to-device only.
+    stack_inputs: int = 0
+
+    def __post_init__(self):
+        count = self.stack_inputs
+        if type(count) is not int or count < 0:
+            raise ValueError('stack_inputs must be a non-negative int')
+        if not count:
+            return
+        shape = self.source.shape
+        if len(shape) < 2 or expression(shape[0]) != Const(count):
+            raise ValueError('a stacked recipe source must have rank >= 2 and the leading extent stack_inputs')
+        if self.direction != 'h2d':
+            raise ValueError('stacked recipes are host-to-device only')
+        if self.typed:
+            raise ValueError('stacked recipes are layout-only')
 
     @property
     def canonical_identity(self):
         """Hashable identity; construct expressions with canonical source symbols."""
-        return self.source, self.operations, self.destination, self.direction
+        return self.source, self.operations, self.destination, self.direction, self.stack_inputs
 
     @property
     def typed(self):

@@ -221,3 +221,20 @@ def h2d_record():
         aliases_source=False,
         layout_history=(),
     )
+
+
+def stacked_recipe(count=3, dim=1, dtype="float32"):
+    """stack(count x [s0, s1], dim) -> h2d over the logical [count, s0, s1]."""
+    from reloc_torch.recipe import Recipe, TensorSpec, Transpose
+    from reloc_torch.symbolic import Const, Symbol, dense_strides
+
+    logical = (Const(count), Symbol("s0"), Symbol("s1"))
+    perm = tuple(range(1, dim + 1)) + (0,) + tuple(range(dim + 1, 3))
+    result = tuple(logical[axis] for axis in perm)
+    return Recipe(
+        TensorSpec(logical, dense_strides(logical), Const(0), dtype),
+        (Transpose(perm),) if dim else (),
+        TensorSpec(result, dense_strides(result), Const(0), dtype),
+        "h2d",
+        stack_inputs=count,
+    )

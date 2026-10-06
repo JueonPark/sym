@@ -128,6 +128,24 @@ class CompiledRecipe:
         """Guard current source metadata; return a fresh wire-symbol mapping."""
         return dict(self._metadata_binder(_tensor_spec(value)))
 
+    def bind_stacked_values(self, sources):
+        """Guard every stacked input (torch.stack); return the wire-symbol
+        mapping of the logical [N, *S] source they form, N = stack_inputs."""
+        count = self.recipe.stack_inputs
+        sources = tuple(sources)
+        if count < 1 or len(sources) != count:
+            raise GuardError("stack_count")
+        specs = [_tensor_spec(source) for source in sources]
+        first = specs[0]
+        if any(spec.dtype != first.dtype for spec in specs):
+            raise GuardError("stack_dtype_mismatch")
+        if any(spec.shape != first.shape for spec in specs):
+            raise GuardError("stack_shape_mismatch")
+        if any(spec.offset != 0 or spec.strides != _row_major(spec.shape) for spec in specs):
+            raise GuardError("source_descriptor")
+        logical = (count, *first.shape)
+        return dict(self._metadata_binder(TensorSpec(logical, _row_major(logical), 0, first.dtype)))
+
     @cached_property
     def decoded_plan(self):
         """Immutable decoded wire metadata, owned for this artifact's lifetime."""
@@ -723,6 +741,14 @@ def _tensor_spec(value):
     return TensorSpec(shape, strides, offset, dtype)
 
 
+def _row_major(shape):
+    strides, step = [], 1
+    for extent in reversed(shape):
+        strides.append(step)
+        step *= extent
+    return tuple(reversed(strides))
+
+
 def _encode_expr(value):
     match expression(value):
         case Const(number):
@@ -791,12 +817,15 @@ def _encode_recipe(recipe):
             )
         else:
             raise RuntimeError("recipe contains an unsupported operation")
-    return {
+    encoded = {
         "destination": _encode_descriptor(recipe.destination),
         "direction": recipe.direction,
         "operations": operations,
         "source": _encode_descriptor(recipe.source),
     }
+    if recipe.stack_inputs:
+        encoded["stack_inputs"] = recipe.stack_inputs
+    return encoded
 
 
 def _decode_descriptor(value, where):
@@ -835,7 +864,15 @@ def _decode_param(value, where):
 def _decode_recipe(value):
     from .recipe import Fill
 
-    _exact_keys(value, ("source", "operations", "destination", "direction"), "recipe")
+    keys = ("source", "operations", "destination", "direction")
+    if "stack_inputs" in value:
+        keys += ("stack_inputs",)
+    _exact_keys(value, keys, "recipe")
+    stack_inputs = 0
+    if "stack_inputs" in value:
+        stack_inputs = _integer(value["stack_inputs"], "recipe.stack_inputs")
+        if stack_inputs < 1:
+            raise RuntimeError("compiled recipe stack_inputs must be positive")
     if type(value["operations"]) is not list:
         raise RuntimeError("compiled recipe operations must be an array")
     direction = _string(value["direction"], "recipe.direction")
@@ -892,9 +929,13 @@ def _decode_recipe(value):
                 raise RuntimeError("compiled recipe has unsupported operation")
         except ValueError as error:
             raise RuntimeError("compiled recipe has invalid operation") from error
-    return Recipe(
-        _decode_descriptor(value["source"], "recipe.source"),
-        tuple(operations),
-        _decode_descriptor(value["destination"], "recipe.destination"),
-        direction,
-    )
+    try:
+        return Recipe(
+            _decode_descriptor(value["source"], "recipe.source"),
+            tuple(operations),
+            _decode_descriptor(value["destination"], "recipe.destination"),
+            direction,
+            stack_inputs,
+        )
+    except ValueError as error:
+        raise RuntimeError("compiled recipe has an invalid stack_inputs description") from error
