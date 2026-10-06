@@ -533,21 +533,111 @@ def _derived_symbols(entry, src, axis_offset=0):
     return values
 
 
-def _fallback(entry, src, symbols, reason, promised=None, parameters=()):
+def _run_fallback(entry, symbols, reason, promised, *, derive, replay, verify):
+    """Shared fallback core for both call shapes: derive scalar symbols when
+    the caller supplied none, record the reason, run the saved original
+    region exactly once, and verify the promised metadata once it is known.
+    ``derive`` and ``replay`` encapsulate the only two things that differ
+    between a single-source and a stacked call: how the original region's
+    scalar placeholders are recovered from real tensor metadata, and how the
+    original region itself is invoked.
+    """
     if symbols is None:
         # Symbol values only matter for the original region's scalar
         # placeholders; eager identity entries have none.
-        symbols = ()
-        if entry.symbolic_bindings:
-            symbols = _derived_symbols(entry, src)
-            if symbols is None:
-                raise RuntimeError(
-                    "cannot evaluate the original region's scalar placeholders for a "
-                    f"source of rank {src.dim()} (recipe symbols {entry.compiled.symbols})"
-                )
+        symbols = derive() if entry.symbolic_bindings else ()
     entry.diagnostics.record_fallback(reason)
-    result = entry.fallback(src, *symbols, parameters=tuple(parameters))
-    return result if promised is None else verify_result(result, src, promised)
+    result = replay(symbols)
+    return result if promised is None else verify(result, promised)
+
+
+def _bind_guarded(entry, device, bind):
+    """Bind, derive the destination and check extent guards: the steps that
+    must all succeed, in order, before a size gate or symbol check is
+    meaningful. Raises ``UnsupportedRecipe`` with a normalized ``.reason``
+    for every expected rejection, including a bare ``KeyError``/``GuardError``
+    an extent guard's own expression evaluation can still raise directly
+    (``bind`` and ``destination_descriptor`` already normalize their own).
+    """
+    try:
+        bindings = bind()
+        destination = destination_descriptor(entry.compiled, bindings, device)
+        for guard in entry.extent_guards:
+            if expression(guard).evaluate(bindings, checked=True) < 2:
+                raise UnsupportedRecipe("singleton_extent", f"{guard} binds below two")
+    except UnsupportedRecipe:
+        raise
+    except (KeyError, GuardError) as error:
+        raise UnsupportedRecipe(getattr(error, "reason", "missing_symbol"), str(error)) from error
+    return bindings, destination
+
+
+def _reconcile(entry, bindings, destination, symbols, declared, *, descriptor_label):
+    """The supplied-symbol check (a fallback reason) and the declared/compiled
+    metadata check (always an error, never a fallback): shared by both call
+    shapes once the caller holds the exact binding and destination (and, for
+    a stacked call, has already applied its size gate). Returns a fallback
+    reason, or ``None`` when the caller should proceed to preflight.
+    """
+    if symbols is not None:
+        expected = [bindings[name] for name in entry.compiled.symbols]
+        if [int(value) for value in symbols] != expected:
+            return "symbol_mismatch"
+    if declared is not None and (
+        tuple(declared.shape) != destination.shape or tuple(declared.strides) != destination.strides
+    ):
+        raise RuntimeError(
+            f"declared output metadata {tuple(declared.shape)}/{tuple(declared.strides)} "
+            f"does not match the compiled {descriptor_label} descriptor "
+            f"{destination.shape}/{destination.strides}"
+        )
+    return None
+
+
+def _launch(entry, call, bindings, destination, *, counters, label, verify):
+    """Once preflight has returned a call: the adapter-agreement check,
+    recheck/consume, the execution counters, the ``ExecutionError`` wrap
+    around the actual dispatch (never replayed), and the diagnostics
+    recorded after a launch that completed. ``verify(result)`` applies the
+    caller's own result and aliasing checks against the promised metadata
+    and returns the value handed back to the caller.
+    """
+    if call.bindings != bindings or tuple(call.destination.shape) != destination.shape:
+        raise RuntimeError("runtime adapter disagreed with the frontend binding")
+    call.recheck()
+    call.consume()
+    for counter in counters:
+        entry.diagnostics.increment(counter)
+    try:
+        result = entry.runtime.execute(call)
+    except Exception as error:
+        raise ExecutionError(
+            f"reloc_torch {label} execution failed for {entry.describe()}: {error}",
+            direction=entry.direction,
+            handle=entry.handle,
+        ) from error
+    if getattr(call, "report", None) is not None:
+        entry.diagnostics.record_dispatch(call.report)
+    entry.diagnostics.record_staging(getattr(call, "staging", ()))
+    return verify(result)
+
+
+def _fallback(entry, src, symbols, reason, promised=None, parameters=()):
+    def derive():
+        values = _derived_symbols(entry, src)
+        if values is None:
+            raise RuntimeError(
+                "cannot evaluate the original region's scalar placeholders for a "
+                f"source of rank {src.dim()} (recipe symbols {entry.compiled.symbols})"
+            )
+        return values
+
+    return _run_fallback(
+        entry, symbols, reason, promised,
+        derive=derive,
+        replay=lambda syms: entry.fallback(src, *syms, parameters=tuple(parameters)),
+        verify=lambda result, p: verify_result(result, src, p),
+    )
 
 
 def execute_or_fallback(entry, src, symbols, device, *, non_blocking=False, declared=None, parameters=()):
@@ -584,28 +674,13 @@ def execute_or_fallback(entry, src, symbols, device, *, non_blocking=False, decl
         if reason is not None:
             return _fallback(entry, src, symbols, reason, declared, parameters)
         try:
-            bindings = bind_symbols(entry.compiled, src)
-            destination = destination_descriptor(entry.compiled, bindings, device)
-            for guard in entry.extent_guards:
-                if expression(guard).evaluate(bindings, checked=True) < 2:
-                    raise UnsupportedRecipe("singleton_extent", f"{guard} binds below two")
+            bindings, destination = _bind_guarded(entry, device, lambda: bind_symbols(entry.compiled, src))
         except UnsupportedRecipe as error:
             return _fallback(entry, src, symbols, error.reason, declared, parameters)
-        except (KeyError, GuardError) as error:
-            return _fallback(entry, src, symbols, getattr(error, "reason", "missing_symbol"), declared, parameters)
         promised = destination if declared is None else declared
-        if symbols is not None:
-            expected = [bindings[name] for name in entry.compiled.symbols]
-            if [int(value) for value in symbols] != expected:
-                return _fallback(entry, src, symbols, "symbol_mismatch", promised, parameters)
-        if declared is not None and (
-            tuple(declared.shape) != destination.shape or tuple(declared.strides) != destination.strides
-        ):
-            raise RuntimeError(
-                f"declared output metadata {tuple(declared.shape)}/{tuple(declared.strides)} "
-                f"does not match the compiled {entry.direction} descriptor "
-                f"{destination.shape}/{destination.strides}"
-            )
+        reason = _reconcile(entry, bindings, destination, symbols, declared, descriptor_label=entry.direction)
+        if reason is not None:
+            return _fallback(entry, src, symbols, reason, promised, parameters)
         options = {"non_blocking": non_blocking}
         if typed:
             options["parameters"] = dict(zip(names, parameters))
@@ -614,24 +689,11 @@ def execute_or_fallback(entry, src, symbols, device, *, non_blocking=False, decl
                 call = entry.runtime.preflight(entry.compiled, src, device, **options)
         except UnsupportedRecipe as error:
             return _fallback(entry, src, symbols, error.reason, promised, parameters)
-        if call.bindings != bindings or tuple(call.destination.shape) != destination.shape:
-            raise RuntimeError("runtime adapter disagreed with the frontend binding")
-        call.recheck()
-        call.consume()
-        entry.diagnostics.increment("runtime_executions")
-        try:
-            result = entry.runtime.execute(call)
-        except Exception as error:
-            raise ExecutionError(
-                f"reloc_torch {entry.direction} execution failed for "
-                f"{entry.describe()}: {error}",
-                direction=entry.direction,
-                handle=entry.handle,
-            ) from error
-        if getattr(call, "report", None) is not None:
-            entry.diagnostics.record_dispatch(call.report)
-        entry.diagnostics.record_staging(getattr(call, "staging", ()))
-        return verify_result(result, src, promised)
+        return _launch(
+            entry, call, bindings, destination,
+            counters=("runtime_executions",), label=entry.direction,
+            verify=lambda result: verify_result(result, src, promised),
+        )
 
 
 def _verify_stacked(result, sources, promised):
@@ -643,19 +705,22 @@ def _verify_stacked(result, sources, promised):
 
 
 def _fallback_stacked(entry, sources, symbols, reason, promised=None):
-    if symbols is None:
-        symbols = ()
-        if entry.symbolic_bindings:
-            # Logical axis k of the stacked source is input axis k - 1.
-            symbols = _derived_symbols(entry, sources[0], axis_offset=1)
-            if symbols is None:
-                raise RuntimeError(
-                    "cannot evaluate the original region's scalar placeholders for "
-                    f"stacked inputs of rank {sources[0].dim()} (recipe symbols {entry.compiled.symbols})"
-                )
-    entry.diagnostics.record_fallback(reason)
-    result = entry.fallback_stacked(sources, *symbols)
-    return result if promised is None else _verify_stacked(result, sources, promised)
+    def derive():
+        # Logical axis k of the stacked source is input axis k - 1.
+        values = _derived_symbols(entry, sources[0], axis_offset=1)
+        if values is None:
+            raise RuntimeError(
+                "cannot evaluate the original region's scalar placeholders for "
+                f"stacked inputs of rank {sources[0].dim()} (recipe symbols {entry.compiled.symbols})"
+            )
+        return values
+
+    return _run_fallback(
+        entry, symbols, reason, promised,
+        derive=derive,
+        replay=lambda syms: entry.fallback_stacked(sources, *syms),
+        verify=lambda result, p: _verify_stacked(result, sources, p),
+    )
 
 
 def execute_stacked_or_fallback(entry, sources, symbols, device, *, declared=None):
@@ -689,51 +754,25 @@ def execute_stacked_or_fallback(entry, sources, symbols, device, *, declared=Non
             if any(differs(s) for s in sources):
                 return _fallback_stacked(entry, sources, symbols, reason, declared)
         try:
-            bindings = bind_stacked_symbols(entry.compiled, sources)
-            destination = destination_descriptor(entry.compiled, bindings, device)
-            for guard in entry.extent_guards:
-                if expression(guard).evaluate(bindings, checked=True) < 2:
-                    raise UnsupportedRecipe("singleton_extent", f"{guard} binds below two")
+            bindings, destination = _bind_guarded(entry, device, lambda: bind_stacked_symbols(entry.compiled, sources))
         except UnsupportedRecipe as error:
             return _fallback_stacked(entry, sources, symbols, error.reason, declared)
-        except (KeyError, GuardError) as error:
-            return _fallback_stacked(entry, sources, symbols, getattr(error, "reason", "missing_symbol"), declared)
         promised = destination if declared is None else declared
         if count * first.numel() * first.element_size() < entry.min_stack_bytes:
             return _fallback_stacked(entry, sources, symbols, "below_stack_threshold", promised)
-        if symbols is not None:
-            expected = [bindings[name] for name in entry.compiled.symbols]
-            if [int(value) for value in symbols] != expected:
-                return _fallback_stacked(entry, sources, symbols, "symbol_mismatch", promised)
-        if declared is not None and (
-            tuple(declared.shape) != destination.shape or tuple(declared.strides) != destination.strides
-        ):
-            raise RuntimeError(
-                f"declared output metadata {tuple(declared.shape)}/{tuple(declared.strides)} "
-                f"does not match the compiled stacked descriptor {destination.shape}/{destination.strides}"
-            )
+        reason = _reconcile(entry, bindings, destination, symbols, declared, descriptor_label="stacked")
+        if reason is not None:
+            return _fallback_stacked(entry, sources, symbols, reason, promised)
         try:
             with _counting_binds(entry.diagnostics):
                 call = entry.runtime.preflight_stacked(entry.compiled, sources, device)
         except UnsupportedRecipe as error:
             return _fallback_stacked(entry, sources, symbols, error.reason, promised)
-        if call.bindings != bindings or tuple(call.destination.shape) != destination.shape:
-            raise RuntimeError("runtime adapter disagreed with the frontend binding")
-        call.recheck()
-        call.consume()
-        entry.diagnostics.increment("runtime_executions")
-        entry.diagnostics.increment("stacked_executions")
-        try:
-            result = entry.runtime.execute(call)
-        except Exception as error:
-            raise ExecutionError(
-                f"reloc_torch stacked {entry.direction} execution failed for "
-                f"{entry.describe()}: {error}",
-                direction=entry.direction,
-                handle=entry.handle,
-            ) from error
-        entry.diagnostics.record_staging(getattr(call, "staging", ()))
-        return _verify_stacked(result, sources, promised)
+        return _launch(
+            entry, call, bindings, destination,
+            counters=("runtime_executions", "stacked_executions"), label=f"stacked {entry.direction}",
+            verify=lambda result: _verify_stacked(result, sources, promised),
+        )
 
 
 __all__ = (
