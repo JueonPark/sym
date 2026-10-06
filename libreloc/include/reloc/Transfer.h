@@ -85,6 +85,12 @@ struct TransferRequest {
   size_t sourceSpanBytes = 0;  // bytes the plan may read from src offset
   size_t destinationBytes = 0; // == bound.totalBytes
   bool consumed = false;
+
+  /// Stacked requests (torch.stack): the inputs forming the plan's logical
+  /// source in stack order, each holding stackSegmentElements dense elements.
+  /// Empty for ordinary requests, which read `source`.
+  std::vector<BufferView> stackSources;
+  int64_t stackSegmentElements = 0;
 };
 
 /// Byte span a view addresses: elementSize * (1 + sum((extent-1)*stride)),
@@ -105,6 +111,21 @@ validateTransferSource(const BoundPlan &bound, const BufferView &source,
 std::variant<TransferRequest, TransferError>
 validateTransfer(const BoundPlan &bound, const BufferView &source,
                  const BufferView &destination, TransferDirection direction);
+
+/// Preflight half for a stacked request (torch.stack): every input is a dense
+/// host view with the same element count Z and element size, the plan's
+/// logical source holds sources.size() * Z elements, and every plan read
+/// stays inside it. Host-to-device only. Returns the summed source span.
+std::variant<size_t, TransferError>
+validateStackedSources(const BoundPlan &bound,
+                       const std::vector<BufferView> &sources,
+                       TransferDirection direction);
+
+/// Full validation of a stacked request: validateStackedSources plus the
+/// same dense-destination proof as validateTransfer.
+std::variant<TransferRequest, TransferError> validateStackedTransfer(
+    const BoundPlan &bound, const std::vector<BufferView> &sources,
+    const BufferView &destination, TransferDirection direction);
 
 enum class PinningPolicy { Auto, Pinned, Pageable };
 

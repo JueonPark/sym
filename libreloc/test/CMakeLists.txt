@@ -20,6 +20,7 @@ add_executable(libreloc-test
   ChunkScheduleTest.cpp
   PipelineTest.cpp
   TransferTest.cpp
+  StackedTransferTest.cpp
   TransferExecutionTest.cpp
   TransferResourcesTest.cpp
   TransferResourcePolicyTest.cpp

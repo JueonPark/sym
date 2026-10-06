@@ -9,6 +9,7 @@
 
 namespace reloc {
 class PinnedBufferPool;
+struct StackedSource;
 
 namespace detail {
 
@@ -21,6 +22,7 @@ struct TransferRequirements {
   size_t stagingBytes = 0;
   int activeSlots = 1;
   unsigned gatherThreads = 1; // resolved owned participants; 1 for borrowed
+  int64_t stackSegmentElements = 0; // revalidated Z of a stacked request
 };
 
 std::variant<TransferRequirements, TransferError>
@@ -41,7 +43,8 @@ std::optional<TransferError>
 executeH2DPrepared(const BoundPlan &bound, const void *src, void *dst,
                    CopyBackend &backend, PinnedBufferPool &pool,
                    const ChunkSchedule &schedule, int activeSlots,
-                   GatherPool *gather, TransferCompletion &completion);
+                   GatherPool *gather, TransferCompletion &completion,
+                   const StackedSource *stacked = nullptr);
 
 // Preallocated as part of the resource owner, so quarantine never allocates
 // while handling failure. The process-lifetime list deliberately never drains.

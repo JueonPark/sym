@@ -163,7 +163,8 @@ void d2hPipelinedImpl(const BoundPlan &bound, const void *deviceSrc,
 std::optional<TransferError> detail::executeH2DPrepared(
     const BoundPlan &bound, const void *srcBase, void *deviceDst,
     CopyBackend &backend, PinnedBufferPool &pool, const ChunkSchedule &sched,
-    int activeSlots, GatherPool *gather, TransferCompletion &completion) {
+    int activeSlots, GatherPool *gather, TransferCompletion &completion,
+    const StackedSource *stacked) {
   if (!pool.usesBackend(backend) || !pool.valid() || activeSlots < 1 ||
       activeSlots > pool.nBuffers() || sched.chunks.empty() ||
       pool.bufferBytes() < sched.maxChunkBytes)
@@ -202,7 +203,10 @@ std::optional<TransferError> detail::executeH2DPrepared(
       dispatchRows(gather, parallelSafe, sched.rowBytes, c.validBegin,
                    c.validEnd, [&](int64_t rb, int64_t re) {
                      detail::TraceRange work("reloc.gather.work", k);
-                     gatherChunk(bound, srcBase, dstBase, rb, re);
+                     if (stacked)
+                       gatherChunk(bound, *stacked, dstBase, rb, re);
+                     else
+                       gatherChunk(bound, srcBase, dstBase, rb, re);
                    });
     }
 

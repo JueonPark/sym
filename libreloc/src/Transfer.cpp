@@ -276,6 +276,84 @@ validateTransfer(const BoundPlan &bound, const BufferView &source,
   return request;
 }
 
+std::variant<size_t, TransferError>
+validateStackedSources(const BoundPlan &bound,
+                       const std::vector<BufferView> &sources,
+                       TransferDirection direction) {
+  if (direction != TransferDirection::HostToDevice)
+    return fail("direction_mismatch",
+                "stacked sources support host-to-device transfers only");
+  if (sources.empty())
+    return fail("plan_mismatch", "a stacked request needs at least one source");
+  int64_t segment = 0;
+  size_t total = 0;
+  for (size_t i = 0; i < sources.size(); ++i) {
+    const BufferView &view = sources[i];
+    const std::string what = "stacked source " + std::to_string(i);
+    if (auto error = checkSourceKind(view, direction))
+      return *error;
+    auto span = viewSpanBytes(view, what.c_str());
+    if (auto *error = std::get_if<TransferError>(&span))
+      return *error;
+    if (!isDense(view))
+      return fail("unsupported_layout", what + " must be dense row-major");
+    int64_t elements = 0;
+    if (!elementCount(view.extents, elements))
+      return fail("integer_overflow", what + " element count overflows");
+    if (i == 0)
+      segment = elements;
+    else if (elements != segment)
+      return fail("plan_mismatch", what + " holds " + std::to_string(elements) +
+                                       " elements but source 0 holds " +
+                                       std::to_string(segment));
+    if (view.elementSize != sources.front().elementSize)
+      return fail("plan_mismatch",
+                  what + " element size differs from source 0");
+    if (!addOk(total, std::get<size_t>(span), total))
+      return fail("integer_overflow", "stacked source span overflows");
+  }
+  // The plan reads the logical source: a dense row-major view of N * Z
+  // elements. Prove reads against it exactly as for an ordinary source.
+  int64_t logicalElements = 0;
+  size_t logicalBytes = 0;
+  if (!mulOk(segment, static_cast<int64_t>(sources.size()), logicalElements) ||
+      !mulOk(static_cast<size_t>(logicalElements),
+             static_cast<size_t>(sources.front().elementSize), logicalBytes))
+    return fail("integer_overflow", "stacked logical source overflows");
+  BufferView logical;
+  logical.base = sources.front().base; // never dereferenced
+  logical.capacityBytes = logicalBytes;
+  logical.extents = {logicalElements};
+  logical.strides = {1};
+  logical.elementSize = sources.front().elementSize;
+  if (auto error = checkPlanAgainstSource(bound, logical, logicalBytes))
+    return *error;
+  return total;
+}
+
+std::variant<TransferRequest, TransferError> validateStackedTransfer(
+    const BoundPlan &bound, const std::vector<BufferView> &sources,
+    const BufferView &destination, TransferDirection direction) {
+  auto sourceSpan = validateStackedSources(bound, sources, direction);
+  if (auto *error = std::get_if<TransferError>(&sourceSpan))
+    return *error;
+  auto destinationSpan = viewSpanBytes(destination, "destination");
+  if (auto *error = std::get_if<TransferError>(&destinationSpan))
+    return *error;
+  if (auto error = checkPlanAgainstDestination(
+          bound, destination, std::get<size_t>(destinationSpan)))
+    return *error;
+  TransferRequest request;
+  request.bound = bound;
+  request.destination = destination;
+  request.direction = direction;
+  request.sourceSpanBytes = std::get<size_t>(sourceSpan);
+  request.destinationBytes = static_cast<size_t>(bound.totalBytes);
+  request.stackSources = sources;
+  elementCount(sources.front().extents, request.stackSegmentElements);
+  return request;
+}
+
 namespace {
 
 // Forward host gather over the whole plan: pads first, then valid cells,
@@ -372,12 +450,18 @@ describeTransfer(const TransferRequest &request,
     return fail("already_executed", "transfer request was already executed");
   // Public request fields can change after validation. Never trust the cached
   // span or an earlier capacity proof when allocating/reusing staging.
-  auto checked = validateTransfer(request.bound, request.source,
-                                  request.destination, request.direction);
+  auto checked =
+      request.stackSources.empty()
+          ? validateTransfer(request.bound, request.source, request.destination,
+                             request.direction)
+          : validateStackedTransfer(request.bound, request.stackSources,
+                                    request.destination, request.direction);
   if (auto *error = std::get_if<TransferError>(&checked))
     return *error;
   TransferRequirements r;
   r.sourceBytes = std::get<TransferRequest>(checked).sourceSpanBytes;
+  r.stackSegmentElements =
+      std::get<TransferRequest>(checked).stackSegmentElements;
   r.gatherThreads = options.gather ? 1 : options.gatherThreads;
   if (r.gatherThreads == 0)
     r.gatherThreads = std::max(1u, std::thread::hardware_concurrency());
@@ -461,9 +545,24 @@ executePreparedTransfer(const TransferRequest &request,
     if (!backend.waitStream(options.callerStream) || backend.failed())
       return backendFailure(backend, "ordering after the caller stream failed");
   }
-  if (request.direction == TransferDirection::HostToDevice)
-    return executeH2DPrepared(request.bound, src, dst, backend, pool,
-                              r.schedule, r.activeSlots, gather, completion);
+  if (request.direction == TransferDirection::HostToDevice) {
+    if (request.stackSources.empty())
+      return executeH2DPrepared(request.bound, src, dst, backend, pool,
+                                r.schedule, r.activeSlots, gather, completion);
+    // Stacked: one base per input, resolved through the input pointer table.
+    // Z comes from describeTransfer's revalidation, never the public field.
+    std::vector<const uint8_t *> bases;
+    bases.reserve(request.stackSources.size());
+    for (const BufferView &view : request.stackSources)
+      bases.push_back(reinterpret_cast<const uint8_t *>(view.base) +
+                      view.offsetBytes);
+    const StackedSource stacked{bases.data(),
+                                static_cast<int64_t>(bases.size()),
+                                r.stackSegmentElements};
+    return executeH2DPrepared(request.bound, nullptr, dst, backend, pool,
+                              r.schedule, r.activeSlots, gather, completion,
+                              &stacked);
+  }
 
   // Forward D2H uses the validated source span, not destination size or an
   // inverse-scatter schedule. Only gather after the download proves complete.
