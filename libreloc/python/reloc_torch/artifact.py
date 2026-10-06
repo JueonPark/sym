@@ -128,14 +128,17 @@ class CompiledRecipe:
         """Guard current source metadata; return a fresh wire-symbol mapping."""
         return dict(self._metadata_binder(_tensor_spec(value)))
 
-    def bind_stacked_values(self, sources):
+    def bind_stacked_values(self, sources, uniform=False):
         """Guard every stacked input (torch.stack); return the wire-symbol
-        mapping of the logical [N, *S] source they form, N = stack_inputs."""
+        mapping of the logical [N, *S] source they form, N = stack_inputs.
+        ``uniform`` is the caller's proof that every input has input 0's
+        dtype, shape, strides and storage offset: only input 0's descriptor
+        is then read, with the same guards and result."""
         count = self.recipe.stack_inputs
         sources = tuple(sources)
         if count < 1 or len(sources) != count:
             raise GuardError("stack_count")
-        specs = [_tensor_spec(source) for source in sources]
+        specs = [_tensor_spec(sources[0])] if uniform else [_tensor_spec(source) for source in sources]
         first = specs[0]
         if any(spec.dtype != first.dtype for spec in specs):
             raise GuardError("stack_dtype_mismatch")

@@ -74,20 +74,28 @@ class PreparedCall:
     # torch.stack: every stacked input in order (``src`` is ``sources[0]``);
     # empty for single-source calls.
     sources: tuple = ()
+    # torch.stack: True when ``request`` itself rechecks every input
+    # immediately before execution (the transport's stacked request); the
+    # call then keeps no second snapshot of the same inputs.
+    request_rechecks: bool = False
     _snapshot: tuple = field(init=False, repr=False, compare=False)
     _consumed: bool = field(default=False, init=False, repr=False, compare=False)
 
     def __post_init__(self):
-        if self.sources:
-            self._snapshot = tuple(_metadata_snapshot(tensor) for tensor in self.sources)
-        else:
+        if not self.sources:
             self._snapshot = _metadata_snapshot(self.src)
+        elif self.request_rechecks:
+            self._snapshot = None
+        else:
+            self._snapshot = tuple(_metadata_snapshot(tensor) for tensor in self.sources)
 
     def recheck(self):
-        if self.sources:
-            current = tuple(_metadata_snapshot(tensor) for tensor in self.sources)
-        else:
+        if not self.sources:
             current = _metadata_snapshot(self.src)
+        elif self.request_rechecks:
+            return
+        else:
+            current = tuple(_metadata_snapshot(tensor) for tensor in self.sources)
         if current != self._snapshot:
             raise RuntimeError(
                 "stale prepared call: source metadata changed after preflight"
@@ -237,6 +245,59 @@ def source_reason(src):
     return _metadata_reason(metadata)
 
 
+def check_stacked_sources(sources):
+    """``source_reason`` over every stacked input, paying for the full guard
+    once; shared by the frontend and the transport.
+
+    Input 0 runs ``source_reason``. A later input is admitted from a lean
+    check against it that covers every property ``source_reason`` reads:
+    the plain ``Tensor``/``Parameter`` type test, a strided layout, the
+    requires_grad/grad-mode rule, and (from one ``compat.storage_snapshot``)
+    the same shape, strides, storage offset, dtype and device as input 0
+    and storage that is not empty. Any other input runs ``source_reason``
+    itself, so a rejection carries exactly that guard's reason and no input
+    it rejects is admitted.
+
+    Returns ``(reason, snapshots, uniform)``: the reason of the first
+    rejected input in order (``snapshots`` is then None) or None; one storage
+    snapshot per input; and whether every input passed the lean check, so
+    that all of them share input 0's dtype, shape, strides, offset and
+    device.
+    """
+    import torch
+
+    if not sources:
+        return None, (), True
+    reason = source_reason(sources[0])
+    if reason is not None:
+        return reason, None, False
+    first = compat.storage_snapshot(sources[0])
+    # storage_snapshot is (shape, strides, offset bytes, dtype, device, base,
+    # capacity bytes); input 0 has a zero offset and non-empty storage.
+    key = first[:5]
+    plain = (torch.Tensor, torch.nn.Parameter)
+    grad = torch.is_grad_enabled()
+    snapshots = [first]
+    uniform = True
+    for src in sources[1:]:
+        snapshot = None
+        if type(src) in plain and src.layout is torch.strided and not (grad and src.requires_grad):
+            try:
+                snapshot = compat.storage_snapshot(src)
+            except Exception:
+                snapshot = None
+            if snapshot is not None and (snapshot[:5] != key or not snapshot[6]):
+                snapshot = None
+        if snapshot is None:
+            reason = source_reason(src)
+            if reason is not None:
+                return reason, None, False
+            snapshot = compat.storage_snapshot(src)
+            uniform = False
+        snapshots.append(snapshot)
+    return None, tuple(snapshots), uniform
+
+
 def bind_symbols(compiled, src):
     """Exact name-to-value map for ``pyreloc.bind`` from real source metadata."""
     validated = getattr(_local, "validated_binding", None)
@@ -249,11 +310,13 @@ def bind_symbols(compiled, src):
         raise UnsupportedRecipe(error.reason, str(error)) from error
 
 
-def bind_stacked_symbols(compiled, sources):
+def bind_stacked_symbols(compiled, sources, uniform=False):
     """Exact name-to-value map of a stacked recipe's logical [N, *S] source,
-    guarded across every input (count, dtype, shape, dense, zero offset)."""
+    guarded across every input (count, dtype, shape, dense, zero offset).
+    ``uniform`` is ``check_stacked_sources``' proof that every input shares
+    input 0's metadata, so only input 0's descriptor is read."""
     try:
-        return compiled.bind_stacked_values(tuple(sources))
+        return compiled.bind_stacked_values(tuple(sources), uniform)
     except GuardError as error:
         raise UnsupportedRecipe(error.reason, str(error)) from error
 
@@ -291,6 +354,39 @@ def _validated_binding(compiled, src, bindings):
         yield
     finally:
         _local.validated_binding = previous
+
+
+@contextmanager
+def _validated_stacked_binding(compiled, sources, snapshots, uniform, bindings):
+    """The stacked twin of ``_validated_binding``: the frontend's checked
+    inputs, their storage snapshots and exact binding, offered to the
+    adapter's preflight of the same request (``validated_stacked_inputs``)."""
+    previous = getattr(_local, "validated_stacked", None)
+    _local.validated_stacked = (compiled, sources, snapshots, uniform, dict(bindings))
+    try:
+        yield
+    finally:
+        _local.validated_stacked = previous
+
+
+def validated_stacked_inputs(compiled, sources):
+    """``(snapshots, uniform, bindings)`` the frontend checked for this
+    compiled recipe and these exact input objects in the current stacked
+    preflight on this thread, or None. Like the single-source binding it is
+    keyed on identity plus storage snapshots: an input that changed since the
+    frontend's check gets every check again. The returned snapshots are
+    therefore every input's current one."""
+    validated = getattr(_local, "validated_stacked", None)
+    if validated is None or validated[0] is not compiled:
+        return None
+    known = validated[1]
+    if known is not sources and (len(known) != len(sources)
+                                 or any(a is not b for a, b in zip(known, sources))):
+        return None
+    current = tuple(compat.storage_snapshot(src) for src in sources)
+    if current != validated[2]:
+        return None
+    return current, validated[3], dict(validated[4])
 
 
 @contextmanager
@@ -384,17 +480,22 @@ def prepare_host_call(compiled, src, device, *, non_blocking=False):
 
 def prepare_stacked_host_call(compiled, sources, device, *, non_blocking=False):
     """prepare_host_call for a stacked recipe: every input passes the shared
-    metadata guards before one logical binding. Allocates and launches nothing."""
+    metadata guards (``check_stacked_sources``) before one logical binding,
+    unless the frontend has just checked and bound this same request
+    (``validated_stacked_inputs``). Allocates and launches nothing."""
     import torch
 
     if non_blocking:
         raise UnsupportedRecipe("nonblocking_unavailable", "blocking transfers only")
     sources = tuple(sources)
-    for src in sources:
-        reason = source_reason(src)
+    validated = validated_stacked_inputs(compiled, sources)
+    if validated is None:
+        reason, _, uniform = check_stacked_sources(sources)
         if reason is not None:
             raise UnsupportedRecipe(reason, f"source tensor rejected: {reason}")
-    bindings = bind_stacked_symbols(compiled, sources)
+        bindings = bind_stacked_symbols(compiled, sources, uniform)
+    else:
+        bindings = validated[2]
     bound = bind_plan(compiled, bindings)
     destination = destination_descriptor(compiled, bindings, torch.device(device))
     return PreparedCall(compiled, sources[0], bindings, bound, destination, non_blocking, sources=sources)
@@ -531,9 +632,10 @@ class TransportAdapter:
                 tuple(destination.shape), tuple(destination.strides),
                 compat.dtype_name(destination.dtype), torch.device(destination.device),
             )
+        # The transport's request rechecks every input right before execution.
         return PreparedCall(
             compiled, sources[0], dict(request.bindings), getattr(request, "bound", None),
-            destination, non_blocking, request=request, sources=sources,
+            destination, non_blocking, request=request, sources=sources, request_rechecks=True,
         )
 
     def execute(self, call):
@@ -745,10 +847,13 @@ def execute_stacked_or_fallback(entry, sources, symbols, device, *, declared=Non
     """The stacked twin of execute_or_fallback (torch.stack fused into an H2D
     transfer). The size gate comes first and reads only the input count and
     input 0's size, so a call below it runs the original region before any
-    per-input work. Above it every input passes the shared guards; equality
-    of dtype, device and shape, the logical binding and the adapter preflight
-    all run before any allocation or launch, and every expected rejection
-    runs the original region exactly once."""
+    per-input work. Above it every input passes the shared guards
+    (``check_stacked_sources``: the full guard on input 0, a lean check
+    against it on the others); equality of dtype, device and shape, the
+    logical binding and the adapter preflight all run before any allocation
+    or launch, and every expected rejection runs the original region exactly
+    once. The adapter's preflight is offered the checked inputs, their
+    storage snapshots and the binding, so it need not guard or bind again."""
     import torch
 
     if entry.closed:
@@ -764,19 +869,20 @@ def execute_stacked_or_fallback(entry, sources, symbols, device, *, declared=Non
         first = sources[0]
         if stack_below_threshold(count, first.numel(), first.element_size(), entry.min_stack_bytes):
             return _fallback_stacked(entry, sources, symbols, "below_stack_threshold", declared)
-        for src in sources:
-            reason = source_reason(src)
-            if reason is not None:
-                return _fallback_stacked(entry, sources, symbols, reason, declared)
-        for reason, differs in (
-            ("stack_dtype_mismatch", lambda s: s.dtype != first.dtype),
-            ("unsupported_device", lambda s: s.device != first.device),
-            ("stack_shape_mismatch", lambda s: s.shape != first.shape),
-        ):
-            if any(differs(s) for s in sources):
-                return _fallback_stacked(entry, sources, symbols, reason, declared)
+        reason, snapshots, uniform = check_stacked_sources(sources)
+        if reason is not None:
+            return _fallback_stacked(entry, sources, symbols, reason, declared)
+        if not uniform:
+            # Uniform inputs share input 0's dtype, device and shape.
+            for reason, differs in (
+                ("stack_dtype_mismatch", lambda s: s.dtype != first.dtype),
+                ("unsupported_device", lambda s: s.device != first.device),
+                ("stack_shape_mismatch", lambda s: s.shape != first.shape),
+            ):
+                if any(differs(s) for s in sources):
+                    return _fallback_stacked(entry, sources, symbols, reason, declared)
         try:
-            bindings, destination = _bind_guarded(entry, device, bind_stacked_symbols, sources)
+            bindings, destination = _bind_guarded(entry, device, bind_stacked_symbols, sources, uniform)
         except UnsupportedRecipe as error:
             return _fallback_stacked(entry, sources, symbols, error.reason, declared)
         promised = destination if declared is None else declared
@@ -785,7 +891,9 @@ def execute_stacked_or_fallback(entry, sources, symbols, device, *, declared=Non
             return _fallback_stacked(entry, sources, symbols, reason, promised)
         try:
             preflight = stacked_preflight(entry.runtime)
-            with _counting_binds(entry.diagnostics):
+            with _counting_binds(entry.diagnostics), _validated_stacked_binding(
+                entry.compiled, sources, snapshots, uniform, bindings,
+            ):
                 call = preflight(entry.compiled, sources, device)
         except UnsupportedRecipe as error:
             return _fallback_stacked(entry, sources, symbols, error.reason, promised)
@@ -804,6 +912,7 @@ __all__ = (
     "bind_plan",
     "bind_stacked_symbols",
     "bind_symbols",
+    "check_stacked_sources",
     "destination_descriptor",
     "execute_or_fallback",
     "execute_stacked_or_fallback",
@@ -815,5 +924,6 @@ __all__ = (
     "stack_below_threshold",
     "stacked_preflight",
     "suspend_interception",
+    "validated_stacked_inputs",
     "verify_result",
 )

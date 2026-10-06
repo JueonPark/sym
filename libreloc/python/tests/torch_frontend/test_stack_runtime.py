@@ -256,3 +256,115 @@ def test_min_stack_bytes_via_the_constructor_gates_as_expected(compiler):
     )
     assert torch.equal(run(at, xs), torch.stack(xs, 1))
     assert runtime.executions == 1
+
+
+class _Subclass(torch.Tensor):
+    pass
+
+
+def _empty_storage(x):
+    x = x.clone()
+    x.untyped_storage().resize_(0)
+    return x
+
+
+def _second(make, *, first=None):
+    def build():
+        xs = inputs() if first is None else [first() + i for i in range(3)]
+        xs[1] = make(xs[1])
+        return xs
+    return build
+
+
+# (inputs, grad mode, whether every input shares input 0's metadata when admitted)
+LEAN_CASES = {
+    "same_values": (_second(lambda x: x.clone()), True, True),
+    "same_object": (lambda: [inputs()[0]] * 3, True, True),
+    "parameter": (_second(lambda x: torch.nn.Parameter(x, requires_grad=False)), True, True),
+    "requires_grad": (_second(lambda x: x.clone().requires_grad_()), True, None),
+    "requires_grad_without_grad_mode": (_second(lambda x: x.clone().requires_grad_()), False, True),
+    "subclass": (_second(lambda x: x.as_subclass(_Subclass)), True, None),
+    "strided": (_second(lambda x: torch.ones(4, 10)[:, ::2]), True, None),
+    "offset": (_second(lambda x: torch.ones(22)[2:].view(4, 5)), True, None),
+    "float16": (_second(lambda x: x.half()), True, False),
+    "bfloat16": (_second(lambda x: x.bfloat16()), True, None),
+    "int32": (_second(lambda x: x.int()), True, None),
+    "shape": (_second(lambda x: torch.ones(4, 6)), True, False),
+    "rank_zero": (_second(lambda x: torch.tensor(1.0)), True, None),
+    "empty": (_second(lambda x: torch.ones(0, 5)), True, None),
+    "empty_storage": (_second(_empty_storage), True, None),
+    "sparse": (_second(lambda x: x.to_sparse()), True, None),
+    "meta": (_second(lambda x: torch.empty(4, 5, device="meta")), True, None),
+    "size_one_stride": (_second(lambda x: torch.empty_strided((4, 1, 5), (5, 1, 1)).fill_(1),
+                                first=lambda: torch.ones(4, 1, 5)), True, False),
+    "last_input_strided": (lambda: inputs()[:2] + [torch.ones(4, 10)[:, ::2]], True, None),
+}
+
+
+@pytest.mark.parametrize("case", LEAN_CASES)
+def test_lean_input_check_reports_exactly_the_full_guards_reason(case):
+    """Input 0 runs the full source guard; a later input that matches it in
+    every property the guard reads is admitted from that match, and any
+    other input runs the full guard itself. The outcome is exactly the full
+    guard applied to every input in order: same first reason, and nothing
+    the full guard rejects is admitted."""
+    from reloc_torch import compat
+    from reloc_torch.runtime import check_stacked_sources, source_reason
+
+    make, grad, expected_uniform = LEAN_CASES[case]
+    xs = make()
+    with torch.set_grad_enabled(grad):
+        expected = next((r for r in map(source_reason, xs) if r is not None), None)
+        reason, snapshots, uniform = check_stacked_sources(xs)
+    assert reason == expected
+    if expected is None:
+        assert snapshots == tuple(compat.storage_snapshot(x) for x in xs)
+        assert uniform is expected_uniform
+    else:
+        assert expected_uniform is None and snapshots is None
+
+
+def test_uniform_inputs_run_the_full_guard_and_binding_once(compiler, monkeypatch):
+    """Sixteen inputs that share input 0's metadata cost one full source
+    guard and one binding per call: the adapter's preflight takes the
+    frontend's validated binding instead of guarding and binding again."""
+    from reloc_torch import runtime as runtime_module
+    from reloc_torch.artifact import CompiledRecipe
+
+    calls = []
+
+    def counted(name, function):
+        def wrapper(*args, **kwargs):
+            calls.append(name)
+            return function(*args, **kwargs)
+        return wrapper
+
+    monkeypatch.setattr(runtime_module, "source_reason", counted("source_reason", runtime_module.source_reason))
+    monkeypatch.setattr(CompiledRecipe, "bind_stacked_values",
+                        counted("bind_stacked_values", CompiledRecipe.bind_stacked_values))
+    runtime = StackedCountingRuntime()
+    entry = stacked_entry(compiler, runtime, count=16)
+    xs = inputs(count=16)
+    result = run(entry, xs)
+    assert torch.equal(result, torch.stack(xs, 1)) and runtime.executions == 1
+    assert sorted(calls) == ["bind_stacked_values", "source_reason"]
+
+
+def test_the_validated_binding_applies_only_to_the_same_request(compiler):
+    from reloc_torch.runtime import _validated_stacked_binding, check_stacked_sources, validated_stacked_inputs
+
+    compiled = compiler.compile(stacked_recipe(count=3, dim=1))
+    other = compiler.compile(stacked_recipe(count=3, dim=0))
+    xs = tuple(inputs())
+    _, snapshots, uniform = check_stacked_sources(xs)
+    bindings = {"s0": 4, "s1": 5}
+    assert validated_stacked_inputs(compiled, xs) is None
+    with _validated_stacked_binding(compiled, xs, snapshots, uniform, bindings):
+        assert validated_stacked_inputs(compiled, xs) == (snapshots, uniform, bindings)
+        assert validated_stacked_inputs(compiled, list(xs)) == (snapshots, uniform, bindings)
+        assert validated_stacked_inputs(other, xs) is None
+        assert validated_stacked_inputs(compiled, (xs[0], xs[1].clone(), xs[2])) is None
+        assert validated_stacked_inputs(compiled, xs[:2]) is None
+        xs[2].resize_(40)
+        assert validated_stacked_inputs(compiled, xs) is None  # keyed on the snapshots too
+    assert validated_stacked_inputs(compiled, xs) is None
