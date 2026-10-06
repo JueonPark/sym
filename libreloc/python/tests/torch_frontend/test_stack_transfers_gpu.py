@@ -77,6 +77,36 @@ def test_layout_chains_around_the_stack_are_exact(stack_backend, fn):
     assert stack_backend.stats()["stacked_executions"] == 1
 
 
+def _closure_stack(dim):
+    def fn(a, b):
+        return torch.stack([a, b], dim).to("cuda")
+    return fn
+
+
+@pytest.mark.parametrize("form", ["argument", "closure"])
+def test_another_stack_dim_recompiles_and_stays_exact(stack_backend, form):
+    """The importer resolves a dim Dynamo lifted into the graph to the
+    constant it was traced with. That is sound only because Dynamo
+    specializes and guards the int: a call with another dim must recompile
+    rather than reuse a graph whose recipe moves the stack axis to the old
+    position."""
+    a, b = make_inputs(2, 6, 6, torch.float32)
+    if form == "argument":
+        compiled = torch.compile(lambda a, b, dim: torch.stack([a, b], dim).to("cuda"),
+                                 backend=stack_backend, dynamic=True)
+        call = lambda dim: compiled(a, b, dim)  # noqa: E731
+    else:
+        call = lambda dim: torch.compile(_closure_stack(dim), backend=stack_backend, dynamic=True)(a, b)  # noqa: E731
+    with torch.no_grad():
+        for dim in (0, 1):
+            actual = call(dim)
+            expected = torch.stack([a, b], dim).cuda()
+            assert torch.equal(actual, expected) and actual.stride() == expected.stride()
+    stats = stack_backend.stats()
+    assert stats["dynamo_compiles"] == 2 and stats["stacked_executions"] == 2
+    assert not stats["fallbacks"]
+
+
 @pytest.mark.skipif(torch.cuda.device_count() < 2, reason="needs two GPUs")
 def test_stack_to_a_non_current_device(stack_backend):
     compiled = torch.compile(lambda a, b: torch.stack([a, b], 1).to("cuda:1"), backend=stack_backend, dynamic=True)
