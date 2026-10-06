@@ -16,7 +16,9 @@
 #include "reloc/TransferResources.h"
 #include "gtest/gtest.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <variant>
@@ -133,8 +135,10 @@ TEST(StackedTransfer, HostForwardMatchesTheConcatenatedTransfer) {
 }
 
 TEST(StackedTransfer, ChunksAndWorkersCrossInputBoundaries) {
-  // Forced small chunks cut inside inputs (dim 0) and across them (dim 1);
-  // workers split each chunk's outer rows.
+  // Forced small chunks cut inside inputs (dim 0) and across them (dim 1).
+  // Every chunk is below the 1 MiB-per-worker gather floor, so even the
+  // 4-thread pool gathers each one inline; WorkersSplitEachLargeChunk runs
+  // concurrent stacked gathers.
   for (int dim : {0, 1, 2}) {
     Stack s(4, 64, 256, dim);
     const auto expected = s.reference();
@@ -158,6 +162,35 @@ TEST(StackedTransfer, ChunksAndWorkersCrossInputBoundaries) {
         EXPECT_EQ(dst, expected) << "dim " << dim << ", " << threads
                                  << " threads, " << chunk << "-byte chunks";
       }
+  }
+}
+
+TEST(StackedTransfer, WorkersSplitEachLargeChunk) {
+  // 8 MiB of inputs in 4 MiB chunks: pools of 4 and 8 threads cut every
+  // chunk into 4 concurrent parts at row offsets inside the inputs (dim 2
+  // runs the 8x8 tiles at those offsets). One thread is the inline control.
+  for (int dim : {0, 1, 2}) {
+    Stack s(8, 512, 512, dim);
+    const auto expected = s.reference();
+    for (unsigned threads : {1u, 4u, 8u}) {
+      std::vector<uint8_t> dst(static_cast<size_t>(s.plan.totalBytes), 0xCD);
+      auto validated = reloc::validateStackedTransfer(
+          s.plan, s.views(),
+          hostView(dst.data(), dst.size(), s.destinationExtents(), 4),
+          TransferDirection::HostToDevice);
+      ASSERT_EQ(codeOf(validated), "ok");
+      auto request = std::get<TransferRequest>(validated);
+      reloc::HostBackend backend(2);
+      reloc::GatherPool pool(threads);
+      TransferOptions options;
+      options.nBuffers = 2;
+      options.chunkSizeOverride = size_t(4) << 20;
+      options.gather = &pool;
+      ASSERT_FALSE(
+          reloc::executeTransfer(request, backend, options).has_value());
+      EXPECT_EQ(dst, expected)
+          << "dim " << dim << ", " << threads << " threads";
+    }
   }
 }
 
@@ -208,10 +241,10 @@ TEST(StackedTransfer, InvalidSourcesFailBeforeAnyCopy) {
   strided[1].extents = {7, 5};
   strided[1].strides = {1, 7};
   expect(strided, TransferDirection::HostToDevice, "unsupported_layout");
-  auto narrow = views;
-  narrow[0].elementSize = 2;
-  narrow[0].extents = {5, 14};
-  narrow[0].strides = {14, 1};
+  auto narrow = views; // same element count: only the size check rejects it
+  narrow[1].elementSize = 2;
+  narrow[1].extents = {5, 7};
+  narrow[1].strides = {7, 1};
   expect(narrow, TransferDirection::HostToDevice, "plan_mismatch");
   auto truncated = views;
   truncated[1].capacityBytes -= 1;
@@ -225,6 +258,69 @@ TEST(StackedTransfer, InvalidSourcesFailBeforeAnyCopy) {
   EXPECT_EQ(codeOf(reloc::validateStackedSources(
                 typed, views, TransferDirection::HostToDevice)),
             "typed_unsupported");
+}
+
+TEST(StackedTransfer, ExecutionRevalidatesOffsetInputs) {
+  // Each input starts 16 bytes into an allocation that ends where it ends.
+  Stack s(3, 5, 7, 1);
+  const auto expected = s.reference();
+  constexpr size_t kOffset = 16;
+  std::vector<std::vector<uint8_t>> allocations;
+  allocations.reserve(s.inputs.size());
+  std::vector<BufferView> views;
+  for (const auto &input : s.inputs) {
+    std::vector<uint8_t> allocation(kOffset + input.size(), 0xEE);
+    std::copy(input.begin(), input.end(), allocation.begin() + kOffset);
+    allocations.push_back(std::move(allocation));
+    views.push_back(hostView(allocations.back().data(),
+                             allocations.back().size(), {s.rows, s.columns},
+                             4));
+    views.back().offsetBytes = kOffset;
+  }
+  std::vector<uint8_t> dst(static_cast<size_t>(s.plan.totalBytes), 0xCD);
+  const std::vector<uint8_t> untouched(dst);
+  const BufferView destination =
+      hostView(dst.data(), dst.size(), s.destinationExtents(), 4);
+  // Validate, change the request's public fields, then execute into a fresh
+  // destination; returns the execution's error code.
+  auto run = [&](const std::function<void(TransferRequest &)> &mutate) {
+    std::fill(dst.begin(), dst.end(), 0xCD);
+    auto validated = reloc::validateStackedTransfer(
+        s.plan, views, destination, TransferDirection::HostToDevice);
+    if (const auto *error = std::get_if<TransferError>(&validated))
+      return "invalid " + error->code;
+    auto request = std::get<TransferRequest>(validated);
+    mutate(request);
+    reloc::HostBackend backend(2);
+    auto error = reloc::executeTransfer(request, backend, TransferOptions{});
+    return error ? error->code : std::string("ok");
+  };
+  EXPECT_EQ(run([](TransferRequest &) {}), "ok");
+  EXPECT_EQ(dst, expected);
+  // Execution takes Z from its own revalidation, never the public field.
+  EXPECT_EQ(run([](TransferRequest &r) { r.stackSegmentElements = 999; }),
+            "ok");
+  EXPECT_EQ(dst, expected);
+  EXPECT_EQ(run([](TransferRequest &r) { r.stackSources.pop_back(); }),
+            "plan_mismatch");
+  EXPECT_EQ(dst, untouched);
+  EXPECT_EQ(
+      run([](TransferRequest &r) { r.stackSources[1].capacityBytes -= 1; }),
+      "insufficient_capacity");
+  EXPECT_EQ(dst, untouched);
+
+  // The same request through the cached resource owner (host backend).
+  auto validated = reloc::validateStackedTransfer(
+      s.plan, views, destination, TransferDirection::HostToDevice);
+  ASSERT_EQ(codeOf(validated), "ok");
+  auto request = std::get<TransferRequest>(validated);
+  reloc::TransferResourceCache cache;
+  auto outcome = reloc::executeTransferCached(
+      request, cache, reloc::CachedTransferOptions{}, std::make_shared<int>(0));
+  ASSERT_FALSE(outcome.error.has_value()) << outcome.error->message;
+  EXPECT_EQ(outcome.completion, reloc::TransferCompletion::Complete);
+  EXPECT_EQ(dst, expected);
+  EXPECT_FALSE(cache.close().has_value());
 }
 
 TEST(StackedTransfer, LogicalSizeOverflowIsReported) {
@@ -244,32 +340,49 @@ TEST(StackedTransferCuda, DeviceDestinationMatchesTheConcatenatedTransfer) {
   if (cudaGetDeviceCount(&devices) != cudaSuccess || devices == 0)
     GTEST_SKIP() << "no CUDA device";
   ASSERT_EQ(cudaGetDevice(&current), cudaSuccess);
-  for (int dim : {0, 1, 2}) {
-    Stack s(4, 256, 1024, dim); // 4 MiB of inputs
-    const auto expected = s.reference();
-    void *device = nullptr;
-    ASSERT_EQ(cudaMalloc(&device, static_cast<size_t>(s.plan.totalBytes)),
-              cudaSuccess);
-    BufferView destination =
-        hostView(device, static_cast<size_t>(s.plan.totalBytes),
-                 s.destinationExtents(), 4);
-    destination.kind = MemoryKind::Cuda;
-    destination.device = current;
-    auto validated = reloc::validateStackedTransfer(
-        s.plan, s.views(), destination, TransferDirection::HostToDevice);
-    ASSERT_EQ(codeOf(validated), "ok");
-    auto request = std::get<TransferRequest>(validated);
-    reloc::CudaBackend backend(2);
-    TransferOptions options;
-    options.chunkSizeOverride = 256 * 1024; // several chunks per request
-    ASSERT_FALSE(reloc::executeTransfer(request, backend, options).has_value());
-    std::vector<uint8_t> back(static_cast<size_t>(s.plan.totalBytes));
-    ASSERT_EQ(
-        cudaMemcpy(back.data(), device, back.size(), cudaMemcpyDeviceToHost),
-        cudaSuccess);
-    EXPECT_EQ(back, expected) << "dim " << dim;
-    cudaFree(device);
-  }
+  // 4 MiB of inputs in many small chunks gathered inline, then 8 MiB in
+  // 2 MiB chunks that an 8-thread pool splits across workers; pinned and
+  // pageable staging for both.
+  struct Config {
+    int64_t count, rows, columns;
+    size_t chunk;
+    unsigned threads;
+  };
+  const Config configs[] = {{4, 256, 1024, 256 * 1024, 1},
+                            {8, 512, 512, size_t(2) << 20, 8}};
+  for (const Config &config : configs)
+    for (bool pinned : {true, false})
+      for (int dim : {0, 1, 2}) {
+        Stack s(config.count, config.rows, config.columns, dim);
+        const auto expected = s.reference();
+        void *device = nullptr;
+        ASSERT_EQ(cudaMalloc(&device, static_cast<size_t>(s.plan.totalBytes)),
+                  cudaSuccess);
+        BufferView destination =
+            hostView(device, static_cast<size_t>(s.plan.totalBytes),
+                     s.destinationExtents(), 4);
+        destination.kind = MemoryKind::Cuda;
+        destination.device = current;
+        auto validated = reloc::validateStackedTransfer(
+            s.plan, s.views(), destination, TransferDirection::HostToDevice);
+        ASSERT_EQ(codeOf(validated), "ok");
+        auto request = std::get<TransferRequest>(validated);
+        reloc::CudaBackend backend(2, current, pinned);
+        reloc::GatherPool pool(config.threads);
+        TransferOptions options;
+        options.chunkSizeOverride = config.chunk;
+        options.gather = &pool;
+        ASSERT_FALSE(
+            reloc::executeTransfer(request, backend, options).has_value());
+        std::vector<uint8_t> back(static_cast<size_t>(s.plan.totalBytes));
+        ASSERT_EQ(cudaMemcpy(back.data(), device, back.size(),
+                             cudaMemcpyDeviceToHost),
+                  cudaSuccess);
+        EXPECT_EQ(back, expected)
+            << "dim " << dim << (pinned ? ", pinned, " : ", pageable, ")
+            << config.threads << " threads";
+        cudaFree(device);
+      }
 }
 #endif
 
