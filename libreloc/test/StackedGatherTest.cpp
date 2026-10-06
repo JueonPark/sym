@@ -1,15 +1,15 @@
 //===- StackedGatherTest.cpp - stacked-source gather equivalence ----------===//
 //
-// torch.stack support (spec §5): a stacked gather reads N separate inputs as
+// torch.stack support: a stacked gather reads N separate inputs as
 // one logical row-major source [N, *S]. It must write exactly the bytes the
 // single-source gather writes over the inputs' concatenation, for every plan
 // shape and every outer-row subrange (pipeline chunks and gather workers).
 //
 //===----------------------------------------------------------------------===//
 
+#include "../src/Transpose.h"
 #include "TransferTestSupport.h"
 #include "reloc/Execute.h"
-#include "../src/Transpose.h"
 #include "gtest/gtest.h"
 
 #include <algorithm>
@@ -138,15 +138,50 @@ TEST(StackedGather, TiledPathRejectsPlansItCannotServe) {
   std::vector<uint8_t> dst(256, 0xCD);
   const std::vector<uint8_t> untouched(dst);
   BoundPlan narrow = transfer_test::layout({8, 3}, {1, 8}, {3, 1}, 2);
-  BoundPlan padded = transfer_test::layout({8, 3}, {1, 8}, {4, 1}, 4,
-                                           {PadRegion{1, 0, 1, 0}});
-  BoundPlan partial =
-      transfer_test::layout({4, 6}, {1, 4}, {6, 1}, 4); // rows of 4, inputs of 8
+  BoundPlan padded =
+      transfer_test::layout({8, 3}, {1, 8}, {4, 1}, 4, {PadRegion{1, 0, 1, 0}});
+  BoundPlan partial = transfer_test::layout({4, 6}, {1, 4}, {6, 1},
+                                            4); // rows of 4, inputs of 8
   for (const BoundPlan *b : {&narrow, &padded, &partial}) {
     EXPECT_FALSE(reloc::detail::tryGatherTranspose32Stacked(
         *b, in.source(8), dst.data(), 0, b->extents[0]));
     EXPECT_EQ(dst, untouched);
   }
+}
+
+// The remaining tests drive the generic stacked walker (walkStacked /
+// copyRunStacked1D), not the tiled fast path above, through branches the
+// plans in Task 1's tests never reached.
+
+TEST(StackedGather, LeadingInnerPadShiftsValidCells) {
+  // A leading pad on the innermost axis (inner lo = 1): every prior test's
+  // padded plan padded the outer axis or only the inner axis's hi side.
+  expectAllRanges(
+      transfer_test::layout({3, 4}, {4, 1}, {7, 1}, 2, {PadRegion{1, 1, 2, 0}}),
+      3, 4);
+}
+
+TEST(StackedGather, StridedInnerRunSplitsAcrossInputs) {
+  // stack(2 x [6], 0).reshape(3, 4) transposed: an inner run strided by
+  // 1 < stride < Z, so a single run of 3 elements crosses from one input
+  // into the next mid-run instead of landing on an input boundary.
+  expectAllRanges(transfer_test::layout({4, 3}, {1, 4}, {3, 1}, 4), 2, 6);
+}
+
+TEST(StackedGather, ZeroInnerStrideBroadcastsAcrossRow) {
+  // A zero source stride on the innermost axis: every element of the row
+  // reads the same logical source element (copyRunStacked1D's step == 0).
+  expectAllRanges(transfer_test::layout({4, 3}, {1, 0}, {3, 1}, 4), 2, 2);
+}
+
+TEST(StackedGather, PaddedLastDimStackSkipsTiledPath) {
+  // The same shape as LastDimReadsOneElementPerInput, but 4-byte and padded:
+  // the tiled fast path rejects any padded plan, so this exercises the
+  // generic per-element path (source stride == Z, a multi-element step)
+  // at the width the fast path would otherwise have claimed.
+  expectAllRanges(
+      transfer_test::layout({8, 3}, {1, 8}, {4, 1}, 4, {PadRegion{1, 0, 1, 0}}),
+      3, 8);
 }
 
 } // namespace

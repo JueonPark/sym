@@ -72,9 +72,9 @@ transpose8x8(const Rows &rowAt, int64_t c, int64_t r, uint8_t *dst,
 }
 
 template <class Rows>
-__attribute__((target("avx2"))) void
-transpose32Avx2(const Rows &rowAt, uint8_t *dst, int64_t rows,
-                int64_t columns) {
+__attribute__((target("avx2"))) void transpose32Avx2(const Rows &rowAt,
+                                                     uint8_t *dst, int64_t rows,
+                                                     int64_t columns) {
   for (int64_t rb = 0; rb < rows; rb += kBlock) {
     const int64_t re = rb + std::min(kBlock, rows - rb);
     for (int64_t cb = 0; cb < columns; cb += kBlock) {

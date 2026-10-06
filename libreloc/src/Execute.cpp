@@ -89,9 +89,9 @@ void scatterWalk(const BoundPlan &b, uint8_t *src, const uint8_t *dst,
                 dstOff + (i + lo[depth]) * b.dstStrides[depth]);
 }
 
-// Innermost run of a stacked gather. Logical source offsets srcOff + i * s for
-// i in [iBegin, iEnd) live in input (offset / Z) at element (offset % Z), with
-// Z = segmentElements. Offsets are non-negative (bind() rejects negative
+// Innermost run of a stacked gather. Logical source offsets srcOff + i * ss
+// for i in [iBegin, iEnd) live in input (offset / Z) at element (offset % Z),
+// with Z = segmentElements. Offsets are non-negative (bind() rejects negative
 // strides), so truncating division is floor division here.
 void copyRunStacked1D(const BoundPlan &b, const StackedSource &s, uint8_t *dst,
                       int64_t innerLo, int64_t srcOff, int64_t dstOff,
@@ -108,17 +108,22 @@ void copyRunStacked1D(const BoundPlan &b, const StackedSource &s, uint8_t *dst,
     const int64_t first = srcOff + iBegin * ss;
     const int64_t step = ss / z, local = first % z;
     int64_t input = first / z;
-    for (int64_t i = iBegin; i < iEnd; ++i, input += step)
+    for (int64_t i = iBegin; i < iEnd; ++i, input += step) {
+      assert(input < s.count && "stacked source index out of range");
       std::memcpy(dst + (dstOff + (i + innerLo) * ds) * es,
                   s.bases[input] + local * es, es);
+    }
     return;
   }
   // Otherwise split the run where it crosses from one input into the next;
-  // dim-0 stacks merge into one long contiguous run and take this path.
+  // dim-0 stacks take this path when Z > 1, merging into one long contiguous
+  // run (Z == 1 instead takes the per-element path above, since ss == z == 1
+  // there).
   for (int64_t i = iBegin; i < iEnd;) {
     const int64_t offset = srcOff + i * ss;
     const int64_t local = offset % z;
     const int64_t n = std::min(iEnd - i, (z - local + ss - 1) / ss);
+    assert(offset / z < s.count && "stacked source index out of range");
     const uint8_t *src = s.bases[offset / z] + local * es;
     if (ss == 1 && ds == 1) {
       copyRun(dst + (dstOff + i + innerLo) * es, src,
