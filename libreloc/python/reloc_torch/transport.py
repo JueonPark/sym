@@ -82,14 +82,18 @@ class PreparedTransfer:
     _snapshot: tuple = field(init=False, repr=False)
     _execution_lock: object = field(default_factory=Lock, init=False, repr=False, compare=False)
 
-    def _inputs(self):
-        return self.stack_sources or (self.source,)
-
     def __post_init__(self):
-        self._snapshot = tuple(compat.storage_snapshot(tensor) for tensor in self._inputs())
+        if self.stack_sources:
+            self._snapshot = tuple(compat.storage_snapshot(tensor) for tensor in self.stack_sources)
+        else:
+            self._snapshot = compat.storage_snapshot(self.source)
 
     def recheck(self):
-        if tuple(compat.storage_snapshot(tensor) for tensor in self._inputs()) != self._snapshot:
+        if self.stack_sources:
+            current = tuple(compat.storage_snapshot(tensor) for tensor in self.stack_sources)
+        else:
+            current = compat.storage_snapshot(self.source)
+        if current != self._snapshot:
             raise RuntimeError(
                 "stale transfer request: source storage or metadata changed after preflight"
             )
