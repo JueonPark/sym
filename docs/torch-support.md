@@ -37,6 +37,29 @@ shapes. Unsupported nodes, noncontiguous roots, mutation, escaping users,
 training inputs, and nonblocking transfers retain their reason-coded original
 PyTorch path.
 
+The FX frontend also recognizes `squeeze`, `unsqueeze`, and integer-dimension
+`flatten` as reshape recipes ([#210](https://github.com/JueonPark/sym/issues/210)).
+Torch functions, Tensor methods, and `aten.squeeze.default/dim/dims`,
+`aten.unsqueeze.default`, and `aten.flatten.using_ints` are accepted. Dimensions
+must be static integers (or a tuple/list for squeeze); negative dimensions,
+dimension-free squeeze, no-op squeeze, and flatten's default/range arguments
+retain PyTorch semantics. Named-dimension overloads remain outside the vocabulary.
+
+Singleton insertion/removal preserves the actual strides. Noncontiguous roots,
+noncanonical destination strides, empty tensors, scalar inputs/results, mutation,
+and escaping intermediate aliases retain the existing exclusions. Flatten may
+copy a noncontiguous intermediate, but every recipe still passes the compiler's
+fold gate; unsupported transposed-axis merges retain `fold_unsupported` fallback.
+A symbolic squeeze is accepted only when the affected extent is a known singleton
+or is provably at least two. Non-singleton symbolic extents receive a runtime
+`singleton_extent` guard; unresolved rank changes are excluded as
+`conditional_squeeze`. These operations extend captured transfer regions; a
+standalone view remains a PyTorch operation. No new kernel is required.
+
+`test_view_import.py` covers raw/ATen spellings, exact metadata, negative and tuple
+dimensions, alias safety, compiler fallback, native host execution at multiple
+symbolic sizes, and GPU-marked H2D/D2H execution with f32/f16/i8 and a fused cast.
+
 Compile and persist a verified artifact explicitly, then bind its symbols from
 the concrete source tensor before calling the standalone runtime:
 

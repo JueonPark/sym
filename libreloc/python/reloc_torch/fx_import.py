@@ -22,7 +22,7 @@ from . import compat
 from .recipe import (BindingParam, Cast, Dequantize, Fill, InlineParam, Pad, Recipe, Reshape,
                      TensorSpec, Transpose)
 from .symbolic import (Const, SymbolSource, UnsupportedSymbolicExpr, dense_strides,
-                       expression, infer_reshape, operation_shape)
+                       expression, infer_reshape, mul, operation_shape, product)
 
 
 @dataclass(frozen=True)
@@ -44,7 +44,8 @@ class Candidate:
     original: object
     # Extents that must bind to at least two for the original region and the
     # recipe to agree on output metadata (Dynamo's 0/1 specialization makes a
-    # transposed contiguous() unconditional only inside this family).
+    # transposed contiguous() unconditional or a squeeze rank-preserving only
+    # inside this family).
     extent_guards: tuple = ()
     # Destination device of the region's result, read from the normalized
     # fake metadata so a rewrite never depends on metadata being present on
@@ -121,12 +122,13 @@ def normalize_graph(gm, example_inputs=None):
                 if value is None:
                     with fake_mode, torch.no_grad():
                         value = compat.fx_fake_call(target, map_arg(args, resolve), map_arg(kwargs, resolve))
-            except (ValueError, TypeError, RuntimeError, NotImplementedError) as error:
+            except (ValueError, TypeError, IndexError, RuntimeError, NotImplementedError) as error:
                 # Keep the specific expected exclusion rather than making every
                 # unsupported call look like an unknown target.
                 reason = str(error)
                 node.meta['reloc_reason'] = reason if reason in {
-                    'unrecognized_fx_target', 'metadata_unavailable', 'unsupported_padding'
+                    'unrecognized_fx_target', 'metadata_unavailable', 'unsupported_padding',
+                    'unsupported_view_dimension',
                 } else 'normalization_failed'
                 value = None
         if value is not None:
@@ -148,7 +150,8 @@ def _tensor_input(node):
 
 
 def _layout(node):
-    return compat.fx_kind(node) in {'permute', 'transpose', 'reshape', 'materialize', 'pad'}
+    return compat.fx_kind(node) in {'permute', 'transpose', 'reshape', 'squeeze',
+                                    'unsqueeze', 'flatten', 'materialize', 'pad'}
 
 
 def _transfer(node):
@@ -229,6 +232,11 @@ def _constant_fold(expr):
         return Const(expr.evaluate({}))
     except KeyError:
         return expr
+
+
+def _view_dim(dim, rank):
+    _require(type(dim) is int and -rank <= dim < rank, 'unsupported_view_dimension')
+    return dim % rank
 
 
 def _cast(before, after):
@@ -378,10 +386,48 @@ def _recipe(root, members):
             operations.append(op)
             shape = operation_shape(shape, op)
             strides = tuple(strides[d] for d in perm) if strides is not None else None
-        elif kind == 'reshape':
+        elif kind in {'squeeze', 'unsqueeze'}:
             _require(compat.dtype_name(value.dtype) == current_dtype, 'typed_transform_unavailable')
-            target = opts.get('shape', opts.get('size'))
-            op = Reshape(tuple(_constant_fold(d) for d in infer_reshape(shape, tuple(context.expression(d) for d in target))))
+            rank = len(shape)
+            if kind == 'unsqueeze':
+                dim = _view_dim(opts['dim'], rank + 1)
+                if strides is not None:
+                    inserted = Const(1) if dim == rank else mul(shape[dim], strides[dim])
+                    strides = strides[:dim] + (inserted,) + strides[dim:]
+                shape = shape[:dim] + (Const(1),) + shape[dim:]
+            else:
+                dims = opts.get('dim', tuple(range(rank)))
+                dims = (dims,) if type(dims) is int else dims
+                _require(isinstance(dims, (tuple, list)), 'unsupported_view_dimension')
+                dims = tuple(_view_dim(d, rank) for d in dims)
+                _require(len(set(dims)) == len(dims), 'unsupported_view_dimension')
+                before = compat.graph_value(_tensor_input(node))
+                removed = set()
+                for dim in dims:
+                    extent = _constant_fold(expression(shape[dim]))
+                    if extent == Const(1):
+                        removed.add(dim)
+                    elif not isinstance(extent, Const):
+                        # A symbolic no-op squeeze is valid only within a
+                        # proved non-singleton family, guarded again at bind.
+                        _require(compat.statically_at_least(before.shape[dim], 2), 'conditional_squeeze')
+                        extent_guards.append(extent)
+                shape = tuple(d for i, d in enumerate(shape) if i not in removed)
+                if strides is not None:
+                    strides = tuple(s for i, s in enumerate(strides) if i not in removed)
+            _require(bool(shape), 'rank_zero')
+            operations.append(Reshape(shape))
+        elif kind in {'reshape', 'flatten'}:
+            _require(compat.dtype_name(value.dtype) == current_dtype, 'typed_transform_unavailable')
+            if kind == 'flatten':
+                start = _view_dim(opts.get('start_dim', 0), len(shape))
+                end = _view_dim(opts.get('end_dim', -1), len(shape))
+                _require(start <= end, 'unsupported_view_dimension')
+                target = shape[:start] + (product(shape[start:end + 1]),) + shape[end + 1:]
+            else:
+                target = opts.get('shape', opts.get('size'))
+                target = infer_reshape(shape, tuple(context.expression(d) for d in target))
+            op = Reshape(tuple(_constant_fold(d) for d in target))
             operations.append(op)
             was_dense = strides == dense_strides(shape)
             shape = op.shape
@@ -391,7 +437,7 @@ def _recipe(root, members):
                 # Non-dense reshape can alias or allocate. Keep the actual
                 # descriptor unless a later explicit materialization proves it.
                 try:
-                    actual = context.tensor_spec(value, require_dense=False)
+                    actual = context.tensor_spec(value, require_dense=False, positive_shape=shape)
                     strides, offset = actual.strides, actual.offset
                 except UnsupportedSymbolicExpr:
                     strides = None
