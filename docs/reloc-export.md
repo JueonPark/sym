@@ -1,6 +1,6 @@
 # Supported plan export (interface 1)
 
-Build the compiler target `sym-reloc-export`, then invoke either form below.
+Build the compiler target `sym-reloc-export`, then invoke a form below.
 The typed form uses the artifact contract from [C3 / #143](https://github.com/JueonPark/sym/issues/143).
 
 ```sh
@@ -9,12 +9,14 @@ sym-reloc-export recipe.mlir --output plan.bin --manifest manifest.json
 # Chain that may contain typed value transforms: wire format v1 typed plan,
 # manifest schema 2 (C3, issue #143). Layout-only input is unchanged.
 sym-reloc-export recipe.mlir --output plan.bin --manifest manifest.json --typed
+# Row selection with optional cast: wire v2, manifest schema 3.
+sym-reloc-export recipe.mlir --output plan.bin --manifest manifest.json --indexed --typed
 ```
 
 This compiler-only executable links MLIR/LLVM and has no Torch dependency.
 `libreloc` remains MLIR/LLVM/Torch-free. `plan.bin` is exactly `encodePlan`
 wire format v0 for a layout-only chain and exactly `encodeTypedPlan` wire
-format v1 for a typed chain, both documented in
+format v1 for a typed chain, or `encodeIndexedPlan` wire v2 for row selection, documented in
 [reloc-plan-format.md](reloc-plan-format.md). The exporter does not bind
 symbols or parameters, execute transfers, or replace a frontend callable.
 
@@ -212,3 +214,37 @@ runtime was rebuilt); a C3 runtime decodes v0 with `load_plan` and v1 with
 `load_typed_plan`, and `wire_version(bytes)` tells them apart. A frontend
 compiled recipe is portable as `format_version` 1 (layout-only) or 2 (typed);
 a C3 frontend loads both, an older frontend rejects format 2 by version.
+
+## Indexed export (`--indexed`, schema 3 / wire v2)
+
+`--indexed` admits a two-argument function whose first operation is
+`reloc.index_select %source, %indices axis 0`. Both operands and the result
+use existing `!sym.tensor` types. The selection preserves the source dtype,
+uses a rank-one i32/i64 index operand, and produces
+`[indices.shape[0], *source.shape[1:]]`. One following `reloc.cast` is allowed
+with `--typed`; the supported pairs are f32→f16 `ieee_rne` and f16→f32 `exact`.
+Identity f32/f16/i8 selection needs only `--indexed`.
+
+The fold pass produces `reloc.indexed_plan_result` with both SSA operands
+and a verified `#reloc.indexed_plan` attribute. Unsupported compositions
+retain the whole original chain. Export rejects escaped intermediates,
+extra operands, pre-folded input, and partial folds. Omitting `--indexed`
+for the two-input signature yields `indexed_unsupported`; omitting `--typed`
+for a cast yields `typed_unsupported`.
+
+Successful manifests have `schema_version: 3`, `wire_version: 2` and the usual
+compiler identity, plan count, symbols, digests, logical descriptors and
+constraints. `logical_source` describes the **physical** source. The added
+`index_select` object contains `axis: 0`, `policy: "exact" | "ieee_rne"`, and
+`indices`, a descriptor with `shape`, dense `strides`, zero `offset` and
+`dtype: "int32" | "int64"`. Constraints contain an empty `divisibility` array;
+result-shape equalities and index bounds are mandatory native binding checks.
+There are no `stages`, `fills` or `parameters` fields in this manifest.
+
+`CompiledRecipe` persists indexed recipes as portable `format_version: 3`.
+Admission compares the source, indices, result and policy against both the
+recipe and decoded wire bytes, including on reload. Symbols bind from the
+physical source or index vector according to their recorded provenance.
+The index vector's contents remain an input to each execution. Adding
+`--indexed` to existing one-input layout/typed programs leaves their v0/v1
+bytes and manifests unchanged.

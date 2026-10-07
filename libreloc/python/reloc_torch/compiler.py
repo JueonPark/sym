@@ -75,10 +75,10 @@ class CompilerClient:
                 str(manifest_path),
             ]
             if recipe.typed:
-                # C3: typed value transforms are opt-in; the exporter answers
-                # with wire v1 / schema 2, which _admit requires for a typed
-                # recipe. Layout-only recipes never pass the flag.
+                # Value transforms are opt-in, including a cast after selection.
                 arguments.append("--typed")
+            if recipe.indexed:
+                arguments.append('--indexed')
             try:
                 result = subprocess.run(arguments, check=False, capture_output=True)
             except OSError as error:

@@ -284,6 +284,7 @@ class RelocBackend:
                 symbolic_bindings=candidate.symbolic_bindings,
                 extent_guards=candidate.extent_guards,
                 closed_event=self._execution_closed,
+                indexed=candidate.index is not None,
             )
             with self._lock:
                 self._require_open()
@@ -293,6 +294,7 @@ class RelocBackend:
                 op_node = _insert_transfer(
                     graph, root, tail, compiled, registration.handle, device,
                     [nodes[name] for name in candidate.parameters],
+                    nodes[candidate.index] if candidate.index is not None else None,
                 )
             tail.replace_all_uses_with(op_node)
             for member in reversed(members):
@@ -322,13 +324,14 @@ def _region_reason(nodes, candidate):
     return None
 
 
-def _insert_transfer(graph, root, tail, compiled, handle, device, parameters=()):
+def _insert_transfer(graph, root, tail, compiled, handle, device, parameters=(), index=None):
     import torch
-    from .ops import OP, TYPED_OP
+    from .ops import OP, TYPED_OP, INDEX_SELECT_OP
 
     symbol_nodes = {}
     for source in compiled.symbol_sources:
-        symbol_nodes[source.name] = graph.call_function(torch.ops.aten.sym_size.int, (root, source.axis))
+        operand = index if source.operand == 'indices' else root
+        symbol_nodes[source.name] = graph.call_function(torch.ops.aten.sym_size.int, (operand, source.axis))
 
     def binary(function, left, right):
         if isinstance(left, int) and isinstance(right, int):
@@ -355,7 +358,13 @@ def _insert_transfer(graph, root, tail, compiled, handle, device, parameters=())
     destination = compiled.logical_destination
     out_shape = [emit(dim) for dim in destination.shape]
     out_strides = [emit(dim) for dim in destination.strides]
-    if compiled.typed:
+    if index is not None:
+        node = graph.call_function(
+            INDEX_SELECT_OP,
+            (root, index, handle, symbols, out_shape, out_strides,
+             torch.device(device), getattr(torch, destination.dtype)),
+        )
+    elif compiled.typed:
         # C4: the typed op carries the destination dtype explicitly and its
         # runtime parameters as graph inputs (recipe declaration order).
         if len(parameters) != len(compiled.parameters):

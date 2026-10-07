@@ -1,5 +1,5 @@
 """Emit ordinary reloc IR; folding and plan serialization belong to the compiler."""
-from .recipe import (TYPED_OPERATIONS, BindingParam, Cast, Dequantize, Pad, Quantize, Reshape,
+from .recipe import (TYPED_OPERATIONS, BindingParam, Cast, Dequantize, IndexSelect, Pad, Quantize, Reshape,
                      Transpose)
 from .symbolic import (Add, Const, FloorDiv, Mod, Mul, Symbol,
                        UnsupportedSymbolicExpr, dense_strides, expression, operation_shape)
@@ -88,7 +88,17 @@ def emit_mlir(recipe):
     current_dtype = recipe.source.dtype
     source_type = _type(current, _DTYPES[current_dtype])
     result_type = _type(recipe.destination.shape, _DTYPES[recipe.destination.dtype])
-    lines = [f'func.func @torch_relocation(%x: {source_type}) -> {result_type} {{']
+    index_type = None
+    if recipe.indexed:
+        if (not isinstance(recipe.operations[0], IndexSelect) or len(recipe.operations) > 2
+                or any(not isinstance(op, Cast) for op in recipe.operations[1:])):
+            raise UnsupportedSymbolicExpr('index_select must precede at most one cast')
+        index = recipe.operations[0].indices
+        if tuple(expression(s) for s in index.strides) != dense_strides(index.shape) or expression(index.offset) != Const(0):
+            raise UnsupportedSymbolicExpr('index operand must describe a dense snapshot')
+        index_type = _type(index.shape, {'int32': 'i32', 'int64': 'i64'}[index.dtype])
+    extra = '' if index_type is None else f', %indices: {index_type}'
+    lines = [f'func.func @torch_relocation(%x: {source_type}{extra}) -> {result_type} {{']
     value = '%x'
     operations = recipe.operations or (Transpose(tuple(range(len(current)))),)
     for index, op in enumerate(operations):
@@ -97,6 +107,8 @@ def emit_mlir(recipe):
         if target_dtype not in _DTYPES:
             raise UnsupportedSymbolicExpr('unsupported dtype')
         match op:
+            case IndexSelect(_, axis):
+                text = f'reloc.index_select {value}, %indices axis {axis}'
             case Transpose(perm):
                 text = f'reloc.transpose {value} perm [{", ".join(map(str, perm))}]'
             case Reshape(_):
@@ -112,7 +124,8 @@ def emit_mlir(recipe):
             case _:
                 raise UnsupportedSymbolicExpr('unknown operation')
         next_value = f'%v{index}'
-        lines.append(f'  {next_value} = {text} : {_type(current, _DTYPES[current_dtype])}'
+        index_operand_type = f', {index_type}' if isinstance(op, IndexSelect) else ''
+        lines.append(f'  {next_value} = {text} : {_type(current, _DTYPES[current_dtype])}{index_operand_type}'
                      f' -> {_type(target, _DTYPES[target_dtype])}')
         value, current, current_dtype = next_value, target, target_dtype
     if current_dtype != recipe.destination.dtype:

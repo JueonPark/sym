@@ -7,6 +7,8 @@ recipe *typed*: it compiles through ``sym-reloc-export --typed`` into a wire
 v1 typed plan with a schema-2 manifest (C3, issue #143). Stage parameters
 are exact bit patterns (``InlineParam``) or runtime bindings declared by
 name, dtype and extents (``BindingParam``); a recipe never holds a pointer.
+IndexSelect recipes use wire v2, with the physical source and a separate
+index operand descriptor. Index values are supplied at binding, never cached.
 """
 from dataclasses import dataclass
 from .symbolic import Expr
@@ -34,6 +36,17 @@ class Transpose:
 @dataclass(frozen=True)
 class Reshape:
     shape: tuple[Expr, ...]
+
+
+@dataclass(frozen=True)
+class IndexSelect:
+    """Dimension-0 selection using a separate runtime index operand."""
+    indices: TensorSpec
+    axis: int = 0
+
+    def __post_init__(self):
+        if type(self.axis) is not int or self.axis != 0 or len(self.indices.shape) != 1 or self.indices.dtype not in ('int32', 'int64'):
+            raise ValueError('index_select requires axis 0 and an int32/int64 vector')
 
 
 @dataclass(frozen=True)
@@ -145,7 +158,7 @@ LAYOUT_OPERATIONS = (Transpose, Reshape, Pad)
 @dataclass(frozen=True)
 class Recipe:
     source: TensorSpec
-    operations: tuple[Transpose | Reshape | Pad | Cast | Quantize | Dequantize, ...]
+    operations: tuple[Transpose | Reshape | Pad | Cast | Quantize | Dequantize | IndexSelect, ...]
     destination: TensorSpec
     direction: str
 
@@ -159,6 +172,10 @@ class Recipe:
         """True when the chain holds a value transform: the artifact is a
         wire v1 typed plan (schema 2) instead of a layout-only v0 plan."""
         return any(isinstance(op, TYPED_OPERATIONS) for op in self.operations)
+
+    @property
+    def indexed(self):
+        return any(isinstance(op, IndexSelect) for op in self.operations)
 
     @property
     def parameter_bindings(self):

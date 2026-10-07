@@ -4,6 +4,6 @@
   "variant": "@sym_variant@",
   "source_revision": "@SYM_EXPORT_REVISION@",
   "llvm_revision": "@sym_llvm_revision@",
-  "wire_versions": [0, 1],
+  "wire_versions": [0, 1, 2],
   "native_tools": ["sym-opt", "sym-reloc-export", "reloc-run-artifact"]
 }

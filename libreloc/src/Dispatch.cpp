@@ -174,6 +174,14 @@ std::optional<TransferError> checkView(const Program &program,
   if (!isDense(view))
     return fail("unsupported_layout",
                 std::string(what) + " view must be dense row-major");
+  if (isSource && program.indexedSourceRows) {
+    auto extents = program.plan.sourceExtents;
+    extents.front() = program.indexedSourceRows;
+    if (direction != TransferDirection::HostToDevice || view.extents != extents)
+      return fail("plan_mismatch",
+                  "indexed source requires the prepared host row shape");
+    return std::nullopt; // viewSpanBytes already proved the full allocation.
+  }
   const int64_t expectedBytes = typed::bytesAt(program, boundary, !isSource);
   if (std::get<size_t>(span) != static_cast<size_t>(expectedBytes))
     return fail("plan_mismatch", std::string(what) + " view spans " +
@@ -657,6 +665,24 @@ std::variant<Choice, TransferError> select(const Program &program,
 // Capability.
 //===----------------------------------------------------------------------===//
 
+std::variant<Program, TransferError>
+prepareIndexSelect(const IndexedBoundPlan &bound, const BufferView &source) {
+  auto prepared = typed::prepareProgram(bound.selected);
+  if (auto *error = std::get_if<typed::ExecutionError>(&prepared))
+    return fromExecution(*error);
+  auto program = std::get<Program>(std::move(prepared));
+  if (bound.sourceExtents.empty() || bound.indices.empty())
+    return fail("plan_mismatch",
+                "indexed binding requires nonempty source and indices");
+  program.indexedSourceRows = bound.sourceExtents.front();
+  program.indexedRowElements = bound.rowElements;
+  program.rowIndices = bound.indices;
+  if (auto error =
+          checkView(program, source, true, TransferDirection::HostToDevice))
+    return *error;
+  return program;
+}
+
 Capability queryCapability(const Program &program, TransferDirection direction,
                            bool cuda) {
   Capability out;
@@ -671,6 +697,15 @@ Capability queryCapability(const Program &program, TransferDirection direction,
       h2d ? program.plan.destinationBytes : program.plan.sourceBytes;
   reference.method = h2d ? "A" : "B";
   out.eligible.push_back(reference);
+
+  // Indirection must run on the host before upload. Existing GPU rows assume
+  // that the logical source is one dense allocation, so none qualify here.
+  if (program.indexedSourceRows) {
+    if (!h2d)
+      out.eligible.clear();
+    out.excluded.push_back({kCudaRelocateF32, "host_index_select"});
+    return out;
+  }
 
   auto exclude = [&](std::string id, std::string reason) {
     out.excluded.push_back(Exclusion{std::move(id), std::move(reason)});
@@ -862,12 +897,16 @@ prepareDispatch(const Program &program, const BufferView &source,
   report.placementReason = choice.reason;
   report.method = choice.row->method;
   report.wireBoundary = choice.row->wireBoundary;
-  report.sourceBytes = plan.sourceBytes;
+  report.sourceBytes = program.indexedSourceRows
+                           ? program.indexedSourceRows *
+                                 program.indexedRowElements *
+                                 typed::widthAt(program, 0)
+                           : plan.sourceBytes;
   report.wireBytes = choice.row->wireBytes;
   report.destinationBytes = plan.destinationBytes;
   report.parameterBytes = plan.parameterBytes;
   report.deviceTempBytes = choice.row->deviceTempBytes;
-  report.artifactVersion = 1;
+  report.artifactVersion = program.indexedSourceRows ? 2 : 1;
   return request;
 }
 
