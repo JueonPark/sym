@@ -10,7 +10,8 @@ Status: T1–T4 of [#131](https://github.com/JueonPark/sym/issues/131) and
 R1/R2 of [#133](https://github.com/JueonPark/sym/issues/133) are implemented.
 The supported surface is opt-in inference relocation of dense CPU↔CUDA
 transfers and their adjacent layout operations (transpose/permute,
-reshape/view, materialization, constant pad), with dynamic shapes, guarded
+reshape/view, squeeze/unsqueeze, integer-dimension flatten, materialization,
+constant pad), with dynamic shapes, guarded
 fallback to PyTorch, and explicit inference weight preparation. Typed value
 transforms execute through the typed compiler/runtime path; automatic capture
 accepts the casts and dequantization forms listed in the

@@ -260,6 +260,8 @@ def graph_nonblocking(node):
 _KNOWN_VIEW_TARGETS = frozenset({
     "aten.view.default", "aten._unsafe_view.default", "aten.transpose.int",
     "aten.permute.default", "aten.as_strided.default",
+    "aten.squeeze.default", "aten.squeeze.dim", "aten.squeeze.dims",
+    "aten.unsqueeze.default",
 })
 
 
@@ -271,7 +273,8 @@ def graph_may_alias_inputs(node):
     if schema is not None and any(result.alias_info for result in schema.returns):
         return True
     return node.op == "call_method" and node.target in {
-        "view", "reshape", "transpose", "permute", "detach", "contiguous", "to"
+        "view", "reshape", "transpose", "permute", "detach", "contiguous", "to",
+        "squeeze", "unsqueeze", "flatten",
     }
 
 
@@ -532,10 +535,14 @@ def fx_kind(node):
         aten.t.default: 'transpose', torch.t: 'transpose',
         aten.view.default: 'reshape', aten.reshape.default: 'reshape',
         aten._unsafe_view.default: 'reshape',
+        aten.squeeze.default: 'squeeze', aten.squeeze.dim: 'squeeze',
+        aten.squeeze.dims: 'squeeze', aten.unsqueeze.default: 'unsqueeze',
+        aten.flatten.using_ints: 'flatten',
         aten.clone.default: 'materialize', aten.contiguous.default: 'materialize',
         aten.constant_pad_nd.default: 'pad', aten.sym_size.int: 'scalar',
         torch.transpose: 'transpose', torch.permute: 'permute',
         torch.reshape: 'reshape', torch.clone: 'materialize',
+        torch.squeeze: 'squeeze', torch.unsqueeze: 'unsqueeze', torch.flatten: 'flatten',
         torch.nn.functional.pad: 'pad', torch._C._nn.pad: 'pad',
         operator.floordiv: 'scalar', operator.mul: 'scalar',
         operator.add: 'scalar', operator.sub: 'scalar', operator.mod: 'scalar',
@@ -559,6 +566,7 @@ def fx_kind(node):
         return {'to': 'transfer', 'cpu': 'transfer', 'cuda': 'transfer',
                 'permute': 'permute', 'transpose': 'transpose', 't': 'transpose', 'view': 'reshape',
                 'reshape': 'reshape', 'contiguous': 'materialize',
+                'squeeze': 'squeeze', 'unsqueeze': 'unsqueeze', 'flatten': 'flatten',
                 'size': 'scalar'}.get(node.target)
     return None
 
@@ -584,6 +592,29 @@ def fx_canonical_call(node, source_value):
     overload = quantized_overload(node)
     if overload is not None:
         return overload, node.args, dict(node.kwargs)
+    if kind in {'squeeze', 'unsqueeze', 'flatten'}:
+        args, kwargs = node.args, dict(node.kwargs)
+        if not args:
+            key = 'self' if 'self' in kwargs else 'input'
+            if key not in kwargs:
+                raise ValueError('unrecognized_fx_target')
+            args = (kwargs.pop(key),)
+        if hasattr(node.target, '_schema'):
+            return node.target, args, kwargs
+        if kind == 'squeeze':
+            if len(args) == 1 and 'dim' not in kwargs:
+                target = aten.squeeze.default
+            else:
+                dim = args[1] if len(args) > 1 else kwargs['dim']
+                if type(dim) is int:
+                    target = aten.squeeze.dim
+                elif isinstance(dim, (tuple, list)):
+                    target = aten.squeeze.dims
+                else:
+                    raise ValueError('unsupported_view_dimension')
+        else:
+            target = aten.unsqueeze.default if kind == 'unsqueeze' else aten.flatten.using_ints
+        return target, args, kwargs
     if node.op == 'call_function' and hasattr(node.target, '_schema'):
         return node.target, node.args, dict(node.kwargs)
     args, kwargs = node.args, dict(node.kwargs)
