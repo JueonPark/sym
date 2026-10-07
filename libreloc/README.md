@@ -414,6 +414,19 @@ logical view (`kind` is `"host"` or `"cuda"`). Torch callers read `base`,
 - `make_transfer(bound, src_view, dst_view, direction) -> TransferRequest`
   adds the dense destination and returns the single-use request (properties
   `direction`, `source_span_bytes`, `destination_bytes`, `consumed`).
+- `validate_stacked_sources(bound, sources, direction) -> int` (binds
+  `validateStackedSources`) is the allocation-free preflight of a stacked
+  request (`torch.stack`): `sources` are N dense host views of equal element
+  count Z and element size whose concatenation, in order, is the plan's
+  logical source. It returns their summed source span in bytes or raises
+  `pyreloc.TransferError`.
+- `make_stacked_transfer(bound, sources, destination, direction) ->
+  TransferRequest` (binds `validateStackedTransfer`) adds the dense
+  destination and returns the single-use request. It runs through the
+  unchanged H2D pipeline: the gather resolves logical offset `o` to
+  `sources[o / Z]` at `o % Z`, and last-dim stacks of 4-byte elements use the
+  tiled transpose with one row pointer per input. Host-to-device only; codes
+  as for ordinary requests.
 - `execute_transfer(request, *, caller_stream=None, n_buffers=4, n_streams=2,
   gather_threads=1, gather_pool=None)` runs the forward relocation and
   returns only after this request's work completed (no device-wide
@@ -460,15 +473,6 @@ For runtime development, build with pybind11 discoverable and point
 
 Without pybind11 the target is skipped with a notice and everything else
 still builds.
-
-**Stacked sources (`torch.stack`).** `validateStackedTransfer(bound, sources,
-destination, direction)` (Python: `pyreloc.validate_stacked_sources`,
-`pyreloc.make_stacked_transfer`) accepts N dense host views of equal element
-count Z whose concatenation is the plan's logical source. The request runs
-through the unchanged H2D pipeline; the gather resolves logical offset `o` to
-`sources[o / Z]` at `o % Z`, and last-dim stacks of 4-byte elements use the
-tiled transpose with one row pointer per input. Host-to-device only; codes as
-for ordinary requests.
 
 ### Typed plans (C3, issue [#143](https://github.com/JueonPark/sym/issues/143))
 

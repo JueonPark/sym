@@ -142,15 +142,19 @@ print(backend.stats())
 backend.close()
 ```
 
-- **Callable backend.** `RelocBackend(compiler=..., runtime=..., cache_capacity=128)`
-  is a `torch.compile` backend. It never modifies the captured graph: accepted
-  regions are rewritten in a copy, rejected regions keep their nodes, and the
-  returned callable owns process-local execution handles (not a portable
-  model format; only compiled artifacts are portable). `stats()` snapshots
+- **Callable backend.** `RelocBackend(compiler=..., runtime=..., cache_capacity=128,
+  min_stack_bytes=...)` is a `torch.compile` backend. It never modifies the
+  captured graph: accepted regions are rewritten in a copy, rejected regions
+  keep their nodes, and the returned callable owns process-local execution
+  handles (not a portable model format; only compiled artifacts are
+  portable). `min_stack_bytes` is the size gate for fusing a host
+  `torch.stack` (default `reloc_torch.backend.DEFAULT_MIN_STACK_BYTES`, `0`
+  always fuses; see Stacked host transfers below). `stats()` snapshots
   `dynamo_compiles`, `plan_compiles`, `symbol_binds`, `cache_hits`,
-  `runtime_executions`, `weight_preparations`, `weight_invalidations` and
-  reason-coded `fallbacks`/`exclusions`/`redispatches`; `close()` invalidates
-  every handle and later use.
+  `runtime_executions`, `stacked_executions`, `weight_preparations`,
+  `weight_invalidations` and reason-coded
+  `fallbacks`/`exclusions`/`redispatches`; `close()` invalidates every handle
+  and later use.
 - **Eager scope.** `eager_transfers(backend=...)` intercepts only real,
   blocking, dtype-preserving CPU↔CUDA `aten._to_copy` calls on plain dense
   tensors; everything else redispatches with a recorded reason. Observation

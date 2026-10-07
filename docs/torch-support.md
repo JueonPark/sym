@@ -350,9 +350,10 @@ operations after it and one blocking host-to-device `.to()` into a single
 Sym transfer that reads every input directly; PyTorch's stacked host tensor
 is never built. The frontend treats the stack as a relocation of a logical
 `[N, *S]` source (stacking at `dim` moves axis 0 to `dim`), so the compiler,
-the plan wire formats and `sym-reloc-export` are unchanged. libreloc's
-stacked request resolves each logical source offset to its input through a
-pointer table.
+the plan wire formats and `sym-reloc-export` are unchanged. The list length
+N is specialized, even with `dynamic=True`: a call with a different number
+of inputs recompiles. libreloc's stacked request resolves each logical
+source offset to its input through a pointer table.
 
 Eligible: `torch.stack(xs, dim)` (Dynamo) or `aten.stack.default` over graph
 inputs, parameters or buffers that are CPU, plain, dense, zero-offset,
@@ -389,8 +390,9 @@ it is compared against (S1) within 10% for stacks at dim 0 or 1; last-dim
 | Case | Reason |
 | --- | --- |
 | Mixed input dtypes, same shape (PyTorch promotes; Sym does not) | `stack_dtype_mismatch` |
-| Mismatched shapes or devices, caught while the graph is traced (Dynamo's own fake `torch.stack` raises first) | `normalization_failed` (or `metadata_unavailable` if an input's own metadata was already missing) |
-| The same mismatch found per call instead (a dynamic-shape region, or a stacked request built directly through the runtime bridge without `torch.compile`) | `stack_shape_mismatch` / `unsupported_device` |
+| Mismatched shapes or devices under `torch.compile`, on the first call or on a later call whose mismatch fails the compiled graph's guards and is traced again | None recorded: Dynamo's own fake `torch.stack` raises PyTorch's error while tracing, as eager PyTorch does |
+| The same mismatch in a graph passed to `import_graph` directly | `normalization_failed` (or `metadata_unavailable` if an input's own metadata was already missing) |
+| The same mismatch in a stacked request built directly through the runtime bridge | `stack_shape_mismatch` / `unsupported_device` |
 | An input computed inside the graph | `stack_input_not_root` |
 | The stacked host tensor has another user | `escaping_intermediate` |
 | A narrowing/widening cast or a `dequantize_per_tensor`/`dequantize_per_channel` op in the region (a single-source chain may accept these; a stacked one never does) | `typed_transform_unavailable` |
