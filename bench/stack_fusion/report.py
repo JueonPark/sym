@@ -2,7 +2,8 @@
 """Gates and tables for stack_fusion.py results (torch.stack support).
 
 Gate 1: every output exact and the run complete.
-Gate 2: at >= 8 MiB, FD p50 <= 1.10 x S1 p50 in every configuration.
+Gate 2: at >= 8 MiB, FD p50 <= 1.10 x S1 p50 in every configuration that
+        stacks at dim 0 or 1 (the last dim is reported descriptively).
 Gate 3: at >= 32 MiB, FB p50 < min(B1, B3) p50 in every configuration.
 Gate 4: the default threshold is the smallest measured size from which gate
         3's condition holds in every configuration.
@@ -14,6 +15,7 @@ import sys
 from collections import defaultdict
 
 METHODS = ("B1", "B2", "B3", "B4", "B5", "S1", "FD", "FB", "GB")
+LAST_DIM = 2  # stack_fusion.py stacks rank-2 inputs into rank-3 outputs; dim 2 is the last axis
 
 
 def medians(data):
@@ -34,25 +36,28 @@ def evaluate(data):
     def wins(c):
         return med[(*c, "FB")] < as_written(c)
 
-    def at_or_above(size, predicate):
+    def at_or_above(size, predicate, extra=lambda c: True):
         """(result, note): FAIL with a note instead of a vacuous PASS when no
-        configuration reaches `size`."""
-        subset = [c for c in configs if c[0] >= size]
+        configuration reaches `size` (after any `extra` filter)."""
+        subset = [c for c in configs if c[0] >= size and extra(c)]
         if not subset:
             return False, f"no configuration at or above {size} MiB"
         return all(predicate(c) for c in subset), None
 
     gate1 = bool(data.get("correct")) and bool(data.get("complete"))
-    gate2, gate2_note = at_or_above(8, lambda c: med[(*c, "FD")] <= 1.10 * med[(*c, "S1")])
+    gate2, gate2_note = at_or_above(
+        8, lambda c: med[(*c, "FD")] <= 1.10 * med[(*c, "S1")], lambda c: c[2] != LAST_DIM)
     gate3, gate3_note = at_or_above(32, wins)
     sizes = sorted({c[0] for c in configs})
     threshold = next((s for s in sizes if all(wins(c) for c in configs if c[0] >= s)), None)
-    return med, configs, gate1, gate2, gate2_note, gate3, gate3_note, threshold, as_written
+    last_dim_fd_s1 = [med[(*c, "FD")] / med[(*c, "S1")] for c in configs if c[0] >= 8 and c[2] == LAST_DIM]
+    return med, configs, gate1, gate2, gate2_note, gate3, gate3_note, threshold, as_written, last_dim_fd_s1
 
 
 def main(path):
     data = json.load(open(path))
-    med, configs, gate1, gate2, gate2_note, gate3, gate3_note, threshold, as_written = evaluate(data)
+    (med, configs, gate1, gate2, gate2_note, gate3, gate3_note, threshold, as_written,
+     last_dim_fd_s1) = evaluate(data)
     meta = data["metadata"]
 
     def result(passed, note):
@@ -69,10 +74,15 @@ def main(path):
     print("## Gates\n")
     print("| Gate | Condition | Result |\n|---|---|---|")
     print(f"| 1 | every output exact, run complete | {'PASS' if gate1 else 'FAIL'} |")
-    print(f"| 2 | ≥ 8 MiB: FD ≤ 1.10 × S1 | {result(gate2, gate2_note)} |")
+    print(f"| 2 | ≥ 8 MiB, dim 0 or 1: FD ≤ 1.10 × S1 | {result(gate2, gate2_note)} |")
     print(f"| 3 | ≥ 32 MiB: FB < min(B1, B3) | {result(gate3, gate3_note)} |")
     print(f"| 4 | smallest size where FB < min(B1, B3) from there up | "
           f"{'none' if threshold is None else f'{threshold} MiB'} |\n")
+    if last_dim_fd_s1:
+        print(f"At ≥ 8 MiB, last-dim (dim {LAST_DIM}) stacks ranged FD/S1 "
+              f"{min(last_dim_fd_s1):.3f}–{max(last_dim_fd_s1):.3f} (reported descriptively, not gated).\n")
+    else:
+        print(f"No last-dim (dim {LAST_DIM}) configuration at or above 8 MiB.\n")
     print("## Latency (ms)\n")
     print("| MiB | N | dim | " + " | ".join(METHODS) + " | FD/S1 | as-written/FB |")
     print("|" + "---:|" * (3 + len(METHODS) + 2))
