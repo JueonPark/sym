@@ -167,8 +167,10 @@ TEST(StackedTransfer, ChunksAndWorkersCrossInputBoundaries) {
 
 TEST(StackedTransfer, WorkersSplitEachLargeChunk) {
   // 8 MiB of inputs in 4 MiB chunks: pools of 4 and 8 threads cut every
-  // chunk into 4 concurrent parts at row offsets inside the inputs (dim 2
-  // runs the 8x8 tiles at those offsets). One thread is the inline control.
+  // chunk into 4 concurrent 1 MiB parts. At dim 0 each part is one whole
+  // input; at dims 1 and 2 the parts start at row offsets inside the inputs
+  // (dim 2 runs the 8x8 tiles at those offsets). One thread is the inline
+  // control.
   for (int dim : {0, 1, 2}) {
     Stack s(8, 512, 512, dim);
     const auto expected = s.reference();
