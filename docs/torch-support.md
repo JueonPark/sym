@@ -361,14 +361,30 @@ float32/float16/int8, rank >= 1, with one shape and dtype (an input may
 repeat); `permute`/`transpose`/`reshape`/`view`/`contiguous`/`clone`/
 `constant_pad_nd` after the stack and on the device side. A call fuses only
 when `N * prod(S) * itemsize >= min_stack_bytes`
-(`RelocBackend(min_stack_bytes=...)`, default 24 MiB, `0` = always). The
-benchmark moved this default from an initial 32 MiB to 24 MiB. With
-dynamic shapes the gate runs on every call rather than once at compile
-time; a below-threshold call still passes through the compiled stacked op
-before replaying PyTorch, measured at 0.27–1.17 ms above plain eager across
-1–24 MiB (GB vs B1, bench/results/stack-fusion/README.md; GB was recorded
-under this run's then-current 32 MiB default, per that file's Deviations
-section).
+(`RelocBackend(min_stack_bytes=...)`, `0` = always). The threshold and the
+transfer options belong together:
+
+- The default, `DEFAULT_MIN_STACK_BYTES` = 32 MiB, is qualified for
+  `RelocBackend()`'s default transfer options: one gather thread and
+  pageable staging. Measured that way (FBD), fused stacks beat eager
+  PyTorch and Inductor in every configuration from 32 MiB up. At 24 MiB
+  they lost in eight of nine configurations.
+- With the tuned options
+  `transfer_options={"pinning": "auto", "min_pinned_bytes": 8 << 20, "gather_threads": 8}`
+  (eight gather threads, pinned staging from 8 MiB), fusion pays from
+  24 MiB (FB), so pass `min_stack_bytes=24 << 20` with them. They are a
+  calibration for the measured box, not a default. The pinned-staging
+  threshold has its own scope, in
+  [pinning qualification](pinning-qualification.md).
+
+With dynamic shapes the gate runs on every call rather than once at compile
+time. A below-threshold call still passes through the compiled stacked op
+before replaying PyTorch. Measured as GB against B1, that costs 0.29–0.88 ms
+more than plain eager below the default threshold (1–24 MiB), and
+0.14–1.21 ms across every measured size (1–128 MiB). Both ranges include
+`torch.compile`'s own per-call cost. They leave out one configuration
+(16 MiB, N=16, last dim) whose rounds were disturbed; the Deviations section
+of bench/results/stack-fusion/README.md explains why.
 
 A merging reshape after the stack can fail at the import stage regardless
 of `dim`: under dynamic shapes, it rejects a merge spelled as an inferred
@@ -382,10 +398,13 @@ candidate forms, the exporter folds a `dim=0` stack's merge but declines a
 `dim > 0` stack's merge (`fold_unsupported`) — the same limit a
 single-source chain hits for an equivalent merge.
 
-At >= 8 MiB, the direct fused path (FD) matches the single-source transfer
-it is compared against (S1) within 10% for stacks at dim 0 or 1; last-dim
-(dim 2) stacks ran behind it instead, FD/S1 1.066–1.156
-(bench/results/stack-fusion/README.md).
+With the tuned options at >= 8 MiB, the direct fused path (FD) matches the
+single-source transfer it is compared against (S1) within 10% for stacks at
+dim 0 or 1 (FD/S1 0.99–1.06). Last-dim (dim 2) stacks ran behind it, at
+FD/S1 1.04–1.12. That last-dim range leaves out one configuration (16 MiB,
+N=16), whose S1 timing was disturbed during the measurement (FD/S1 0.76
+there). The Deviations section of bench/results/stack-fusion/README.md
+explains why.
 
 | Case | Reason |
 | --- | --- |
@@ -405,8 +424,20 @@ it is compared against (S1) within 10% for stacks at dim 0 or 1; last-dim
 
 Unchanged: `torch.stack([x.to("cuda") ...])` (N separate transfers and a
 PyTorch stack on the device), eager interception, typed stages, D2H and
-`torch.cat`. Evidence: [bench/results/stack-fusion](../bench/results/stack-fusion/README.md)
-— at >= 24 MiB, FB (`RelocBackend`-fused) measured 0.12×–0.91× of
-min(B1, B3) (eager/Inductor as written) in every configuration, and
-0.995×–1.70× of min(B2, B4) (eager/Inductor copy-then-stack), beating
-copy-then-stack only for 16-input last-dim stacks at 24–32 MiB.
+`torch.cat`.
+
+Evidence: [bench/results/stack-fusion](../bench/results/stack-fusion/README.md).
+It was measured on an EPYC 7351 / RTX 2080 Ti (PCIe Gen3), with 8 Torch
+threads on CPUs 4–7 and 20–23 and warm, retained transfer resources.
+
+| Comparison | Options | Sizes | Fused / baseline |
+| --- | --- | --- | --- |
+| Against min(B1, B3), eager and Inductor as written | default (FBD) | >= 32 MiB | 0.21×–0.94×, in every configuration |
+| Against min(B1, B3) | tuned (FB) | >= 24 MiB | 0.12×–0.91×, in every configuration |
+| Against min(B2, B4), the code rewritten as copy-then-GPU-stack | tuned (FB) | >= 24 MiB | 0.98×–1.71× |
+| Against min(B2, B4) | default (FBD) | >= 32 MiB | 1.55×–3.85× |
+
+- Under the default options, two-input last-dim stacks win only narrowly:
+  0.94× at 32 and 64 MiB, and 0.92× at 128 MiB.
+- Against copy-then-stack, fusion mostly loses. With the tuned options it
+  wins only for 16-input last-dim stacks at 24–64 MiB.

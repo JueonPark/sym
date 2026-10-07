@@ -332,18 +332,36 @@ together for the added `quiesce()` interface; plan wire formats are unchanged.
 import torch
 from reloc_torch import RelocBackend
 
-backend = RelocBackend()                    # min_stack_bytes defaults to 24 MiB
+# The benchmark's tuned options: with them, fusing pays from 24 MiB of stack inputs.
+backend = RelocBackend(
+    transfer_options={"pinning": "auto", "min_pinned_bytes": 8 << 20, "gather_threads": 8},
+    min_stack_bytes=24 << 20,
+)
 compiled = torch.compile(lambda *xs: torch.stack(xs, 1).to("cuda"), backend=backend, dynamic=True)
 with torch.no_grad():
     y = compiled(*[torch.randn(4096, 1024) for _ in range(4)])   # 64 MiB: fused
 print(backend.stats()["stacked_executions"])  # 1
 ```
 
-Smaller stacks keep PyTorch's behavior (`below_stack_threshold`);
-`RelocBackend(min_stack_bytes=0)` fuses every eligible stack. Explicit recipes
-use `Recipe(..., stack_inputs=N)` over the logical `[N, *S]` source with
+`RelocBackend()` alone runs one gather thread with pageable staging. Its
+default gate, `DEFAULT_MIN_STACK_BYTES` (32 MiB), is qualified for exactly
+those options. The example instead passes the options the stack benchmark
+tuned on an EPYC 7351 / RTX 2080 Ti, with 8 Torch threads on 8 pinned CPUs
+and warm, retained resources. With those options fusing pays from 24 MiB,
+so the example lowers `min_stack_bytes` to match.
+
+The tuned options are a calibration for that box, not a default. The
+pinned-staging threshold has its own scope, in
+[pinning qualification](pinning-qualification.md).
+
+Smaller stacks keep PyTorch's behavior (`below_stack_threshold`), and
+`RelocBackend(min_stack_bytes=0)` fuses every eligible stack. Explicit
+recipes use `Recipe(..., stack_inputs=N)` over the logical `[N, *S]` source
+with
 `reloc_torch.transport.prepare_stacked_transfer(compiled, sources, device)`
-and `execute_transfer`.
+and `execute_transfer`. The measured scope and numbers are in
+[torch support](torch-support.md#stacked-host-transfers-torchstack) and
+[bench/results/stack-fusion](../bench/results/stack-fusion/README.md).
 
 ## 5. Semantics and boundaries
 
