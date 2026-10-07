@@ -173,6 +173,70 @@ py::object wireVersion(const py::bytes &data) {
   return py::int_(*version);
 }
 
+py::list indexedExpr(const reloc::ExprStream &expr,
+                     const std::vector<std::string> &symbols) {
+  std::vector<py::list> stack;
+  for (const auto &token : expr) {
+    py::list value;
+    if (token.op == reloc::ExprOp::PushConst ||
+        token.op == reloc::ExprOp::PushSym) {
+      value.append(token.op == reloc::ExprOp::PushConst ? "const" : "symbol");
+      if (token.op == reloc::ExprOp::PushConst)
+        value.append(token.value);
+      else
+        value.append(symbols.at(token.value));
+    } else {
+      py::list rhs = stack.back();
+      stack.pop_back();
+      py::list lhs = stack.back();
+      stack.pop_back();
+      const char *name = token.op == reloc::ExprOp::Add        ? "add"
+                         : token.op == reloc::ExprOp::Sub      ? "add"
+                         : token.op == reloc::ExprOp::Mul      ? "mul"
+                         : token.op == reloc::ExprOp::FloorDiv ? "floordiv"
+                                                               : "mod";
+      value.append(name);
+      value.append(lhs);
+      if (token.op == reloc::ExprOp::Sub) {
+        py::list negative;
+        negative.append("mul");
+        py::list minusOne;
+        minusOne.append("const");
+        minusOne.append(-1);
+        negative.append(minusOne);
+        negative.append(rhs);
+        value.append(negative);
+      } else if (token.op == reloc::ExprOp::FloorDiv ||
+                 token.op == reloc::ExprOp::Mod) {
+        if (py::cast<std::string>(rhs[0]) != "const")
+          throw py::value_error("indexed metadata requires constant divisors");
+        value.append(rhs[1]);
+      } else
+        value.append(rhs);
+    }
+    stack.push_back(std::move(value));
+  }
+  return stack.back();
+}
+
+py::dict indexedMetadata(const reloc::IndexedRelocationPlan &plan) {
+  py::dict result;
+  for (auto pair : {std::make_pair("source", &plan.source),
+                    std::make_pair("indices", &plan.indices),
+                    std::make_pair("result", &plan.result)}) {
+    py::dict descriptor;
+    py::list shape;
+    for (const auto &expr : pair.second->extents)
+      shape.append(indexedExpr(expr, plan.symbols));
+    descriptor["shape"] = shape;
+    descriptor["dtype"] = dtypeName(pair.second->elementType);
+    result[pair.first] = descriptor;
+  }
+  result["axis"] = plan.axis;
+  result["policy"] = policyName(plan.policy);
+  return result;
+}
+
 py::list typedStages(const reloc::TypedRelocationPlan &plan) {
   py::list out;
   for (const reloc::ValueStage &stage : plan.stages) {
@@ -755,6 +819,47 @@ PYBIND11_MODULE(_pyreloc, m) {
         os << "])";
         return os.str();
       });
+
+  py::class_<reloc::IndexedRelocationPlan>(m, "IndexedPlanHandle")
+      .def_readonly("symbols", &reloc::IndexedRelocationPlan::symbols)
+      .def_property_readonly("metadata", &indexedMetadata);
+  py::class_<reloc::IndexedBoundPlan>(m, "IndexedBoundPlan")
+      .def_readonly("source_extents", &reloc::IndexedBoundPlan::sourceExtents)
+      .def_property_readonly("result_extents",
+                             [](const reloc::IndexedBoundPlan &p) {
+                               return p.selected.resultExtents;
+                             });
+  m.def(
+      "load_indexed_plan",
+      [](py::bytes bytes) {
+        std::string data = bytes;
+        auto decoded = reloc::decodeIndexedPlan(
+            reinterpret_cast<const uint8_t *>(data.data()), data.size());
+        if (auto *error = std::get_if<reloc::DecodeError>(&decoded))
+          throw DecodeException("decode error at byte offset " +
+                                std::to_string(error->offset) + ": " +
+                                error->message);
+        return std::get<reloc::IndexedRelocationPlan>(std::move(decoded));
+      },
+      py::arg("data"));
+  m.def(
+      "bind_indexed",
+      [](const reloc::IndexedRelocationPlan &plan,
+         const reloc::SymbolMap &symbols, py::tuple operand) {
+        if (operand.size() != 3)
+          throw py::value_error(
+              "indices must be a (dtype, extents, bytes) tuple");
+        reloc::ParameterValue indices;
+        indices.elementType = parseDtype(py::cast<std::string>(operand[0]));
+        indices.extents = py::cast<std::vector<int64_t>>(operand[1]);
+        std::string bytes = py::cast<py::bytes>(operand[2]);
+        indices.bytes.assign(bytes.begin(), bytes.end());
+        auto bound = reloc::bindIndexed(plan, symbols, indices);
+        if (auto *error = std::get_if<reloc::BindError>(&bound))
+          throw BindException(error->message);
+        return std::get<reloc::IndexedBoundPlan>(std::move(bound));
+      },
+      py::arg("plan"), py::arg("symbols"), py::arg("indices"));
 
   m.def("load_typed_plan", &loadTypedPlan, py::arg("data"),
         "Decode a wire-format-v1 typed plan blob. Raises DecodeError with "

@@ -330,7 +330,7 @@ def _insert_transfer(graph, root, tail, compiled, handle, device, parameters=(),
 
     symbol_nodes = {}
     for source in compiled.symbol_sources:
-        operand = index if index is not None and source.axis == 0 else root
+        operand = index if source.operand == 'indices' else root
         symbol_nodes[source.name] = graph.call_function(torch.ops.aten.sym_size.int, (operand, source.axis))
 
     def binary(function, left, right):

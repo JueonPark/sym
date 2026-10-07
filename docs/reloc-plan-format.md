@@ -1,4 +1,4 @@
-# Reloc Plan Wire Format v0
+# Reloc Plan Wire Formats
 
 Binary encoding of a `#reloc.plan` attribute for the compiler → runtime
 handoff. The decoder (`libreloc`, P2) never links MLIR: everything needed to
@@ -283,3 +283,63 @@ scale binding extents, zero-point binding extents and channel expression,
 then nothing (fills carry no expressions). Channel maps use `PUSH_SYM` with
 these indices; the attribute's own `symbols` list only fixes affine symbol
 positions and is not encoded separately.
+
+## Wire Format v2: indexed plans
+
+`#reloc.indexed_plan` describes dense dimension-0 row selection, optionally
+followed by one FP32↔FP16 cast. It is a separate plan kind, not an affine
+inverse map: addresses depend on runtime index values. Encoding is
+`encodeIndexedPlan`; the standalone decoder is `decodeIndexedPlan`.
+The existing v0 and v1 encodings remain frozen.
+
+```
+0. magic            4 bytes ASCII "RPLN"
+1. version          u32 = 2
+2. symbol table     u32 count, count × str
+3. source           tensor_desc       (physical input, before selection)
+4. indices          tensor_desc       (separate runtime operand)
+5. result           tensor_desc
+6. axis             u32 = 0
+7. policy           u8                (0 = ieee_rne, 1 = exact)
+```
+
+Descriptors and expressions use the primitives above. Symbols appear in
+first-use order across source, indices, then result. No bytes follow section 7.
+Index values are never serialized in the plan or compiler manifest.
+
+All descriptors have positive rank, elided canonical row-major strides
+(`stride_count = 0`) and a single `PUSH_CONST 0` offset. Indices have rank one
+and signless i32/i64 storage interpreted as signed two's-complement values.
+Source and result ranks match. The source/result type pair and policy must be
+one of:
+
+| Source → result | Policy |
+| --- | --- |
+| f32 → f32, f16 → f16, i8 → i8 | exact |
+| f32 → f16 | ieee_rne |
+| f16 → f32 | exact |
+
+The decoder rejects malformed expressions, invalid symbol references,
+nonpositive literal extents, unsupported descriptors/axis/type/policy pairs,
+and statically unequal result dimensions. `bindIndexed` evaluates symbolic
+extents with checked int64 arithmetic and requires
+`result.shape == [indices.shape[0], *source.shape[1:]]`. It validates the
+exact symbol set, supplied index dtype/extents/byte count, every tensor byte
+footprint, and `0 <= index[i] < source.shape[0]` before execution. The bound
+plan owns a snapshot of the supplied little-endian index bytes as signed row
+numbers. Ordering and duplicate rows are preserved; selection may be longer
+than the source.
+
+The initial executor reads the bound rows from a dense host source directly
+into destination-type staging and uploads the result. Only the H2D
+`cpu_reference` dispatch implementation is eligible. A host destination is
+also supported for standalone reference execution. Empty selections, other
+axes, strided physical sources, and composed layout/quantization chains are
+outside v2's current contract.
+
+Python consumers choose `load_indexed_plan` when `wire_version(blob) == 2`,
+then call `bind_indexed(plan, symbols, (dtype, extents, bytes))` and
+`prepare_index_select_program(bound, source_view)` before normal
+`prepare_dispatch` / `execute_dispatch`. The physical source view must agree
+with the bound shape and element width, and pass the usual storage-span proof.
+Older v0/v1 loaders reject v2 instead of interpreting selection as a layout.

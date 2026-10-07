@@ -44,6 +44,39 @@ def Reloc_TransposeOp : Reloc_Op<"transpose", [Pure]> {
   let hasVerifier = 1;
 }
 
+def Reloc_IndexSelectOp : Reloc_Op<"index_select", [Pure]> {
+  let summary = "Select rows using a runtime signed integer index tensor";
+  let description = [{
+    Dimension-0 selection: result row i is input row indices[i]. Indices are
+    rank-one i32/i64 values, checked against the source row count at binding.
+    Order and repetitions are preserved. Empty tensors are not supported.
+    The source and result element types agree; a following reloc.cast may
+    fold into the same indexed plan. Other axes are currently unsupported.
+  }];
+  let arguments = (ins Reloc_SymTensor:$input, Reloc_SymTensor:$indices,
+                       I64Attr:$axis);
+  let results = (outs Reloc_SymTensor:$result);
+  let assemblyFormat = "$input `,` $indices `axis` $axis attr-dict `:` qualified(type($input)) `,` qualified(type($indices)) `->` qualified(type($result))";
+  let hasVerifier = 1;
+}
+
+def Reloc_IndexedPlanAttrParam : Attr<
+    CPred<"::mlir::isa<::mlir::reloc::IndexedPlanAttr>($_self)">,
+    "reloc indexed plan"> {
+  let storageType = [{ ::mlir::reloc::IndexedPlanAttr }];
+  let returnType = [{ ::mlir::reloc::IndexedPlanAttr }];
+  let convertFromStorage = "$_self";
+}
+
+def Reloc_IndexedPlanResultOp : Reloc_Op<"indexed_plan_result", [Pure]> {
+  let summary = "Apply a folded indexed plan to its source and indices";
+  let arguments = (ins Reloc_SymTensor:$input, Reloc_SymTensor:$indices,
+                       Reloc_IndexedPlanAttrParam:$plan);
+  let results = (outs Reloc_SymTensor:$result);
+  let assemblyFormat = "$input `,` $indices `plan` `(` qualified($plan) `)` attr-dict `:` qualified(type($input)) `,` qualified(type($indices)) `->` qualified(type($result))";
+  let hasVerifier = 1;
+}
+
 def Reloc_ReshapeOp : Reloc_Op<"reshape", [Pure]> {
   let summary = "Reinterpret a symbolic tensor's shape (row-major)";
   let description = [{

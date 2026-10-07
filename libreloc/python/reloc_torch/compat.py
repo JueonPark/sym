@@ -311,11 +311,16 @@ class SymbolicContext:
 
     @classmethod
     def from_tensor(cls, tensor):
+        context = cls()
+        context.add_tensor(tensor)
+        return context
+
+    def add_tensor(self, tensor, operand='source'):
         import sympy
         import torch
         from .symbolic import SymbolSource, UnsupportedSymbolicExpr
-        context = cls()
-        sources = []
+        context = self
+        sources = list(context.sources)
         for axis, value in enumerate(tensor.shape):
             if type(value) is int:
                 continue
@@ -329,11 +334,12 @@ class SymbolicContext:
             if key in context._symbols:
                 index = context._symbols[key]
                 source = sources[index]
-                sources[index] = SymbolSource(source.name, source.axis, source.equal_axes + (axis,))
+                if source.operand == operand:
+                    sources[index] = SymbolSource(source.name, source.axis, source.equal_axes + (axis,), operand)
             else:
                 index = len(sources)
                 context._symbols[key] = index
-                sources.append(SymbolSource(f's{index}', axis))
+                sources.append(SymbolSource(f's{index}', axis, (), operand))
         context.sources = tuple(sources)
         return context
 

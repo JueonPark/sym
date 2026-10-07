@@ -1,10 +1,8 @@
 """Dense CPU row selection fused with optional cast and blocking H2D.
 
-The compiled recipe describes the selected logical tensor. Physical source
-storage and the runtime index values are validated independently by native
-dispatch; no gathered feature tensor is allocated on the host.
+The compiler's wire-v2 plan describes the physical source, runtime index
+operand, selection and cast. Native binding checks that plan before dispatch.
 """
-from types import SimpleNamespace
 
 from . import compat
 from .artifact import UnsupportedRecipe
@@ -25,16 +23,8 @@ def bind_index_select(compiled, source, index):
             or index.layout != torch.strided or index.dim() != 1
             or index.dtype not in (torch.int32, torch.int64)):
         raise UnsupportedRecipe('unsupported_index_select', 'expected a CPU int32/int64 index vector')
-    shape = (index.numel(), *source.shape[1:])
-    strides, stride = [], 1
-    for dim in reversed(shape):
-        strides.append(stride)
-        stride *= dim
-    # Only metadata reaches the binder. In particular, selecting more rows
-    # than the source contains (repeated indices) needs no oversized view.
-    selected = SimpleNamespace(shape=shape, stride=tuple(reversed(strides)), dtype=source.dtype)
     try:
-        return compiled.bind_values(selected)
+        return compiled.bind_values(source, index)
     except GuardError as error:
         raise UnsupportedRecipe(error.reason, str(error)) from error
 
@@ -47,14 +37,12 @@ def prepare_index_select_transfer(compiled, source, index, device, *, threads=8)
     import torch
     import pyreloc
     from .dispatch import PreparedTypedTransfer
-    from .recipe import Cast
     from .runtime import destination_descriptor
     from .transport import _code, _storage_view
 
     bindings = bind_index_select(compiled, source, index)
     recipe = compiled.recipe
-    if (recipe.direction != 'h2d' or recipe.source.shape != recipe.destination.shape
-            or len(recipe.operations) > 1 or any(not isinstance(op, Cast) for op in recipe.operations)):
+    if not compiled.indexed or recipe.direction != 'h2d':
         raise UnsupportedRecipe('unsupported_index_select', 'expected row selection and optional cast')
     device = torch.device(device)
     if device.type != 'cuda':
@@ -62,10 +50,13 @@ def prepare_index_select_transfer(compiled, source, index, device, *, threads=8)
     snapshot = index_snapshot(index)
     view = _storage_view(source, 'host', -1)
     try:
-        program = pyreloc.prepare_index_select_program(
-            view, snapshot[1], index.element_size(), recipe.destination.dtype)
+        bound = pyreloc.bind_indexed(compiled.decoded_plan, bindings,
+            (compat.dtype_name(index.dtype), list(index.shape), snapshot[1]))
+        program = pyreloc.prepare_index_select_program(bound, view)
         capability = pyreloc.query_capability(program, 'h2d', 'cuda')
         selected = pyreloc.select_dispatch(program, 'h2d', 'cuda', threads=threads)
+    except pyreloc.BindError as error:
+        raise UnsupportedRecipe('index_out_of_range' if 'index_out_of_range' in str(error) else 'bind_error', str(error)) from error
     except pyreloc.TransferError as error:
         raise UnsupportedRecipe(_code(error), str(error)) from error
     if not pyreloc.cuda_enabled or not torch.cuda.is_available():
@@ -73,7 +64,7 @@ def prepare_index_select_transfer(compiled, source, index, device, *, threads=8)
     target = torch.device('cuda', device.index if device.index is not None else torch.cuda.current_device())
     destination = destination_descriptor(compiled, bindings, target)
     return PreparedTypedTransfer(
-        compiled, source, bindings, None, destination, 'h2d', target, view,
+        compiled, source, bindings, bound, destination, 'h2d', target, view,
         'auto', None, threads, {}, {}, capability, selected, program=program,
         index=index, index_snapshot=snapshot,
     )

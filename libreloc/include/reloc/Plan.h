@@ -177,6 +177,17 @@ struct TypedRelocationPlan {
   std::vector<TypedFill> fills;
 };
 
+/// Wire v2: a data-dependent row selection followed by optional f32/f16 cast.
+/// The source is the physical feature store; indices are a separate operand.
+struct IndexedRelocationPlan {
+  std::vector<std::string> symbols;
+  TensorDesc source;
+  TensorDesc indices;
+  TensorDesc result;
+  uint32_t axis = 0;
+  NumericPolicyKind policy = NumericPolicyKind::Exact;
+};
+
 } // namespace reloc
 
 #endif // RELOC_PLAN_H

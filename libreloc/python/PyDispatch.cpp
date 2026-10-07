@@ -14,7 +14,6 @@
 #include <pybind11/stl.h>
 
 #include <cstdint>
-#include <cstring>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -282,38 +281,14 @@ void registerDispatchBindings(py::module_ &m) {
   py::class_<reloc::typed::Program>(m, "TypedProgram");
   m.def(
       "prepare_index_select_program",
-      [](const reloc::BufferView &source, py::bytes data, unsigned indexWidth,
-         const std::string &dtype) {
-        std::string bytes = data;
-        if ((indexWidth != 4 && indexWidth != 8) || bytes.size() % indexWidth)
-          throw py::value_error("indices must contain int32 or int64 values");
-        reloc::ElementType type;
-        if (dtype == "float32")
-          type = {reloc::ElementTypeKind::Float, 32};
-        else if (dtype == "float16")
-          type = {reloc::ElementTypeKind::Float, 16};
-        else if (dtype == "int8")
-          type = {reloc::ElementTypeKind::Integer, 8};
-        else
-          throw py::value_error("unsupported index_select result dtype");
-        std::vector<int64_t> indices(bytes.size() / indexWidth);
-        for (size_t i = 0; i < indices.size(); ++i) {
-          if (indexWidth == 4) {
-            int32_t value;
-            std::memcpy(&value, bytes.data() + i * indexWidth, indexWidth);
-            indices[i] = value;
-          } else {
-            std::memcpy(&indices[i], bytes.data() + i * indexWidth, indexWidth);
-          }
-        }
-        auto prepared = reloc::dispatch::prepareIndexSelect(
-            source, std::move(indices), type);
+      [](const reloc::IndexedBoundPlan &bound,
+         const reloc::BufferView &source) {
+        auto prepared = reloc::dispatch::prepareIndexSelect(bound, source);
         if (auto *error = std::get_if<reloc::TransferError>(&prepared))
           raise(*error);
         return std::get<reloc::typed::Program>(std::move(prepared));
       },
-      py::arg("source"), py::arg("indices"), py::arg("index_width"),
-      py::arg("dtype"));
+      py::arg("bound"), py::arg("source"));
   m.def(
       "prepare_typed_program",
       [](const reloc::TypedBoundPlan &p) { return checkedProgram(p); },

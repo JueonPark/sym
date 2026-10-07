@@ -80,8 +80,14 @@ snapshotted and bounds-checked before launch; ordering and duplicates are
 preserved, including when the selection is longer than the source. Index
 values are never cached with the compiled artifact. Symbolic selection length
 comes from the index vector, and remaining extents come from the source.
-The portable recipe describes the selected logical tensor and optional cast;
-row indirection is a separate runtime request, not a new wire-plan operation.
+The portable recipe records the physical source, a separate index operand,
+and the optional cast. It emits `reloc.index_select` over `!sym.tensor` types;
+the compiler folds this into `#reloc.indexed_plan` and exports wire v2 with
+a schema-3 manifest. Native decode/bind validates the index dtype, length,
+values, output shape and byte footprints before execution. The frontend
+binds symbolic dimensions from the appropriate operand rather than fabricating
+a gathered source descriptor. Portable `CompiledRecipe` format 3 retains
+this contract across save/load; v0/v1 artifacts are unchanged.
 
 Other dimensions, CUDA indices, empty tensors, non-dense sources, `out=`,
 autograd, nonblocking copies and additional layouts/value transforms remain
@@ -90,18 +96,32 @@ prevent fusion. A standalone CPU `index_select` is unchanged. Invalid indices
 fall back before launch so the original PyTorch bounds error is preserved.
 This is separate work from the completed view support in #210.
 
-`test_index_select.py` checks native host execution, bounds/capacity validation,
+`test_indexed_plan.py` checks compiler-to-runtime execution in a fresh process
+without Torch, malformed wire data and invalid bindings. Compiler lit tests
+cover verification, folding, unsupported chains and v0/v1 compatibility.
+`test_index_select.py` checks portable artifact admission, native host execution, bounds/capacity validation,
 rounding, dynamic CUDA capture and stale index snapshots. The runnable
 `libreloc/python/examples/torch_index_select.py` compares completed eager and
 fused feature transfers with the GNN example's 128-column shape. Any measured
 gain applies to that region; it is not an end-to-end GNN speedup.
 
 On 2026-10-07, RTX 2080 Ti, PyTorch 2.14.0+cu126 and eight CPU workers,
-the example measured **1.64×, 1.35× and 1.90×** speedups for 4,096, 16,384
-and 65,536 selected rows from a 500,000×128 FP32 store. These are medians
-of 30 completed transfers after five warmups, alternating eager/Sym order,
-with default retained pageable staging. One compiled graph and artifact
-served all sizes, with 108 native executions and no fallback.
+the compiler-backed implementation measured the following completed transfers
+from a 500,000×128 FP32 store. These are medians of 30 iterations after five
+warmups, alternating eager/Sym order, with default retained pageable staging.
+
+| Selected rows | Eager median | Sym median | Eager / Sym |
+| --- | --- | --- | --- |
+| 4,096 | 0.477 ms | 1.297 ms | 0.37× |
+| 16,384 | 2.638 ms | 2.981 ms | 0.88× |
+| 65,536 | 14.321 ms | 7.334 ms | 1.95× |
+
+Only the largest case improved in this run; small selections do not amortize
+the frontend/dispatch overhead. These measurements supersede the earlier
+runtime-only implementation's timings and do not establish a general speedup.
+One compiled graph and artifact served all sizes, with 108 native executions
+and no fallback. Descriptor proofs are cached, while actual index values are
+snapshotted and checked for every invocation.
 [Raw report](qualification/index-select/benchmark.json). The native build
 used CUDA toolkit 12.5.82; this is local performance evidence, not a new
 qualification of the documented 12.6.3 toolkit baseline. Reproduce with:

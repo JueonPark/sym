@@ -19,7 +19,7 @@ import math
 import struct
 
 from . import compat
-from .recipe import (BindingParam, Cast, Dequantize, Fill, InlineParam, Pad, Recipe, Reshape,
+from .recipe import (BindingParam, Cast, Dequantize, Fill, InlineParam, IndexSelect, Pad, Recipe, Reshape,
                      TensorSpec, Transpose)
 from .symbolic import (Const, SymbolSource, UnsupportedSymbolicExpr, dense_strides,
                        expression, infer_reshape, mul, operation_shape, product)
@@ -55,8 +55,7 @@ class Candidate:
     # recipe's runtime parameters, in the recipe's declaration order; the
     # original callable takes them after the scalar placeholders.
     parameters: tuple = ()
-    # A CPU int32/int64 row index operand. The recipe describes the logical
-    # selected tensor; the indexed custom op supplies physical row indirection.
+    # A CPU int32/int64 row index operand declared by the recipe's IndexSelect.
     index: str | None = None
 
 
@@ -534,8 +533,7 @@ def _extract(gm, root, members, context, parameters):
 def _indexed_recipe(root, members):
     """Only selection first, then an optional single cast and blocking H2D.
 
-    Keep the portable artifact about the selected logical shape. Native
-    dispatch checks the physical source and runtime indices independently.
+    The portable recipe records the physical source and explicit index operand.
     """
     import torch
     source = compat.graph_value(root)
@@ -561,7 +559,12 @@ def _indexed_recipe(root, members):
     recipe, context, guards, parameters = _recipe(select, members[1:])
     _require(recipe.direction == 'h2d' and len(recipe.operations) <= 1
              and all(isinstance(op, Cast) for op in recipe.operations), 'unsupported_index_select')
-    return recipe, context, guards, (index,)
+    ctx.add_tensor(value, 'indices')
+    index_shape = tuple(ctx.expression(d) for d in value.shape)
+    index_spec = TensorSpec(index_shape, dense_strides(index_shape), Const(0), compat.dtype_name(value.dtype))
+    shape = (index_shape[0], *spec.shape[1:])
+    destination = TensorSpec(shape, dense_strides(shape), Const(0), recipe.destination.dtype)
+    return Recipe(spec, (IndexSelect(index_spec), *recipe.operations), destination, 'h2d'), ctx, guards, (index,)
 
 
 def import_graph(gm, example_inputs=None):

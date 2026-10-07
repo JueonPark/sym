@@ -621,7 +621,8 @@ LogicalResult mlir::reloc::foldValueStage(
 //===----------------------------------------------------------------------===//
 
 bool mlir::reloc::isFoldableChainOp(Operation *op) {
-  return isa<TransposeOp, ReshapeOp, PadOp>(op) || isTypedValueTransformOp(op);
+  return isa<TransposeOp, ReshapeOp, PadOp, IndexSelectOp>(op) ||
+         isTypedValueTransformOp(op);
 }
 
 /// Element type and logical shape of a typed op's operand/result.
