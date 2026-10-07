@@ -27,9 +27,9 @@ from .runtime import ExecutionEntry, TransportAdapter, stack_below_threshold, st
 from .symbolic import Add, Const, FloorDiv, Mod, Mul, Symbol, dense_strides, expression
 
 
-# Default stack fusion threshold: fuse a host torch.stack only from this many
-# input bytes. bench/stack_fusion re-measures it.
-DEFAULT_MIN_STACK_BYTES = 32 << 20
+# Default stack fusion threshold, measured in bench/results/stack-fusion: fuse
+# a host torch.stack only from this many input bytes.
+DEFAULT_MIN_STACK_BYTES = 24 << 20
 _ITEMSIZE = {"float32": 4, "float16": 2, "int8": 1}
 
 
@@ -102,7 +102,7 @@ class RelocBackend:
     one host-to-device transfer through layout operations only becomes one
     ``reloc_torch::stack_transfer`` that gathers every input straight into
     the transfer, without materializing the stacked tensor on the host.
-    ``min_stack_bytes`` (default ``DEFAULT_MIN_STACK_BYTES``, 32 MiB of
+    ``min_stack_bytes`` (default ``DEFAULT_MIN_STACK_BYTES``, 24 MiB of
     stack inputs; 0 always fuses) gates it: a region whose shapes are static
     is gated once when the graph is compiled, and one with dynamic shapes on
     every call, where a call below the threshold runs the original region
