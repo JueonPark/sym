@@ -2,20 +2,34 @@
 """Fused host torch.stack -> H2D: completed-call latency against PyTorch.
 
 Every sample allocates a fresh output and includes completion; compilation,
-input creation and correctness checks are outside the timer.
+input creation and correctness checks are outside the timer. Sym's methods
+run on warm, retained transfer resources.
 
-  B1  eager as written            torch.stack(xs, dim).to(dev)
-  B2  eager copy-then-stack       torch.stack([x.to(dev) for x in xs], dim)
-  B3  Inductor as written         torch.compile(B1)
-  B4  Inductor copy-then-stack    torch.compile(B2)
-  B5  pinned host stack           torch.stack(xs, dim, out=pinned).to(dev)
-  S1  Sym single-source proxy     today's transfer over a pre-stacked [N, R, C]
-  FD  Sym fused, direct adapter   prepare_stacked_transfer / execute_transfer
-  FB  Sym fused, RelocBackend     torch.compile(B1, backend=RelocBackend(min_stack_bytes=0))
-  GB  below-threshold overhead    torch.compile(B1, backend=RelocBackend()) (default gate)
+  B1   eager as written            torch.stack(xs, dim).to(dev)
+  B2   eager copy-then-stack       torch.stack([x.to(dev) for x in xs], dim)
+  B3   Inductor as written         torch.compile(B1)
+  B4   Inductor copy-then-stack    torch.compile(B2)
+  B5   pinned host stack           torch.stack(xs, dim, out=pinned).to(dev)
+  S1   Sym single-source proxy     today's transfer over a pre-stacked [N, R, C]
+  FD   Sym fused, direct adapter   prepare_stacked_transfer / execute_transfer
+  FB   Sym fused, RelocBackend,    torch.compile(B1, backend=RelocBackend(min_stack_bytes=0,
+       tuned options                 transfer_options={"pinning": "auto",
+                                     "min_pinned_bytes": 8 << 20, "gather_threads": 8}))
+  FBD  Sym fused, RelocBackend,    torch.compile(B1, backend=RelocBackend(min_stack_bytes=0)):
+       default options               default transfer options (gather_threads 1, pageable staging)
+  GB   below-threshold overhead    torch.compile(B1, backend=RelocBackend(min_stack_bytes=<one
+                                     byte above the largest measured size>)): every call falls
+                                     back to PyTorch; default transfer options
+
+S1 and FD pass FB's tuned options to execute_transfer; min_pinned_bytes is
+--min-pinned-bytes and gather_threads is --threads (8 MiB and 8 by default).
+FB and FBD must execute every timed call through Sym and record no fallback;
+GB must record below_stack_threshold for every timed call. Any other path
+fails the run.
 """
 import argparse
 import hashlib
+import inspect
 import json
 import os
 from pathlib import Path
@@ -36,6 +50,10 @@ MIB = 1 << 20
 COLUMNS = 1024
 PERMS = {0: (0, 1, 2), 1: (1, 0, 2), 2: (1, 2, 0)}  # result axis k <- logical axis perm[k]
 INDUCTOR = ("B3", "B4")
+# The execute_transfer keywords that transfer_options may set (gather_pool and
+# resources are objects, not options): RelocBackend without transfer_options
+# runs their defaults.
+TRANSFER_KNOBS = ("n_buffers", "n_streams", "gather_threads", "pinning", "min_pinned_bytes")
 
 
 class WrongResult(AssertionError):
@@ -52,7 +70,7 @@ def recipe(logical, dim, stack_inputs=0):
     return Recipe(spec(logical), operations, spec(tuple(logical[p] for p in perm)), "h2d", stack_inputs)
 
 
-def metadata(args):
+def metadata(args, tuned, gb_min_stack_bytes):
     import pyreloc
 
     root = Path(__file__).resolve().parents[2]
@@ -60,6 +78,7 @@ def metadata(args):
     files += list(Path(pyreloc.__file__).resolve().parent.glob("*.so"))
     files += [Path(os.environ[key]) for key in ("SYM_RELOC_EXPORT", "SYM_OPT") if key in os.environ]
     run = lambda *cmd: subprocess.check_output(cmd, cwd=root, text=True).strip()
+    defaults = inspect.signature(execute_transfer).parameters
     return dict(
         source_revision=run("git", "rev-parse", "HEAD"),
         source_dirty=bool(run("git", "status", "--porcelain")),
@@ -73,14 +92,17 @@ def metadata(args):
             ["nvidia-smi", "-i", str(args.device), "--query-gpu=name,driver_version,persistence_mode,"
              "pcie.link.gen.current,pcie.link.width.current", "--format=csv,noheader"], text=True).strip(),
         clocks="GPU clocks not locked; CPU governor not changed", args=vars(args),
-        default_min_stack_bytes=DEFAULT_MIN_STACK_BYTES)
+        default_min_stack_bytes=DEFAULT_MIN_STACK_BYTES,
+        tuned_transfer_options=tuned,  # S1, FD and FB
+        default_transfer_options={name: defaults[name].default for name in TRANSFER_KNOBS},  # FBD and GB
+        gb_min_stack_bytes=gb_min_stack_bytes)
 
 
-def build_methods(args, xs, stacked, dim, device, proxy, fused, owner, pinned, fb_backend, gb_backend):
-    sym = dict(resources=owner, pinning="auto", min_pinned_bytes=args.min_pinned_bytes,
-               gather_threads=args.threads)
+def build_methods(xs, stacked, dim, device, proxy, fused, owner, pinned, backends, tuned):
+    sym = dict(tuned, resources=owner)
     torch._dynamo.reset()
 
+    # One function per compiled method: distinct code objects keep Dynamo's caches apart.
     def b3_fn(*ts):
         return torch.stack(ts, dim).to(device)
 
@@ -88,6 +110,9 @@ def build_methods(args, xs, stacked, dim, device, proxy, fused, owner, pinned, f
         return torch.stack([t.to(device) for t in ts], dim)
 
     def fb_fn(*ts):
+        return torch.stack(ts, dim).to(device)
+
+    def fbd_fn(*ts):
         return torch.stack(ts, dim).to(device)
 
     def gb_fn(*ts):
@@ -99,8 +124,10 @@ def build_methods(args, xs, stacked, dim, device, proxy, fused, owner, pinned, f
 
     b3 = torch.compile(b3_fn, dynamic=False)
     b4 = torch.compile(b4_fn, dynamic=False)
-    fb = torch.compile(fb_fn, backend=fb_backend, dynamic=True)
-    methods = {
+    fb = torch.compile(fb_fn, backend=backends["FB"], dynamic=True)
+    fbd = torch.compile(fbd_fn, backend=backends["FBD"], dynamic=True)
+    gb = torch.compile(gb_fn, backend=backends["GB"], dynamic=True)
+    return {
         "B1": lambda: torch.stack(xs, dim).to(device),
         "B2": lambda: torch.stack([x.to(device) for x in xs], dim),
         "B3": lambda: b3(*xs),
@@ -109,11 +136,9 @@ def build_methods(args, xs, stacked, dim, device, proxy, fused, owner, pinned, f
         "S1": lambda: execute_transfer(prepare_transfer(proxy, stacked, device), **sym),
         "FD": lambda: execute_transfer(prepare_stacked_transfer(fused, xs, device), **sym),
         "FB": lambda: fb(*xs),
+        "FBD": lambda: fbd(*xs),
+        "GB": lambda: gb(*xs),
     }
-    if stacked.numel() * stacked.element_size() < DEFAULT_MIN_STACK_BYTES:
-        gb = torch.compile(gb_fn, backend=gb_backend, dynamic=True)
-        methods["GB"] = lambda: gb(*xs)
-    return methods
 
 
 def time_method(name, fn, expected, args):
@@ -130,6 +155,25 @@ def time_method(name, fn, expected, args):
             timed.append(elapsed)
         del out
     return timed
+
+
+def path_count(name, stats):
+    """The backend counter one call of `name` advances: FB and FBD execute
+    through Sym, GB falls back below its threshold."""
+    if name == "GB":
+        return stats["fallbacks"].get("below_stack_threshold", 0)
+    return stats["stacked_executions"]
+
+
+def check_path(name, backend, before, calls):
+    """Fail the run unless each of `calls` calls of `name` took its path."""
+    stats = backend.stats()
+    if path_count(name, stats) - before != calls:
+        if name == "GB":
+            raise RuntimeError("GB fused or was excluded instead of falling back below its threshold")
+        raise RuntimeError(f"{name} fell back instead of executing through Sym")
+    if name != "GB" and stats["fallbacks"]:
+        raise RuntimeError(f"{name} recorded fallbacks {stats['fallbacks']}")
 
 
 def main():
@@ -154,10 +198,15 @@ def main():
     torch.empty(1, device=device).cpu()
     client = CompilerClient.from_environment()
     proxies = {dim: client.compile(recipe((Symbol("s0"), Symbol("s1"), Symbol("s2")), dim)) for dim in args.dims}
-    options = {"pinning": "auto", "min_pinned_bytes": args.min_pinned_bytes, "gather_threads": args.threads}
-    fb_backend = RelocBackend(transfer_options=options, min_stack_bytes=0)
-    gb_backend = RelocBackend(transfer_options=options)
-    result = dict(scope=__doc__, metadata=metadata(args), rows=[], correct=False, complete=False)
+    tuned = {"pinning": "auto", "min_pinned_bytes": args.min_pinned_bytes, "gather_threads": args.threads}
+    gb_min_stack_bytes = max(args.sizes_mib) * MIB + 1  # every measured stack is below it
+    backends = {
+        "FB": RelocBackend(transfer_options=tuned, min_stack_bytes=0),
+        "FBD": RelocBackend(min_stack_bytes=0),
+        "GB": RelocBackend(min_stack_bytes=gb_min_stack_bytes),
+    }
+    result = dict(scope=__doc__, metadata=metadata(args, tuned, gb_min_stack_bytes), rows=[], correct=False,
+                  complete=False)
     output = Path(args.output)
     rng = random.Random(2026)
     try:
@@ -175,8 +224,8 @@ def main():
                     pinned = torch.empty(expected.shape, dtype=expected.dtype, pin_memory=True)
                     owner = TransferResources()
                     try:
-                        methods = build_methods(args, xs, stacked, dim, device, proxies[dim], fused, owner,
-                                                pinned, fb_backend, gb_backend)
+                        methods = build_methods(xs, stacked, dim, device, proxies[dim], fused, owner,
+                                                pinned, backends, tuned)
                         for name, fn in list(methods.items()):  # compile and allocate before any timing
                             try:
                                 out = fn()
@@ -197,10 +246,11 @@ def main():
                             names = list(methods)
                             rng.shuffle(names)
                             for order, name in enumerate(names):
-                                before = fb_backend.stats()["stacked_executions"]
+                                backend = backends.get(name)
+                                before = None if backend is None else path_count(name, backend.stats())
                                 timed = time_method(name, methods[name], expected, args)
-                                if name == "FB" and fb_backend.stats()["stacked_executions"] - before != len(timed) + args.warmup:
-                                    raise RuntimeError("FB fell back instead of executing through Sym")
+                                if backend is not None:
+                                    check_path(name, backend, before, args.warmup + len(timed))
                                 result["rows"].append(dict(total_mib=total_mib, count=count, dim=dim, method=name,
                                                            round=round_id, order=order, samples_ms=timed,
                                                            p50_ms=statistics.median(timed)))
@@ -212,9 +262,9 @@ def main():
         result["correct"] = True
         result["complete"] = True
     finally:
-        result["backend_stats"] = {"FB": fb_backend.stats(), "GB": gb_backend.stats()}
-        fb_backend.close()
-        gb_backend.close()
+        result["backend_stats"] = {name: backend.stats() for name, backend in backends.items()}
+        for backend in backends.values():
+            backend.close()
         output.write_text(json.dumps(result, indent=1, default=str) + "\n")
 
 
