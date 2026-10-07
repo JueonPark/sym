@@ -36,6 +36,20 @@ measurement campaigns (R2 rsweep → V1 rsweep → BP rsweep), not re-fits of
 one dataset; cross-column movement mixes baseline change with session
 variance. Each cell is labeled accordingly.
 
+## Fused host stacks (`torch.stack`, 2026-10)
+
+| claim | box | measured | status | authoritative source |
+|---|---|---|---|---|
+| A host `torch.stack(xs, dim).to("cuda")` fused by `RelocBackend()` with its default transfer options (one gather thread, pageable staging) is faster than the same code in eager PyTorch and Inductor at >= 32 MiB of inputs, the default `min_stack_bytes` | EPYC 7351 / RTX 2080 Ti, PCIe Gen3 | FBD (default transfer options; 8 Torch threads on CPUs 4–7 and 20–23, warm retained resources): 0.212–0.941× of min(B1, B3) in every configuration at >= 32 MiB (gate 4, default options: 32 MiB); narrowest for two-input last-dim stacks, 0.938×, 0.941× and 0.916× at 32, 64 and 128 MiB; at 24 MiB, 1.013–1.672× in eight of nine configurations | survives | bench/results/stack-fusion/README.md |
+| The same stack fused with the tuned options `transfer_options={"pinning": "auto", "min_pinned_bytes": 8 << 20, "gather_threads": 8}` is faster than eager PyTorch and Inductor at >= 24 MiB of inputs | same | FB (tuned options; same threads, CPUs and resources): 0.122–0.914× of min(B1, B3) in every configuration at >= 24 MiB (gate 3 at >= 32 MiB; gate 4, tuned options: 24 MiB) | survives | same |
+| ...and faster than rewriting it as copy-then-GPU-stack | same | FB (tuned options) at >= 24 MiB: 0.980–1.714× of min(B2, B4), below 1× only for 16-input last-dim stacks at 24, 32 and 64 MiB (0.980×, 0.995×, 0.986×); FBD (default options) at >= 32 MiB: 1.554–3.847× | refuted-as-stated | same |
+| The input-pointer table costs nothing significant against a single-source transfer of the same bytes, >= 8 MiB | same | FD/S1 with the tuned options: dims 0 and 1, 0.992–1.058× (gate 2); last dim (dim 2), 1.041–1.123×, above the 10% bar at 16 MiB N=4 (1.123×); one disturbed configuration left out (16 MiB N=16 last dim, per the source's Deviations) | narrowed | same |
+
+Part of the as-written margin depends on the host allocator: PyTorch
+builds a fresh pageable stacked host tensor on every call, and glibc serves
+allocations of 32 MiB and more with a new `mmap`, so each call page-faults it.
+Allocators that reuse memory shrink that part of the margin.
+
 ## Boundary law — the headline
 
 "host-side transform wins by the margin host memory bandwidth exceeds link
