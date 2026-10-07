@@ -1,0 +1,121 @@
+{
+  "torch": "2.14.0+cu126",
+  "gpu": "NVIDIA GeForce RTX 2080 Ti",
+  "threads": 8,
+  "rows": 500000,
+  "columns": 128,
+  "iterations": 30,
+  "results": [
+    {
+      "selected": 4096,
+      "median_ms": {
+        "torch": 2.6632025837898254,
+        "sym": 1.6249571926891804
+      },
+      "speedup": 1.638937072171377
+    },
+    {
+      "selected": 16384,
+      "median_ms": {
+        "torch": 4.650524351745844,
+        "sym": 3.434029407799244
+      },
+      "speedup": 1.3542470956083663
+    },
+    {
+      "selected": 65536,
+      "median_ms": {
+        "torch": 15.087650157511234,
+        "sym": 7.9222749918699265
+      },
+      "speedup": 1.9044592838540229
+    }
+  ],
+  "stats": {
+    "dynamo_compiles": 1,
+    "plan_compiles": 1,
+    "symbol_binds": 0,
+    "cache_hits": 0,
+    "runtime_executions": 108,
+    "typed_executions": 108,
+    "typed_payload_bytes": 792723456,
+    "weight_preparations": 0,
+    "weight_invalidations": 0,
+    "fallbacks": {},
+    "exclusions": {},
+    "redispatches": {},
+    "dispatches": {
+      "cpu_reference": 108
+    },
+    "staging_decisions": {
+      "pageable:unconfigured_threshold": 108
+    },
+    "staging_reuse": {
+      "allocated": 3,
+      "reused": 105
+    },
+    "replaced_regions": 1,
+    "live_handles": 1,
+    "closed": false,
+    "cache_entries": 1,
+    "cache_rejections": 0,
+    "transfer_resources": {
+      "contexts": 0,
+      "building": 0,
+      "leased": 0,
+      "idle": 0,
+      "retiring": 0,
+      "quarantined": 0,
+      "allocated_staging_bytes": 0,
+      "reserved_staging_bytes": 0,
+      "retained_allocated_bytes": 0,
+      "retained_reserved_bytes": 0,
+      "background_workers": 0,
+      "reserved_workers": 0,
+      "streams": 0,
+      "quarantine_bytes": 0,
+      "outstanding_events": 0,
+      "requests": 0,
+      "hits": 0,
+      "growths": 0,
+      "misses": 0,
+      "evictions": 0,
+      "ephemeral": 0,
+      "waits": 0,
+      "timeouts": 0,
+      "failures": 0,
+      "quarantines": 0,
+      "waiters": 0,
+      "staging_allocations": 0,
+      "staging_frees": 0,
+      "stream_creations": 0,
+      "stream_destructions": 0,
+      "worker_creations": 0,
+      "worker_joins": 0,
+      "event_creations": 0,
+      "event_retirements": 0,
+      "peak_live_staging_bytes": 0,
+      "peak_allocated_staging_bytes": 0,
+      "generation": 0,
+      "closed": false,
+      "process_valid": true,
+      "devices": [],
+      "typed": {
+        "requests": 108,
+        "hits": 107,
+        "context_creations": 1,
+        "device_allocations": 0,
+        "host_allocations": 3,
+        "frees": 0,
+        "retained_bytes": 24903680,
+        "device_bytes": 0,
+        "host_bytes": 24903680,
+        "background_workers": 7,
+        "streams": 2,
+        "closed": false,
+        "quarantined": false,
+        "process_valid": true
+      }
+    }
+  }
+}

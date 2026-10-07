@@ -24,6 +24,7 @@ from ._pyreloc import (  # noqa: F401
     TypedPlanHandle,
     TypedProgram,
     prepare_typed_program,
+    prepare_index_select_program,
     bind,
     bind_typed,
     cuda_enabled,

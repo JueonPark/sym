@@ -102,13 +102,14 @@ class RuntimeAdapter(Protocol):
 class ExecutionEntry:
     """A compiled recipe, its saved original region, adapter and diagnostics."""
 
-    def __init__(self, *, compiled, original, runtime, diagnostics, symbolic_bindings=(), extent_guards=(), closed_event=None):
+    def __init__(self, *, compiled, original, runtime, diagnostics, symbolic_bindings=(), extent_guards=(), closed_event=None, indexed=False):
         self.compiled = compiled
         self.original = original
         self.runtime = runtime
         self.diagnostics = diagnostics
         self.symbolic_bindings = tuple(symbolic_bindings)
         self.extent_guards = tuple(extent_guards)
+        self.indexed = indexed
         self.handle = None
         self._closed = False
         self._closed_event = closed_event
@@ -399,13 +400,13 @@ class TransportAdapter:
             return "reloc_torch.transport/unavailable"
         return f"reloc_torch.transport/{getattr(self._module, 'CAPABILITY_IDENTITY', '0')}"
 
-    def preflight(self, compiled, src, device, *, non_blocking=False, parameters=None):
+    def preflight(self, compiled, src, device, *, non_blocking=False, parameters=None, index=None):
         self._require_open()
         import torch
 
         if not self.available:
             raise UnsupportedRecipe("runtime_unavailable", self.unavailable_reason)
-        if getattr(compiled, "typed", False):
+        if getattr(compiled, "typed", False) or index is not None:
             # C4: typed recipes run through R3's dispatch bridge; parameters
             # are CPU tensors bound by declared name and snapshotted there.
             pool = self._transfer_options.get("gather_pool")
@@ -413,9 +414,13 @@ class TransportAdapter:
                        self._transfer_options.get("gather_threads", 8))
             if threads == 0:
                 threads = os.cpu_count() or 1
-            request = self._dispatch().prepare_typed_transfer(
-                compiled, src, device, parameters=dict(parameters or {}), threads=threads,
-            )
+            if index is not None:
+                from .index_select import prepare_index_select_transfer
+                request = prepare_index_select_transfer(compiled, src, index, device, threads=threads)
+            else:
+                request = self._dispatch().prepare_typed_transfer(
+                    compiled, src, device, parameters=dict(parameters or {}), threads=threads,
+                )
         else:
             request = self._module.prepare_transfer(compiled, src, device, non_blocking=non_blocking)
         missing = [name for name in self.REQUEST_ATTRIBUTES if not hasattr(request, name)]
@@ -437,7 +442,7 @@ class TransportAdapter:
 
     def execute(self, call):
         self._check_process()
-        typed = getattr(call.compiled, "typed", False)
+        typed = getattr(call.compiled, "typed", False) or getattr(call.request, 'index', None) is not None
         with self._lock:
             self._require_open()
             if self._owns_resources and self._resources is None:
@@ -505,7 +510,7 @@ def execute_or_fallback(entry, src, symbols, device, *, non_blocking=False, decl
     device = torch.device(device)
     parameters = tuple(parameters)
     typed = getattr(entry.compiled, "typed", False)
-    names = tuple(p.name for p in entry.compiled.parameters) if typed else ()
+    names = ('index',) if entry.indexed else (tuple(p.name for p in entry.compiled.parameters) if typed else ())
     if len(parameters) != len(names):
         raise RuntimeError(
             f"expected {len(names)} runtime parameters {names} for {entry.describe()}, got {len(parameters)}"
@@ -517,7 +522,11 @@ def execute_or_fallback(entry, src, symbols, device, *, non_blocking=False, decl
         if reason is not None:
             return _fallback(entry, src, symbols, reason, declared, parameters)
         try:
-            bindings = bind_symbols(entry.compiled, src)
+            if entry.indexed:
+                from .index_select import bind_index_select
+                bindings = bind_index_select(entry.compiled, src, parameters[0])
+            else:
+                bindings = bind_symbols(entry.compiled, src)
             destination = destination_descriptor(entry.compiled, bindings, device)
             for guard in entry.extent_guards:
                 if expression(guard).evaluate(bindings, checked=True) < 2:
@@ -540,7 +549,11 @@ def execute_or_fallback(entry, src, symbols, device, *, non_blocking=False, decl
                 f"{destination.shape}/{destination.strides}"
             )
         options = {"non_blocking": non_blocking}
-        if typed:
+        if entry.indexed:
+            if not isinstance(entry.runtime, TransportAdapter):
+                return _fallback(entry, src, symbols, 'indexed_runtime_unavailable', promised, parameters)
+            options['index'] = parameters[0]
+        elif typed:
             options["parameters"] = dict(zip(names, parameters))
         try:
             with _counting_binds(entry.diagnostics), _validated_binding(entry.compiled, src, bindings):

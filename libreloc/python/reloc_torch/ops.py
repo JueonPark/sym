@@ -120,9 +120,34 @@ def _define_typed():
 
 transfer = _define()
 typed_transfer = _define_typed()
+
+
+def _define_index_select():
+    name = 'reloc_torch::index_select_transfer'
+    existing = compat.existing_custom_op(name)
+    if existing is not None:
+        return existing
+
+    @library.custom_op(name, mutates_args=(), schema=(
+        '(Tensor src, Tensor index, str handle, SymInt[] symbols, '
+        'SymInt[] out_shape, SymInt[] out_strides, Device device, ScalarType dtype) -> Tensor'
+    ))
+    def index_select_transfer(src, index, handle, symbols, out_shape, out_strides, device, dtype):
+        return _execute_typed(src, [index], handle, symbols, out_shape, out_strides, device, dtype)
+
+    @index_select_transfer.register_fake
+    def index_select_fake(src, index, handle, symbols, out_shape, out_strides, device, dtype):
+        return torch.empty_strided(out_shape, out_strides, dtype=dtype, device=device)
+
+    index_select_transfer.register_autograd(_no_backward, setup_context=_reject_autograd)
+    return index_select_transfer
+
+
+index_select_transfer = _define_index_select()
+INDEX_SELECT_OP = torch.ops.reloc_torch.index_select_transfer.default
 OP = torch.ops.reloc_torch.transfer.default
 TYPED_OP = torch.ops.reloc_torch.typed_transfer.default
 
 
 __all__ = ("OP", "QUALIFIED_NAME", "SCHEMA", "TYPED_OP", "TYPED_QUALIFIED_NAME", "TYPED_SCHEMA",
-           "transfer", "typed_transfer")
+           "transfer", "typed_transfer", "INDEX_SELECT_OP", "index_select_transfer")

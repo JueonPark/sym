@@ -32,6 +32,13 @@
 namespace reloc {
 namespace dispatch {
 
+/// Prepare a dense host dim-0 selection, optionally casting f32 <-> f16.
+/// Snapshots and checks every index before execution. No feature buffer is
+/// materialized. Empty inputs and other casts are outside this contract.
+std::variant<typed::Program, TransferError>
+prepareIndexSelect(const BufferView &source, std::vector<int64_t> indices,
+                   ElementType resultType);
+
 /// `OriginalCpu`: the declared layout and every stage run on the CPU, then
 /// the necessary cross-device copy (transform then H2D, or D2H of the
 /// logical source then the forward CPU transform). `Auto`: enumerate the

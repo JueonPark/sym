@@ -99,6 +99,8 @@ class PreparedTypedTransfer:
     selected: dict
     program: object = None
     request: object = None
+    index: object = None
+    index_snapshot: object = None
     consumed: bool = False
     staging: tuple = field(default=(), init=False)
     _storage: tuple = field(init=False, repr=False)
@@ -114,6 +116,10 @@ class PreparedTypedTransfer:
             raise RuntimeError(
                 "stale typed transfer: source storage or metadata changed after preflight"
             )
+        if self.index is not None:
+            from .index_select import index_snapshot
+            if index_snapshot(self.index) != self.index_snapshot:
+                raise RuntimeError('stale index_select transfer: indices changed after preflight')
         declared = self.compiled.parameter_extents(self.bindings)
         for name, value in self.parameters.items():
             try:
@@ -281,6 +287,9 @@ def _execute_typed_transfer(request, *, n_buffers, n_streams, gather_threads,
     finally:
         request.staging = tuple(native.report.get("staging", ()))
     report = dict(report)
+    if request.index is not None:
+        report['artifact_version'] = request.compiled.wire_version
+        report['host_index_select'] = True
     report["placement_reason"] = request.selected["placement_reason"]
     report["policy"] = request.selected["policy"]
     return DispatchResult(out, MappingProxyType(report))
