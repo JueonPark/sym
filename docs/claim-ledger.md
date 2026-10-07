@@ -40,8 +40,8 @@ variance. Each cell is labeled accordingly.
 
 | claim | box | measured | status | authoritative source |
 |---|---|---|---|---|
-| A host `torch.stack(xs, dim).to("cuda")` fused by `RelocBackend` is faster than the same code in eager PyTorch and Inductor at >= 24 MiB of inputs | EPYC 7351 / RTX 2080 Ti, PCIe Gen3 | 0.12–0.91× of min(B1, B3) in every measured configuration | survives (gate 3) | bench/results/stack-fusion/README.md |
-| ...and faster than rewriting it as copy-then-GPU-stack | same | 0.995–1.70× of min(B2, B4) | holds only for 16-input last-dim (dim 2) stacks at 24 and 32 MiB (0.995× and 0.999×, within measurement noise); refuted-as-stated elsewhere, up to 1.70× slower | same |
+| A host `torch.stack(xs, dim).to("cuda")` fused by `RelocBackend` is faster than the same code in eager PyTorch and Inductor at >= 24 MiB of inputs | EPYC 7351 / RTX 2080 Ti, PCIe Gen3 | 0.12–0.91× of min(B1, B3) in every measured configuration | survives (gates 3 and 4: gate 3 covers >= 32 MiB, gate 4 found 24 MiB is the smallest size where it still holds) | bench/results/stack-fusion/README.md |
+| ...and faster than rewriting it as copy-then-GPU-stack | same | 0.995×–1.70× of min(B2, B4) | holds only for 16-input last-dim (dim 2) stacks at 24 and 32 MiB (0.999× and 0.995× respectively, within measurement noise); refuted-as-stated elsewhere, up to 1.70× slower | same |
 | The input-pointer table costs nothing significant against a single-source transfer of the same bytes, >= 8 MiB | same | dim 0/1: FD/S1 0.99–1.07×; last-dim (dim 2): FD/S1 1.066–1.156× | survives for stacks at dim 0/1 (gate 2); refuted-as-stated for last-dim stacks (up to 15.6% slower) | same |
 
 Part of the as-written margin depends on the host allocator: PyTorch

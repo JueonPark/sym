@@ -360,7 +360,8 @@ float32/float16/int8, rank >= 1, with one shape and dtype (an input may
 repeat); `permute`/`transpose`/`reshape`/`view`/`contiguous`/`clone`/
 `constant_pad_nd` after the stack and on the device side. A call fuses only
 when `N * prod(S) * itemsize >= min_stack_bytes`
-(`RelocBackend(min_stack_bytes=...)`, default 24 MiB, `0` = always). With
+(`RelocBackend(min_stack_bytes=...)`, default 24 MiB, `0` = always). The
+benchmark moved this default from an initial 32 MiB to 24 MiB. With
 dynamic shapes the gate runs on every call rather than once at compile
 time; a below-threshold call still passes through the compiled stacked op
 before replaying PyTorch, measured at 0.27–1.17 ms above plain eager across
@@ -368,12 +369,17 @@ before replaying PyTorch, measured at 0.27–1.17 ms above plain eager across
 under this run's then-current 32 MiB default, per that file's Deviations
 section).
 
-A merging reshape after the stack folds when `dim=0` (the merge stays
-dense), but not for `dim > 0` with an inferred size: `torch.stack(xs,
-1).reshape(B, -1)` reports `unsupported_symbolic_expr`, because the
-stack's move-axis transpose leaves a non-dense layout the reshape's `-1`
-cannot resolve against; the same merge written with an explicit size folds
-normally (existing fold limits, the same as for a single-source chain).
+A merging reshape after the stack never fuses for `dim > 0`, whatever the
+merged size's spelling: it runs in PyTorch instead. Under dynamic shapes,
+the importer itself rejects a merge spelled as an inferred `-1` (for
+example `torch.stack(xs, 1).reshape(B, -1)`) or as a bare literal
+(`unsupported_symbolic_expr`) — neither can be proven against the
+move-axis transpose's non-dense layout; spelled as a computed expression
+(e.g. `2 * xs[0].shape[-1]`) it instead forms a candidate. Under static
+shapes every spelling forms a candidate. Either way, the same exporter
+fold limit a single-source chain hits for an equivalent merge then
+declines it (`fold_unsupported`). A `dim=0` stack's merge stays dense and
+always folds.
 
 At >= 8 MiB, the direct fused path (FD) matches the single-source transfer
 it is compared against (S1) within 10% for stacks at dim 0 or 1; last-dim
@@ -391,6 +397,7 @@ it is compared against (S1) within 10% for stacks at dim 0 or 1; last-dim
 | A `quantized_decomposed.quantize_*` op in the region | `quantize_semantics_unproved` |
 | CUDA inputs, a device-to-host direction, or a device-to-device move | `stack_direction_unsupported` |
 | `out=` | `stack_out_argument` |
+| A merging reshape (or another chain) the exporter cannot fold into one plan, for example after a `dim > 0` stack | `fold_unsupported` |
 | A runtime adapter without `preflight_stacked` | `runtime_unavailable` |
 | Below `min_stack_bytes`, checked first (a small call records no other guard's reason) | `below_stack_threshold` |
 
@@ -399,5 +406,5 @@ PyTorch stack on the device), eager interception, typed stages, D2H and
 `torch.cat`. Evidence: [bench/results/stack-fusion](../bench/results/stack-fusion/README.md)
 — at >= 24 MiB, FB (`RelocBackend`-fused) measured 0.12×–0.91× of
 min(B1, B3) (eager/Inductor as written) in every configuration, and
-0.99×–1.70× of min(B2, B4) (eager/Inductor copy-then-stack), beating
+0.995×–1.70× of min(B2, B4) (eager/Inductor copy-then-stack), beating
 copy-then-stack only for 16-input last-dim stacks at 24–32 MiB.
