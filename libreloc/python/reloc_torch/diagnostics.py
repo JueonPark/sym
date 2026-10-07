@@ -14,6 +14,7 @@ COUNTERS = (
     "symbol_binds",
     "cache_hits",
     "runtime_executions",
+    "stacked_executions",
     "typed_executions",
     "typed_payload_bytes",
     "weight_preparations",

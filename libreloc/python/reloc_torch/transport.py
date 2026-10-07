@@ -27,9 +27,12 @@ from .artifact import UnsupportedRecipe
 from .runtime import (
     ConcreteDescriptor,
     bind_plan,
+    bind_stacked_symbols,
     bind_symbols,
+    check_stacked_sources,
     destination_descriptor,
     source_reason,
+    validated_stacked_inputs,
 )
 
 
@@ -57,6 +60,14 @@ def _storage_view(tensor, kind, device):
     )
 
 
+def _snapshot_view(snapshot, element_size, kind, device):
+    """``_storage_view`` of the state a ``compat.storage_snapshot`` recorded,
+    so a stacked request's native views and the snapshots its recheck
+    compares against describe the same storage and metadata."""
+    shape, strides, offset, _, _, base, capacity = snapshot
+    return pyreloc.BufferView(base, capacity, offset, shape, strides, element_size, kind, device)
+
+
 @dataclass
 class PreparedTransfer:
     """A validated invocation retained until completion; contains no original callable."""
@@ -73,15 +84,30 @@ class PreparedTransfer:
     non_blocking: bool = False
     request: object = None
     consumed: bool = False
+    # torch.stack: every input in order (``source`` is ``stack_sources[0]``),
+    # their native views and the storage snapshots the views were built from
+    # (taken here when omitted); empty for single-source requests.
+    stack_sources: tuple = ()
+    stack_views: tuple = ()
+    stack_snapshots: tuple = ()
     staging: tuple = field(default=(), init=False)
     _snapshot: tuple = field(init=False, repr=False)
     _execution_lock: object = field(default_factory=Lock, init=False, repr=False, compare=False)
 
     def __post_init__(self):
-        self._snapshot = compat.storage_snapshot(self.source)
+        if not self.stack_sources:
+            self._snapshot = compat.storage_snapshot(self.source)
+        elif self.stack_snapshots:
+            self._snapshot = self.stack_snapshots
+        else:
+            self._snapshot = tuple(compat.storage_snapshot(tensor) for tensor in self.stack_sources)
 
     def recheck(self):
-        if compat.storage_snapshot(self.source) != self._snapshot:
+        if self.stack_sources:
+            current = tuple(compat.storage_snapshot(tensor) for tensor in self.stack_sources)
+        else:
+            current = compat.storage_snapshot(self.source)
+        if current != self._snapshot:
             raise RuntimeError(
                 "stale transfer request: source storage or metadata changed after preflight"
             )
@@ -138,6 +164,64 @@ def prepare_transfer(compiled, source, device, *, non_blocking=False):
     )
 
 
+def prepare_stacked_transfer(compiled, sources, device, *, non_blocking=False):
+    """prepare_transfer for a stacked recipe (Recipe.stack_inputs > 0): every
+    host source is validated as one input of the logical [N, *S] source.
+    Host-to-device only; allocates and launches nothing.
+
+    The inputs pass the shared guards (``check_stacked_sources``: the full
+    guard on input 0, a lean check against it on the others) and one
+    logical binding, unless the frontend has just checked and bound this
+    same request (``validated_stacked_inputs``: the same compiled recipe,
+    input objects and storage snapshots). Each input's snapshot is taken
+    once here; the native views are built from it and the request rechecks
+    against it immediately before execution.
+    """
+    import torch
+
+    if non_blocking:
+        raise UnsupportedRecipe("nonblocking_unavailable", "blocking transfers only")
+    sources = tuple(sources)
+    if not sources or len(sources) != compiled.recipe.stack_inputs:
+        raise UnsupportedRecipe(
+            "plan_mismatch",
+            f"stacked recipe expects {compiled.recipe.stack_inputs} inputs, got {len(sources)}",
+        )
+    device = torch.device(device)
+    validated = validated_stacked_inputs(compiled, sources)
+    if validated is None:
+        reason, snapshots, uniform = check_stacked_sources(sources)
+        if reason is not None:
+            raise UnsupportedRecipe(reason, f"source tensor rejected: {reason}")
+    else:
+        snapshots, uniform, bindings = validated
+    # Uniform inputs share input 0's device.
+    if (compiled.recipe.direction != "h2d" or device.type != "cuda"
+            or any(source.device.type != "cpu" for source in (sources[:1] if uniform else sources))):
+        raise UnsupportedRecipe(
+            "direction_mismatch", f"stacked h2d recipe cannot move {sources[0].device} -> {device}"
+        )
+    if not pyreloc.cuda_enabled or not torch.cuda.is_available():
+        raise UnsupportedRecipe("cuda_unavailable", "no CUDA-capable runtime")
+    if validated is None:
+        bindings = bind_stacked_symbols(compiled, sources, uniform)
+    bound = bind_plan(compiled, bindings)
+    index = device.index if device.index is not None else torch.cuda.current_device()
+    target = torch.device("cuda", index)
+    # The binding proved every input shares input 0's dtype.
+    element_size = sources[0].element_size()
+    views = tuple(_snapshot_view(snapshot, element_size, "host", -1) for snapshot in snapshots)
+    destination = destination_descriptor(compiled, bindings, target)
+    try:
+        span = pyreloc.validate_stacked_sources(bound, list(views), "h2d")
+    except pyreloc.TransferError as error:
+        raise UnsupportedRecipe(_code(error), str(error)) from error
+    return PreparedTransfer(
+        compiled, sources[0], bindings, bound, destination, "h2d", target,
+        views[0], span, non_blocking, stack_sources=sources, stack_views=views, stack_snapshots=snapshots,
+    )
+
+
 def execute_transfer(request, *, n_buffers=4, n_streams=2, gather_threads=1,
                      gather_pool=None, resources=None, pinning="auto",
                      min_pinned_bytes=None):
@@ -175,7 +259,12 @@ def execute_transfer(request, *, n_buffers=4, n_streams=2, gather_threads=1,
             dst_view = _storage_view(out, "host", -1)
             cuda_device = request.source.device
         try:
-            native = pyreloc.make_transfer(request.bound, request.source_view, dst_view, request.direction)
+            if request.stack_sources:
+                native = pyreloc.make_stacked_transfer(
+                    request.bound, list(request.stack_views), dst_view, request.direction
+                )
+            else:
+                native = pyreloc.make_transfer(request.bound, request.source_view, dst_view, request.direction)
         except pyreloc.TransferError as error:
             raise RuntimeError(f"transfer request rejected at execution: {error}") from error
         request.request = native
@@ -193,7 +282,7 @@ def execute_transfer(request, *, n_buffers=4, n_streams=2, gather_threads=1,
                 gather_threads=gather_threads,
                 gather_pool=gather_pool,
                 resources=native_resources,
-                owners=(request.source, out),
+                owners=(request.stack_sources or request.source, out),
                 pinning=pinning, min_pinned_bytes=min_pinned_bytes,
             )
         except pyreloc.TransferError as error:
@@ -205,4 +294,7 @@ def execute_transfer(request, *, n_buffers=4, n_streams=2, gather_threads=1,
         request._execution_lock.release()
 
 
-__all__ = ("CAPABILITY_IDENTITY", "PreparedTransfer", "execute_transfer", "prepare_transfer")
+__all__ = (
+    "CAPABILITY_IDENTITY", "PreparedTransfer", "execute_transfer", "prepare_stacked_transfer",
+    "prepare_transfer",
+)

@@ -8,7 +8,8 @@ its runtime parameters (scales, zero points) travel as an explicit
 runtime objects and the graph keeps every parameter dependency visible.
 Both are registered once at module initialization through
 ``torch.library.custom_op``; outputs never alias inputs and have storage
-offset zero.
+offset zero. ``reloc_torch::stack_transfer`` fuses a host ``torch.stack`` of
+its ``Tensor[]`` inputs into one transfer.
 """
 
 import torch
@@ -16,7 +17,7 @@ from torch import library
 
 from . import compat
 from .cache import lookup_handle
-from .runtime import ConcreteDescriptor, execute_or_fallback
+from .runtime import ConcreteDescriptor, execute_or_fallback, execute_stacked_or_fallback
 
 
 QUALIFIED_NAME = "reloc_torch::transfer"
@@ -28,6 +29,11 @@ TYPED_QUALIFIED_NAME = "reloc_torch::typed_transfer"
 TYPED_SCHEMA = (
     "(Tensor src, Tensor[] parameters, str handle, SymInt[] symbols, "
     "SymInt[] out_shape, SymInt[] out_strides, Device device, ScalarType dtype) -> Tensor"
+)
+STACKED_QUALIFIED_NAME = "reloc_torch::stack_transfer"
+STACKED_SCHEMA = (
+    "(Tensor[] srcs, str handle, SymInt[] symbols, SymInt[] out_shape, "
+    "SymInt[] out_strides, Device device) -> Tensor"
 )
 
 
@@ -78,6 +84,24 @@ def _execute_typed(src, parameters, handle, symbols, out_shape, out_strides, dev
     )
 
 
+def _execute_stacked(srcs, handle, symbols, out_shape, out_strides, device):
+    """reloc_torch::stack_transfer: the region ``torch.stack(srcs, dim)``,
+    its layout chain and host-to-device transfer, fused. Every tensor in
+    ``srcs`` must share one dtype, shape and device; the backend emits the op
+    only for such stacks. The declared output dtype is ``srcs[0]``'s, so a
+    direct call with mixed dtypes is unsupported: its PyTorch fallback
+    type-promotes and can then fail the output metadata check."""
+    entry = lookup_handle(handle)
+    device = torch.device(device)
+    declared = ConcreteDescriptor(
+        tuple(int(dim) for dim in out_shape),
+        tuple(int(dim) for dim in out_strides),
+        compat.dtype_name(srcs[0].dtype),
+        device,
+    )
+    return execute_stacked_or_fallback(entry, list(srcs), list(symbols), device, declared=declared)
+
+
 def _define():
     # Registration is process-global and happens once: a reload or duplicate
     # import reuses the live definition, because re-registering would replace
@@ -118,11 +142,30 @@ def _define_typed():
     return typed_transfer
 
 
+def _define_stacked():
+    existing = compat.existing_custom_op(STACKED_QUALIFIED_NAME)
+    if existing is not None:
+        return existing
+
+    @library.custom_op(STACKED_QUALIFIED_NAME, mutates_args=(), schema=STACKED_SCHEMA)
+    def stack_transfer(srcs, handle, symbols, out_shape, out_strides, device):
+        return _execute_stacked(srcs, handle, symbols, out_shape, out_strides, device)
+
+    @stack_transfer.register_fake
+    def stack_transfer_fake(srcs, handle, symbols, out_shape, out_strides, device):
+        return torch.empty_strided(out_shape, out_strides, dtype=srcs[0].dtype, device=device)
+
+    stack_transfer.register_autograd(_no_backward, setup_context=_reject_autograd)
+    return stack_transfer
+
+
 transfer = _define()
 typed_transfer = _define_typed()
+stack_transfer = _define_stacked()
 OP = torch.ops.reloc_torch.transfer.default
 TYPED_OP = torch.ops.reloc_torch.typed_transfer.default
+STACKED_OP = torch.ops.reloc_torch.stack_transfer.default
 
 
-__all__ = ("OP", "QUALIFIED_NAME", "SCHEMA", "TYPED_OP", "TYPED_QUALIFIED_NAME", "TYPED_SCHEMA",
-           "transfer", "typed_transfer")
+__all__ = ("OP", "QUALIFIED_NAME", "SCHEMA", "STACKED_OP", "STACKED_QUALIFIED_NAME", "STACKED_SCHEMA",
+           "TYPED_OP", "TYPED_QUALIFIED_NAME", "TYPED_SCHEMA", "stack_transfer", "transfer", "typed_transfer")

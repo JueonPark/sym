@@ -108,6 +108,39 @@ class CountingRuntime:
         return out
 
 
+class StackedCountingRuntime(CountingRuntime):
+    """CPU-only stacked adapter: real guards and the real native stacked
+    gather (pyreloc's HostBackend) into a host destination; counted launches."""
+
+    capability_identity = "cpu-test-adapter/stacked/1"
+
+    def preflight_stacked(self, compiled, sources, device, *, non_blocking=False):
+        from reloc_torch.artifact import UnsupportedRecipe
+        from reloc_torch.runtime import prepare_stacked_host_call
+
+        self.preflights += 1
+        if device.type != "cpu":
+            raise UnsupportedRecipe("unsupported_device", "CPU-only test adapter")
+        return prepare_stacked_host_call(compiled, sources, device, non_blocking=non_blocking)
+
+    def execute(self, call):
+        if not call.sources:
+            return super().execute(call)
+        import torch
+        import pyreloc
+        from reloc_torch.transport import _storage_view
+
+        self.executions += 1
+        if self.fail_execution is not None:
+            raise self.fail_execution
+        destination = call.destination
+        out = torch.empty_strided(destination.shape, destination.strides, dtype=call.src.dtype, device="cpu")
+        views = [_storage_view(source, "host", -1) for source in call.sources]
+        request = pyreloc.make_stacked_transfer(call.bound, views, _storage_view(out, "host", -1), "h2d")
+        pyreloc.execute_transfer(request, owners=(tuple(call.sources), out))
+        return out
+
+
 @pytest.fixture
 def counting_runtime():
     return CountingRuntime()
@@ -220,4 +253,21 @@ def h2d_record():
         mutates=False,
         aliases_source=False,
         layout_history=(),
+    )
+
+
+def stacked_recipe(count=3, dim=1, dtype="float32"):
+    """stack(count x [s0, s1], dim) -> h2d over the logical [count, s0, s1]."""
+    from reloc_torch.recipe import Recipe, TensorSpec, Transpose
+    from reloc_torch.symbolic import Const, Symbol, dense_strides
+
+    logical = (Const(count), Symbol("s0"), Symbol("s1"))
+    perm = tuple(range(1, dim + 1)) + (0,) + tuple(range(dim + 1, 3))
+    result = tuple(logical[axis] for axis in perm)
+    return Recipe(
+        TensorSpec(logical, dense_strides(logical), Const(0), dtype),
+        (Transpose(perm),) if dim else (),
+        TensorSpec(result, dense_strides(result), Const(0), dtype),
+        "h2d",
+        stack_inputs=count,
     )

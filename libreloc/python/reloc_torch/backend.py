@@ -11,6 +11,7 @@ its handle registrations; a backend ``close()`` releases them explicitly.
 from __future__ import annotations
 
 import copy
+import math
 import operator
 import os
 import threading
@@ -22,8 +23,14 @@ from .cache import DEFAULT_CAPACITY, REGISTRY, ArtifactCache, artifact_key
 from .diagnostics import Diagnostics
 from .recipe import Recipe, TensorSpec
 from .resources import AUTO, _transfer_configuration
-from .runtime import ExecutionEntry, TransportAdapter
+from .runtime import ExecutionEntry, TransportAdapter, stack_below_threshold, stacked_preflight
 from .symbolic import Add, Const, FloorDiv, Mod, Mul, Symbol, dense_strides, expression
+
+
+# Default stack fusion threshold: fuse a host torch.stack only from this many
+# input bytes. bench/stack_fusion re-measures it.
+DEFAULT_MIN_STACK_BYTES = 32 << 20
+_ITEMSIZE = {"float32": 4, "float16": 2, "int8": 1}
 
 
 # Omission selects AUTO only for our own adapter. An injected runtime keeps its
@@ -90,6 +97,18 @@ class RelocBackend:
     sharing a lazy cache across compiled/eager layout calls. Explicit ``None``
     uses per-call resources. Resource owners and injected runtimes are borrowed;
     ``transfer_options`` copies the buffer/stream/gather execution settings.
+
+    Stack fusion: a host ``torch.stack`` of graph inputs whose result reaches
+    one host-to-device transfer through layout operations only becomes one
+    ``reloc_torch::stack_transfer`` that gathers every input straight into
+    the transfer, without materializing the stacked tensor on the host.
+    ``min_stack_bytes`` (default ``DEFAULT_MIN_STACK_BYTES``, 32 MiB of
+    stack inputs; 0 always fuses) gates it: a region whose shapes are static
+    is gated once when the graph is compiled, and one with dynamic shapes on
+    every call, where a call below the threshold runs the original region
+    in PyTorch. An injected runtime gets stacked regions only if it
+    implements the optional ``preflight_stacked`` (see
+    ``runtime.RuntimeAdapter``).
     """
 
     def __init__(
@@ -102,7 +121,11 @@ class RelocBackend:
         cache_capacity=DEFAULT_CAPACITY,
         importer=None,
         registry=REGISTRY,
+        min_stack_bytes=DEFAULT_MIN_STACK_BYTES,
     ):
+        if type(min_stack_bytes) is not int or min_stack_bytes < 0:
+            raise ValueError("min_stack_bytes must be a non-negative int (0 = always fuse)")
+        self._min_stack_bytes = min_stack_bytes
         if transfer_resources is _UNSPECIFIED_RESOURCES:
             transfer_resources = AUTO if runtime is None else None
         if runtime is not None and (transfer_resources is not None or transfer_options is not None):
@@ -254,7 +277,15 @@ class RelocBackend:
             if reason is not None:
                 self.diagnostics.record_exclusion(reason)
                 continue
+            stacked = bool(candidate.sources)
+            if stacked and _below_static_threshold(candidate.recipe, self._min_stack_bytes):
+                self.diagnostics.record_exclusion("below_stack_threshold")
+                continue
             try:
+                if stacked:
+                    # An adapter without the optional preflight_stacked never
+                    # gets a stacked region: it stays in PyTorch.
+                    stacked_preflight(self.runtime)
                 compiled = self.compile_recipe(candidate.recipe)
             except UnsupportedRecipe as error:
                 self.diagnostics.record_exclusion(error.reason)
@@ -284,16 +315,23 @@ class RelocBackend:
                 symbolic_bindings=candidate.symbolic_bindings,
                 extent_guards=candidate.extent_guards,
                 closed_event=self._execution_closed,
+                min_stack_bytes=self._min_stack_bytes if stacked else 0,
             )
             with self._lock:
                 self._require_open()
                 registration = self._registry.register(entry)
                 self._live[registration] = entry
             with graph.inserting_before(tail):
-                op_node = _insert_transfer(
-                    graph, root, tail, compiled, registration.handle, device,
-                    [nodes[name] for name in candidate.parameters],
-                )
+                if stacked:
+                    op_node = _insert_stack_transfer(
+                        graph, [nodes[name] for name in candidate.sources], tail,
+                        compiled, registration.handle, device,
+                    )
+                else:
+                    op_node = _insert_transfer(
+                        graph, root, tail, compiled, registration.handle, device,
+                        [nodes[name] for name in candidate.parameters],
+                    )
             tail.replace_all_uses_with(op_node)
             for member in reversed(members):
                 if member.users:
@@ -316,20 +354,16 @@ def _region_reason(nodes, candidate):
     members = [nodes.get(name) for name in candidate.members]
     if root is None or any(member is None for member in members):
         return "graph_mismatch"
+    if any(nodes.get(name) is None for name in candidate.sources):
+        return "graph_mismatch"
     member_set = set(members)
     if any(user not in member_set for member in members[:-1] for user in member.users):
         return "escaping_intermediate"
     return None
 
 
-def _insert_transfer(graph, root, tail, compiled, handle, device, parameters=()):
-    import torch
-    from .ops import OP, TYPED_OP
-
-    symbol_nodes = {}
-    for source in compiled.symbol_sources:
-        symbol_nodes[source.name] = graph.call_function(torch.ops.aten.sym_size.int, (root, source.axis))
-
+def _emitter(graph, symbol_nodes):
+    """Graph code computing a destination expression from sym_size nodes."""
     def binary(function, left, right):
         if isinstance(left, int) and isinstance(right, int):
             return function(left, right)
@@ -350,7 +384,56 @@ def _insert_transfer(graph, root, tail, compiled, handle, device, parameters=())
             case Mod(lhs, divisor):
                 return binary(operator.mod, emit(lhs), divisor)
         raise RuntimeError("unsupported destination expression")
+    return emit
 
+
+def _below_static_threshold(recipe, min_stack_bytes):
+    """True when every extent of a stacked region is static and its input
+    bytes are below the size gate; a symbolic extent leaves the decision to
+    the per-call gate."""
+    extents = []
+    for extent in recipe.source.shape:
+        match expression(extent):
+            case Const(value):
+                extents.append(value)
+            case _:
+                return False
+    count, *shape = extents  # the logical [N, *S] source
+    return stack_below_threshold(count, math.prod(shape), _ITEMSIZE[recipe.source.dtype], min_stack_bytes)
+
+
+def _insert_stack_transfer(graph, sources, tail, compiled, handle, device):
+    """reloc_torch::stack_transfer over the stacked inputs. Symbols are read
+    from the first input: logical axis k of [N, *S] is input axis k - 1."""
+    import torch
+    from .ops import STACKED_OP
+
+    first = sources[0]
+    symbol_nodes = {
+        source.name: graph.call_function(torch.ops.aten.sym_size.int, (first, source.axis - 1))
+        for source in compiled.symbol_sources
+    }
+    emit = _emitter(graph, symbol_nodes)
+    destination = compiled.logical_destination
+    node = graph.call_function(
+        STACKED_OP,
+        (list(sources), handle, [symbol_nodes[name] for name in compiled.symbols],
+         [emit(dim) for dim in destination.shape], [emit(dim) for dim in destination.strides],
+         torch.device(device)),
+    )
+    node.meta = dict(tail.meta)
+    return node
+
+
+def _insert_transfer(graph, root, tail, compiled, handle, device, parameters=()):
+    import torch
+    from .ops import OP, TYPED_OP
+
+    symbol_nodes = {}
+    for source in compiled.symbol_sources:
+        symbol_nodes[source.name] = graph.call_function(torch.ops.aten.sym_size.int, (root, source.axis))
+
+    emit = _emitter(graph, symbol_nodes)
     symbols = [symbol_nodes[name] for name in compiled.symbols]
     destination = compiled.logical_destination
     out_shape = [emit(dim) for dim in destination.shape]
@@ -373,4 +456,4 @@ def _insert_transfer(graph, root, tail, compiled, handle, device, parameters=())
     return node
 
 
-__all__ = ("GraphCallable", "RelocBackend", "identity_recipe")
+__all__ = ("DEFAULT_MIN_STACK_BYTES", "GraphCallable", "RelocBackend", "identity_recipe")

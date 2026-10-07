@@ -495,3 +495,50 @@ def test_unsafe_view_inventory_preserves_alias_when_fake_snapshots_differ():
     gm = make_fx(lambda x: torch.ops.aten._unsafe_view.default(x, [12]))(torch.ones(3, 4))
     record = next(r for r in graph_inventory(gm) if r.target == 'aten._unsafe_view.default')
     assert record.alias_semantics == 'aliases'
+
+
+def _dynamo_capture_with_a_device_move(fn, *inputs):
+    """Real Dynamo capture of ``fn`` (no device move in it), then a spliced
+    ``.to("cuda")`` tail: FakeTensorMode can fake a device move without real
+    CUDA, and the importer's own meta re-propagation computes the spliced
+    node's value (see test_stack_import.py's identical pattern)."""
+    graphs = []
+
+    def record(gm, example_inputs):
+        graphs.append((gm, example_inputs))
+        return gm.forward
+
+    torch.compile(fn, backend=record, fullgraph=True)(*inputs)
+    gm, example_inputs = graphs[0]
+    output = next(n for n in gm.graph.nodes if n.op == 'output')
+    with gm.graph.inserting_before(output):
+        tail = gm.graph.call_method('to', (output.args[0][0], 'cuda'))
+    output.args = ((tail,),)
+    gm.recompile()
+    return gm, example_inputs
+
+
+def test_single_source_padded_middle_dimension_keeps_its_destination_layout_exclusion():
+    """A single-source region's import decision must not change. x has
+    shape (s0, 4, s1) with the middle axis forced static
+    (mark_static) and the others dynamic, so padding the last (symbolic)
+    axis produces a destination stride that multiplies a padded Add(Const,
+    Symbol) by the outer Const(4) axis -- the same structural shape as the
+    stacked case, but for a plain (non-stacked) region. Such a region is
+    excluded as destination_layout (values were never wrong, only the
+    import decision); a former global Mul-over-Add distribution in mul()
+    made it fuse instead. The stack-scoped algebraic stride comparison must
+    leave this exact exclusion in place -- fixing it is a separate,
+    single-source follow-up."""
+    x = torch.ones(6, 4, 8)
+    torch._dynamo.mark_dynamic(x, 0)
+    torch._dynamo.mark_static(x, 1)
+    torch._dynamo.mark_dynamic(x, 2)
+
+    def fn(x):
+        return torch.nn.functional.pad(x, (1, 2))
+
+    gm, example_inputs = _dynamo_capture_with_a_device_move(fn, x)
+    report = importer().import_graph(gm, example_inputs)
+    assert not report.candidates
+    assert {e.reason for e in report.exclusions} == {'destination_layout'}
