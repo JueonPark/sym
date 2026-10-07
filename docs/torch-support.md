@@ -369,17 +369,17 @@ before replaying PyTorch, measured at 0.27–1.17 ms above plain eager across
 under this run's then-current 32 MiB default, per that file's Deviations
 section).
 
-A merging reshape after the stack never fuses for `dim > 0`, whatever the
-merged size's spelling: it runs in PyTorch instead. Under dynamic shapes,
-the importer itself rejects a merge spelled as an inferred `-1` (for
-example `torch.stack(xs, 1).reshape(B, -1)`) or as a bare literal
-(`unsupported_symbolic_expr`) — neither can be proven against the
-move-axis transpose's non-dense layout; spelled as a computed expression
-(e.g. `2 * xs[0].shape[-1]`) it instead forms a candidate. Under static
-shapes every spelling forms a candidate. Either way, the same exporter
-fold limit a single-source chain hits for an equivalent merge then
-declines it (`fold_unsupported`). A `dim=0` stack's merge stays dense and
-always folds.
+A merging reshape after the stack can fail at the import stage regardless
+of `dim`: under dynamic shapes, it rejects a merge spelled as an inferred
+`-1` alongside another explicit dimension (for example
+`torch.stack(xs, 1).reshape(B, -1)`) or as a bare literal size
+(`unsupported_symbolic_expr`); spelled as a computed expression (e.g.
+`2 * xs[0].shape[-1]`) it forms a candidate instead, as does a `dim=0`
+stack's merge written as a single `-1` that flattens the whole result.
+Under static shapes every spelling tried forms a candidate. Once a
+candidate forms, the exporter folds a `dim=0` stack's merge but declines a
+`dim > 0` stack's merge (`fold_unsupported`) — the same limit a
+single-source chain hits for an equivalent merge.
 
 At >= 8 MiB, the direct fused path (FD) matches the single-source transfer
 it is compared against (S1) within 10% for stacks at dim 0 or 1; last-dim
