@@ -461,6 +461,15 @@ For runtime development, build with pybind11 discoverable and point
 Without pybind11 the target is skipped with a notice and everything else
 still builds.
 
+**Stacked sources (`torch.stack`).** `validateStackedTransfer(bound, sources,
+destination, direction)` (Python: `pyreloc.validate_stacked_sources`,
+`pyreloc.make_stacked_transfer`) accepts N dense host views of equal element
+count Z whose concatenation is the plan's logical source. The request runs
+through the unchanged H2D pipeline; the gather resolves logical offset `o` to
+`sources[o / Z]` at `o % Z`, and last-dim stacks of 4-byte elements use the
+tiled transpose with one row pointer per input. Host-to-device only; codes as
+for ordinary requests.
+
 ### Typed plans (C3, issue [#143](https://github.com/JueonPark/sym/issues/143))
 
 A typed plan is the folded form of a chain that contains value transforms

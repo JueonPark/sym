@@ -193,6 +193,11 @@ Unsupported manifests always use `schema_version: 1` / `wire_version: 0`,
 whichever flag produced them: they describe no plan, and every consumer of
 either interface reads them.
 
+Stacked recipes (`torch.stack`, `Recipe.stack_inputs = N`) need no exporter
+support: the frontend emits an ordinary single-source chain over the logical
+`[N, *S]` source, and the runtime reads its N inputs through
+`validateStackedTransfer` / `pyreloc.make_stacked_transfer`.
+
 ## Compatibility matrix
 
 | Input chain | Flag | Exit | Plan | Manifest |

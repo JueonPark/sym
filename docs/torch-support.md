@@ -342,3 +342,62 @@ works from a CMake build configured with pybind11 disabled; importing
 `reloc_torch` remains Torch-free until an observation entry point is called.
 The legacy runtime CI job keeps Torch absent, while the sibling CPU job installs
 3.14.7 and builds its own ABI-specific artifacts.
+
+## Stacked host transfers (`torch.stack`)
+
+`RelocBackend` fuses a host-side `torch.stack` of graph inputs, the layout
+operations after it and one blocking host-to-device `.to()` into a single
+Sym transfer that reads every input directly; PyTorch's stacked host tensor
+is never built. The frontend treats the stack as a relocation of a logical
+`[N, *S]` source (stacking at `dim` moves axis 0 to `dim`), so the compiler,
+the plan wire formats and `sym-reloc-export` are unchanged. libreloc's
+stacked request resolves each logical source offset to its input through a
+pointer table.
+
+Eligible: `torch.stack(xs, dim)` (Dynamo) or `aten.stack.default` over graph
+inputs, parameters or buffers that are CPU, plain, dense, zero-offset,
+float32/float16/int8, rank >= 1, with one shape and dtype (an input may
+repeat); `permute`/`transpose`/`reshape`/`view`/`contiguous`/`clone`/
+`constant_pad_nd` after the stack and on the device side. A call fuses only
+when `N * prod(S) * itemsize >= min_stack_bytes`
+(`RelocBackend(min_stack_bytes=...)`, default 24 MiB, `0` = always). With
+dynamic shapes the gate runs on every call rather than once at compile
+time; a below-threshold call still passes through the compiled stacked op
+before replaying PyTorch, measured at 0.27–1.17 ms above plain eager across
+1–24 MiB (GB vs B1, bench/results/stack-fusion/README.md; GB was recorded
+under this run's then-current 32 MiB default, per that file's Deviations
+section).
+
+A merging reshape after the stack folds when `dim=0` (the merge stays
+dense), but not for `dim > 0` with an inferred size: `torch.stack(xs,
+1).reshape(B, -1)` reports `unsupported_symbolic_expr`, because the
+stack's move-axis transpose leaves a non-dense layout the reshape's `-1`
+cannot resolve against; the same merge written with an explicit size folds
+normally (existing fold limits, the same as for a single-source chain).
+
+At >= 8 MiB, the direct fused path (FD) matches the single-source transfer
+it is compared against (S1) within 10% for stacks at dim 0 or 1; last-dim
+(dim 2) stacks ran behind it instead, FD/S1 1.066–1.156
+(bench/results/stack-fusion/README.md).
+
+| Case | Reason |
+| --- | --- |
+| Mixed input dtypes, same shape (PyTorch promotes; Sym does not) | `stack_dtype_mismatch` |
+| Mismatched shapes or devices, caught while the graph is traced (Dynamo's own fake `torch.stack` raises first) | `normalization_failed` (or `metadata_unavailable` if an input's own metadata was already missing) |
+| The same mismatch found per call instead (a dynamic-shape region, or a stacked request built directly through the runtime bridge without `torch.compile`) | `stack_shape_mismatch` / `unsupported_device` |
+| An input computed inside the graph | `stack_input_not_root` |
+| The stacked host tensor has another user | `escaping_intermediate` |
+| A narrowing/widening cast or a `dequantize_per_tensor`/`dequantize_per_channel` op in the region (a single-source chain may accept these; a stacked one never does) | `typed_transform_unavailable` |
+| A `quantized_decomposed.quantize_*` op in the region | `quantize_semantics_unproved` |
+| CUDA inputs, a device-to-host direction, or a device-to-device move | `stack_direction_unsupported` |
+| `out=` | `stack_out_argument` |
+| A runtime adapter without `preflight_stacked` | `runtime_unavailable` |
+| Below `min_stack_bytes`, checked first (a small call records no other guard's reason) | `below_stack_threshold` |
+
+Unchanged: `torch.stack([x.to("cuda") ...])` (N separate transfers and a
+PyTorch stack on the device), eager interception, typed stages, D2H and
+`torch.cat`. Evidence: [bench/results/stack-fusion](../bench/results/stack-fusion/README.md)
+— at >= 24 MiB, FB (`RelocBackend`-fused) measured 0.12×–0.91× of
+min(B1, B3) (eager/Inductor as written) in every configuration, and
+0.99×–1.70× of min(B2, B4) (eager/Inductor copy-then-stack), beating
+copy-then-stack only for 16-input last-dim stacks at 24–32 MiB.

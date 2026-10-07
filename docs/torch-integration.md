@@ -322,6 +322,25 @@ unavailable coverage. It also records why the existing default limits remain.
 Native consumers and external `CopyBackend` implementations must be rebuilt
 together for the added `quiesce()` interface; plan wire formats are unchanged.
 
+### Stacked host transfers
+
+```python
+import torch
+from reloc_torch import RelocBackend
+
+backend = RelocBackend()                    # min_stack_bytes defaults to 24 MiB
+compiled = torch.compile(lambda *xs: torch.stack(xs, 1).to("cuda"), backend=backend, dynamic=True)
+with torch.no_grad():
+    y = compiled(*[torch.randn(4096, 1024) for _ in range(4)])   # 64 MiB: fused
+print(backend.stats()["stacked_executions"])  # 1
+```
+
+Smaller stacks keep PyTorch's behavior (`below_stack_threshold`);
+`RelocBackend(min_stack_bytes=0)` fuses every eligible stack. Explicit recipes
+use `Recipe(..., stack_inputs=N)` over the logical `[N, *S]` source with
+`reloc_torch.transport.prepare_stacked_transfer(compiled, sources, device)`
+and `execute_transfer`.
+
 ## 5. Semantics and boundaries
 
 - **Blocking.** Every transfer completes before returning; `non_blocking=True`
