@@ -93,6 +93,7 @@ establish a speed advantage over PyTorch.
 | Choose typed execution paths and inspect transferred bytes | [Runtime dispatch](docs/runtime-dispatch.md) |
 | Work with symbolic shapes in MLIR | [Symbolic shapes](docs/symbolic-shapes.md) |
 | Reproduce examples, tests, and CPU/CUDA results | [Integration guide](docs/runtime-integration.md) |
+| Fetch offloaded int8 weights in LLM and MoE examples | [WeightFetcher examples](libreloc/python/examples/workloads/README.md) |
 | Read the research results and limitations | [Claim ledger](docs/claim-ledger.md) |
 
 ## License
