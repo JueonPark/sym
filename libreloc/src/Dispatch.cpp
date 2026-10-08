@@ -1,6 +1,8 @@
 //===- Dispatch.cpp - plan-driven typed transform dispatch ----------------===//
 
 #include "reloc/Dispatch.h"
+#include "DispatchGroupInternal.h"
+#include "TransferInternal.h"
 
 #include "reloc/ChunkSchedule.h"
 #include "reloc/GatherPool.h"
@@ -14,8 +16,10 @@
 
 #include <algorithm>
 #include <cstring>
+#include <functional>
 #include <limits>
 #include <memory>
+#include <unordered_map>
 #include <utility>
 
 namespace reloc {
@@ -216,16 +220,18 @@ std::optional<TransferError> backendFailure(const CopyBackend &backend,
 
 /// Host-to-device copy of a dense host buffer through the staging pipeline
 /// (byte-identical to executeH2D; the same machinery R2 uses).
-std::optional<TransferError> pipelineToDevice(const void *hostSrc,
-                                              void *deviceDst, int64_t elements,
-                                              uint32_t width,
-                                              CopyBackend &backend,
-                                              const TransferOptions &options) {
+std::optional<TransferError>
+pipelineToDevice(const void *hostSrc, void *deviceDst, int64_t elements,
+                 uint32_t width, CopyBackend &backend,
+                 const TransferOptions &options, GroupReport *group = nullptr) {
   if (options.directDenseUpload) {
     backend.copyAsync(0, deviceDst, hostSrc,
                       static_cast<size_t>(elements) * width,
                       CopyDir::HostToDevice);
-    backend.waitEvent(backend.recordEvent(0));
+    if (group)
+      ++group->payloadCopyCalls;
+    else
+      backend.waitEvent(backend.recordEvent(0));
     if (backend.failed()) {
       backend.quiesce();
       return backendFailure(backend, "dense host-to-device copy failed");
@@ -271,18 +277,21 @@ struct StagingGuard {
 };
 
 /// Device-to-host copy into owned pinned staging, waited for exactly.
-std::optional<TransferError> stageFromDevice(const void *deviceSrc,
-                                             int64_t bytes,
-                                             CopyBackend &backend,
-                                             StagingGuard &staging) {
+std::optional<TransferError>
+stageFromDevice(const void *deviceSrc, int64_t bytes, CopyBackend &backend,
+                StagingGuard &staging, GroupReport *group = nullptr) {
   staging.buffer = backend.allocStaging(static_cast<size_t>(bytes));
   if (staging.buffer == nullptr)
     return fail("backend_failure", "pinned staging allocation failed for " +
                                        std::to_string(bytes) + " bytes");
   backend.copyAsync(0, staging.buffer, deviceSrc, static_cast<size_t>(bytes),
                     CopyDir::DeviceToHost);
-  EventHandle ev = backend.recordEvent(0);
-  backend.waitEvent(ev);
+  if (group)
+    ++group->payloadCopyCalls;
+  else {
+    EventHandle ev = backend.recordEvent(0);
+    backend.waitEvent(ev);
+  }
   if (backend.failed())
     return backendFailure(backend, "device-to-host staging copy failed");
   return std::nullopt;
@@ -322,6 +331,8 @@ struct DeviceScratch {
   CudaBackend &backend;
   std::vector<void *> device;
   std::vector<void *> staging;
+  GroupReport *group = nullptr;
+  std::unordered_map<std::string, const float *> parameters;
   ~DeviceScratch() {
     for (void *p : staging)
       backend.freeStaging(p);
@@ -341,6 +352,15 @@ struct DeviceScratch {
   const float *uploadFloats(const std::vector<float> &values,
                             int64_t &payload) {
     const size_t bytes = values.size() * sizeof(float);
+    std::string key;
+    if (group) {
+      key.assign(reinterpret_cast<const char *>(values.data()), bytes);
+      auto found = parameters.find(key);
+      if (found != parameters.end()) {
+        ++group->parameterReuses;
+        return found->second;
+      }
+    }
     void *host = backend.allocStaging(bytes);
     if (host == nullptr)
       return nullptr;
@@ -351,6 +371,11 @@ struct DeviceScratch {
       return nullptr;
     backend.copyAsync(0, dev, host, bytes, CopyDir::HostToDevice);
     payload += static_cast<int64_t>(bytes);
+    if (group) {
+      ++group->parameterUploads;
+      group->parameterUploadBytes += bytes;
+      parameters.emplace(std::move(key), static_cast<const float *>(dev));
+    }
     return static_cast<const float *>(dev);
   }
 };
@@ -411,6 +436,8 @@ std::optional<TransferError> runDeviceStages(const Program &program,
       break;
     }
     }
+    if (scratch.group)
+      ++scratch.group->kernelLaunches;
     if (!backend.recordLaunchStatus("typed stage kernel launch"))
       return backendFailure(backend, "kernel launch failed");
     input = output;
@@ -436,9 +463,15 @@ BoundPlan asF32Layout(const Program &program) {
   return l;
 }
 
+struct GroupExecution {
+  DeviceScratch scratch;
+  std::vector<std::function<std::optional<TransferError>()>> host;
+};
+
 std::optional<TransferError> executeCuda(DispatchRequest &request,
                                          CudaBackend &backend,
-                                         const TransferOptions &options) {
+                                         const TransferOptions &options,
+                                         GroupExecution *grouped = nullptr) {
   const Program &program = request.program;
   const uint32_t stageCount = static_cast<uint32_t>(program.stages.size());
   const Implementation &row = request.selected;
@@ -447,7 +480,8 @@ std::optional<TransferError> executeCuda(DispatchRequest &request,
   auto *dst = reinterpret_cast<uint8_t *>(request.destination.base) +
               request.destination.offsetBytes;
   int64_t payload = 0;
-  DeviceScratch scratch{backend};
+  DeviceScratch local{backend};
+  DeviceScratch &scratch = grouped ? grouped->scratch : local;
 
   if (row.id == kCpuStagesCudaStages) {
     const uint32_t k = row.wireBoundary;
@@ -458,12 +492,14 @@ std::optional<TransferError> executeCuda(DispatchRequest &request,
       return backendFailure(backend, "host scratch allocation failed");
     if (auto error = hostProgram(program, 0, k, src, wire.buffer, options))
       return error;
+    if (scratch.group)
+      scratch.group->hostTransformBytes += wireBytes;
     void *dWire = scratch.allocDevice(static_cast<int64_t>(wireBytes));
     if (dWire == nullptr)
       return backendFailure(backend, "device scratch allocation failed");
-    if (auto error =
-            pipelineToDevice(wire.buffer, dWire, program.resultElements,
-                             typed::widthAt(program, k), backend, options))
+    if (auto error = pipelineToDevice(
+            wire.buffer, dWire, program.resultElements,
+            typed::widthAt(program, k), backend, options, scratch.group))
       return error;
     payload += static_cast<int64_t>(wireBytes);
     if (auto error = runDeviceStages(program, k, stageCount, true, dWire, dst,
@@ -473,9 +509,9 @@ std::optional<TransferError> executeCuda(DispatchRequest &request,
     void *dSrc = scratch.allocDevice(program.plan.sourceBytes);
     if (dSrc == nullptr)
       return backendFailure(backend, "device scratch allocation failed");
-    if (auto error =
-            pipelineToDevice(src, dSrc, program.sourceElements,
-                             typed::widthAt(program, 0), backend, options))
+    if (auto error = pipelineToDevice(src, dSrc, program.sourceElements,
+                                      typed::widthAt(program, 0), backend,
+                                      options, scratch.group))
       return error;
     payload += program.plan.sourceBytes;
     BoundPlan layout = asF32Layout(program);
@@ -497,6 +533,8 @@ std::optional<TransferError> executeCuda(DispatchRequest &request,
       cuda::dequantRelocateS8F32(layout, static_cast<const int8_t *>(dSrc),
                                  static_cast<float *>(out), dScales,
                                  backend.stream(0));
+      if (scratch.group)
+        ++scratch.group->kernelLaunches;
       if (!backend.recordLaunchStatus("dequantRelocateS8F32 launch"))
         return backendFailure(backend, "kernel launch failed");
       if (stageCount > 1)
@@ -509,6 +547,8 @@ std::optional<TransferError> executeCuda(DispatchRequest &request,
         return backendFailure(backend, "device scratch allocation failed");
       cuda::relocateF32(layout, static_cast<const float *>(dSrc),
                         static_cast<float *>(relocated), backend.stream(0));
+      if (scratch.group)
+        ++scratch.group->kernelLaunches;
       if (!backend.recordLaunchStatus("relocateF32 launch"))
         return backendFailure(backend, "kernel launch failed");
       if (auto error = runDeviceStages(program, 0, stageCount, true, relocated,
@@ -523,21 +563,33 @@ std::optional<TransferError> executeCuda(DispatchRequest &request,
     if (auto error = runDeviceStages(program, 0, k, false, src, dWire, backend,
                                      scratch, payload))
       return error;
-    if (auto error = finishQueue(backend))
-      return error;
+    if (!grouped)
+      if (auto error = finishQueue(backend))
+        return error;
     StagingGuard staging{backend};
     const int64_t wireBytes = typed::bytesAt(program, k, false);
-    if (auto error = stageFromDevice(dWire, wireBytes, backend, staging))
+    if (auto error =
+            stageFromDevice(dWire, wireBytes, backend, staging, scratch.group))
       return error;
     payload += wireBytes;
     request.report.payloadBytesTransferred = payload;
+    if (grouped) {
+      void *buffer = staging.buffer;
+      grouped->host.emplace_back(
+          [&program, k, stageCount, buffer, dst, options] {
+            return hostProgram(program, k, stageCount, buffer, dst, options);
+          });
+      scratch.group->hostTransformBytes += program.plan.destinationBytes;
+      return std::nullopt;
+    }
     return hostProgram(program, k, stageCount, staging.buffer, dst, options);
   } else {
     return fail("implementation_unavailable",
                 "unknown CUDA row " + row.label());
   }
-  if (auto error = finishQueue(backend))
-    return error;
+  if (!grouped)
+    if (auto error = finishQueue(backend))
+      return error;
   request.report.payloadBytesTransferred = payload;
   return std::nullopt;
 }
@@ -912,6 +964,215 @@ prepareDispatch(const DispatchTemplate &prepared, const BufferView &source,
                 "views do not match the prepared device end");
   return makeRequest(prepared.program, source, destination, prepared.direction,
                      prepared.selection);
+}
+
+std::variant<GroupRequest, TransferError>
+prepareDispatchGroup(const std::vector<GroupEntry> &entries) {
+  if (entries.empty() || entries.size() > 256)
+    return fail("invalid_group",
+                "a group must contain between 1 and 256 items");
+  GroupRequest group;
+  group.items.reserve(entries.size());
+  group.reports.reserve(entries.size());
+  struct Interval {
+    uintptr_t begin, end;
+    MemoryKind kind;
+    int device;
+  };
+  std::vector<Interval> inputs, outputs;
+  auto interval = [](const BufferView &view, size_t bytes,
+                     Interval &out) -> bool {
+    out.kind = view.kind;
+    out.device = view.device;
+    return !__builtin_add_overflow(view.base, view.offsetBytes, &out.begin) &&
+           !__builtin_add_overflow(out.begin, bytes, &out.end);
+  };
+  auto overlaps = [](const Interval &a, const Interval &b) {
+    return a.kind == b.kind && a.device == b.device && a.begin < b.end &&
+           b.begin < a.end;
+  };
+  for (const auto &entry : entries) {
+    Report report;
+    size_t inputBytes = 0, outputBytes = 0;
+    if (const auto *plan = std::get_if<DispatchTemplate>(&entry.plan)) {
+      if (plan->direction != entry.direction)
+        return fail("direction_mismatch",
+                    "group direction differs from template");
+      auto prepared = prepareDispatch(*plan, entry.source, entry.destination);
+      if (const auto *error = std::get_if<TransferError>(&prepared))
+        return *error;
+      auto request = std::get<DispatchRequest>(std::move(prepared));
+      inputBytes = request.program.plan.sourceBytes;
+      outputBytes = request.program.plan.destinationBytes;
+      report = request.report;
+      group.items.emplace_back(std::move(request));
+    } else {
+      auto prepared =
+          validateTransfer(std::get<BoundPlan>(entry.plan), entry.source,
+                           entry.destination, entry.direction);
+      if (const auto *error = std::get_if<TransferError>(&prepared))
+        return *error;
+      auto request = std::get<TransferRequest>(std::move(prepared));
+      inputBytes = request.sourceSpanBytes;
+      outputBytes = request.destinationBytes;
+      report.implementation = "layout_cpu";
+      report.policy = "layout";
+      report.placementReason = "group_forward_layout";
+      report.method = "A";
+      report.sourceBytes = inputBytes;
+      report.destinationBytes = outputBytes;
+      report.wireBytes = entry.direction == TransferDirection::HostToDevice
+                             ? outputBytes
+                             : inputBytes;
+      report.artifactVersion = 0;
+      group.items.emplace_back(std::move(request));
+    }
+    for (const auto *view : {&entry.source, &entry.destination}) {
+      if (view->kind == MemoryKind::Cuda) {
+        if (group.device >= 0 && group.device != view->device)
+          return fail("device_mismatch", "a group must use one CUDA device");
+        group.device = view->device;
+      }
+    }
+    Interval input{}, output{};
+    if (!interval(entry.source, inputBytes, input) ||
+        !interval(entry.destination, outputBytes, output) ||
+        __builtin_add_overflow(group.report.outputBytes, uint64_t(outputBytes),
+                               &group.report.outputBytes))
+      return fail("integer_overflow",
+                  "group view interval or output size overflow");
+    inputs.push_back(input);
+    outputs.push_back(output);
+    group.reports.push_back(std::move(report));
+  }
+  if (group.device >= 0)
+    for (const auto &entry : entries)
+      if (entry.source.kind != MemoryKind::Cuda &&
+          entry.destination.kind != MemoryKind::Cuda)
+        return fail("device_mismatch",
+                    "every member must use the group's CUDA device");
+  for (size_t i = 0; i < outputs.size(); ++i) {
+    for (const auto &input : inputs)
+      if (overlaps(outputs[i], input))
+        return fail("group_alias", "a group output aliases an input");
+    for (size_t j = 0; j < i; ++j)
+      if (overlaps(outputs[i], outputs[j]))
+        return fail("group_alias", "group outputs must not overlap");
+  }
+  return group;
+}
+
+// Resources' arena keeps even logically freed scratch busy until the group
+// finishes. On any failure Resources independently drains or quarantines the
+// entire arena and all borrowed buffer owners. Never run this with a backend
+// that releases or recycles freeStaging/freeDevice immediately.
+std::optional<TransferError>
+group_detail::executeGroup(GroupRequest &group, CopyBackend &base,
+                           const TransferOptions &options) {
+#ifdef RELOC_ENABLE_CUDA
+  auto *backend = dynamic_cast<CudaBackend *>(&base);
+  if (!backend)
+    return fail("backend_mismatch", "groups require owned CUDA resources");
+  if (group.consumed)
+    return fail("already_executed", "group was already executed");
+  if (backend->failed())
+    return backendFailure(*backend, "group backend unusable");
+  for (const auto &item : group.items) {
+    auto error = std::visit(
+        [&](const auto &request) -> std::optional<TransferError> {
+          if (request.consumed)
+            return fail("already_executed", "group item was already executed");
+          if (auto error = checkDevice(request.source, *backend, "source"))
+            return error;
+          return checkDevice(request.destination, *backend, "destination");
+        },
+        item);
+    if (error)
+      return error;
+  }
+  GroupExecution execution{DeviceScratch{*backend}, {}};
+  execution.scratch.group = &group.report;
+  execution.host.reserve(group.items.size());
+  group.consumed = true;
+  for (auto &item : group.items)
+    std::visit([](auto &request) { request.consumed = true; }, item);
+  if (options.hasCallerStream && !backend->waitStream(options.callerStream))
+    return backendFailure(*backend, "group producer ordering failed");
+  CudaBackend::LaunchScope scope(*backend);
+  if (backend->failed())
+    return backendFailure(*backend, "selecting group device failed");
+  auto direct = options;
+  direct.directDenseUpload = true;
+  for (size_t i = 0; i < group.items.size(); ++i) {
+    auto &item = group.items[i];
+    if (auto *typed = std::get_if<DispatchRequest>(&item);
+        typed && typed->selected.id != kCpuReference) {
+      if (auto error = executeCuda(*typed, *backend, direct, &execution))
+        return error;
+      group.reports[i] = typed->report;
+      continue;
+    }
+    // CPU transforms (typed reference or layout-only): H2D can submit each
+    // completed CPU result while the next transform runs. D2H submits every
+    // input copy first, then applies the forward transforms after one barrier.
+    const auto source =
+        std::visit([](const auto &r) { return r.source; }, item);
+    const auto destination =
+        std::visit([](const auto &r) { return r.destination; }, item);
+    const auto direction =
+        std::visit([](const auto &r) { return r.direction; }, item);
+    const auto *src =
+        reinterpret_cast<const uint8_t *>(source.base) + source.offsetBytes;
+    auto *dst =
+        reinterpret_cast<uint8_t *>(destination.base) + destination.offsetBytes;
+    const auto &report = group.reports[i];
+    auto transform = [&item,
+                      direct](const void *input,
+                              void *output) -> std::optional<TransferError> {
+      if (auto *typed = std::get_if<DispatchRequest>(&item))
+        return hostProgram(typed->program, 0, typed->program.stages.size(),
+                           input, output, direct);
+      detail::forwardHostGather(std::get<TransferRequest>(item).bound, input,
+                                output, direct);
+      return std::nullopt;
+    };
+    StagingGuard staging{*backend};
+    if (direction == TransferDirection::HostToDevice) {
+      staging.buffer = backend->allocStaging(report.destinationBytes);
+      if (!staging.buffer)
+        return backendFailure(*backend, "group host allocation failed");
+      if (auto error = transform(src, staging.buffer))
+        return error;
+      backend->copyAsync(0, dst, staging.buffer, report.destinationBytes,
+                         CopyDir::HostToDevice);
+      ++group.report.payloadCopyCalls;
+    } else {
+      if (auto error = stageFromDevice(src, report.sourceBytes, *backend,
+                                       staging, &group.report))
+        return error;
+      void *input = staging.buffer;
+      execution.host.emplace_back(
+          [transform, input, dst] { return transform(input, dst); });
+    }
+    group.report.hostTransformBytes += report.destinationBytes;
+    group.reports[i].payloadBytesTransferred = report.wireBytes;
+    if (backend->failed())
+      return backendFailure(*backend, "group payload copy failed");
+  }
+  if (auto error = finishQueue(*backend))
+    return error;
+  for (auto &finish : execution.host)
+    if (auto error = finish())
+      return error;
+  for (auto &report : group.reports)
+    report.executed = true;
+  return std::nullopt;
+#else
+  (void)group;
+  (void)base;
+  (void)options;
+  return fail("backend_mismatch", "group execution requires a CUDA build");
+#endif
 }
 
 std::optional<TransferError> executeDispatch(DispatchRequest &request,

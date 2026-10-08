@@ -26,6 +26,11 @@ source, device, *, parameters, policy="auto", calibration=None)` and
 parameters are CPU tensors bound **by declared name**, snapshotted at
 preparation and re-checked by value at execution.
 
+For related weights or KV tensors, the [grouped transfer API](grouped-transfers.md)
+accepts fresh typed/layout preparations and completes them with one barrier,
+independent output storage, shared compatible parameter uploads and bounded
+scratch. Callers choose the group at their consumer's completion boundary.
+
 ## Program model and the reference
 
 A typed bound plan is one layout (an index map with fused pad fills in the

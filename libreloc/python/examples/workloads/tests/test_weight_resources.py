@@ -146,3 +146,32 @@ def test_live_budget_failure_closes_the_native_owner():
     stats = fetcher.resource_stats()["cuda:0"]
     assert stats["closed"] and not stats["quarantined"]
     assert stats["retained_bytes"] == stats["streams"] == stats["background_workers"] == 0
+
+
+@pytest.mark.gpu
+@pytest.mark.skipif(not torch.cuda.is_available(), reason='CUDA unavailable')
+@pytest.mark.parametrize('policy', ['retained', 'per-call'])
+def test_fetch_many_heterogeneous_consumer_groups_and_report(policy):
+    report = common.Report('grouped')
+    fetcher = common.WeightFetcher(report, implementation='cuda_dequant_relocate', resource_policy=policy)
+    saved = []
+    with fetcher:
+        for iteration in range(3):
+            scale = torch.full((32,), .5 * (iteration + 1))
+            weights = [(torch.full((rows, 32), i + 1, dtype=torch.int8), scale)
+                       for i, rows in enumerate([16, 32, 64])]
+            outputs = fetcher.fetch_many(weights, 'cuda:0')
+            for (q, s), out in zip(weights, outputs):
+                expected = common.WeightFetcher.reference(q, s, 'cuda:0')
+                assert common.same_tensor(out, expected)
+                saved.append((out, expected))
+        assert all(common.same_tensor(out, expected) for out, expected in saved)
+        totals = report.data['transfer_groups']
+        assert totals['groups'] == 3 and totals['logical_transfers'] == 9
+        assert totals['parameter_uploads'] == 3 and totals['parameter_reuses'] == 6
+        assert totals['event_waits'] == totals['caller_waits'] == 3
+        assert report.data['bytes']['weights']['transfers'] == 9
+        if policy == 'retained':
+            assert fetcher.resource_stats()['cuda:0']['requests'] == 3
+    with pytest.raises(RuntimeError, match='closed'):
+        fetcher.fetch_many(weights, 'cuda:0')

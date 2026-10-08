@@ -462,6 +462,54 @@ class WeightFetcher:
         self.close()
         return False
 
+    def _owner(self, device):
+        if self.resource_policy == "per-call":
+            return None
+        from reloc_torch import TransferResources
+
+        key = str(device)
+        if key not in self._resources:
+            self._resources[key] = self._cleanup.enter_context(TransferResources(
+                max_typed_retained_bytes=self.retained_bytes, max_typed_live_bytes=self.live_bytes))
+        return self._resources[key]
+
+    def fetch_many(self, weights, device, *, max_scratch_bytes=64 << 20):
+        """Complete related (int8 matrix, scale) pairs as one consumer-sized group.
+
+        Shapes/scales may differ. All outputs remain independent allocations;
+        callers choose the layer/expert boundary and keep ordinary fetch() for
+        consumers that need one matrix at a time. No cross-call value caching.
+        """
+        import torch
+        from reloc_torch import dispatch, prepare_transfer_group, execute_transfer_group
+
+        if self._closed:
+            raise RuntimeError("weight fetcher is closed")
+        device = torch.device(device)
+        if device.type != "cuda":
+            raise ValueError("weight fetcher requires a CUDA destination")
+        device = torch.device("cuda", device.index if device.index is not None else torch.cuda.current_device())
+        weights = tuple(weights)
+        group = prepare_transfer_group([
+            dispatch.prepare_typed_transfer(self.compiled, q, device, parameters={"scale": scale},
+                policy="auto", calibration=self.calibration, implementation=self.implementation)
+            for q, scale in weights])
+        result = execute_transfer_group(group, resources=self._owner(device),
+                                        max_scratch_bytes=max_scratch_bytes)
+        for (q, _), report in zip(weights, result.report["items"]):
+            self.shapes.add(tuple(q.shape))
+            self.report.add_dispatch(report["implementation"])
+            self.report.add_bytes(self.kind, report["source_bytes"], report["wire_bytes"],
+                                  report["destination_bytes"], payload=report["payload_bytes_transferred"])
+        # Bounded scalar aggregation, not one retained report per group.
+        totals = self.report.data.setdefault("transfer_groups", {"groups": 0})
+        totals["groups"] += 1
+        for name in ("logical_transfers", "copy_calls", "event_records", "event_waits",
+                     "caller_waits", "parameter_uploads", "parameter_reuses", "packing_bytes"):
+            totals[name] = totals.get(name, 0) + result.report[name]
+        totals["scratch_peak_bytes"] = max(totals.get("scratch_peak_bytes", 0), result.report["scratch_peak_bytes"])
+        return result.tensors
+
     def fetch(self, q, scale, device):
         import torch
         from reloc_torch import dispatch
@@ -475,15 +523,7 @@ class WeightFetcher:
         request = dispatch.prepare_typed_transfer(
             self.compiled, q, device, parameters={"scale": scale}, policy="auto",
             calibration=self.calibration, implementation=self.implementation)
-        owner = None
-        if self.resource_policy == "retained":
-            from reloc_torch import TransferResources
-
-            key = str(device)
-            if key not in self._resources:
-                self._resources[key] = self._cleanup.enter_context(TransferResources(
-                    max_typed_retained_bytes=self.retained_bytes, max_typed_live_bytes=self.live_bytes))
-            owner = self._resources[key]
+        owner = self._owner(device)
         result = dispatch.execute_typed_transfer(request, resources=owner)
         report = result.report
         self.shapes.add(tuple(q.shape))

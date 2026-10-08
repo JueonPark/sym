@@ -135,6 +135,9 @@ struct TransferOptions {
   std::optional<size_t> minPinnedBytes;
   // Optional per-invocation diagnostics. Never retained by an idle context.
   std::vector<StagingDecision> *staging = nullptr;
+  // Additional per-call scratch cap for owned typed/group dispatch (0 means
+  // no additional cap). The owner's configured live limit also applies.
+  size_t maxScratchBytes = 0;
 };
 
 inline StagingDecision selectStaging(const TransferOptions &options,
