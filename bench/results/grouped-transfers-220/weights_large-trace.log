@@ -1,0 +1,9 @@
+Capture range started in the application.
+Capture range ended in the application.
+Generating '/tmp/nsys-report-e619.qdstrm'
+
+weights_large {'individual': (3.9999504999999997, 7.84180505), 'torch_batched': (2.7562335, 3.0857570000000005), 'grouped': (3.350194, 3.8345605000000003)}
+Generated:
+    /tmp/sym220-trace-weights_large.nsys-rep
+
+Processing 1836 events: [==================================================100%]

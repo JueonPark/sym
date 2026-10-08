@@ -44,7 +44,7 @@ execution guard, rechecks storage and typed parameter snapshots, allocates new
 outputs and validates all native views before submitting any member. The native
 boundary rejects overlapping outputs and output/input aliases.
 
-All member requests become consumed when execution is attempted. A group cannot
+All member requests become consumed when native execution is attempted. A group cannot
 be executed again, nor can its members later be executed individually. A stale
 source/parameter failure before the execution boundary leaves the group fresh.
 Keep sources and parameters unchanged while preparing/executing the group, just
@@ -89,8 +89,8 @@ small request/parameter-key bookkeeping are outside the scratch budget.
 Groups use the typed resource owner even for layout-only members, with one
 private stream. `gather_threads` defaults to eight; an explicit gather pool can
 be supplied. Groups composed entirely of direct GPU relocation/dequantization
-rows do not create CPU gather workers. Pinning policy and its optional threshold are the existing
-per-execution settings. Groups submit each payload independently; packing bytes
+rows do not create CPU gather workers. Pinning policy and its optional threshold
+are the existing per-execution settings. Groups submit each payload independently; packing bytes
 are zero. This avoids introducing packing cost or shared output-storage
 lifetimes without evidence that coalescing helps.
 
@@ -136,3 +136,7 @@ kernels on one current stream, reuses shared scale uploads within that group,
 and synchronizes once. First calls, warm samples, resource/memory counters,
 correctness and environment/binary hashes are recorded separately. Recipe
 compilation and input mutations/oracles are outside completed-call timing.
+
+The [qualification report](../bench/results/grouped-transfers-220/README.md)
+contains matched current-main and Torch controls, independent raw rounds,
+CUDA API/event counts, memory tradeoffs and fault-test evidence.

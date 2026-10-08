@@ -1,0 +1,47 @@
+{
+  "recorded_utc": "2026-10-08T11:11:15.566347+00:00",
+  "cpu": "Architecture:                            x86_64\nCPU op-mode(s):                          32-bit, 64-bit\nAddress sizes:                           43 bits physical, 48 bits virtual\nByte Order:                              Little Endian\nCPU(s):                                  32\nOn-line CPU(s) list:                     0-31\nVendor ID:                               AuthenticAMD\nModel name:                              AMD EPYC 7351 16-Core Processor\nCPU family:                              23\nModel:                                   1\nThread(s) per core:                      2\nCore(s) per socket:                      16\nSocket(s):                               1\nStepping:                                2\nFrequency boost:                         enabled\nCPU max MHz:                             2400.0000\nCPU min MHz:                             1200.0000\nBogoMIPS:                                4790.96\nFlags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good nopl nonstop_tsc cpuid extd_apicid amd_dcm aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpb hw_pstate ssbd ibpb vmmcall fsgsbase bmi1 avx2 smep bmi2 rdseed adx smap clflushopt sha_ni xsaveopt xsavec xgetbv1 xsaves clzero xsaveerptr arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif overflow_recov succor smca sev sev_es ibpb_exit_to_user\nVirtualization:                          AMD-V\nL1d cache:                               512 KiB (16 instances)\nL1i cache:                               1 MiB (16 instances)\nL2 cache:                                8 MiB (16 instances)\nL3 cache:                                64 MiB (8 instances)\nNUMA node(s):                            4\nNUMA node0 CPU(s):                       0-3,16-19\nNUMA node1 CPU(s):                       4-7,20-23\nNUMA node2 CPU(s):                       8-11,24-27\nNUMA node3 CPU(s):                       12-15,28-31\nVulnerability Gather data sampling:      Not affected\nVulnerability Indirect target selection: Not affected\nVulnerability Itlb multihit:             Not affected\nVulnerability L1tf:                      Not affected\nVulnerability Mds:                       Not affected\nVulnerability Meltdown:                  Not affected\nVulnerability Mmio stale data:           Not affected\nVulnerability Reg file data sampling:    Not affected\nVulnerability Retbleed:                  Mitigation; untrained return thunk; SMT vulnerable\nVulnerability Spec rstack overflow:      Mitigation; Safe RET\nVulnerability Spec store bypass:         Mitigation; Speculative Store Bypass disabled via prctl\nVulnerability Spectre v1:                Mitigation; usercopy/swapgs barriers and __user pointer sanitization\nVulnerability Spectre v2:                Mitigation; Retpolines; IBPB conditional; STIBP disabled; RSB filling; PBRSB-eIBRS Not affected; BHI Not affected\nVulnerability Srbds:                     Not affected\nVulnerability Tsa:                       Not affected\nVulnerability Tsx async abort:           Not affected\nVulnerability Vmscape:                   Mitigation; IBPB before exit to userspace\n",
+  "topology": "\tGPU0\tGPU1\tGPU2\tGPU3\tCPU Affinity\tNUMA Affinity\tGPU NUMA ID\nGPU0\t X \tPHB\tSYS\tSYS\t4-7,20-23\t1\t\tN/A\nGPU1\tPHB\t X \tSYS\tSYS\t4-7,20-23\t1\t\tN/A\nGPU2\tSYS\tSYS\t X \tSYS\t8-11,24-27\t\tN/A\t\tN/A\nGPU3\tSYS\tSYS\tSYS\t X \t12-15,28-31\t3\t\tN/A\n\nLegend:\n\n  X    = Self\n  SYS  = Connection traversing PCIe as well as the SMP interconnect between NUMA nodes (e.g., QPI/UPI)\n  NODE = Connection traversing PCIe as well as the interconnect between PCIe Host Bridges within a NUMA node\n  PHB  = Connection traversing PCIe as well as a PCIe Host Bridge (typically the CPU)\n  PXB  = Connection traversing multiple PCIe bridges (without traversing the PCIe Host Bridge)\n  PIX  = Connection traversing at most a single PCIe bridge\n  NV#  = Connection traversing a bonded set of # NVLinks\n",
+  "cuda_toolkit": "nvcc: NVIDIA (R) Cuda compiler driver\nCopyright (c) 2005-2024 NVIDIA Corporation\nBuilt on Thu_Jun__6_02:18:23_PDT_2024\nCuda compilation tools, release 12.5, V12.5.82\nBuild cuda_12.5.r12.5/compiler.34385749_0\n",
+  "nsight": "NVIDIA Nsight Systems version 2024.2.3.38-242334140272v0\n",
+  "cxx": "g++ (Ubuntu 11.4.0-1ubuntu1~22.04) 11.4.0\nCopyright (C) 2021 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n",
+  "cmake": "cmake version 4.3.4\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n",
+  "runtime_target_cuda_architectures": [
+    75,
+    89
+  ],
+  "clocks": "Unlocked; GPU snapshots and binary/source hashes are in every raw round.",
+  "sym_configurations": {
+    "sym-219-build": [
+      "CMAKE_BUILD_TYPE:STRING=Release",
+      "CMAKE_CUDA_ARCHITECTURES:UNINITIALIZED=52",
+      "CMAKE_CUDA_COMPILER:STRING=/usr/local/cuda-12.5/bin/nvcc",
+      "CMAKE_CXX_COMPILER:FILEPATH=/usr/bin/c++",
+      "LLVM_DIR:UNINITIALIZED=/home/jueonpark/sym/build/llvm-project/build/lib/cmake/llvm",
+      "MLIR_DIR:UNINITIALIZED=/home/jueonpark/sym/build/llvm-project/build/lib/cmake/mlir",
+      "Python_EXECUTABLE:UNINITIALIZED=/tmp/sym-210-venv/bin/python",
+      "RELOC_ENABLE_CUDA:BOOL=ON",
+      "RELOC_ENABLE_NVTX:BOOL=OFF"
+    ],
+    "sym-220-build": [
+      "CMAKE_BUILD_TYPE:STRING=Release",
+      "CMAKE_CUDA_ARCHITECTURES:UNINITIALIZED=52",
+      "CMAKE_CUDA_COMPILER:STRING=/usr/local/cuda-12.5/bin/nvcc",
+      "CMAKE_CXX_COMPILER:FILEPATH=/usr/bin/c++",
+      "LLVM_DIR:UNINITIALIZED=/home/jueonpark/sym/build/llvm-project/build/lib/cmake/llvm",
+      "MLIR_DIR:UNINITIALIZED=/home/jueonpark/sym/build/llvm-project/build/lib/cmake/mlir",
+      "Python_EXECUTABLE:UNINITIALIZED=/tmp/sym-210-venv/bin/python",
+      "RELOC_ENABLE_CUDA:BOOL=ON",
+      "RELOC_ENABLE_NVTX:BOOL=OFF"
+    ],
+    "sym-220-cpu-build": [
+      "CMAKE_BUILD_TYPE:STRING=Release",
+      "CMAKE_CXX_COMPILER:FILEPATH=/usr/bin/c++",
+      "LLVM_DIR:UNINITIALIZED=/home/jueonpark/sym/build/llvm-project/build/lib/cmake/llvm",
+      "MLIR_DIR:UNINITIALIZED=/home/jueonpark/sym/build/llvm-project/build/lib/cmake/mlir",
+      "Python_EXECUTABLE:UNINITIALIZED=/tmp/sym-210-venv/bin/python",
+      "RELOC_ENABLE_CUDA:BOOL=OFF",
+      "RELOC_ENABLE_NVTX:BOOL=OFF"
+    ]
+  }
+}

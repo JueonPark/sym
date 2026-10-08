@@ -1,0 +1,6 @@
+[0/2] Re-checking globbed directories...
+[1/5] Building CXX object libreloc/CMakeFiles/reloc_runtime.dir/src/DispatchResources.cpp.o
+[2/5] Linking CXX shared library libreloc/libreloc_runtime.so
+[3/5] Linking CXX executable libreloc/test/libreloc-test
+[4/5] Linking CXX shared module python/_reloc_transfer_test.cpython-314-x86_64-linux-gnu.so
+[5/5] Linking CXX shared module python/pyreloc/_pyreloc.cpython-314-x86_64-linux-gnu.so

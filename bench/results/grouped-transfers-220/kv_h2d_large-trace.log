@@ -1,0 +1,9 @@
+Capture range started in the application.
+Capture range ended in the application.
+Generating '/tmp/nsys-report-60ae.qdstrm'
+
+kv_h2d_large {'individual': (5.3761025, 5.4716077), 'torch_batched': (3.227119, 4.1495039), 'grouped': (4.365740499999999, 4.46797085)}
+Generated:
+    /tmp/sym220-trace-kv_h2d_large.nsys-rep
+
+Processing 1451 events: [==================================================100%]

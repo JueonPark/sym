@@ -1,0 +1,9 @@
+Capture range started in the application.
+Capture range ended in the application.
+Generating '/tmp/nsys-report-a8de.qdstrm'
+
+kv_d2h_small {'individual': (1.8889635, 2.079464550000001), 'torch_batched': (0.43748750000000003, 0.6022319000000016), 'grouped': (1.4439275, 1.6232077000000003)}
+Generated:
+    /tmp/sym220-trace-kv_d2h_small.nsys-rep
+
+Processing 1770 events: [==================================================100%]

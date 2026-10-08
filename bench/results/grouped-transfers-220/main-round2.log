@@ -1,0 +1,7 @@
+kv_h2d_small {'individual': (1.7034604999999998, 1.7532441), 'torch_batched': (0.5086325, 0.5679120999999999)}
+kv_d2h_small {'individual': (1.876204, 1.8946521), 'torch_batched': (0.4148895, 0.43211499999999997)}
+kv_h2d_large {'individual': (5.086786999999999, 5.291577500000001), 'torch_batched': (3.1883055000000002, 3.40746915)}
+kv_d2h_large {'individual': (5.066348, 5.29257405), 'torch_batched': (1.4916874999999998, 1.55869665)}
+weights_small {'individual': (2.0414685, 2.0711675499999997), 'torch_batched': (0.6589685000000001, 0.6782801)}
+weights_large {'individual': (3.9591715, 4.04228335), 'torch_batched': (2.7614335, 2.975174)}
+heterogeneous {'individual': (2.965972, 3.1127595500000003), 'torch_batched': (0.6892715, 0.8039203999999999)}
