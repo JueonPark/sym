@@ -50,6 +50,10 @@ llvm::cl::opt<bool> typedPlans(
                    "format v1 with manifest schema 2; a layout-only chain "
                    "exports as wire format v0 with manifest schema 1 either "
                    "way, byte for byte."));
+llvm::cl::opt<bool>
+    indexedPlans("indexed",
+                 llvm::cl::desc("Admit dimension-0 index selection with "
+                                "optional cast (wire v2, schema 3)."));
 
 // Output paths are exclusively created, never truncated. Only files owned by
 // this invocation are cleaned up, including when writing the second file fails.
@@ -181,6 +185,8 @@ StringRef parameterDtype(Type type) {
     return name;
   if (type.isSignlessInteger(32))
     return "int32";
+  if (type.isSignlessInteger(64))
+    return "int64";
   return {};
 }
 
@@ -206,7 +212,7 @@ json::Object descriptor(sym::SymbolicTensorType type) {
   return json::Object{{"shape", std::move(shape)},
                       {"strides", std::move(strides)},
                       {"offset", json::Array{"const", 0}},
-                      {"dtype", dtype(type.getElementType())}};
+                      {"dtype", parameterDtype(type.getElementType())}};
 }
 
 std::string digest(StringRef bytes) {
@@ -400,9 +406,15 @@ int main(int argc, char **argv) {
                        "expected exactly one function");
   func::FuncOp function = functions.front();
   if (function.isExternal() || !llvm::hasSingleElement(function.getBody()) ||
-      function.getNumArguments() != 1 || function.getNumResults() != 1)
-    return unsupported("unsupported_signature",
-                       "expected one block, one input and one result");
+      (function.getNumArguments() != 1 && function.getNumArguments() != 2) ||
+      function.getNumResults() != 1)
+    return unsupported(
+        "unsupported_signature",
+        "expected one block, one result, and one source with optional indices");
+  bool indexedSignature = function.getNumArguments() == 2;
+  if (indexedSignature && !indexedPlans)
+    return unsupported("indexed_unsupported",
+                       "index selection needs --indexed");
   auto source =
       dyn_cast<sym::SymbolicTensorType>(function.getArgument(0).getType());
   auto destination =
@@ -433,11 +445,28 @@ int main(int argc, char **argv) {
   Value previous = function.getArgument(0);
   size_t chainCount = 0;
   bool typedChain = false;
+  bool indexedChain = false;
   auto &block = function.front();
   for (Operation &op : block.without_terminator()) {
-    if (isa<reloc::PlanResultOp, reloc::TypedPlanResultOp>(op))
+    if (isa<reloc::PlanResultOp, reloc::TypedPlanResultOp,
+            reloc::IndexedPlanResultOp>(op))
       return unsupported("prefolded_input",
                          "input must contain original reloc chain operations");
+    if (auto select = dyn_cast<reloc::IndexSelectOp>(op)) {
+      if (!indexedSignature || chainCount != 0 ||
+          select.getIndices() != function.getArgument(1) ||
+          !select.getIndices().hasOneUse())
+        return unsupported(
+            "indexed_chain_unsupported",
+            "selection must consume the second argument at the chain root");
+      auto indices =
+          cast<sym::SymbolicTensorType>(select.getIndices().getType());
+      for (Attribute extent : indices.getShape())
+        if (!supportedExpr(extent))
+          return unsupported("unsupported_expression",
+                             "unsupported index shape expression");
+      indexedChain = true;
+    }
     // C1 defines the typed value transforms; C2 folds them into
     // #reloc.typed_plan; C3 encodes that as wire format v1 behind --typed.
     // The layout-only interface (schema 1, wire v0) never encodes them.
@@ -479,6 +508,9 @@ int main(int argc, char **argv) {
   }
   if (!chainCount)
     return unsupported("empty_chain", "expected at least one reloc operation");
+  if (indexedSignature != indexedChain)
+    return unsupported("unsupported_signature",
+                       "second argument must be the index_select operand");
   auto ret = dyn_cast<func::ReturnOp>(block.getTerminator());
   if (!ret || ret.getNumOperands() != 1 || ret.getOperand(0) != previous ||
       !previous.hasOneUse())
@@ -492,10 +524,14 @@ int main(int argc, char **argv) {
     return 1;
   reloc::PlanResultOp result;
   reloc::TypedPlanResultOp typedResult;
+  reloc::IndexedPlanResultOp indexedResult;
   size_t planCount = 0;
   bool residual = false;
   module->walk([&](Operation *op) {
-    if (auto plan = dyn_cast<reloc::PlanResultOp>(op)) {
+    if (auto plan = dyn_cast<reloc::IndexedPlanResultOp>(op)) {
+      indexedResult = plan;
+      ++planCount;
+    } else if (auto plan = dyn_cast<reloc::PlanResultOp>(op)) {
       result = plan;
       ++planCount;
     } else if (auto plan = dyn_cast<reloc::TypedPlanResultOp>(op)) {
@@ -511,6 +547,37 @@ int main(int argc, char **argv) {
     if (op->hasAttr("reloc.fallback") || reloc::isFoldableChainOp(op))
       residual = true;
   });
+  if (indexedChain) {
+    if (residual || planCount != 1 || !indexedResult)
+      return unsupported(
+          "fold_unsupported",
+          "index selection did not fold to one complete indexed plan");
+    auto plan = indexedResult.getPlan();
+    std::vector<std::string> names;
+    auto encoded =
+        reloc::encodeIndexedPlan(plan, indexedResult.getLoc(), &names);
+    if (failed(encoded))
+      return 1;
+    StringRef blob(reinterpret_cast<const char *>(encoded->data()),
+                   encoded->size());
+    json::Array symbols;
+    for (const auto &name : names)
+      symbols.push_back(name);
+    auto meta = baseManifest("ok", 3, 2);
+    meta["plan_count"] = 1;
+    meta["symbols"] = std::move(symbols);
+    meta["logical_source"] = std::move(logicalSource);
+    meta["logical_destination"] = std::move(logicalDestination);
+    meta["index_select"] =
+        json::Object{{"axis", 0},
+                     {"policy", plan.getPolicy()},
+                     {"indices", descriptor(cast<sym::SymbolicTensorType>(
+                                     function.getArgument(1).getType()))}};
+    meta["constraints"] = json::Object{{"divisibility", json::Array{}}};
+    meta["plan_sha256"] = digest(blob);
+    meta["input_sha256"] = inputHash;
+    return outputs.publish(std::move(meta), blob) ? 0 : 1;
+  }
   if (residual || planCount != 1 || (typedResult != nullptr) != typedChain)
     return unsupported("fold_unsupported",
                        "reloc-fold did not produce exactly one complete plan");

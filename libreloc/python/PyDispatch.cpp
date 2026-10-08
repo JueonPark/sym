@@ -421,6 +421,16 @@ py::dict prefoldSpec(const reloc::TypedBoundPlan &bound) {
 void registerDispatchBindings(py::module_ &m) {
   py::class_<reloc::typed::Program>(m, "TypedProgram");
   m.def(
+      "prepare_index_select_program",
+      [](const reloc::IndexedBoundPlan &bound,
+         const reloc::BufferView &source) {
+        auto prepared = reloc::dispatch::prepareIndexSelect(bound, source);
+        if (auto *error = std::get_if<reloc::TransferError>(&prepared))
+          raise(*error);
+        return std::get<reloc::typed::Program>(std::move(prepared));
+      },
+      py::arg("bound"), py::arg("source"));
+  m.def(
       "prepare_typed_program",
       [](const reloc::TypedBoundPlan &p) { return checkedProgram(p); },
       py::arg("bound"));

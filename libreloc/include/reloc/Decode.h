@@ -51,6 +51,14 @@ using TypedDecodeResult = std::variant<TypedRelocationPlan, DecodeError>;
 /// capability.
 TypedDecodeResult decodeTypedPlan(const uint8_t *data, size_t size);
 
+using IndexedDecodeResult = std::variant<IndexedRelocationPlan, DecodeError>;
+IndexedDecodeResult decodeIndexedPlan(const uint8_t *data, size_t size);
+
+/// Shared decoder/binder validation for the indexed plan's static contract.
+/// Shape equalities involving symbols and index bounds are checked at bind.
+std::optional<std::string>
+validateIndexedPlan(const IndexedRelocationPlan &plan);
+
 } // namespace reloc
 
 #endif // RELOC_DECODE_H

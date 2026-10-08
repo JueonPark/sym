@@ -1,0 +1,90 @@
+{
+  "sqlite_sha256": "8cbc6f21dc142999118f8004de6bf707e95f830824379465fe4edd1f40c7a40d",
+  "intervals_csv": "overlap.csv",
+  "interval_requests": [
+    25,
+    30
+  ],
+  "requests": [
+    {
+      "request": 25,
+      "path": "indexed222/ring1",
+      "chunks": 16,
+      "completed_ms": 13.162971,
+      "dma_ms": 1.310484,
+      "next_transform_overlap_ms": 0.0
+    },
+    {
+      "request": 26,
+      "path": "indexed222/ring1",
+      "chunks": 16,
+      "completed_ms": 7.225997,
+      "dma_ms": 1.310454,
+      "next_transform_overlap_ms": 0.0
+    },
+    {
+      "request": 27,
+      "path": "indexed222/ring1",
+      "chunks": 16,
+      "completed_ms": 7.152738,
+      "dma_ms": 1.310454,
+      "next_transform_overlap_ms": 0.0
+    },
+    {
+      "request": 28,
+      "path": "indexed222/ring1",
+      "chunks": 16,
+      "completed_ms": 7.103504,
+      "dma_ms": 1.310452,
+      "next_transform_overlap_ms": 0.0
+    },
+    {
+      "request": 29,
+      "path": "indexed222/ring1",
+      "chunks": 16,
+      "completed_ms": 7.14365,
+      "dma_ms": 1.310384,
+      "next_transform_overlap_ms": 0.0
+    },
+    {
+      "request": 30,
+      "path": "indexed222/ring2",
+      "chunks": 16,
+      "completed_ms": 9.025285,
+      "dma_ms": 1.309681,
+      "next_transform_overlap_ms": 0.915088
+    },
+    {
+      "request": 31,
+      "path": "indexed222/ring2",
+      "chunks": 16,
+      "completed_ms": 6.188161,
+      "dma_ms": 1.310645,
+      "next_transform_overlap_ms": 0.936886
+    },
+    {
+      "request": 32,
+      "path": "indexed222/ring2",
+      "chunks": 16,
+      "completed_ms": 6.2777,
+      "dma_ms": 1.309683,
+      "next_transform_overlap_ms": 0.931714
+    },
+    {
+      "request": 33,
+      "path": "indexed222/ring2",
+      "chunks": 16,
+      "completed_ms": 6.303709,
+      "dma_ms": 1.309874,
+      "next_transform_overlap_ms": 0.867954
+    },
+    {
+      "request": 34,
+      "path": "indexed222/ring2",
+      "chunks": 16,
+      "completed_ms": 6.250599,
+      "dma_ms": 1.309844,
+      "next_transform_overlap_ms": 0.921667
+    }
+  ]
+}

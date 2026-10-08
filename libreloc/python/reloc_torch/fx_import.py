@@ -19,7 +19,7 @@ import math
 import struct
 
 from . import compat
-from .recipe import (BindingParam, Cast, Dequantize, Fill, InlineParam, Pad, Recipe, Reshape,
+from .recipe import (BindingParam, Cast, Dequantize, Fill, InlineParam, IndexSelect, Pad, Recipe, Reshape,
                      TensorSpec, Transpose)
 from .symbolic import (Const, SymbolSource, UnsupportedSymbolicExpr, dense_strides,
                        expression, infer_reshape, mul, operation_shape, product)
@@ -55,6 +55,8 @@ class Candidate:
     # recipe's runtime parameters, in the recipe's declaration order; the
     # original callable takes them after the scalar placeholders.
     parameters: tuple = ()
+    # A CPU int32/int64 row index operand declared by the recipe's IndexSelect.
+    index: str | None = None
 
 
 @dataclass(frozen=True)
@@ -151,7 +153,7 @@ def _tensor_input(node):
 
 def _layout(node):
     return compat.fx_kind(node) in {'permute', 'transpose', 'reshape', 'squeeze',
-                                    'unsqueeze', 'flatten', 'materialize', 'pad'}
+                                    'unsqueeze', 'flatten', 'materialize', 'pad', 'index_select'}
 
 
 def _transfer(node):
@@ -528,6 +530,43 @@ def _extract(gm, root, members, context, parameters):
     return GraphModule(gm, graph), tuple(bindings)
 
 
+def _indexed_recipe(root, members):
+    """Only selection first, then an optional single cast and blocking H2D.
+
+    The portable recipe records the physical source and explicit index operand.
+    """
+    import torch
+    source = compat.graph_value(root)
+    select = members[0]
+    _require(compat.fx_kind(select) == 'index_select', 'unsupported_index_select')
+    _require('reloc_reason' not in select.meta, select.meta.get('reloc_reason'))
+    _require(compat.is_tensor(source) and source.device.type == 'cpu', 'unsupported_index_select')
+    _require(not source.requires_grad or not torch.is_grad_enabled(), 'requires_grad')
+    _require(source.dim() >= 1 and source.layout == torch.strided and not source.is_quantized,
+             'unsupported_index_select')
+    ctx = compat.SymbolicContext.from_tensor(source)
+    spec = ctx.tensor_spec(source, require_dense=False)
+    _require(spec.offset == Const(0) and spec.strides == dense_strides(spec.shape), 'source_layout')
+    opts = _options(select)
+    _require(type(opts['dim']) is int and opts['dim'] in (0, -source.dim()), 'unsupported_index_select_dim')
+    index = opts['index']
+    _require(hasattr(index, 'op') and index.op in ('placeholder', 'get_attr'), 'unsupported_index_select')
+    value = compat.graph_value(index)
+    _require(compat.is_tensor(value) and value.device.type == 'cpu' and value.dim() == 1
+             and value.dtype in (torch.int32, torch.int64) and value.layout == torch.strided,
+             'unsupported_index_select')
+    _require(all(compat.fx_kind(n) == 'transfer' for n in members[1:]), 'unsupported_index_select')
+    recipe, context, guards, parameters = _recipe(select, members[1:])
+    _require(recipe.direction == 'h2d' and len(recipe.operations) <= 1
+             and all(isinstance(op, Cast) for op in recipe.operations), 'unsupported_index_select')
+    ctx.add_tensor(value, 'indices')
+    index_shape = tuple(ctx.expression(d) for d in value.shape)
+    index_spec = TensorSpec(index_shape, dense_strides(index_shape), Const(0), compat.dtype_name(value.dtype))
+    shape = (index_shape[0], *spec.shape[1:])
+    destination = TensorSpec(shape, dense_strides(shape), Const(0), recipe.destination.dtype)
+    return Recipe(spec, (IndexSelect(index_spec), *recipe.operations), destination, 'h2d'), ctx, guards, (index,)
+
+
 def import_graph(gm, example_inputs=None):
     """Discover safe pure regions without changing gm; compilation is still required."""
     normalized = normalize_graph(gm, example_inputs)
@@ -571,11 +610,15 @@ def import_graph(gm, example_inputs=None):
         try:
             _require(root is not None, 'metadata_unavailable')
             _safety(nodes, root, members)
-            recipe, context, extent_guards, parameters = _recipe(root, members)
+            indexed = any(compat.fx_kind(n) == 'index_select' for n in members)
+            recipe, context, extent_guards, parameters = (
+                _indexed_recipe(root, members) if indexed else _recipe(root, members))
             original, bindings = _extract(gm, originals[root.name], [originals[n.name] for n in members], context,
                                           [originals[p.name] for p in parameters])
             candidates.append(Candidate(root.name, members[-1].name, tuple(n.name for n in members), recipe, context.sources, bindings, original, extent_guards,
-                                        compat.graph_value(members[-1]).device, tuple(p.name for p in parameters)))
+                                        compat.graph_value(members[-1]).device,
+                                        () if indexed else tuple(p.name for p in parameters),
+                                        parameters[0].name if indexed else None))
         except (_Reject, UnsupportedSymbolicExpr) as error:
             exclusions.append(Exclusion(transfer.name, error.reason))
     return ImportReport(tuple(candidates), tuple(dict.fromkeys(exclusions)))

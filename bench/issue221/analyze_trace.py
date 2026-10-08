@@ -22,12 +22,12 @@ def union(intervals):
     return result
 
 
-def analyze(path, output, first_per_path=False):
+def analyze(path, output, first_per_path=False, prefix='typed221/'):
     db = sqlite3.connect(path); db.row_factory = sqlite3.Row
     names = {r['id']:r['value'] for r in db.execute('select id,value from StringIds')}
     nvtx = [dict(r) for r in db.execute('select * from NVTX_EVENTS where end is not null order by start')]
     for event in nvtx: event['label'] = event['text'] or names.get(event['textId'], '')
-    roots = [r for r in nvtx if r['label'].startswith('typed221/')]
+    roots = [r for r in nvtx if r['label'].startswith(prefix)]
     apis = [dict(r) for r in db.execute('select * from CUPTI_ACTIVITY_KIND_RUNTIME')]
     copies = {r['correlationId']:dict(r) for r in db.execute(
         'select * from CUPTI_ACTIVITY_KIND_MEMCPY where copyKind=1')}
@@ -83,4 +83,5 @@ if __name__=='__main__':
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('sqlite',type=Path); p.add_argument('output',type=Path)
     p.add_argument('--first-per-path',action='store_true',help='retain all summaries but only the first call per path in the interval CSV')
-    args = p.parse_args(); analyze(args.sqlite,args.output,args.first_per_path)
+    p.add_argument('--prefix',default='typed221/',help='outer request NVTX label prefix')
+    args = p.parse_args(); analyze(args.sqlite,args.output,args.first_per_path,args.prefix)

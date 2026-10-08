@@ -227,4 +227,12 @@ def Reloc_TypedPlanAttr : Reloc_Attr<"TypedPlan", "typed_plan"> {
   let genVerifyDecl = 1;
 }
 
+def Reloc_IndexedPlanAttr : Reloc_Attr<"IndexedPlan", "indexed_plan"> {
+  let summary = "Dense row selection with an optional floating-point cast";
+  let parameters = (ins "TensorDescAttr":$source, "TensorDescAttr":$indices,
+                        "TensorDescAttr":$result, StringRefParameter<>:$policy);
+  let assemblyFormat = "`<` $source `,` $indices `,` $result `,` $policy `>`";
+  let genVerifyDecl = 1;
+}
+
 #endif // RELOC_ATTRIBUTES_TD

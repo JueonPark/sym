@@ -206,6 +206,19 @@ TypedBindResult bindTyped(const TypedRelocationPlan &plan,
                           const SymbolMap &symbolMap,
                           const ParameterMap &parameters);
 
+struct IndexedBoundPlan {
+  TypedBoundPlan selected;
+  std::vector<int64_t> sourceExtents;
+  std::vector<int64_t> indices;
+  int64_t rowElements = 0;
+};
+using IndexedBindResult = std::variant<IndexedBoundPlan, BindError>;
+/// Bind a wire-v2 plan and snapshot its index operand. Checks descriptors,
+/// policy, sizes, overflow and every index before allocation or execution.
+IndexedBindResult bindIndexed(const IndexedRelocationPlan &plan,
+                              const SymbolMap &symbols,
+                              const ParameterValue &indices);
+
 } // namespace reloc
 
 #endif // RELOC_BIND_H

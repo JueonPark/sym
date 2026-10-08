@@ -8,7 +8,9 @@ descriptors and constraints are checked against the submitted recipe; for
 typed artifacts the stages, fills and runtime parameter declarations are
 checked against the recipe's value transforms and against the plan the
 runtime decoded. The portable serialization carries `format_version` 1 for
-layout-only and 2 for typed artifacts; a loader accepts both.
+layout-only, 2 for typed artifacts and 3 for indexed artifacts (manifest
+schema 3 / wire v2). Indexed admission also verifies both operand descriptors
+against the decoded plan. A loader accepts all three formats.
 """
 from functools import cached_property, lru_cache
 from dataclasses import dataclass
@@ -24,6 +26,7 @@ from .recipe import (
     Cast,
     Dequantize,
     InlineParam,
+    IndexSelect,
     Pad,
     Quantize,
     Recipe,
@@ -49,7 +52,7 @@ from .symbolic import (
     symbol_sources,
 )
 
-# (schema_version, wire_version) of the two artifact kinds.
+# (schema_version, wire_version) of layout and typed artifact kinds.
 LAYOUT_SCHEMA = (1, 0)
 TYPED_SCHEMA = (2, 1)
 
@@ -102,9 +105,13 @@ class CompiledRecipe:
 
     @property
     def typed(self):
-        """True for a wire v1 typed plan (schema 2): load it with
-        ``pyreloc.load_typed_plan`` and bind it with ``pyreloc.bind_typed``."""
-        return self.wire_version == TYPED_SCHEMA[1]
+        """Whether the artifact contains value transforms; indexed artifacts
+        use load_indexed_plan/bind_indexed even when they include a cast."""
+        return self.wire_version == TYPED_SCHEMA[1] or (self.indexed and self.recipe.typed)
+
+    @property
+    def indexed(self):
+        return self.wire_version == 2
 
     @cached_property
     def _metadata_binder(self):
@@ -124,14 +131,31 @@ class CompiledRecipe:
             return tuple((name, bindings[name]) for name in self.symbols)
         return bind
 
-    def bind_values(self, value):
+    @cached_property
+    def _indexed_metadata_binder(self):
+        from .indexed_artifact import bind_values
+
+        # As for layout/typed recipes, cache proofs of immutable descriptors.
+        # Index VALUES never enter this cache: native binding checks each call.
+        @lru_cache(maxsize=32)
+        def bind(source, indices):
+            return tuple(bind_values(self, source, indices).items())
+        return bind
+
+    def bind_values(self, value, indices=None):
         """Guard current source metadata; return a fresh wire-symbol mapping."""
+        if self.indexed:
+            if indices is None:
+                raise GuardError('index_operand_required')
+            return dict(self._indexed_metadata_binder(_tensor_spec(value), _tensor_spec(indices)))
         return dict(self._metadata_binder(_tensor_spec(value)))
 
     @cached_property
     def decoded_plan(self):
         """Immutable decoded wire metadata, owned for this artifact's lifetime."""
         import pyreloc
+        if self.indexed:
+            return pyreloc.load_indexed_plan(self.plan_bytes)
         return (pyreloc.load_typed_plan if self.typed else pyreloc.load_plan)(self.plan_bytes)
 
     @cached_property
@@ -195,7 +219,7 @@ class CompiledRecipe:
     def to_bytes(self):
         """Serialize portable metadata and plan bytes without live FX/Torch state."""
         payload = {
-            "format_version": 2 if self.typed else 1,
+            "format_version": 3 if self.indexed else (2 if self.typed else 1),
             "manifest": self.manifest,
             "plan_base64": base64.b64encode(self.plan_bytes).decode("ascii"),
             "recipe": _encode_recipe(self.recipe),
@@ -210,7 +234,7 @@ class CompiledRecipe:
             raise RuntimeError("malformed compiled recipe serialization") from error
         _exact_keys(payload, ("format_version", "manifest", "plan_base64", "recipe"), "artifact")
         version = _integer(payload["format_version"], "artifact format_version")
-        if version not in (1, 2):
+        if version not in (1, 2, 3):
             raise RuntimeError("compiled recipe format version mismatch")
         if type(payload["plan_base64"]) is not str:
             raise RuntimeError("compiled recipe plan_base64 must be a string")
@@ -219,9 +243,8 @@ class CompiledRecipe:
         except (ValueError, base64.binascii.Error) as error:
             raise RuntimeError("compiled recipe has invalid plan bytes") from error
         recipe = _decode_recipe(payload["recipe"])
-        # Format 1 is the layout-only artifact, format 2 the typed one; a
-        # recipe of the other kind under either version is not ours.
-        if recipe.typed != (version == 2):
+        # Format 1 is layout-only, 2 typed, 3 indexed; the kind must match.
+        if version != (3 if recipe.indexed else (2 if recipe.typed else 1)):
             raise RuntimeError("compiled recipe format version does not match its recipe")
         mlir = emit_mlir(recipe).encode("utf-8")
         return _admit(recipe, mlir, plan, payload["manifest"])
@@ -374,14 +397,14 @@ def _same_exprs(actual, expected):
     )
 
 
-def _parse_descriptor(value, where):
+def _parse_descriptor(value, where, *, index=False):
     _exact_keys(value, ("shape", "strides", "offset", "dtype"), where)
     if type(value["shape"]) is not list or type(value["strides"]) is not list:
         raise RuntimeError(f"compiler manifest {where} shape/strides must be arrays")
     if not value["shape"] or len(value["shape"]) != len(value["strides"]):
         raise RuntimeError(f"compiler manifest {where} has invalid rank")
     dtype = _string(value["dtype"], f"{where}.dtype")
-    if dtype not in ("float32", "float16", "int8"):
+    if dtype not in (("int32", "int64") if index else ("float32", "float16", "int8")):
         raise RuntimeError(f"compiler manifest {where} has unsupported dtype")
     return TensorSpec(
         tuple(_parse_expr(item, f"{where}.shape") for item in value["shape"]),
@@ -681,6 +704,9 @@ def _validate_typed_sections(recipe, manifest, symbols, decoded):
 
 
 def _admit(recipe, mlir, plan, manifest):
+    if recipe.indexed:
+        from .indexed_artifact import admit
+        return admit(recipe, mlir, plan, manifest)
     typed = recipe.typed
     schema = TYPED_SCHEMA if typed else LAYOUT_SCHEMA
     expected_fields = (
@@ -790,7 +816,10 @@ def _encode_param(param):
 def _encode_recipe(recipe):
     operations = []
     for operation in recipe.operations:
-        if isinstance(operation, Transpose):
+        if isinstance(operation, IndexSelect):
+            operations.append({'kind': 'index_select', 'axis': operation.axis,
+                               'indices': _encode_descriptor(operation.indices)})
+        elif isinstance(operation, Transpose):
             operations.append({"kind": "transpose", "perm": list(operation.perm)})
         elif isinstance(operation, Reshape):
             operations.append({"kind": "reshape", "shape": [_encode_expr(item) for item in operation.shape]})
@@ -875,7 +904,11 @@ def _decode_recipe(value):
             raise RuntimeError("compiled recipe has invalid operation")
         kind = item["kind"]
         try:
-            if kind == "transpose":
+            if kind == 'index_select':
+                _exact_keys(item, ('kind', 'axis', 'indices'), 'index_select')
+                operations.append(IndexSelect(_parse_descriptor(item['indices'], 'indices', index=True),
+                                              _integer(item['axis'], 'index_select axis')))
+            elif kind == "transpose":
                 _exact_keys(item, ("kind", "perm"), "transpose")
                 if type(item["perm"]) is not list:
                     raise RuntimeError("compiled recipe transpose perm must be an array")

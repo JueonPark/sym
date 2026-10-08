@@ -37,7 +37,7 @@ def diagnose(require_cuda=False, require_torch=False):
             raise RuntimeError(
                 "installed build identity does not match package version"
             )
-        if data.get("wire_versions") != [0, 1]:
+        if data.get("wire_versions") != [0, 1, 2]:
             raise RuntimeError("unexpected installed wire support")
         return data
 

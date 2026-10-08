@@ -16,6 +16,39 @@
 using namespace mlir;
 using namespace mlir::reloc;
 
+static TensorDescAttr indexedDescriptor(Type type) {
+  auto tensor = cast<sym::SymbolicTensorType>(type);
+  return TensorDescAttr::get(type.getContext(), tensor.getShape(), {},
+                             sym::ConstantExprAttr::get(type.getContext(), 0),
+                             tensor.getElementType());
+}
+
+LogicalResult IndexSelectOp::verify() {
+  if (getAxis() != 0)
+    return emitOpError("only dimension 0 is supported");
+  auto source = indexedDescriptor(getInput().getType());
+  auto result = indexedDescriptor(getResult().getType());
+  if (source.getElementType() != result.getElementType())
+    return emitOpError("index_select must preserve element type");
+  return IndexedPlanAttr::verify([&] { return emitOpError(); }, source,
+                                 indexedDescriptor(getIndices().getType()),
+                                 result, "exact");
+}
+
+LogicalResult IndexedPlanResultOp::verify() {
+  auto plan = getPlan();
+  for (auto pair : {std::make_pair(getInput().getType(), plan.getSource()),
+                    std::make_pair(getIndices().getType(), plan.getIndices()),
+                    std::make_pair(getResult().getType(), plan.getResult())}) {
+    auto tensor = cast<sym::SymbolicTensorType>(pair.first);
+    if (tensor.getElementType() != pair.second.getElementType() ||
+        tensor.getShape() != pair.second.getExtents())
+      return emitOpError(
+          "operand/result type disagrees with indexed plan descriptor");
+  }
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // Shared helpers
 //===----------------------------------------------------------------------===//

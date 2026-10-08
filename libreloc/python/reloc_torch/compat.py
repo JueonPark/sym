@@ -311,11 +311,16 @@ class SymbolicContext:
 
     @classmethod
     def from_tensor(cls, tensor):
+        context = cls()
+        context.add_tensor(tensor)
+        return context
+
+    def add_tensor(self, tensor, operand='source'):
         import sympy
         import torch
         from .symbolic import SymbolSource, UnsupportedSymbolicExpr
-        context = cls()
-        sources = []
+        context = self
+        sources = list(context.sources)
         for axis, value in enumerate(tensor.shape):
             if type(value) is int:
                 continue
@@ -329,11 +334,12 @@ class SymbolicContext:
             if key in context._symbols:
                 index = context._symbols[key]
                 source = sources[index]
-                sources[index] = SymbolSource(source.name, source.axis, source.equal_axes + (axis,))
+                if source.operand == operand:
+                    sources[index] = SymbolSource(source.name, source.axis, source.equal_axes + (axis,), operand)
             else:
                 index = len(sources)
                 context._symbols[key] = index
-                sources.append(SymbolSource(f's{index}', axis))
+                sources.append(SymbolSource(f's{index}', axis, (), operand))
         context.sources = tuple(sources)
         return context
 
@@ -538,6 +544,7 @@ def fx_kind(node):
         aten.squeeze.default: 'squeeze', aten.squeeze.dim: 'squeeze',
         aten.squeeze.dims: 'squeeze', aten.unsqueeze.default: 'unsqueeze',
         aten.flatten.using_ints: 'flatten',
+        aten.index_select.default: 'index_select', torch.index_select: 'index_select',
         aten.clone.default: 'materialize', aten.contiguous.default: 'materialize',
         aten.constant_pad_nd.default: 'pad', aten.sym_size.int: 'scalar',
         torch.transpose: 'transpose', torch.permute: 'permute',
@@ -567,6 +574,7 @@ def fx_kind(node):
                 'permute': 'permute', 'transpose': 'transpose', 't': 'transpose', 'view': 'reshape',
                 'reshape': 'reshape', 'contiguous': 'materialize',
                 'squeeze': 'squeeze', 'unsqueeze': 'unsqueeze', 'flatten': 'flatten',
+                'index_select': 'index_select',
                 'size': 'scalar'}.get(node.target)
     return None
 
@@ -592,6 +600,16 @@ def fx_canonical_call(node, source_value):
     overload = quantized_overload(node)
     if overload is not None:
         return overload, node.args, dict(node.kwargs)
+    if kind == 'index_select':
+        args, kwargs = node.args, dict(node.kwargs)
+        if 'out' in kwargs:
+            raise ValueError('unrecognized_fx_target')
+        if not args:
+            key = 'self' if 'self' in kwargs else 'input'
+            if key not in kwargs:
+                raise ValueError('unrecognized_fx_target')
+            args = (kwargs.pop(key),)
+        return aten.index_select.default, args, kwargs
     if kind in {'squeeze', 'unsqueeze', 'flatten'}:
         args, kwargs = node.args, dict(node.kwargs)
         if not args:

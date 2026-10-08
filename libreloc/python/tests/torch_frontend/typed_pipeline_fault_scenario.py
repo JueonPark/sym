@@ -9,7 +9,7 @@ import weakref
 import torch
 import pyreloc
 from reloc_torch import CompilerClient, TransferResources, dispatch
-from reloc_torch.recipe import Cast, Recipe, TensorSpec
+from reloc_torch.recipe import Cast, IndexSelect, Recipe, TensorSpec
 from reloc_torch.symbolic import Const
 
 mode = int(sys.argv[1])
@@ -18,10 +18,19 @@ shim.sym_dispatch_fault_mode.argtypes = [ctypes.c_int]
 def spec(dtype):
     return TensorSpec((Const(65539),), (Const(1),), Const(0), dtype)
 recipe = Recipe(spec('float32'), (Cast('float16', 'ieee_rne'),), spec('float16'), 'h2d')
+indexed = len(sys.argv) > 2 and sys.argv[2] == '1'
+if indexed:
+    recipe = Recipe(spec('float32'), (IndexSelect(spec('int64')), Cast('float16', 'ieee_rne')),
+                    spec('float16'), 'h2d')
 compiled = CompilerClient.from_environment().compile(recipe)
 owner = TransferResources(max_typed_live_bytes=32768)
 source = torch.ones(65539)
-request = dispatch.prepare_typed_transfer(compiled, source, 'cuda:0', policy='original_cpu')
+if indexed:
+    from reloc_torch.index_select import prepare_index_select_transfer
+    indices = torch.arange(65539).remainder_(17)
+    request = prepare_index_select_transfer(compiled, source, indices, 'cuda:0')
+else:
+    request = dispatch.prepare_typed_transfer(compiled, source, 'cuda:0', policy='original_cpu')
 refs = []
 execute = pyreloc.execute_dispatch
 def inject(request, **options):

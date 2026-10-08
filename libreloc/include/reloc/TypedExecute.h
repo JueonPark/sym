@@ -70,6 +70,11 @@ struct Program {
   int64_t sourceElements = 0;
   int64_t resultElements = 0; // padded logical result
   bool needsCoordinates = false;
+  // Runtime row indirection over a dense host source. The portable plan still
+  // describes the selected logical tensor; indices are owned by this request.
+  int64_t indexedSourceRows = 0;
+  int64_t indexedRowElements = 0;
+  std::vector<int64_t> rowIndices;
 };
 
 /// Check every stage against the implemented C1 tables and materialize its

@@ -18,6 +18,9 @@ accepts the casts and dequantization forms listed in the
 [typed support matrix](typed-relocation-support.md). Quantize import and
 typed weight preparation remain gated. Evidence, counts and the support matrix
 live in [Torch support](torch-support.md); this guide records how to reproduce them.
+CPU dimension-0 `index_select` can also fuse with a blocking H2D transfer and
+optional FP32/FP16 cast; see the row-selection scope and example in
+[Torch support](torch-support.md).
 
 The end-to-end handoff (build from a fresh checkout, every named example,
 CPU and CUDA evidence) is [runtime-integration.md](runtime-integration.md).

@@ -32,6 +32,11 @@
 namespace reloc {
 namespace dispatch {
 
+/// Prepare a bound wire-v2 program against the physical host source.
+/// All selection/cast semantics come from the compiler plan and binder.
+std::variant<typed::Program, TransferError>
+prepareIndexSelect(const IndexedBoundPlan &bound, const BufferView &source);
+
 /// `OriginalCpu`: the declared layout and every stage run on the CPU, then
 /// the necessary cross-device copy (transform then H2D, or D2H of the
 /// logical source then the forward CPU transform). `Auto`: enumerate the

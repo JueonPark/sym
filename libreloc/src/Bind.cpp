@@ -3,6 +3,7 @@
 #include "reloc/Bind.h"
 
 #include "reloc/CostModel.h"
+#include "reloc/Decode.h"
 #include "reloc/TypedValue.h"
 
 #include <algorithm>
@@ -695,6 +696,91 @@ TypedBindResult bindTyped(const TypedRelocationPlan &plan,
   // 5. What binding does NOT certify: R3's dispatch.
   out.requirements = {"typed_execution_dispatch"};
   return out;
+}
+
+IndexedBindResult bindIndexed(const IndexedRelocationPlan &plan,
+                              const SymbolMap &symbolMap,
+                              const ParameterValue &indices) {
+  if (auto error = validateIndexedPlan(plan))
+    return BindError{*error};
+  IndexedBoundPlan bound;
+  auto &out = bound.selected;
+  RelocationPlan symbolPlan;
+  symbolPlan.symbols = plan.symbols;
+  std::string error;
+  std::vector<int64_t> indexExtents;
+  if (!resolveSymbols(symbolPlan, symbolMap, out.symbols, error) ||
+      !concreteDenseDescriptor(plan.source, out.symbols, "source",
+                               bound.sourceExtents, error) ||
+      !concreteDenseDescriptor(plan.indices, out.symbols, "indices",
+                               indexExtents, error) ||
+      !concreteDenseDescriptor(plan.result, out.symbols, "result",
+                               out.resultExtents, error))
+    return BindError{error};
+  if (indices.extents != indexExtents ||
+      indices.elementType.kind != plan.indices.elementType.kind ||
+      indices.elementType.bitwidth != plan.indices.elementType.bitwidth)
+    return BindError{"index operand dtype/extents do not match the plan"};
+  auto selectedShape = bound.sourceExtents;
+  selectedShape[0] = indexExtents[0];
+  if (selectedShape != out.resultExtents)
+    return BindError{"indexed result shape does not match source and indices"};
+  int64_t indexBytes;
+  const uint32_t indexWidth = typed::byteWidth(indices.elementType);
+  if (!mulOk(indexExtents[0], indexWidth, indexBytes) ||
+      static_cast<uint64_t>(indexBytes) != indices.bytes.size())
+    return BindError{"index operand byte size mismatch or overflow"};
+  bound.rowElements = 1;
+  for (size_t i = 1; i < bound.sourceExtents.size(); ++i)
+    if (!mulOk(bound.rowElements, bound.sourceExtents[i], bound.rowElements))
+      return BindError{"indexed row size overflow"};
+  out.sourceType = plan.source.elementType;
+  out.resultType = plan.result.elementType;
+  int64_t physicalElements, physicalBytes, elements;
+  if (!mulOk(bound.sourceExtents[0], bound.rowElements, physicalElements) ||
+      !mulOk(physicalElements, typed::byteWidth(out.sourceType),
+             physicalBytes) ||
+      !mulOk(indexExtents[0], bound.rowElements, elements) ||
+      !mulOk(elements, typed::byteWidth(out.sourceType), out.sourceBytes) ||
+      !mulOk(elements, typed::byteWidth(out.resultType), out.destinationBytes))
+    return BindError{"indexed tensor size overflow"};
+  bound.indices.reserve(static_cast<size_t>(indexExtents[0]));
+  for (int64_t i = 0; i < indexExtents[0]; ++i) {
+    uint64_t bits = 0;
+    for (uint32_t b = 0; b < indexWidth; ++b)
+      bits |= uint64_t(indices.bytes[i * indexWidth + b]) << (8 * b);
+    int64_t value = signExtendValue(bits, indices.elementType.bitwidth);
+    if (value < 0 || value >= bound.sourceExtents[0])
+      return BindError{
+          "index_out_of_range: index_select row is outside the source"};
+    bound.indices.push_back(value);
+  }
+  out.sourceExtents = selectedShape;
+  out.parameterBytes = indexBytes;
+  // Preserve selected-row boundaries for the typed staging scheduler. A
+  // flattened affine identity would allow a chunk to split an indexed row.
+  out.layout.extents = {indexExtents[0], bound.rowElements};
+  out.layout.srcStrides = {bound.rowElements, 1};
+  out.layout.dstStrides = {bound.rowElements, 1};
+  out.layout.perm = {0, 1};
+  out.layout.elementSize = typed::byteWidth(out.resultType);
+  out.layout.totalBytes = out.destinationBytes;
+  out.layout.L = elements;
+  out.layout.typed = true;
+  out.cuts.push_back({0, out.sourceType, elements, out.sourceBytes});
+  if (out.sourceType.kind != out.resultType.kind ||
+      out.sourceType.bitwidth != out.resultType.bitwidth) {
+    BoundStage stage;
+    stage.transform = ValueTransformKind::Cast;
+    stage.policy = plan.policy;
+    stage.input.type = out.sourceType;
+    stage.output.type = out.resultType;
+    stage.shape = selectedShape;
+    out.stages.push_back(stage);
+    out.cuts.push_back({1, out.resultType, elements, out.destinationBytes});
+  }
+  out.requirements = {"host_index_select"};
+  return bound;
 }
 
 } // namespace reloc

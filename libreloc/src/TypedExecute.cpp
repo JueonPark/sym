@@ -447,6 +447,64 @@ executeHostWindow(const Program &program, uint32_t from, uint32_t to,
     return fail("invalid_boundary", "stage range [" + std::to_string(from) +
                                         ", " + std::to_string(to) +
                                         ") is not inside the program");
+  if (program.indexedSourceRows) {
+    if (from != 0 || to != stageCount)
+      return fail("invalid_boundary",
+                  "indexed programs execute all host stages together");
+    const uint32_t inputWidth = widthAt(program, 0),
+                   outputWidth = widthAt(program, to);
+    const int64_t columns = program.indexedRowElements;
+    const int64_t rowCount = static_cast<int64_t>(program.rowIndices.size());
+    const int64_t rowBytes = columns * outputWidth;
+    int64_t first = 0, last = rowCount;
+    if (chunk) {
+      if (chunk->validBegin < 0 || chunk->validEnd <= chunk->validBegin ||
+          chunk->validEnd > rowCount ||
+          chunk->paddedBegin != chunk->validBegin ||
+          chunk->paddedEnd != chunk->validEnd ||
+          chunk->byteOffset != chunk->validBegin * rowBytes ||
+          chunk->bytes !=
+              size_t((chunk->validEnd - chunk->validBegin) * rowBytes))
+        return fail("invalid_chunk",
+                    "indexed chunk must contain complete selected rows");
+      first = chunk->validBegin;
+      last = chunk->validEnd;
+    }
+    auto rows = [&](int64_t begin, int64_t end) {
+      detail::TraceRange trace("reloc.typed.transform.work", chunkIndex);
+      for (int64_t row = begin; row < end; ++row) {
+        const auto *input = static_cast<const uint8_t *>(src) +
+                            program.rowIndices[row] * columns * inputWidth;
+        auto *output = static_cast<uint8_t *>(dst) + (row - first) * rowBytes;
+        if (stageCount == 0) {
+          std::memcpy(output, input, columns * inputWidth);
+        } else if (isF32(program.plan.sourceType) &&
+                   reinterpret_cast<uintptr_t>(input) % alignof(float) == 0 &&
+                   reinterpret_cast<uintptr_t>(output) % alignof(uint16_t) ==
+                       0) {
+          quant::convertF32F16(reinterpret_cast<const float *>(input),
+                               reinterpret_cast<uint16_t *>(output), columns);
+        } else {
+          for (int64_t column = 0; column < columns; ++column)
+            storeBits(output + column * outputWidth,
+                      applyStage(
+                          program.stages[0],
+                          loadBits(input + column * inputWidth, inputWidth), 0),
+                      outputWidth);
+        }
+      }
+    };
+    std::unique_ptr<GatherPool> owned;
+    if (!pool && threads != 1) {
+      owned = std::make_unique<GatherPool>(threads);
+      pool = owned.get();
+    }
+    if (pool)
+      pool->parallelFor(first, last, 1, rows);
+    else
+      rows(first, last);
+    return std::nullopt;
+  }
   if (!padsSettledBy(program, to))
     return fail("pads_not_settled",
                 "a pad enters after boundary " + std::to_string(to) +
