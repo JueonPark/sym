@@ -39,7 +39,9 @@ def main():
             for name, result in case['paths'].items():
                 resources = result.get('resources', {})
                 rows.append(dict(run=path.stem, selected=count, path=name,
-                    wire_bytes=case['wire_bytes'],
+                    # Qualified full-function Inductor lowers the cast after
+                    # H2D; the separate DMA trace verifies its FP32 payload.
+                    wire_bytes=case['wire_bytes'] * (2 if name == 'inductor' else 1),
                     first_completed_ms=result.get('first_completed_ms', case.get('first_completed_ms', '')),
                     p50_ms=result['p50_ms'], p95_ms=result['p95_ms'],
                     native_executions=result.get('native_executions', ''),
@@ -65,7 +67,9 @@ def main():
             records.append(dict(path=label, copies=len(dma), bytes=sum(copy['bytes'] for copy in dma),
                                 dma_ms=sum(copy['end']-copy['start'] for copy in dma) / 1e6))
         diagnostics['trace'] = dict(sqlite_sha256=digest(args.trace), actual_h2d=records)
-    (args.output / 'diagnostics.json').write_text(json.dumps(diagnostics, indent=2) + '\n')
+    (args.output / 'diagnostics.json').write_text('{\n' + ',\n'.join(
+        '  ' + json.dumps(key) + ': ' + json.dumps(value, separators=(',', ':'))
+        for key, value in diagnostics.items()) + '\n}\n')
 
 
 if __name__ == '__main__':
