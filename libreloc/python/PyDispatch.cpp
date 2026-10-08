@@ -281,14 +281,15 @@ prepareGroup(const std::vector<GroupArguments> &args) {
     raise(*error);
   return std::get<reloc::dispatch::GroupRequest>(std::move(group));
 }
-py::dict executeGroupPy(reloc::dispatch::GroupRequest &group,
-                        const py::object &callerStream, int gatherThreads,
-                        std::shared_ptr<reloc::GatherPool> pool,
-                        const std::string &pinning,
-                        std::optional<size_t> minPinnedBytes,
-                        size_t maxScratchBytes,
-                        std::shared_ptr<reloc::dispatch::Resources> resources,
-                        const py::object &owners) {
+template <bool Async>
+py::object executeGroupPy(reloc::dispatch::GroupRequest &group,
+                          const py::object &callerStream, int gatherThreads,
+                          std::shared_ptr<reloc::GatherPool> pool,
+                          const std::string &pinning,
+                          std::optional<size_t> minPinnedBytes,
+                          size_t maxScratchBytes,
+                          std::shared_ptr<reloc::dispatch::Resources> resources,
+                          const py::object &owners) {
   if (group.executing || group.consumed)
     raise({"already_executed", "group is executing or already executed"});
   if (!py::isinstance<py::tuple>(owners) || py::len(owners) != 2)
@@ -318,16 +319,35 @@ py::dict executeGroupPy(reloc::dispatch::GroupRequest &group,
     options.callerStream =
         reinterpret_cast<const void *>(callerStream.cast<uintptr_t>());
   }
-  auto token = std::make_shared<py::object>(owners);
+  // Async handles retain the native request and borrowed pool too. The final
+  // owner can be released by a native destructor, so acquire the GIL there.
+  auto token = std::shared_ptr<py::object>(
+      new py::object(py::make_tuple(
+          owners, py::cast(&group, py::return_value_policy::reference),
+          py::cast(pool))),
+      [](py::object *value) {
+        py::gil_scoped_acquire gil;
+        delete value;
+      });
   group.executing = true;
   struct Reset {
     bool &value;
     ~Reset() { value = false; }
   } reset{group.executing};
   std::optional<reloc::TransferError> error;
+  std::shared_ptr<reloc::dispatch::Completion> completion;
   {
     py::gil_scoped_release release;
-    if (resources)
+    if constexpr (Async) {
+      if (!resources)
+        resources = std::make_shared<reloc::dispatch::Resources>(0);
+      auto submitted = resources->submit(group, options, token);
+      if (auto *failure = std::get_if<reloc::TransferError>(&submitted))
+        error = *failure;
+      else
+        completion = std::get<std::shared_ptr<reloc::dispatch::Completion>>(
+            std::move(submitted));
+    } else if (resources)
       error = resources->execute(group, options, token).error;
     else {
       reloc::dispatch::Resources ephemeral(0);
@@ -336,6 +356,8 @@ py::dict executeGroupPy(reloc::dispatch::GroupRequest &group,
   }
   if (error)
     raise(*error);
+  if constexpr (Async)
+    return py::cast(std::move(completion));
   return groupReport(group);
 }
 
@@ -468,14 +490,14 @@ void registerDispatchBindings(py::module_ &m) {
       .def_property_readonly(
           "consumed", [](const Group &g) { return g.executing || g.consumed; })
       .def_property_readonly("report", [](const Group &g) {
-        if (g.executing)
+        if (g.executing || g.pending->load())
           throw py::value_error("report is unavailable during execution");
         return groupReport(g);
       });
   m.def("prepare_dispatch_group", &prepareGroup, py::arg("entries"),
         "Validate fresh (template or layout bound, source, destination, "
         "direction) entries together.");
-  m.def("execute_dispatch_group", &executeGroupPy, py::arg("group"),
+  m.def("execute_dispatch_group", &executeGroupPy<false>, py::arg("group"),
         py::kw_only(), py::arg("caller_stream") = py::none(),
         py::arg("gather_threads") = 8, py::arg("gather_pool") = nullptr,
         py::arg("pinning") = "auto", py::arg("min_pinned_bytes") = py::none(),
@@ -483,6 +505,52 @@ void registerDispatchBindings(py::module_ &m) {
         py::arg("resources") = nullptr, py::arg("owners") = py::none(),
         "Submit a consumer-sized group on one owned queue and complete once; "
         "never reuse requests.");
+  using Completion = reloc::dispatch::Completion;
+  py::class_<Completion, std::shared_ptr<Completion>>(m, "DispatchCompletion")
+      .def("wait",
+           [](Completion &work) {
+             reloc::TransferOutcome outcome;
+             {
+               py::gil_scoped_release release;
+               outcome = work.wait();
+             }
+             if (outcome.error)
+               raise(*outcome.error);
+           })
+      .def("query",
+           [](Completion &work) {
+             std::variant<bool, reloc::TransferError> result;
+             {
+               py::gil_scoped_release release;
+               result = work.query();
+             }
+             if (auto *error = std::get_if<reloc::TransferError>(&result))
+               raise(*error);
+             return std::get<bool>(result);
+           })
+      .def(
+          "wait_stream",
+          [](Completion &work, uintptr_t stream) {
+            std::optional<reloc::TransferError> error;
+            {
+              py::gil_scoped_release release;
+              error = work.waitStream(reinterpret_cast<const void *>(stream));
+            }
+            if (error)
+              raise(*error);
+          },
+          py::arg("stream"))
+      .def("__reduce_ex__", [](const Completion &, int) {
+        throw py::type_error("dispatch completions cannot be serialized");
+      });
+  m.def("submit_dispatch_group", &executeGroupPy<true>, py::arg("group"),
+        py::kw_only(), py::arg("caller_stream") = py::none(),
+        py::arg("gather_threads") = 8, py::arg("gather_pool") = nullptr,
+        py::arg("pinning") = "auto", py::arg("min_pinned_bytes") = py::none(),
+        py::arg("max_scratch_bytes") = size_t(64) << 20,
+        py::arg("resources") = nullptr, py::arg("owners") = py::none(),
+        "Enqueue a group and return an owned completion; CPU preparation is "
+        "synchronous.");
   using Resources = reloc::dispatch::Resources;
   py::class_<Resources, std::shared_ptr<Resources>>(m, "DispatchResources")
       .def(py::init<size_t, size_t, unsigned, unsigned>(), py::kw_only(),

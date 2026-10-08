@@ -3,8 +3,11 @@
 #ifndef RELOC_DISPATCHGROUPINTERNAL_H
 #define RELOC_DISPATCHGROUPINTERNAL_H
 #include "reloc/Dispatch.h"
+#include <functional>
 namespace reloc::dispatch::group_detail {
-std::optional<TransferError> executeGroup(GroupRequest &, CopyBackend &,
-                                          const TransferOptions &);
-}
+using HostCompletion = std::function<std::optional<TransferError>()>;
+std::optional<TransferError>
+executeGroup(GroupRequest &, CopyBackend &, const TransferOptions &,
+             std::vector<HostCompletion> *deferred = nullptr);
+} // namespace reloc::dispatch::group_detail
 #endif

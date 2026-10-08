@@ -1211,7 +1211,8 @@ prepareDispatchGroup(const std::vector<GroupEntry> &entries) {
 // that releases or recycles freeStaging/freeDevice immediately.
 std::optional<TransferError>
 group_detail::executeGroup(GroupRequest &group, CopyBackend &base,
-                           const TransferOptions &options) {
+                           const TransferOptions &options,
+                           std::vector<HostCompletion> *deferred) {
 #ifdef RELOC_ENABLE_CUDA
   auto *backend = dynamic_cast<CudaBackend *>(&base);
   if (!backend)
@@ -1307,6 +1308,10 @@ group_detail::executeGroup(GroupRequest &group, CopyBackend &base,
     if (backend->failed())
       return backendFailure(*backend, "group payload copy failed");
   }
+  if (deferred) {
+    *deferred = std::move(execution.host);
+    return std::nullopt;
+  }
   if (auto error = finishQueue(*backend))
     return error;
   for (auto &finish : execution.host)
@@ -1319,6 +1324,7 @@ group_detail::executeGroup(GroupRequest &group, CopyBackend &base,
   (void)group;
   (void)base;
   (void)options;
+  (void)deferred;
   return fail("backend_mismatch", "group execution requires a CUDA build");
 #endif
 }

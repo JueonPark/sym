@@ -68,7 +68,7 @@ struct TransferError {
 
 /// Whether submitted work may still access the request's buffers. An error
 /// can have Complete completion; Unknown requires retaining every owner.
-enum class TransferCompletion { NotLaunched, Complete, Unknown };
+enum class TransferCompletion { NotLaunched, Complete, Unknown, Pending };
 
 struct TransferOutcome {
   std::optional<TransferError> error;

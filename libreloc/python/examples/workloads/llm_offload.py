@@ -21,6 +21,7 @@ See README.md in this directory for the environment and the report fields.
 from __future__ import annotations
 
 import argparse
+from contextlib import nullcontext
 
 import common
 
@@ -50,7 +51,7 @@ class OffloadedGPT:
             for _ in range(sizes["layers"])
         ]
 
-    def forward(self, tokens, start, cache, fetch):
+    def forward(self, tokens, start, cache, fetch, *, prefetch=None):
         """Run ``tokens`` (GPU, positions ``start``, ``start + 1``, ...) through every layer.
 
         ``cache`` holds each layer's (K, V) as [H, S, Dh] or None; ``fetch(q, scale)``
@@ -59,24 +60,28 @@ class OffloadedGPT:
         head_dim = d // heads
         x = self.token[tokens] + self.position[start:start + len(tokens)]
         new_cache = []
-        for layer, past in zip(self.layers, cache):
-            w = {name: fetch(*layer[name]) for name in MATRICES}
-            q, k, v = F.linear(F.layer_norm(x, (d,)), w["qkv"]).split(d, dim=1)
-            q, k, v = (t.view(-1, heads, head_dim).transpose(0, 1) for t in (q, k, v))    # [H, n, Dh]
-            if past is not None:
-                k, v = torch.cat([past[0], k], dim=1), torch.cat([past[1], v], dim=1)
-            k, v = k.contiguous(), v.contiguous()
-            new_cache.append((k, v))
-            total, n = k.shape[1], q.shape[1]
-            mask = torch.ones(n, total, dtype=torch.bool, device=x.device).tril(total - n)
-            scores = (q @ k.transpose(1, 2) / head_dim ** 0.5).masked_fill(~mask, float("-inf"))
-            attention = scores.softmax(dim=-1) @ v                                          # [H, n, Dh]
-            x = x + F.linear(attention.transpose(0, 1).reshape(n, d), w["proj"])
-            x = x + F.linear(F.gelu(F.linear(F.layer_norm(x, (d,)), w["fc1"])), w["fc2"])
+        groups = (tuple(layer[name] for name in MATRICES) for layer in self.layers)
+        delivery = (prefetch(groups, x.device) if prefetch is not None else
+                    nullcontext(tuple(fetch(q, scale) for q, scale in weights) for weights in groups))
+        with delivery as loaded:
+            for tensors, past in zip(loaded, cache):
+                w = dict(zip(MATRICES, tensors))
+                q, k, v = F.linear(F.layer_norm(x, (d,)), w["qkv"]).split(d, dim=1)
+                q, k, v = (t.view(-1, heads, head_dim).transpose(0, 1) for t in (q, k, v))    # [H, n, Dh]
+                if past is not None:
+                    k, v = torch.cat([past[0], k], dim=1), torch.cat([past[1], v], dim=1)
+                k, v = k.contiguous(), v.contiguous()
+                new_cache.append((k, v))
+                total, n = k.shape[1], q.shape[1]
+                mask = torch.ones(n, total, dtype=torch.bool, device=x.device).tril(total - n)
+                scores = (q @ k.transpose(1, 2) / head_dim ** 0.5).masked_fill(~mask, float("-inf"))
+                attention = scores.softmax(dim=-1) @ v                                          # [H, n, Dh]
+                x = x + F.linear(attention.transpose(0, 1).reshape(n, d), w["proj"])
+                x = x + F.linear(F.gelu(F.linear(F.layer_norm(x, (d,)), w["fc1"])), w["fc2"])
         return F.layer_norm(x, (d,)) @ self.token.t(), new_cache
 
 
-def generate(model, prompt, steps, fetch, evict, restore):
+def generate(model, prompt, steps, fetch, evict, restore, *, prefetch=None):
     """Greedy decoding for ``steps`` forward passes. Between passes every
     layer's K and V leave the GPU (``evict``) and come back (``restore``).
     Returns the generated token ids and the last pass's logits."""
@@ -86,7 +91,7 @@ def generate(model, prompt, steps, fetch, evict, restore):
             cache = [None] * len(model.layers)
         else:
             cache = [(restore(k), restore(v)) for k, v in offloaded]
-        logits, cache = model.forward(tokens, start, cache, fetch)
+        logits, cache = model.forward(tokens, start, cache, fetch, prefetch=prefetch)
         token = logits[-1].argmax().view(1)
         generated.append(int(token))
         start += len(tokens)

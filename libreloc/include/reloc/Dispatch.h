@@ -23,7 +23,9 @@
 #include "reloc/Transfer.h"
 #include "reloc/TypedExecute.h"
 
+#include <atomic>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <variant>
@@ -176,6 +178,9 @@ struct GroupRequest {
   GroupReport report;
   int device = -1;
   bool consumed = false, executing = false;
+  // Stable shared flag across moves; reports are immutable once it clears.
+  std::shared_ptr<std::atomic<bool>> pending =
+      std::make_shared<std::atomic<bool>>(false);
 };
 /// Validate the entire group before any allocation/submission; at most 256
 /// items, one device, no destination aliases with other outputs or inputs.

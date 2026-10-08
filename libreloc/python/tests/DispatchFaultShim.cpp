@@ -21,11 +21,18 @@ extern "C" cudaError_t CUDARTAPI cudaEventRecord(cudaEvent_t event,
   return real(event, stream);
 }
 extern "C" cudaError_t CUDARTAPI cudaStreamSynchronize(cudaStream_t stream) {
-  if (mode.load() == 2 || mode.load() == 4)
+  if (mode.load() == 2 || mode.load() == 4 || mode.load() == 6)
     return cudaErrorUnknown;
   static auto real = reinterpret_cast<decltype(&cudaStreamSynchronize)>(
       dlsym(RTLD_NEXT, "cudaStreamSynchronize"));
   return real(stream);
+}
+extern "C" cudaError_t CUDARTAPI cudaEventSynchronize(cudaEvent_t event) {
+  if (mode.load() == 5 || mode.load() == 6)
+    return cudaErrorUnknown;
+  static auto real = reinterpret_cast<decltype(&cudaEventSynchronize)>(
+      dlsym(RTLD_NEXT, "cudaEventSynchronize"));
+  return real(event);
 }
 extern "C" cudaError_t CUDARTAPI cudaMemcpyAsync(void *destination,
                                                  const void *source,
