@@ -1,0 +1,90 @@
+{
+  "sqlite_sha256": "5ab651433756484073fd60216227cf87c9187b65b8a201a69f3f62caa3a33a0a",
+  "intervals_csv": "overlap-split.csv",
+  "interval_requests": [
+    0,
+    5
+  ],
+  "requests": [
+    {
+      "request": 0,
+      "path": "typed221/split/ring1",
+      "chunks": 33,
+      "completed_ms": 10.605514,
+      "dma_ms": 2.621701,
+      "next_transform_overlap_ms": 0.0
+    },
+    {
+      "request": 1,
+      "path": "typed221/split/ring1",
+      "chunks": 33,
+      "completed_ms": 7.096056,
+      "dma_ms": 2.622346,
+      "next_transform_overlap_ms": 0.0
+    },
+    {
+      "request": 2,
+      "path": "typed221/split/ring1",
+      "chunks": 33,
+      "completed_ms": 6.992919,
+      "dma_ms": 2.621064,
+      "next_transform_overlap_ms": 0.0
+    },
+    {
+      "request": 3,
+      "path": "typed221/split/ring1",
+      "chunks": 33,
+      "completed_ms": 7.018247,
+      "dma_ms": 2.620969,
+      "next_transform_overlap_ms": 0.0
+    },
+    {
+      "request": 4,
+      "path": "typed221/split/ring1",
+      "chunks": 33,
+      "completed_ms": 6.985494,
+      "dma_ms": 2.621125,
+      "next_transform_overlap_ms": 0.0
+    },
+    {
+      "request": 5,
+      "path": "typed221/split/ring2",
+      "chunks": 33,
+      "completed_ms": 8.641711,
+      "dma_ms": 2.766346,
+      "next_transform_overlap_ms": 2.028433
+    },
+    {
+      "request": 6,
+      "path": "typed221/split/ring2",
+      "chunks": 33,
+      "completed_ms": 5.166888,
+      "dma_ms": 2.663595,
+      "next_transform_overlap_ms": 1.977281
+    },
+    {
+      "request": 7,
+      "path": "typed221/split/ring2",
+      "chunks": 33,
+      "completed_ms": 5.442965,
+      "dma_ms": 2.668586,
+      "next_transform_overlap_ms": 1.979827
+    },
+    {
+      "request": 8,
+      "path": "typed221/split/ring2",
+      "chunks": 33,
+      "completed_ms": 5.505494,
+      "dma_ms": 2.670535,
+      "next_transform_overlap_ms": 1.927611
+    },
+    {
+      "request": 9,
+      "path": "typed221/split/ring2",
+      "chunks": 33,
+      "completed_ms": 5.575888,
+      "dma_ms": 2.669701,
+      "next_transform_overlap_ms": 1.909214
+    }
+  ]
+}

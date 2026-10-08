@@ -251,15 +251,25 @@ def prepare_typed_transfer(
     )
 
 
-def execute_typed_transfer(request, *, n_buffers=4, n_streams=2, gather_threads=None, gather_pool=None,
+def execute_typed_transfer(request, *, n_buffers=2, n_streams=2, gather_threads=None, gather_pool=None,
                            pinning="auto", min_pinned_bytes=None,
-                           direct_dense_upload=True, resources=None):
+                           direct_dense_upload=True, pipeline=True, chunk_size=None, resources=None):
+    """Complete a typed transfer, retaining scratch in ``resources`` when given.
+
+    CPU-producing H2D rows use a bounded transform/copy ring when physical rows
+    can be partitioned. ``chunk_size`` is a target in wire bytes (rows cannot be
+    split); ``None`` uses the runtime heuristic. ``pipeline=False`` selects the
+    whole-buffer control. ``n_buffers=1`` preserves the chunk schedule but waits
+    for every copy before the next transform. Pinning and worker budgets remain
+    explicit; unconfigured ``pinning="auto"`` stays conservative/pageable.
+    """
     if not request._execution_lock.acquire(blocking=False):
         raise RuntimeError("typed transfer request is already executing")
     try:
         return _execute_typed_transfer(request, n_buffers=n_buffers, n_streams=n_streams,
             gather_threads=gather_threads, gather_pool=gather_pool, pinning=pinning,
             min_pinned_bytes=min_pinned_bytes, direct_dense_upload=direct_dense_upload,
+            pipeline=pipeline, chunk_size=chunk_size,
             resources=resources)
     finally:
         request._execution_lock.release()
@@ -267,11 +277,21 @@ def execute_typed_transfer(request, *, n_buffers=4, n_streams=2, gather_threads=
 
 def _execute_typed_transfer(request, *, n_buffers, n_streams, gather_threads,
                             gather_pool, pinning, min_pinned_bytes,
-                            direct_dense_upload, resources):
+                            direct_dense_upload, pipeline, chunk_size, resources):
     """Allocate the destination, recheck, order after the caller stream, run
     exactly the prepared implementation and complete."""
     import torch
+    import operator
     from .resources import TransferResources, _transfer_configuration
+
+    if not isinstance(pipeline, bool):
+        raise TypeError("pipeline must be a bool")
+    if chunk_size is not None:
+        if isinstance(chunk_size, bool):
+            raise TypeError("chunk_size must be an integer byte count")
+        chunk_size = operator.index(chunk_size)
+        if not 0 < chunk_size < 1 << 64:
+            raise ValueError("chunk_size must be positive and fit size_t")
 
     _transfer_configuration(resources, {"n_buffers": n_buffers, "n_streams": n_streams,
         "gather_threads": request.threads if gather_threads is None else gather_threads,
@@ -321,6 +341,7 @@ def _execute_typed_transfer(request, *, n_buffers, n_streams, gather_threads,
             gather_pool=gather_pool,
             pinning=pinning, min_pinned_bytes=min_pinned_bytes,
             direct_dense_upload=direct_dense_upload,
+            pipeline=pipeline, chunk_size=0 if chunk_size is None else chunk_size,
             resources=native_resources, owners=(request.source, out),
         )
     except pyreloc.TransferError as error:

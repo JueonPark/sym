@@ -344,6 +344,67 @@ TEST(Dispatch, DeviceToHostReferenceStagesThenExecutes) {
   EXPECT_EQ(request.report.payloadBytesTransferred, 60);
 }
 
+TEST(Dispatch, TypedH2DRingBoundsStagingAndMatchesOneBufferControl) {
+  auto plan = mustBind(typed_goldens::kQuantDequantSymHex, {{"N", 4099}});
+  auto program = mustPrepare(plan);
+  auto src = bytesOf(randomFloats(4099, 221));
+  const auto expected = reference(program, src);
+  struct CountingBackend : reloc::HostBackend {
+    CountingBackend() : HostBackend(2) {}
+    size_t allocations = 0, bytes = 0;
+    void *allocStaging(size_t size) override {
+      ++allocations;
+      bytes += size;
+      return HostBackend::allocStaging(size);
+    }
+  };
+  for (int buffers : {1, 2, 4}) {
+    CountingBackend backend;
+    std::vector<uint8_t> dst(expected.size(), 0xAB);
+    auto request =
+        mustPrepareDispatch(plan, view(src.data(), src.size(), {4099}, 4),
+                            view(dst.data(), dst.size(), {4099}, 4),
+                            TransferDirection::HostToDevice, Options{});
+    TransferOptions transfer;
+    transfer.nBuffers = buffers;
+    transfer.chunkSizeOverride = 4096;
+    transfer.gatherThreads = 3;
+    auto error = reloc::dispatch::executeDispatch(request, backend, transfer);
+    ASSERT_FALSE(error.has_value()) << (error ? error->message : "");
+    EXPECT_EQ(dst, expected);
+    EXPECT_EQ(request.report.hostPipeline, "chunked");
+    EXPECT_EQ(request.report.hostChunks, 5u);
+    EXPECT_EQ(request.report.hostChunkBytes, 4096u);
+    EXPECT_EQ(backend.allocations, size_t(buffers));
+    EXPECT_EQ(backend.bytes, size_t(buffers) * 4096);
+  }
+}
+
+TEST(Dispatch, NonPartitionableTypedLayoutKeepsWholeBufferFallback) {
+  auto plan = mustBind(typed_goldens::kWitnessChannelTransposeHex, {});
+  auto original = mustPrepare(plan);
+  auto src = bytesOf(randomFloats(original.sourceElements, 221));
+  const auto expected = reference(original, src);
+  ASSERT_GE(plan.layout.extents.size(), 2u);
+  // Reordering iteration axes preserves the index map, but now outer rows
+  // interleave in physical destination memory and cannot be cut into windows.
+  std::swap(plan.layout.extents[0], plan.layout.extents[1]);
+  std::swap(plan.layout.srcStrides[0], plan.layout.srcStrides[1]);
+  std::swap(plan.layout.dstStrides[0], plan.layout.dstStrides[1]);
+  std::vector<uint8_t> dst(expected.size());
+  auto request = mustPrepareDispatch(
+      plan, view(src.data(), src.size(), {original.sourceElements}, 4),
+      view(dst.data(), dst.size(), {original.resultElements}, 1),
+      TransferDirection::HostToDevice, Options{});
+  TransferOptions transfer;
+  transfer.chunkSizeOverride = 1;
+  reloc::HostBackend backend(1);
+  auto error = reloc::dispatch::executeDispatch(request, backend, transfer);
+  ASSERT_FALSE(error.has_value()) << (error ? error->message : "");
+  EXPECT_EQ(dst, expected);
+  EXPECT_EQ(request.report.hostPipeline, "whole_non_partitionable");
+}
+
 //===----------------------------------------------------------------------===//
 // Policy.
 //===----------------------------------------------------------------------===//

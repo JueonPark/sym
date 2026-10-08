@@ -92,6 +92,8 @@ struct Report {
   int64_t deviceTempBytes = 0;
   uint32_t artifactVersion = 1; // the typed wire format version
   bool executed = false;
+  std::string hostPipeline = "not_applicable";
+  size_t hostChunks = 0, hostChunkBytes = 0, hostBuffers = 0;
   std::vector<StagingDecision> staging;
 };
 

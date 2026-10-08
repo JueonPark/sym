@@ -2,6 +2,7 @@
 
 #include "reloc/Dispatch.h"
 #include "DispatchGroupInternal.h"
+#include "Trace.h"
 #include "TransferInternal.h"
 
 #include "reloc/ChunkSchedule.h"
@@ -320,6 +321,102 @@ std::optional<TransferError> hostProgram(const Program &program, uint32_t from,
   return std::nullopt;
 }
 
+// Transform directly into ring slots. Completion of a slot's previous copy
+// gates its reuse; the worker barrier completes before that slot is submitted.
+// Pool cleanup independently drains on failure, while Resources retains or
+// quarantines the arena and all tensor owners when completion is unknown.
+std::optional<TransferError>
+transformToDevice(const Program &program, uint32_t boundary, const void *src,
+                  void *dst, CopyBackend &backend,
+                  const TransferOptions &options, Report &report) {
+  const auto bytes =
+      static_cast<size_t>(typed::bytesAt(program, boundary, true));
+  auto wire = program.plan.layout;
+  wire.elementSize = typed::widthAt(program, boundary);
+  wire.totalBytes = static_cast<int64_t>(bytes);
+  report.hostChunks = 1;
+  report.hostChunkBytes = bytes;
+  report.hostBuffers = 1;
+  auto whole = [&]() -> std::optional<TransferError> {
+    StagingGuard result{backend, backend.allocStaging(bytes)};
+    if (!result.buffer)
+      return backendFailure(backend, "host scratch allocation failed");
+    if (auto error =
+            hostProgram(program, 0, boundary, src, result.buffer, options))
+      return error;
+    return pipelineToDevice(result.buffer, dst, program.resultElements,
+                            wire.elementSize, backend, options);
+  };
+  if (!options.pipelineTypedH2D) {
+    report.hostPipeline = "whole_disabled";
+    return whole();
+  }
+  // Keep small transfers whole. Larger typed transfers target 32 chunks with
+  // a 1 MiB floor: measured conversion/DMA schedules favor smaller slots than
+  // the layout gather default (see docs/typed-h2d-pipeline.md). Physical rows
+  // remain indivisible, and callers can override this hardware-sensitive knob.
+  // The schedule is independent of ring size, including the one-slot control.
+  size_t target = options.chunkSizeOverride;
+  if (!target)
+    target = bytes <= kMinChunkBytes
+                 ? bytes
+                 : std::clamp<size_t>(bytes / 32, 1ull << 20, kMaxChunkBytes);
+  const auto schedule = planChunks(wire, 2, target);
+  const bool partitionable =
+      !schedule.serialized && size_t(schedule.chunks.back().byteOffset) +
+                                      schedule.chunks.back().bytes ==
+                                  bytes;
+  report.hostPipeline = !partitionable ? "whole_non_partitionable"
+                        : schedule.chunks.size() == 1 ? "whole_single_chunk"
+                                                      : "chunked";
+  if (report.hostPipeline != "chunked")
+    return whole();
+  const int slots = static_cast<int>(
+      std::min<size_t>(std::max(1, options.nBuffers), schedule.chunks.size()));
+  if (backend.numQueues() < 1)
+    return backendFailure(backend, "backend has no copy queue");
+  report.hostChunks = schedule.chunks.size();
+  report.hostChunkBytes = schedule.maxChunkBytes;
+  report.hostBuffers = slots;
+  PinnedBufferPool ring(backend, slots, schedule.maxChunkBytes);
+  if (!ring.valid() || backend.failed())
+    return backendFailure(backend, "typed staging ring allocation failed");
+  // Raw callers without an owned/borrowed pool still create workers once per
+  // transfer, never once per chunk. Resources normally supplies its pool.
+  std::unique_ptr<GatherPool> owned;
+  GatherPool *workers = options.gather;
+  if (!workers && options.gatherThreads != 1) {
+    owned = std::make_unique<GatherPool>(options.gatherThreads);
+    workers = owned.get();
+  }
+  for (size_t k = 0; k < schedule.chunks.size(); ++k) {
+    const auto &chunk = schedule.chunks[k];
+    const int slot = ring.acquire();
+    if (slot < 0)
+      return backendFailure(backend, "typed staging reuse failed");
+    if (auto error = typed::executeHostChunk(
+            program, 0, boundary, src, ring.buffer(slot), chunk, workers, 1, k))
+      return fromExecution(*error);
+    const int queue = static_cast<int>(k % size_t(backend.numQueues()));
+    ring.markPending();
+    {
+      detail::TraceRange submit("reloc.typed.h2d.submit", k);
+      backend.copyAsync(queue, static_cast<uint8_t *>(dst) + chunk.byteOffset,
+                        ring.buffer(slot), chunk.bytes, CopyDir::HostToDevice);
+    }
+    if (backend.failed())
+      return backendFailure(backend, "typed chunk copy failed");
+    const auto event = backend.recordEvent(queue);
+    ring.setEvent(slot, event);
+    if (!event || backend.failed())
+      return backendFailure(backend, "typed chunk event failed");
+  }
+  ring.drain();
+  if (backend.failed())
+    return backendFailure(backend, "typed chunk completion failed");
+  return std::nullopt;
+}
+
 //===----------------------------------------------------------------------===//
 // CUDA rows.
 //===----------------------------------------------------------------------===//
@@ -487,19 +584,26 @@ std::optional<TransferError> executeCuda(DispatchRequest &request,
     const uint32_t k = row.wireBoundary;
     const size_t wireBytes =
         static_cast<size_t>(typed::bytesAt(program, k, true));
-    StagingGuard wire{backend, backend.allocStaging(wireBytes)};
-    if (!wire.buffer)
-      return backendFailure(backend, "host scratch allocation failed");
-    if (auto error = hostProgram(program, 0, k, src, wire.buffer, options))
-      return error;
-    if (scratch.group)
-      scratch.group->hostTransformBytes += wireBytes;
     void *dWire = scratch.allocDevice(static_cast<int64_t>(wireBytes));
     if (dWire == nullptr)
       return backendFailure(backend, "device scratch allocation failed");
-    if (auto error = pipelineToDevice(
-            wire.buffer, dWire, program.resultElements,
-            typed::widthAt(program, k), backend, options, scratch.group))
+    if (grouped) {
+      // Groups retain their one completion barrier and whole-member staging.
+      StagingGuard wire{backend, backend.allocStaging(wireBytes)};
+      if (!wire.buffer)
+        return backendFailure(backend, "host scratch allocation failed");
+      if (auto error = hostProgram(program, 0, k, src, wire.buffer, options))
+        return error;
+      scratch.group->hostTransformBytes += wireBytes;
+      request.report.hostPipeline = "whole_group";
+      request.report.hostChunks = request.report.hostBuffers = 1;
+      request.report.hostChunkBytes = wireBytes;
+      if (auto error = pipelineToDevice(
+              wire.buffer, dWire, program.resultElements,
+              typed::widthAt(program, k), backend, options, scratch.group))
+        return error;
+    } else if (auto error = transformToDevice(program, k, src, dWire, backend,
+                                              options, request.report))
       return error;
     payload += static_cast<int64_t>(wireBytes);
     if (auto error = runDeviceStages(program, k, stageCount, true, dWire, dst,
@@ -1138,6 +1242,11 @@ group_detail::executeGroup(GroupRequest &group, CopyBackend &base,
     };
     StagingGuard staging{*backend};
     if (direction == TransferDirection::HostToDevice) {
+      if (std::holds_alternative<DispatchRequest>(item)) {
+        group.reports[i].hostPipeline = "whole_group";
+        group.reports[i].hostChunks = group.reports[i].hostBuffers = 1;
+        group.reports[i].hostChunkBytes = report.destinationBytes;
+      }
       staging.buffer = backend->allocStaging(report.destinationBytes);
       if (!staging.buffer)
         return backendFailure(*backend, "group host allocation failed");
@@ -1199,16 +1308,8 @@ std::optional<TransferError> executeDispatch(DispatchRequest &request,
 
   if (request.selected.id == kCpuReference) {
     if (request.direction == TransferDirection::HostToDevice) {
-      StagingGuard result{backend, backend.allocStaging(static_cast<size_t>(
-                                       program.plan.destinationBytes))};
-      if (!result.buffer)
-        return backendFailure(backend, "host scratch allocation failed");
-      if (auto error =
-              hostProgram(program, 0, stageCount, src, result.buffer, options))
-        return error;
-      if (auto error = pipelineToDevice(
-              result.buffer, dst, program.resultElements,
-              typed::widthAt(program, stageCount), backend, options))
+      if (auto error = transformToDevice(program, stageCount, src, dst, backend,
+                                         options, request.report))
         return error;
       request.report.payloadBytesTransferred = program.plan.destinationBytes;
     } else {

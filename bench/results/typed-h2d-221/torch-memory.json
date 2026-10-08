@@ -1,0 +1,42 @@
+[
+  {
+    "case": "cast",
+    "torch": "2.14.0+cu126",
+    "pinned_logical_bytes": 33554438,
+    "pinned_active_capacity_bytes": 67108864,
+    "pinned_reserved_capacity_bytes": 67108864,
+    "gpu_output_logical_bytes": 33554438,
+    "gpu_allocated_bytes": 33554944,
+    "gpu_peak_allocated_bytes": 33554944
+  },
+  {
+    "case": "small",
+    "torch": "2.14.0+cu126",
+    "pinned_logical_bytes": 131078,
+    "pinned_active_capacity_bytes": 262144,
+    "pinned_reserved_capacity_bytes": 262144,
+    "gpu_output_logical_bytes": 131078,
+    "gpu_allocated_bytes": 131584,
+    "gpu_peak_allocated_bytes": 131584
+  },
+  {
+    "case": "split",
+    "torch": "2.14.0+cu126",
+    "pinned_logical_bytes": 33554438,
+    "pinned_active_capacity_bytes": 67108864,
+    "pinned_reserved_capacity_bytes": 67108864,
+    "gpu_output_logical_bytes": 67108876,
+    "gpu_allocated_bytes": 67109376,
+    "gpu_peak_allocated_bytes": 100664320
+  },
+  {
+    "case": "transpose",
+    "torch": "2.14.0+cu126",
+    "pinned_logical_bytes": 33554432,
+    "pinned_active_capacity_bytes": 33554432,
+    "pinned_reserved_capacity_bytes": 33554432,
+    "gpu_output_logical_bytes": 33554432,
+    "gpu_allocated_bytes": 33554432,
+    "gpu_peak_allocated_bytes": 33554432
+  }
+]
