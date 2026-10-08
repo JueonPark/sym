@@ -83,4 +83,78 @@ fixed-shape steady-state microbenchmark.
 
 ## Qualification results
 
-Results and validation are recorded below after the matched runs.
+Measured 2026-10-08 on AMD EPYC 7351 / RTX 2080 Ti GPU 0, driver 595.71.05,
+Torch 2.14.0+cu126 (CUDA 12.6), native CUDA toolkit 12.5.82, CPython 3.14.7.
+Affinity was CPUs 4–7,20–23,
+eight Torch threads and one interop thread. Caller/benchmark source was
+`2957dd38309ecd4246cb6869a24d6679d23541ce`; runtime/compiler source was the main
+revision above, rebuilt before testing. All 12 fresh-process runs passed all
+3,978 check observations with identical dispatch rows, payload bytes, model
+outputs and checks between policies. The weight rows use
+`cuda_dequant_relocate`; CPU-reference ownership is qualified separately by
+the caller tests.
+
+Raw samples, first calls, round order, logs, hashes and policy snapshots are in
+[the committed evidence](../bench/results/typed-transfer-callers-218/).
+Milliseconds below are medians of three process totals; ranges are the minimum
+and maximum process totals, not confidence intervals.
+
+| Workload | Per-call, after first of each kind | Retained, after first of each kind | Reduction | Torch paired with retained |
+| --- | ---: | ---: | ---: | ---: |
+| LLM | 466.167 (465.507–468.482) | 360.394 (359.607–361.670) | 22.7% | 181.995 (180.433–182.442) |
+| MoE | 199.691 (197.430–201.387) | 126.925 (126.397–126.991) | 36.4% | 75.496 (75.137–76.166) |
+
+The LLM weight-only remaining total changes from 334.783 to 231.444 ms
+(30.9%); KV calls use unchanged frontend ownership. Medians of individual
+kinds need not sum to the median of the whole process. These improvements are
+versus this caller's per-call control, not versus Torch. Torch remains faster
+for both complete transfer workloads, and no model-throughput gain is claimed.
+
+| Workload / transfer kind | Per-call first call | Retained first call |
+| --- | ---: | ---: |
+| LLM weights | 6.182 | 6.379 |
+| LLM KV evict | 253.783 | 254.689 |
+| LLM KV restore | 86.028 | 86.172 |
+| MoE weights | 8.125 | 7.799 |
+
+These are the first calls in initialized workload processes, after the Torch
+pass. KV first calls include their graph compilation; the weight recipe is
+compiled before its timer. They are not process-cold CUDA measurements. Small
+first-call differences do not establish a startup improvement. Including every
+transfer call, the median Sym totals are LLM 812.732 → 706.853 ms and MoE
+207.828 → 134.608 ms. The paired retained Torch totals are 192.325 and 84.843 ms;
+the MoE Torch all-call range is 84.481–104.458 ms, reflecting substantial
+first-call variation.
+
+| Retained direct owner, before close | LLM | MoE |
+| --- | ---: | ---: |
+| Requests / reuse hits | 256 / 255 | 170 / 169 |
+| Native context creations | 1 | 1 |
+| Device / host scratch allocations | 3 / 2 | 2 / 1 |
+| Device / host retained bytes | 8,400,896 / 28,672 | 2,367,488 / 8,192 |
+| Total retained scratch | 8,429,568 B (8.039 MiB) | 2,375,680 B (2.266 MiB) |
+| Streams / background gather workers | 2 / 0 | 2 / 0 |
+
+The measured GPU weight row needs no CPU gather workers; CPU-reference tests
+separately assert that warmed worker counts remain stable. All retained runs
+end with zero scratch bytes, streams, and workers after close and balanced
+scratch allocation/free counts. The 64 MiB per-device retention limit remains
+separate from the uncapped live setting (`live_bytes=0`). No peak-live-memory
+claim follows from these completed-call gauges.
+
+All 55 workload tests passed. Validation covers changing payloads, scales, shapes, retained outputs, alternate
+caller streams, canonical device aliases, two/four-GPU use, explicit per-call
+execution, a hard live-budget failure, and cleanup when model/dispatch/owner
+close raises. All 11 selected current-main GPU typed dispatch tests passed
+(three non-GPU tests deselected), including real CUDA completion and
+unknown-completion quarantine faults with the fault shim built.
+
+The repeated typed handoff diagnostic passed with both resource policies.
+Its CPU-reference retained row reports 19 requests, 18 reuse hits, one native
+context, one host scratch allocation, two streams, and seven gather workers;
+close reduces its retained bytes, streams and workers to zero. This is a single
+descriptive diagnostic, not the fresh-process workload comparison above. Its
+`source_dirty` flag reflects the pending documentation/evidence files; measured
+caller code matches `2957dd3`. Exact commands and environment details are in
+[environment.json](../bench/results/typed-transfer-callers-218/environment.json).
+No C++/compiler runtime code is changed by this caller PR.

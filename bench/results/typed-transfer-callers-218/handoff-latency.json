@@ -1,0 +1,145 @@
+{
+  "device": "cuda",
+  "environment": {
+    "cuda_devices": [
+      "NVIDIA GeForce RTX 2080 Ti",
+      "NVIDIA GeForce RTX 2080 Ti",
+      "NVIDIA GeForce RTX 2080 Ti",
+      "NVIDIA GeForce RTX 2080 Ti"
+    ],
+    "exporter": "/home/jueonpark/sym/build/issue210/sym/tools/sym-reloc-export",
+    "numpy": "2.5.3",
+    "nvidia_smi": [
+      "NVIDIA GeForce RTX 2080 Ti, 595.71.05",
+      "NVIDIA GeForce RTX 2080 Ti, 595.71.05",
+      "NVIDIA GeForce RTX 2080 Ti, 595.71.05",
+      "NVIDIA GeForce RTX 2080 Ti, 595.71.05"
+    ],
+    "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.35",
+    "pyreloc": "/home/jueonpark/sym/build/issue210/python/pyreloc/__init__.py",
+    "pyreloc_cuda_enabled": true,
+    "python": "3.14.7",
+    "python_build": "cpython cpython-314",
+    "pythonpath": "/home/jueonpark/sym/build/issue210/python",
+    "run_artifact": "/home/jueonpark/sym/build/issue210/libreloc/examples/reloc-run-artifact",
+    "source_dirty": true,
+    "source_revision": "2957dd38309ecd4246cb6869a24d6679d23541ce",
+    "torch": "2.14.0+cu126",
+    "torch_cuda": "12.6"
+  },
+  "prerequisites": [],
+  "scenarios": [
+    {
+      "details": {
+        "backend_counters": {
+          "plan_compiles": 1,
+          "runtime_executions": 54,
+          "symbol_binds": 54
+        },
+        "note": "descriptive only; no speedup gate",
+        "rows": [
+          {
+            "elements": 65536,
+            "implementation": "R2 forward H2D (compiled region)",
+            "pytorch_ms": 0.2457,
+            "reloc_ms": 0.8358,
+            "scenario": "layout_h2d_split_transpose",
+            "source_bytes": 262144,
+            "wire_bytes": 262144
+          },
+          {
+            "elements": 1048576,
+            "implementation": "R2 forward H2D (compiled region)",
+            "pytorch_ms": 3.7851,
+            "reloc_ms": 3.8069,
+            "scenario": "layout_h2d_split_transpose",
+            "source_bytes": 4194304,
+            "wire_bytes": 4194304
+          },
+          {
+            "elements": 4194304,
+            "implementation": "R2 forward H2D (compiled region)",
+            "pytorch_ms": 14.3897,
+            "reloc_ms": 9.7995,
+            "scenario": "layout_h2d_split_transpose",
+            "source_bytes": 16777216,
+            "wire_bytes": 16777216
+          },
+          {
+            "elements": 1048576,
+            "first_transfer_ms": 15.749430283904076,
+            "implementation": "cpu_reference",
+            "includes_preparation": true,
+            "payload_bytes_transferred": 2097152,
+            "placement_reason": "forced",
+            "pytorch_ms": 7.4523,
+            "reloc_ms": 18.0355,
+            "resource_policy": "per-call",
+            "resources_after_close": null,
+            "resources_before_close": null,
+            "scenario": "typed_h2d_transpose_cast_f16",
+            "source_bytes": 4194304,
+            "wire_bytes": 2097152
+          },
+          {
+            "elements": 1048576,
+            "first_transfer_ms": 11.753634549677372,
+            "implementation": "cpu_reference",
+            "includes_preparation": true,
+            "payload_bytes_transferred": 2097152,
+            "placement_reason": "forced",
+            "pytorch_ms": 5.5213,
+            "reloc_ms": 11.4877,
+            "resource_policy": "retained",
+            "resources_after_close": {
+              "background_workers": 0,
+              "closed": true,
+              "context_creations": 1,
+              "device_allocations": 0,
+              "device_bytes": 0,
+              "frees": 1,
+              "hits": 18,
+              "host_allocations": 1,
+              "host_bytes": 0,
+              "process_valid": true,
+              "quarantined": false,
+              "requests": 19,
+              "retained_bytes": 0,
+              "streams": 0
+            },
+            "resources_before_close": {
+              "background_workers": 7,
+              "closed": false,
+              "context_creations": 1,
+              "device_allocations": 0,
+              "device_bytes": 0,
+              "frees": 0,
+              "hits": 18,
+              "host_allocations": 1,
+              "host_bytes": 2359296,
+              "process_valid": true,
+              "quarantined": false,
+              "requests": 19,
+              "retained_bytes": 2359296,
+              "streams": 2
+            },
+            "scenario": "typed_h2d_transpose_cast_f16",
+            "source_bytes": 4194304,
+            "wire_bytes": 2097152
+          }
+        ]
+      },
+      "name": "descriptive_latency",
+      "required": true,
+      "seconds": 4.715,
+      "status": "passed"
+    }
+  ],
+  "schema": 1,
+  "summary": {
+    "failed": 0,
+    "passed": 1,
+    "prerequisites_failed": 0,
+    "required_failed": 0
+  }
+}
