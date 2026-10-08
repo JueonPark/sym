@@ -236,6 +236,104 @@ executeDispatchPy(reloc::dispatch::DispatchRequest &request,
   return reportDict(request.report);
 }
 
+py::dict groupReport(const reloc::dispatch::GroupRequest &group) {
+  const auto &r = group.report;
+  py::dict out;
+  out["logical_transfers"] = group.items.size();
+  out["request_count"] = 1;
+  out["completion_granularity"] = "group";
+  out["payload_copy_calls"] = r.payloadCopyCalls;
+  out["parameter_uploads"] = r.parameterUploads;
+  out["parameter_reuses"] = r.parameterReuses;
+  out["parameter_upload_bytes"] = r.parameterUploadBytes;
+  out["packing_bytes"] = r.packingBytes;
+  out["host_transform_bytes"] = r.hostTransformBytes;
+  out["kernel_launches"] = r.kernelLaunches;
+  out["output_bytes"] = r.outputBytes;
+  out["copy_calls"] = r.copyCalls;
+  out["event_records"] = r.eventRecords;
+  out["event_waits"] = r.eventWaits;
+  out["caller_waits"] = r.callerWaits;
+  out["scratch_peak_bytes"] = r.scratchPeakBytes;
+  out["staging"] = stagingReport(r.staging);
+  py::list items;
+  for (const auto &item : group.reports)
+    items.append(reportDict(item));
+  out["items"] = items;
+  return out;
+}
+using GroupArguments = std::tuple<
+    std::variant<reloc::dispatch::DispatchTemplate, reloc::BoundPlan>,
+    reloc::BufferView, reloc::BufferView, std::string>;
+reloc::dispatch::GroupRequest
+prepareGroup(const std::vector<GroupArguments> &args) {
+  std::vector<reloc::dispatch::GroupEntry> entries;
+  entries.reserve(args.size());
+  for (const auto &[plan, source, destination, direction] : args)
+    entries.push_back({plan, source, destination, parseDirection(direction)});
+  auto group = reloc::dispatch::prepareDispatchGroup(entries);
+  if (auto *error = std::get_if<reloc::TransferError>(&group))
+    raise(*error);
+  return std::get<reloc::dispatch::GroupRequest>(std::move(group));
+}
+py::dict executeGroupPy(reloc::dispatch::GroupRequest &group,
+                        const py::object &callerStream, int gatherThreads,
+                        std::shared_ptr<reloc::GatherPool> pool,
+                        const std::string &pinning,
+                        std::optional<size_t> minPinnedBytes,
+                        size_t maxScratchBytes,
+                        std::shared_ptr<reloc::dispatch::Resources> resources,
+                        const py::object &owners) {
+  if (group.executing || group.consumed)
+    raise({"already_executed", "group is executing or already executed"});
+  if (!py::isinstance<py::tuple>(owners) || py::len(owners) != 2)
+    throw py::value_error("owners must be (source owners, destination owners)");
+  for (const auto &part : owners.cast<py::tuple>()) {
+    if (!py::isinstance<py::tuple>(part) || py::len(part) != group.items.size())
+      throw py::value_error("each group buffer needs a strong owner");
+    for (const auto &owner : part.cast<py::tuple>())
+      if (owner.is_none())
+        throw py::value_error("group owner cannot be None");
+  }
+  if (gatherThreads < 1 || !maxScratchBytes)
+    throw py::value_error(
+        "gather_threads and max_scratch_bytes must be positive");
+  if (pool && pool->closed())
+    throw py::value_error("gather_pool is closed");
+  reloc::TransferOptions options;
+  options.nBuffers = 1;
+  options.gatherThreads = gatherThreads;
+  options.gather = pool.get();
+  options.pinning = parsePinning(pinning);
+  options.minPinnedBytes = minPinnedBytes;
+  options.maxScratchBytes = maxScratchBytes;
+  options.staging = &group.report.staging;
+  if (!callerStream.is_none()) {
+    options.hasCallerStream = true;
+    options.callerStream =
+        reinterpret_cast<const void *>(callerStream.cast<uintptr_t>());
+  }
+  auto token = std::make_shared<py::object>(owners);
+  group.executing = true;
+  struct Reset {
+    bool &value;
+    ~Reset() { value = false; }
+  } reset{group.executing};
+  std::optional<reloc::TransferError> error;
+  {
+    py::gil_scoped_release release;
+    if (resources)
+      error = resources->execute(group, options, token).error;
+    else {
+      reloc::dispatch::Resources ephemeral(0);
+      error = ephemeral.execute(group, options, token).error;
+    }
+  }
+  if (error)
+    raise(*error);
+  return groupReport(group);
+}
+
 template <typename Plan>
 py::dict selectDispatch(const Plan &bound, const std::string &direction,
                         const std::string &device, const std::string &policy,
@@ -350,6 +448,26 @@ void registerDispatchBindings(py::module_ &m) {
         py::arg("source"), py::arg("destination"),
         "Validate fresh views and create an independent single-use request; "
         "never reselect a row.");
+  using Group = reloc::dispatch::GroupRequest;
+  py::class_<Group>(m, "DispatchGroup")
+      .def_property_readonly(
+          "consumed", [](const Group &g) { return g.executing || g.consumed; })
+      .def_property_readonly("report", [](const Group &g) {
+        if (g.executing)
+          throw py::value_error("report is unavailable during execution");
+        return groupReport(g);
+      });
+  m.def("prepare_dispatch_group", &prepareGroup, py::arg("entries"),
+        "Validate fresh (template or layout bound, source, destination, "
+        "direction) entries together.");
+  m.def("execute_dispatch_group", &executeGroupPy, py::arg("group"),
+        py::kw_only(), py::arg("caller_stream") = py::none(),
+        py::arg("gather_threads") = 8, py::arg("gather_pool") = nullptr,
+        py::arg("pinning") = "auto", py::arg("min_pinned_bytes") = py::none(),
+        py::arg("max_scratch_bytes") = size_t(64) << 20,
+        py::arg("resources") = nullptr, py::arg("owners") = py::none(),
+        "Submit a consumer-sized group on one owned queue and complete once; "
+        "never reuse requests.");
   using Resources = reloc::dispatch::Resources;
   py::class_<Resources, std::shared_ptr<Resources>>(m, "DispatchResources")
       .def(py::init<size_t, size_t, unsigned, unsigned>(), py::kw_only(),
@@ -370,6 +488,11 @@ void registerDispatchBindings(py::module_ &m) {
              out["device_allocations"] = s.deviceAllocations;
              out["host_allocations"] = s.hostAllocations;
              out["frees"] = s.frees;
+             out["copy_calls"] = s.copyCalls;
+             out["event_records"] = s.eventRecords;
+             out["event_waits"] = s.eventWaits;
+             out["caller_waits"] = s.callerWaits;
+             out["peak_live_bytes"] = s.peakLiveBytes;
              out["retained_bytes"] = s.retainedBytes;
              out["device_bytes"] = s.deviceBytes;
              out["host_bytes"] = s.hostBytes;

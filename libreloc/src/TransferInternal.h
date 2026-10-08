@@ -12,6 +12,10 @@ class PinnedBufferPool;
 
 namespace detail {
 
+// Shared forward host layout execution, including reusable gather workers.
+void forwardHostGather(const BoundPlan &, const void *, void *,
+                       const TransferOptions &);
+
 // Request-local only: never store a schedule, plan or buffer address in an
 // idle context. The configured buffer count determines this schedule once.
 struct TransferRequirements {

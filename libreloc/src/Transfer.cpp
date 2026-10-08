@@ -276,13 +276,11 @@ validateTransfer(const BoundPlan &bound, const BufferView &source,
   return request;
 }
 
-namespace {
-
 // Forward host gather over the whole plan: pads first, then valid cells,
 // partitioned across the caller's pool when outer rows are provably disjoint
 // in dst (same conservative test as executeH2DThreaded).
-void forwardHostGather(const BoundPlan &bound, const void *src, void *dst,
-                       const TransferOptions &options) {
+void detail::forwardHostGather(const BoundPlan &bound, const void *src,
+                               void *dst, const TransferOptions &options) {
   if (options.gather == nullptr) {
     if (options.gatherThreads == 1)
       executeH2D(bound, src, dst);
@@ -308,6 +306,9 @@ void forwardHostGather(const BoundPlan &bound, const void *src, void *dst,
                                 gatherChunk(bound, src, dst, begin, end);
                               });
 }
+
+namespace {
+using detail::forwardHostGather;
 
 std::optional<TransferError> backendFailure(const CopyBackend &backend,
                                             const char *phase) {

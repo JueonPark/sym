@@ -10,6 +10,8 @@ struct ResourceStats {
   uint64_t deviceAllocations = 0, hostAllocations = 0, frees = 0;
   size_t retainedBytes = 0, deviceBytes = 0, hostBytes = 0;
   unsigned backgroundWorkers = 0;
+  uint64_t copyCalls = 0, eventRecords = 0, eventWaits = 0, callerWaits = 0;
+  size_t peakLiveBytes = 0;
   int streams = 0;
   bool closed = false, quarantined = false, processValid = true;
 };
@@ -36,11 +38,19 @@ public:
   TransferOutcome execute(DispatchRequest &, int device, int streams,
                           const TransferOptions &,
                           std::shared_ptr<void> owners);
+  /// One owned queue, one producer ordering and one completion barrier for a
+  /// group. Every scratch block and every buffer owner stays live through the
+  /// barrier or quarantine. maxScratchBytes must be positive for this API.
+  TransferOutcome execute(GroupRequest &, const TransferOptions &,
+                          std::shared_ptr<void> owners);
   ResourceStats stats() const;
   std::optional<TransferError> clear();
   std::optional<TransferError> close();
 
 private:
+  TransferOutcome executeImpl(DispatchRequest *, GroupRequest *, int device,
+                              int streams, const TransferOptions &,
+                              std::shared_ptr<void> owners);
   struct Impl;
   std::unique_ptr<Impl> impl_;
 };

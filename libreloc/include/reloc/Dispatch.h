@@ -146,6 +146,35 @@ std::variant<DispatchRequest, TransferError>
 prepareDispatch(const DispatchTemplate &, const BufferView &,
                 const BufferView &);
 
+/// Explicit consumer-sized group. Plans remain pointer-free; each invocation
+/// supplies fresh views. All items use one CUDA device and complete together.
+/// Layout entries use the same forward gather as the individual transfer API.
+struct GroupEntry {
+  std::variant<DispatchTemplate, BoundPlan> plan;
+  BufferView source, destination;
+  TransferDirection direction = TransferDirection::HostToDevice;
+};
+struct GroupReport {
+  uint64_t payloadCopyCalls = 0, parameterUploads = 0, parameterReuses = 0;
+  uint64_t parameterUploadBytes = 0, hostTransformBytes = 0;
+  uint64_t packingBytes = 0; // payloads are not coalesced by this API
+  uint64_t kernelLaunches = 0, outputBytes = 0;
+  uint64_t copyCalls = 0, eventRecords = 0, eventWaits = 0, callerWaits = 0;
+  size_t scratchPeakBytes = 0;
+  std::vector<StagingDecision> staging;
+};
+struct GroupRequest {
+  std::vector<std::variant<DispatchRequest, TransferRequest>> items;
+  std::vector<Report> reports;
+  GroupReport report;
+  int device = -1;
+  bool consumed = false, executing = false;
+};
+/// Validate the entire group before any allocation/submission; at most 256
+/// items, one device, no destination aliases with other outputs or inputs.
+std::variant<GroupRequest, TransferError>
+prepareDispatchGroup(const std::vector<GroupEntry> &);
+
 /// Pure selection without views: capability for `direction`/`options.cuda`,
 /// then the policy. Lets a bridge fix the row at preparation time and force
 /// exactly that row when the destination exists (Options::implementation).

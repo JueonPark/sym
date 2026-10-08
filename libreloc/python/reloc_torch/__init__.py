@@ -32,10 +32,18 @@ __all__ = (
     "PreparedWeights",
     "TransferResources",
     "AUTO",
+    "prepare_transfer_group",
+    "execute_transfer_group",
 )
 
 
 def __getattr__(name):
+    if name in {"prepare_transfer_group", "execute_transfer_group"}:
+        from .group import prepare_transfer_group, execute_transfer_group
+
+        globals().update(prepare_transfer_group=prepare_transfer_group,
+                         execute_transfer_group=execute_transfer_group)
+        return globals()[name]
     if name in {"AUTO", "TransferResources"}:
         from .resources import AUTO, TransferResources
 

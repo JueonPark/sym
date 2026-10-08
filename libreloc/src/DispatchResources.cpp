@@ -1,4 +1,5 @@
 #include "reloc/DispatchResources.h"
+#include "DispatchGroupInternal.h"
 #include "TransferResourcePolicy.h"
 #include "reloc/GatherPool.h"
 #ifdef RELOC_ENABLE_CUDA
@@ -29,6 +30,13 @@ class ScratchBackend : public CudaBackend {
   size_t live_ = 0, retainedLimit_, liveLimit_;
   std::string scratchError_;
   TransferOptions options_;
+  size_t requestPeak_ = 0;
+  size_t liveLimit() const {
+    if (!options_.maxScratchBytes)
+      return liveLimit_;
+    return liveLimit_ ? std::min(liveLimit_, options_.maxScratchBytes)
+                      : options_.maxScratchBytes;
+  }
   void release(Block &b) {
     if (b.device)
       CudaBackend::freeDevice(b.pointer);
@@ -43,6 +51,7 @@ class ScratchBackend : public CudaBackend {
   void *allocate(size_t bytes, bool device) {
     if (failed())
       return nullptr;
+    const size_t limit = liveLimit();
     size_t busyBytes = 0;
     for (const auto &b : blocks_)
       if (b.busy)
@@ -83,7 +92,7 @@ class ScratchBackend : public CudaBackend {
     if (bytes >= (size_t(1) << 20) &&
         bytes <= std::numeric_limits<size_t>::max() - bytes / 8 - quantum) {
       size_t grown = ((bytes + bytes / 8 + quantum - 1) / quantum) * quantum;
-      if (fitsRetention(grown) && (!liveLimit_ || grown <= liveLimit_))
+      if (fitsRetention(grown) && (!limit || grown <= limit))
         capacity = grown;
     }
     // Drop idle capacity before growing. Busy blocks stay owned until the
@@ -91,15 +100,14 @@ class ScratchBackend : public CudaBackend {
     for (auto &b : blocks_)
       if (!b.busy &&
           (capacity > retainedLimit_ || live_ > retainedLimit_ - capacity ||
-           (liveLimit_ &&
-            (capacity > liveLimit_ || live_ > liveLimit_ - capacity))))
+           (limit && (capacity > limit || live_ > limit - capacity))))
         release(b);
     blocks_.erase(std::remove_if(blocks_.begin(), blocks_.end(),
                                  [](const Block &b) { return !b.pointer; }),
                   blocks_.end());
-    if (liveLimit_ && (capacity > liveLimit_ || live_ > liveLimit_ - capacity))
+    if (limit && (capacity > limit || live_ > limit - capacity))
       capacity = bytes; // rounding must not reject an otherwise fitting request
-    if (liveLimit_ && (bytes > liveLimit_ || live_ > liveLimit_ - bytes)) {
+    if (limit && (bytes > limit || live_ > limit - bytes)) {
       scratchError_ = "typed scratch live-byte limit exceeded";
       return nullptr;
     }
@@ -115,6 +123,8 @@ class ScratchBackend : public CudaBackend {
     }
     blocks_.push_back({p, capacity, device, pinned, true});
     live_ += capacity;
+    requestPeak_ = std::max(requestPeak_, live_);
+    peakLiveBytes = std::max(peakLiveBytes, live_);
     if (device)
       ++deviceAllocations;
     else
@@ -125,6 +135,8 @@ class ScratchBackend : public CudaBackend {
 
 public:
   uint64_t deviceAllocations = 0, hostAllocations = 0, frees = 0;
+  uint64_t copyCalls = 0, eventRecords = 0, eventWaits = 0, callerWaits = 0;
+  size_t peakLiveBytes = 0;
   ScratchBackend(int streams, int device, size_t retained, size_t live)
       : CudaBackend(streams, device), retainedLimit_(retained),
         liveLimit_(live) {}
@@ -132,7 +144,43 @@ public:
     for (auto &b : blocks_)
       release(b);
   }
-  void begin(const TransferOptions &options) { options_ = options; }
+  void begin(const TransferOptions &options) {
+    options_ = options;
+    // A smaller per-group live budget also excludes old idle capacity.
+    const auto limit = liveLimit();
+    for (auto &b : blocks_)
+      if (limit && live_ > limit && !b.busy)
+        release(b);
+    blocks_.erase(std::remove_if(blocks_.begin(), blocks_.end(),
+                                 [](const Block &b) { return !b.pointer; }),
+                  blocks_.end());
+    requestPeak_ = live_;
+  }
+  size_t requestPeak() const { return requestPeak_; }
+  void copyAsync(int queue, void *dst, const void *src, size_t bytes,
+                 CopyDir dir) override {
+    ++copyCalls;
+    CudaBackend::copyAsync(queue, dst, src, bytes, dir);
+  }
+  EventHandle recordEvent(int queue) override {
+    ++eventRecords;
+    return CudaBackend::recordEvent(queue);
+  }
+  void waitEvent(EventHandle event) override {
+    ++eventWaits;
+    CudaBackend::waitEvent(event);
+  }
+  bool waitStream(const void *stream) override {
+    ++callerWaits;
+    return CudaBackend::waitStream(stream);
+  }
+  void addMetrics(ResourceStats &s) const {
+    s.copyCalls += copyCalls;
+    s.eventRecords += eventRecords;
+    s.eventWaits += eventWaits;
+    s.callerWaits += callerWaits;
+    s.peakLiveBytes = std::max(s.peakLiveBytes, peakLiveBytes);
+  }
   void endReporting() { options_.staging = nullptr; }
   void *allocDevice(size_t bytes) override { return allocate(bytes, true); }
   void freeDevice(void *) override {}
@@ -157,6 +205,7 @@ public:
     options_ = {};
   }
   void snapshot(ResourceStats &s) const {
+    addMetrics(s);
     s.retainedBytes = live_;
     s.deviceBytes = s.hostBytes = 0;
     for (auto &b : blocks_)
@@ -190,6 +239,7 @@ struct Resources::Impl {
   std::unique_ptr<Context> context;
   void retire() {
     if (context) {
+      context->backend.addMetrics(counters);
       counters.deviceAllocations += context->backend.deviceAllocations;
       counters.hostAllocations += context->backend.hostAllocations;
       // All retained allocations are freed with the retired context.
@@ -269,6 +319,25 @@ std::optional<TransferError> Resources::close() {
 TransferOutcome Resources::execute(DispatchRequest &request, int device,
                                    int streams, const TransferOptions &options,
                                    std::shared_ptr<void> owners) {
+  return executeImpl(&request, nullptr, device, streams, options,
+                     std::move(owners));
+}
+TransferOutcome Resources::execute(GroupRequest &group,
+                                   const TransferOptions &options,
+                                   std::shared_ptr<void> owners) {
+  if (!options.maxScratchBytes)
+    return {
+        fail("invalid_options", "group scratch byte limit must be positive")};
+  if (group.device < 0)
+    return {fail("backend_mismatch", "groups require a CUDA device")};
+  return executeImpl(nullptr, &group, group.device, 1, options,
+                     std::move(owners));
+}
+TransferOutcome Resources::executeImpl(DispatchRequest *request,
+                                       GroupRequest *group, int device,
+                                       int streams,
+                                       const TransferOptions &options,
+                                       std::shared_ptr<void> owners) {
   if (!impl_->valid())
     return {
         fail("process_mismatch", "typed resources belong to another process")};
@@ -277,9 +346,19 @@ TransferOutcome Resources::execute(DispatchRequest &request, int device,
   if (!owners)
     return {
         fail("invalid_options", "typed execution needs strong buffer owners")};
-  const bool gpuOnly = options.directDenseUpload &&
-                       (request.selected.id == kCudaDequantRelocate ||
-                        request.selected.id == kCudaRelocateF32);
+  auto gpuRow = [](const DispatchRequest &r) {
+    return r.selected.id == kCudaDequantRelocate ||
+           r.selected.id == kCudaRelocateF32;
+  };
+  const bool gpuOnly =
+      options.directDenseUpload &&
+      (request ? gpuRow(*request)
+               : std::all_of(group->items.begin(), group->items.end(),
+                             [&](const auto &item) {
+                               const auto *r =
+                                   std::get_if<DispatchRequest>(&item);
+                               return r && gpuRow(*r);
+                             }));
   unsigned threads = options.gather || gpuOnly ? 1 : options.gatherThreads;
   if (!threads)
     threads = std::max(1u, std::thread::hardware_concurrency());
@@ -288,7 +367,7 @@ TransferOutcome Resources::execute(DispatchRequest &request, int device,
     return {fail("resource_limit", "typed stream/worker limit exceeded")};
   auto affinity = detail::currentCpuAffinity();
   std::lock_guard<std::mutex> lock(impl_->mu);
-  if (request.consumed)
+  if (request ? request->consumed : group->consumed)
     return {fail("already_executed", "typed request already executed")};
   auto &s = impl_->counters;
   if (s.quarantined)
@@ -316,12 +395,25 @@ TransferOutcome Resources::execute(DispatchRequest &request, int device,
     execution.gather = c.workers.get();
   c.backend.begin(execution);
   TransferOutcome out;
+  ResourceStats before;
+  c.backend.addMetrics(before);
   try {
-    out.error = executeDispatch(request, c.backend, execution);
+    out.error = request
+                    ? executeDispatch(*request, c.backend, execution)
+                    : group_detail::executeGroup(*group, c.backend, execution);
   } catch (const std::exception &e) {
     out.error = TransferError{"backend_failure", e.what()};
   } catch (...) {
     out.error = fail("backend_failure", "typed dispatch threw");
+  }
+  if (group) {
+    ResourceStats after;
+    c.backend.addMetrics(after);
+    group->report.copyCalls = after.copyCalls - before.copyCalls;
+    group->report.eventRecords = after.eventRecords - before.eventRecords;
+    group->report.eventWaits = after.eventWaits - before.eventWaits;
+    group->report.callerWaits = after.callerWaits - before.callerWaits;
+    group->report.scratchPeakBytes = c.backend.requestPeak();
   }
   // Error quarantine must not keep a pointer into the caller's request report.
   c.backend.endReporting();
@@ -341,8 +433,9 @@ TransferOutcome Resources::execute(DispatchRequest &request, int device,
                      "typed dispatch and its owners were quarantined");
     return out;
   }
-  out.completion = request.consumed ? TransferCompletion::Complete
-                                    : TransferCompletion::NotLaunched;
+  out.completion = (request ? request->consumed : group->consumed)
+                       ? TransferCompletion::Complete
+                       : TransferCompletion::NotLaunched;
   c.owners.reset();
   if (out.error)
     impl_->retire();
