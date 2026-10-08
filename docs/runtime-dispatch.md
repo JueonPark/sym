@@ -294,3 +294,7 @@ Measured scope, cold/warm results and reproduction commands are in
 [pinning qualification](pinning-qualification.md). The proposed adaptive
 extension is described in [the pinning cost-model design](pinning-cost-model.md);
 that model is not implemented by the initial size gate.
+
+For explicitly owned, reusable INT8 inference checkpoints, see
+[prepared wire weights](prepared-wire-weights.md). This path preserves the
+compact wire dtype and requires explicit re-preparation after checkpoint changes.

@@ -595,7 +595,23 @@ std::optional<TransferError> executeCuda(DispatchRequest &request,
     void *dWire = scratch.allocDevice(static_cast<int64_t>(wireBytes));
     if (dWire == nullptr)
       return backendFailure(backend, "device scratch allocation failed");
-    if (grouped) {
+    const bool directWire =
+        k == 0 && options.directDenseUpload &&
+        program.plan.layout.padRegions.empty() &&
+        program.plan.layout.srcStrides == program.plan.layout.dstStrides;
+    if (directWire) {
+      // An owned prepacked buffer is already in the wire layout. The same
+      // identity proof applies to ordinary dense typed inputs; their existing
+      // source-owner contract keeps bytes alive until completion.
+      request.report.hostPipeline = "direct_dense";
+      request.report.hostChunks = 1;
+      request.report.hostBuffers = 0;
+      request.report.hostChunkBytes = wireBytes;
+      if (auto error = pipelineToDevice(src, dWire, program.resultElements,
+                                        typed::widthAt(program, k), backend,
+                                        options, scratch.group))
+        return error;
+    } else if (grouped) {
       // Groups retain their one completion barrier and whole-member staging.
       StagingGuard wire{backend, backend.allocStaging(wireBytes)};
       if (!wire.buffer)
