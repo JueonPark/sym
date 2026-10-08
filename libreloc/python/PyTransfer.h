@@ -33,7 +33,8 @@ makeResourceCache(reloc::TransferResourceLimits limits = {},
 } // namespace reloc_python
 
 /// Register BufferView, TransferRequest, TransferResourceCache, TransferError
-/// and the validate_transfer_source / make_transfer / execute_transfer /
+/// and the validate_transfer_source / make_transfer /
+/// validate_stacked_sources / make_stacked_transfer / execute_transfer /
 /// cuda_pointer_device functions on `m`. Must run after BoundPlan is bound.
 void registerTransferBindings(pybind11::module_ &m);
 

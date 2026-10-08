@@ -111,6 +111,28 @@ PythonTransferRequest makeTransfer(const reloc::BoundPlan &bound,
   return {std::get<reloc::TransferRequest>(std::move(result))};
 }
 
+size_t validateStackedSourcesPy(const reloc::BoundPlan &bound,
+                                const std::vector<reloc::BufferView> &sources,
+                                const std::string &direction) {
+  auto result =
+      reloc::validateStackedSources(bound, sources, parseDirection(direction));
+  if (auto *error = std::get_if<reloc::TransferError>(&result))
+    raise(*error);
+  return std::get<size_t>(result);
+}
+
+PythonTransferRequest
+makeStackedTransfer(const reloc::BoundPlan &bound,
+                    const std::vector<reloc::BufferView> &sources,
+                    const reloc::BufferView &destination,
+                    const std::string &direction) {
+  auto result = reloc::validateStackedTransfer(bound, sources, destination,
+                                               parseDirection(direction));
+  if (auto *error = std::get_if<reloc::TransferError>(&result))
+    raise(*error);
+  return {std::get<reloc::TransferRequest>(std::move(result))};
+}
+
 void checkProcess(const reloc::TransferResourceCache &cache) {
   if (!cache.stats().processValid)
     raise({"process_mismatch", "resource cache belongs to another process"});
@@ -333,7 +355,8 @@ void registerTransferBindings(py::module_ &m) {
   py::class_<PythonTransferRequest>(
       m, "TransferRequest",
       "A validated, single-use forward transfer owning copies of the bound "
-      "plan and both views.")
+      "plan, the destination view and either the source view or every "
+      "stacked source view; source is unused for stacked requests.")
       .def_property_readonly("direction",
                              [](const PythonTransferRequest &r) {
                                return directionName(r.native.direction);
@@ -361,6 +384,13 @@ void registerTransferBindings(py::module_ &m) {
       .def_property_readonly(
           "source",
           [](const PythonTransferRequest &r) { return r.native.source; })
+      .def_property_readonly(
+          "stack_sources",
+          [](const PythonTransferRequest &r) { return r.native.stackSources; })
+      .def_property_readonly("stack_segment_elements",
+                             [](const PythonTransferRequest &r) {
+                               return r.native.stackSegmentElements;
+                             })
       .def_property_readonly("destination", [](const PythonTransferRequest &r) {
         return r.native.destination;
       });
@@ -441,6 +471,18 @@ void registerTransferBindings(py::module_ &m) {
         py::arg("destination"), py::arg("direction"),
         "Full validation with the dense destination view; returns the "
         "single-use TransferRequest.");
+  m.def("validate_stacked_sources", &validateStackedSourcesPy, py::arg("bound"),
+        py::arg("sources"), py::arg("direction"),
+        "Preflight for a stacked request (torch.stack): every source is a "
+        "dense host view with the same element count and size, and the plan's "
+        "logical source is their concatenation in order. Returns the summed "
+        "source span in bytes; raises TransferError('<code>: <detail>'). "
+        "Allocates and launches nothing.");
+  m.def("make_stacked_transfer", &makeStackedTransfer, py::arg("bound"),
+        py::arg("sources"), py::arg("destination"), py::arg("direction"),
+        "Full validation of a stacked request with its dense destination; "
+        "returns the single-use TransferRequest. Execute it with "
+        "execute_transfer(..., owners=(sources_owner, destination_owner)).");
   m.def(
       "execute_transfer", &executeTransferPy, py::arg("request"), py::kw_only(),
       py::arg("caller_stream") = py::none(), py::arg("n_buffers") = 4,

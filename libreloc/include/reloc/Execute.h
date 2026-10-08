@@ -46,6 +46,22 @@ void fillDst(const BoundPlan &bound, void *dstBase);
 void gatherChunk(const BoundPlan &bound, const void *srcBase, void *dstBase,
                  int64_t outerBegin, int64_t outerEnd);
 
+/// The logical source of a stacked plan (torch.stack): `count` inputs of
+/// `segmentElements` elements each; input i densely holds logical source
+/// elements [i * segmentElements, (i + 1) * segmentElements), starting at
+/// bases[i]. The plan's source strides address that logical source.
+struct StackedSource {
+  const uint8_t *const *bases = nullptr;
+  int64_t count = 0;
+  int64_t segmentElements = 0;
+};
+
+/// gatherChunk over a stacked source: exactly the bytes gatherChunk writes
+/// over the inputs' concatenation, without building it. Writes ONLY valid
+/// cells for outer indices [outerBegin, outerEnd) (call fillDst first).
+void gatherChunk(const BoundPlan &bound, const StackedSource &source,
+                 void *dstBase, int64_t outerBegin, int64_t outerEnd);
+
 /// The D2H primitive: reconstruct ONLY the valid src cells for outer-axis
 /// indices [outerBegin, outerEnd), reading from a dst-layout buffer. Mirror of
 /// gatherChunk. `dstBaseV` is the address at which dst element offset 0 would

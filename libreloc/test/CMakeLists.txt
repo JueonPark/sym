@@ -11,6 +11,7 @@ add_executable(libreloc-test
   TypedExecuteTest.cpp
   DispatchTest.cpp
   ExecuteTest.cpp
+  StackedGatherTest.cpp
   TransposeTest.cpp
   BackendTest.cpp
   CudaBackendTest.cpp
@@ -19,6 +20,7 @@ add_executable(libreloc-test
   ChunkScheduleTest.cpp
   PipelineTest.cpp
   TransferTest.cpp
+  StackedTransferTest.cpp
   TransferExecutionTest.cpp
   TransferResourcesTest.cpp
   TransferResourcePolicyTest.cpp

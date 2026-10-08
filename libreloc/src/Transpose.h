@@ -7,6 +7,7 @@
 
 namespace reloc {
 struct BoundPlan;
+struct StackedSource;
 
 namespace detail {
 
@@ -22,6 +23,14 @@ void transpose32Scalar(const uint8_t *src, uint8_t *dst, int64_t rows,
 // Returns false without touching buffers when the plan is not supported.
 bool tryGatherTranspose32(const BoundPlan &bound, const uint8_t *src,
                           uint8_t *dst, int64_t outerBegin, int64_t outerEnd);
+
+// The same kernel for a last-dim torch.stack: the plan is the 32-bit unpadded
+// [N, Z] -> [Z, N] transpose of the logical source, so source row c is input
+// c (StackedSource::bases[c]). Returns false without touching buffers
+// otherwise.
+bool tryGatherTranspose32Stacked(const BoundPlan &bound,
+                                 const StackedSource &source, uint8_t *dst,
+                                 int64_t outerBegin, int64_t outerEnd);
 
 } // namespace detail
 } // namespace reloc

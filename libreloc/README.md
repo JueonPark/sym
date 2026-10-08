@@ -146,6 +146,20 @@ complete example; this document describes the lower-level APIs.
   borrowed API returns `completion_unknown`; its caller must retain the backend
   and source/destination owners too. Successful execution adds no queue-wide
   synchronization beyond the existing event drain.
+- `reloc::validateStackedSources` / `validateStackedTransfer`
+  (`reloc/Transfer.h`), `reloc::StackedSource` and the stacked `gatherChunk`
+  overload (`reloc/Execute.h`) — `torch.stack` support. A stacked request takes
+  N dense host views of equal element count and element size whose
+  concatenation, in order, is the plan's logical source; that concatenation is
+  never built. Validation proves every plan read against the logical source and
+  every view against its allocation; execution revalidates the request and
+  gathers through a per-input pointer table in the unchanged host-to-device
+  pipeline (the only supported direction). Python binds
+  `pyreloc.validate_stacked_sources` and `pyreloc.make_stacked_transfer`.
+  `TransferRequest` gained `stackSources` and `stackSegmentElements`, changing
+  its layout; native consumers of the installed SDK must be rebuilt together
+  with `libreloc_runtime` (`libreloc/test/StackedGatherTest.cpp`,
+  `libreloc/test/StackedTransferTest.cpp`).
 - `reloc::TransferContext` (`reloc/TransferResources.h`, issue
   [#167](https://github.com/JueonPark/sym/issues/167)) owns one dedicated backend,
   a lazily allocated staging ring, and optional gather workers across blocking
