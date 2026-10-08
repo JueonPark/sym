@@ -88,7 +88,8 @@ small request/parameter-key bookkeeping are outside the scratch budget.
 
 Groups use the typed resource owner even for layout-only members, with one
 private stream. `gather_threads` defaults to eight; an explicit gather pool can
-be supplied. Pinning policy and its optional threshold are the existing
+be supplied. Groups composed entirely of direct GPU relocation/dequantization
+rows do not create CPU gather workers. Pinning policy and its optional threshold are the existing
 per-execution settings. Groups submit each payload independently; packing bytes
 are zero. This avoids introducing packing cost or shared output-storage
 lifetimes without evidence that coalescing helps.

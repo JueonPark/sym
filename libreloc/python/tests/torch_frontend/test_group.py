@@ -111,6 +111,20 @@ def test_typed_groups_share_only_identical_parameter_uploads(matrix, cuda_device
 
 
 @pytest.mark.gpu
+def test_gpu_only_group_needs_no_cpu_workers(matrix, cuda_device):
+    source = torch.ones(16, 32, dtype=torch.int8)
+    scale = torch.full((32,), .5)
+    with TransferResources(max_typed_background_workers=0) as owner:
+        group = prepare_transfer_group([
+            dispatch.prepare_typed_transfer(matrix, source, cuda_device,
+                parameters={'scale': scale}, implementation='cuda_dequant_relocate')
+            for _ in range(2)])
+        result = execute_transfer_group(group, resources=owner)
+        assert all(torch.equal(out.cpu(), source.t().float() * .5) for out in result.tensors)
+        assert owner.stats()['typed']['background_workers'] == 0
+
+
+@pytest.mark.gpu
 def test_mixed_typed_layout_and_directions_with_padding(matrix, compiler, cuda_device):
     q, scale = torch.full((16, 32), -7, dtype=torch.int8), torch.full((32,), .5)
     src = torch.arange(24, dtype=torch.float32).reshape(4, 6).to(cuda_device)

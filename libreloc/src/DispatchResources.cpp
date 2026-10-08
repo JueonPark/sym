@@ -351,7 +351,7 @@ TransferOutcome Resources::executeImpl(DispatchRequest *request,
            r.selected.id == kCudaRelocateF32;
   };
   const bool gpuOnly =
-      options.directDenseUpload &&
+      (group || options.directDenseUpload) &&
       (request ? gpuRow(*request)
                : std::all_of(group->items.begin(), group->items.end(),
                              [&](const auto &item) {
