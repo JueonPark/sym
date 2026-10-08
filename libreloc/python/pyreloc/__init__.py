@@ -17,6 +17,8 @@ from ._pyreloc import (  # noqa: F401
     DispatchGroup,
     prepare_dispatch_group,
     execute_dispatch_group,
+    submit_dispatch_group,
+    DispatchCompletion,
     GatherPool,
     PlanHandle,
     PrefoldError,

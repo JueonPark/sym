@@ -20,6 +20,7 @@ See README.md in this directory for the environment and the report fields.
 from __future__ import annotations
 
 import argparse
+from contextlib import nullcontext
 
 import common
 
@@ -51,9 +52,11 @@ class OffloadedMoE:
     def device_of(self, expert):
         return self.devices[expert % len(self.devices)]
 
-    def forward(self, x, fetch, on_route):
+    def forward(self, x, fetch, on_route, *, prefetch=None):
         """x [T, d] on the primary device. ``fetch(q, scale, device)`` returns a float32
         [out, in] weight on ``device``; ``on_route(active)`` sees each block's sorted active experts."""
+        if prefetch is not None and len(self.devices) != 1:
+            raise ValueError("expert prefetch currently requires one CUDA device")
         for router, experts in zip(self.routers, self.experts):
             h = F.layer_norm(x, (self.d_model,))
             top_logits, top_experts = (h @ router).topk(TOP_K, dim=1)
@@ -61,13 +64,22 @@ class OffloadedMoE:
             active = torch.unique(top_experts).tolist()
             on_route(active)
             out = torch.zeros_like(x)
-            for expert in active:
-                tokens, slot = (top_experts == expert).nonzero(as_tuple=True)
-                device = self.device_of(expert)
-                w1 = fetch(*experts[expert]["w1"], device)
-                w2 = fetch(*experts[expert]["w2"], device)
-                y = F.linear(F.gelu(F.linear(h[tokens].to(device), w1)), w2).to(x.device)
-                out.index_add_(0, tokens, gates[tokens, slot].unsqueeze(1) * y)   # unique rows per expert
+            # nonzero() resolves dynamic token counts on the host. Resolve all
+            # selected experts before the prefetch window; doing it inside the
+            # consumer loop would synchronize preceding model kernels each time.
+            selections = ([(top_experts == e).nonzero(as_tuple=True) for e in active]
+                          if prefetch is not None else None)
+            groups = ((experts[e]["w1"], experts[e]["w2"]) for e in active)
+            delivery = (prefetch(groups, self.devices[0]) if prefetch is not None else
+                        nullcontext(tuple(fetch(q, scale, self.device_of(e)) for q, scale in weights)
+                                    for e, weights in zip(active, groups)))
+            with delivery as loaded:
+                for index, (expert, (w1, w2)) in enumerate(zip(active, loaded)):
+                    tokens, slot = (selections[index] if selections is not None else
+                                    (top_experts == expert).nonzero(as_tuple=True))
+                    device = self.device_of(expert)
+                    y = F.linear(F.gelu(F.linear(h[tokens].to(device), w1)), w2).to(x.device)
+                    out.index_add_(0, tokens, gates[tokens, slot].unsqueeze(1) * y)
             x = x + out
         return x
 

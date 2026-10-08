@@ -204,6 +204,18 @@ bool CudaBackend::waitStream(const void *externalStream) {
   return ok;
 }
 
+bool CudaBackend::waitExternal(EventHandle event, const void *externalStream) {
+  if (failed())
+    return false;
+  auto it = events_.find(event);
+  if (it == events_.end())
+    return check(cudaErrorInvalidResourceHandle, "consumer completion event");
+  DeviceScope scope(device_);
+  auto consumer = static_cast<cudaStream_t>(const_cast<void *>(externalStream));
+  return check(cudaStreamWaitEvent(consumer, asEvent(it->second), 0),
+               "cudaStreamWaitEvent(consumer)");
+}
+
 void *CudaBackend::allocDevice(size_t bytes) {
   DeviceScope scope(device_);
   void *p = nullptr;

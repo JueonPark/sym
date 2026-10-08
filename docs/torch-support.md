@@ -432,3 +432,85 @@ works from a CMake build configured with pybind11 disabled; importing
 `reloc_torch` remains Torch-free until an observation entry point is called.
 The legacy runtime CI job keeps Torch absent, while the sibling CPU job installs
 3.14.7 and builds its own ABI-specific artifacts.
+
+## Explicit asynchronous groups and model prefetch (#223)
+
+`TransferQueue` submits prepared layout/typed groups and returns a
+`TransferCompletion`. CPU binding, transformation and CUDA enqueueing happen on
+the submitting thread. GPU completion is asynchronous; this is an explicit API,
+not a change to the blocking tensor-return contract of `torch.compile` or its
+`non_blocking=True` fallback. Indexed recipes are not currently group members.
+
+```python
+from reloc_torch import TransferQueue, prepare_transfer_group
+
+with TransferQueue("cuda:0", max_in_flight=2,
+                   max_output_bytes=128 << 20,
+                   max_scratch_bytes=64 << 20) as queue:
+    # Requests come from prepare_transfer() / prepare_typed_transfer().
+    with queue.submit(prepare_transfer_group(requests)) as completion:
+        outputs = completion.wait_stream()  # current CUDA consumer stream
+        consume_on_gpu(*outputs)
+        completion.release()  # capture the end of this consumer's use
+```
+
+- `wait_stream(stream=None)` adds a CUDA event dependency and records allocator
+  use on each consumer stream. It returns H2D outputs without a host wait. Enqueue
+  every use on those streams before `release()`; do not enqueue further uses
+  after release. Multiple consumers may register before release.
+- `wait()` completes the producer and any D2H CPU transformation and returns a
+  `GroupResult`, including the final report. GPU outputs also register the current
+  consumer stream; use `wait_stream(other_stream)` for other consumers. `done()` polls that same completion;
+  a successful poll may run the final CPU transformation. D2H/mixed groups reject
+  `wait_stream()`; use `wait()` before reading their host outputs.
+- CPU sources must already be ready and must remain immutable until `wait()` or
+  `done()` proves completion. A consumer event wait alone does not permit CPU
+  mutation. Submission binds current scale/parameter values; no values are cached
+  across groups. The group retains sources, parameter snapshots and outputs.
+- CUDA sources default to an event dependency on the caller's current producer
+  stream. `submit(..., producer_stream=stream)` overrides it. CPU-only H2D groups
+  are independent of caller compute. Their outputs are allocated on a dedicated
+  allocation stream, which the native copy queue orders after.
+- Submission serializes within a queue and drains the previous **producer**
+  before reusing scratch. Its already-enqueued model consumer can keep running.
+  Default limits are two retained output groups, 128 MiB of outputs, and 64 MiB
+  combined host/device scratch. Admission exceeding either output limit raises
+  `BufferError` without consuming the new group; close an earlier completion.
+  Inputs/checkpoints, model activations and tensors kept by callers after close
+  are outside these limits. Pinning applies to runtime staging, not to a direct
+  caller-owned source; pin the source explicitly when appropriate.
+- `close()` / `cancel()` drain submitted producer work and registered consumers;
+  cancellation cannot retract CUDA operations. A released slot remains reserved
+  until close. Queue/window context managers drain on early exit and model
+  exceptions. Unknown producer completion quarantines native owners/scratch;
+  unknown consumer completion retains its tensor owners and disables the queue.
+  Completion/resource destruction drains producers, but use context managers
+  for deterministic consumer cleanup. Inherited queues reject use after fork.
+
+`queue.prefetch(groups)` is a context-managed iterator. After the caller enqueues
+one consumer, advancing the iterator submits the next group while that consumer
+runs. At capacity it retires the oldest consumer's captured event, rather than
+waiting for all subsequent work on the same stream. A group is prepared only
+when its iterable yields it; no unrequested experts are loaded.
+
+The workload helpers expose this through `WeightFetcher.prefetch`:
+
+```python
+with common.WeightFetcher(report, implementation="cuda_dequant_relocate") as weights:
+    logits, cache = gpt.forward(tokens, start, cache,
+                                lambda q, s: weights.fetch(q, s, tokens.device),
+                                prefetch=weights.prefetch)
+    output = moe.forward(inputs, weights.fetch, routes.append,
+                         prefetch=weights.prefetch)
+```
+
+The GPT loop groups four matrices per layer. MoE first resolves the current
+block's routing and token selections, then groups two matrices per active expert.
+MoE prefetch currently requires one GPU; it does not speculate across routing
+barriers or implement multi-GPU scheduling. Prefetch requires retained resources.
+Existing CLI runs remain blocking; the optional Python callback and
+[`model_prefetch.py`](../bench/issue223/model_prefetch.py) exercise the new path.
+The benchmark includes matched Torch and Inductor transfer-conversion prefetch,
+identical model compute, startup/drain diagnostics and cases with little or no
+lookahead. Measurements and trace evidence are in
+[`bench/issue223/README.md`](../bench/issue223/README.md).

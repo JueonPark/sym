@@ -34,10 +34,16 @@ __all__ = (
     "AUTO",
     "prepare_transfer_group",
     "execute_transfer_group",
+    "TransferQueue",
+    "TransferCompletion",
 )
 
 
 def __getattr__(name):
+    if name in {"TransferQueue", "TransferCompletion"}:
+        from .asynchronous import TransferQueue, TransferCompletion
+        globals().update(TransferQueue=TransferQueue, TransferCompletion=TransferCompletion)
+        return globals()[name]
     if name in {"prepare_transfer_group", "execute_transfer_group"}:
         from .group import prepare_transfer_group, execute_transfer_group
 

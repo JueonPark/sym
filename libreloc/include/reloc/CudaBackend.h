@@ -44,6 +44,8 @@ public:
   bool queryEvent(EventHandle ev) override;
   QueueCompletion quiesce() override;
   bool waitStream(const void *externalStream) override;
+  /// Enqueue an external consumer's wait for an existing owned event.
+  bool waitExternal(EventHandle event, const void *externalStream);
   bool failed() const override { return !error_.empty(); }
   const std::string &error() const override { return error_; }
   int device() const override { return device_; }

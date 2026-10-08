@@ -1,4 +1,4 @@
-"""Explicit, blocking consumer-sized groups over fresh individual preparations.
+"""Explicit consumer-sized groups over fresh individual preparations.
 
 A group completes all its members together. Split at consumer boundaries for
 finer completion granularity; independent groups may use separate owners and
@@ -73,6 +73,15 @@ def prepare_transfer_group(requests):
 def execute_transfer_group(group, *, resources=None, gather_threads=8, gather_pool=None,
                            pinning="auto", min_pinned_bytes=None,
                            max_scratch_bytes=64 << 20):
+    """Complete one consumer-sized group, retaining the blocking API."""
+    return _execute_transfer_group(group, resources=resources, gather_threads=gather_threads,
+        gather_pool=gather_pool, pinning=pinning, min_pinned_bytes=min_pinned_bytes,
+        max_scratch_bytes=max_scratch_bytes)
+
+
+def _execute_transfer_group(group, *, resources=None, gather_threads=8, gather_pool=None,
+                           pinning="auto", min_pinned_bytes=None,
+                           max_scratch_bytes=64 << 20, submit=False):
     """Complete one group with bounded scratch and one current-stream ordering.
 
     Output/source allocations and cached immutable metadata are outside the
@@ -124,11 +133,14 @@ def execute_transfer_group(group, *, resources=None, gather_threads=8, gather_po
         for request in group.requests:
             request.consumed = True
         try:
-            report = pyreloc.execute_dispatch_group(native, caller_stream=stream,
+            execute = pyreloc.submit_dispatch_group if submit else pyreloc.execute_dispatch_group
+            report = execute(native, caller_stream=stream,
                 gather_threads=gather_threads, gather_pool=gather_pool,
                 pinning=pinning, min_pinned_bytes=min_pinned_bytes,
                 max_scratch_bytes=max_scratch_bytes, resources=owner,
                 owners=(tuple(r.source for r in group.requests), outputs))
         except pyreloc.TransferError as error:
             raise RuntimeError(f"transfer group failed: {error}") from error
+        if submit:
+            return report, outputs, descriptors
         return GroupResult(outputs, descriptors, MappingProxyType(report))

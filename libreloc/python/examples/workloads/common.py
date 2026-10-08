@@ -10,7 +10,7 @@ exit status 2.
 from __future__ import annotations
 
 import json
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 import os
 import pathlib
 import statistics
@@ -395,7 +395,8 @@ class WeightFetcher:
     Retain one bounded owner per canonical CUDA device until close(), or use
     resource_policy="per-call" for the matched control. Use as a context manager
     so every owner closes even if preparation, execution or the model fails.
-    Calls are sequential; this helper does not add concurrent/asynchronous work.
+    fetch()/fetch_many() block. prefetch() retains two output groups and overlaps
+    the next transfer with GPU consumers enqueued by the caller.
     """
 
     def __init__(self, report, calibration=None, kind="weights", implementation="", *,
@@ -409,6 +410,7 @@ class WeightFetcher:
         self.resource_policy = resource_policy
         self.retained_bytes, self.live_bytes = retained_bytes, live_bytes
         self._resources = {}
+        self._queues = {}
         self._cleanup = ExitStack()
         self._closed = False
         rows, cols = Symbol("s0"), Symbol("s1")
@@ -452,6 +454,9 @@ class WeightFetcher:
                 self._cleanup.close()
             finally:
                 record["after_close"] = self.resource_stats()
+                if self._queues:
+                    record["prefetch_after_close"] = {
+                        name: queue.stats() for name, queue in self._queues.items()}
 
     def __enter__(self):
         if self._closed:
@@ -481,7 +486,7 @@ class WeightFetcher:
         consumers that need one matrix at a time. No cross-call value caching.
         """
         import torch
-        from reloc_torch import dispatch, prepare_transfer_group, execute_transfer_group
+        from reloc_torch import execute_transfer_group
 
         if self._closed:
             raise RuntimeError("weight fetcher is closed")
@@ -490,10 +495,7 @@ class WeightFetcher:
             raise ValueError("weight fetcher requires a CUDA destination")
         device = torch.device("cuda", device.index if device.index is not None else torch.cuda.current_device())
         weights = tuple(weights)
-        group = prepare_transfer_group([
-            dispatch.prepare_typed_transfer(self.compiled, q, device, parameters={"scale": scale},
-                policy="auto", calibration=self.calibration, implementation=self.implementation)
-            for q, scale in weights])
+        group = self.prepare_many(weights, device)
         result = execute_transfer_group(group, resources=self._owner(device),
                                         max_scratch_bytes=max_scratch_bytes)
         for (q, _), report in zip(weights, result.report["items"]):
@@ -509,6 +511,64 @@ class WeightFetcher:
             totals[name] = totals.get(name, 0) + result.report[name]
         totals["scratch_peak_bytes"] = max(totals.get("scratch_peak_bytes", 0), result.report["scratch_peak_bytes"])
         return result.tensors
+
+    def prepare_many(self, weights, device):
+        """Bind current values without submitting work or caching weight values."""
+        from reloc_torch import dispatch, prepare_transfer_group
+        if self._closed:
+            raise RuntimeError("weight fetcher is closed")
+        requests = []
+        for q, scale in weights:
+            requests.append(dispatch.prepare_typed_transfer(self.compiled, q, device,
+                parameters={"scale": scale}, policy="auto", calibration=self.calibration,
+                implementation=self.implementation))
+            self.shapes.add(tuple(q.shape))
+        return prepare_transfer_group(requests)
+
+    @contextmanager
+    def prefetch(self, weight_groups, device, *, max_output_bytes=128 << 20,
+                 max_scratch_bytes=64 << 20, gather_threads=8):
+        """Bounded lookahead, called after routing for MoE; use inside a with block.
+
+        CPU weights/scales must be ready and immutable throughout the window.
+        Queues persist across windows, but outputs are drained at window exit.
+        """
+        import torch
+        from reloc_torch import TransferQueue
+        if self._closed:
+            raise RuntimeError("weight fetcher is closed")
+        if self.resource_policy != "retained":
+            raise ValueError("prefetch requires retained weight resources")
+        device = torch.device(device)
+        if device.type != "cuda":
+            raise ValueError("weight fetcher requires a CUDA destination")
+        device = torch.device("cuda", torch.cuda.current_device() if device.index is None else device.index)
+        key = str(device)
+        if key not in self._queues:
+            self._queues[key] = self._cleanup.enter_context(TransferQueue(device,
+                max_output_bytes=max_output_bytes, max_scratch_bytes=max_scratch_bytes,
+                gather_threads=gather_threads))
+        queue = self._queues[key]
+        if (queue.max_output_bytes, queue.max_scratch_bytes, queue.gather_threads) != (
+                max_output_bytes, max_scratch_bytes, gather_threads):
+            raise ValueError("prefetch limits cannot change on an existing device queue")
+        before = queue.stats()["totals"]
+        try:
+            with queue.prefetch(self.prepare_many(weights, device) for weights in weight_groups) as window:
+                yield window
+        finally:
+            after = queue.stats()
+            totals = after["totals"]
+            self.report.add_bytes(self.kind,
+                totals["source_bytes"] - before["source_bytes"],
+                totals["wire_bytes"] - before["wire_bytes"],
+                totals["destination_bytes"] - before["destination_bytes"],
+                payload=totals["payload_bytes_transferred"] - before["payload_bytes_transferred"])
+            self.report.data["bytes"][self.kind]["transfers"] += (
+                totals["logical_transfers"] - before["logical_transfers"] - 1)
+            for label, count in totals["dispatches"].items():
+                self.report.add_dispatch(label, count - before["dispatches"].get(label, 0))
+            self.report.data.setdefault("weight_prefetch", {})[str(device)] = after
 
     def fetch(self, q, scale, device):
         import torch
