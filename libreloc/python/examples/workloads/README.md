@@ -14,11 +14,19 @@ lets `policy="auto"` choose the transformation placement; without calibration
 the runtime uses `cpu_reference`. The main runtime selects and restores the
 CUDA launch device, including when experts alternate between devices.
 
-This extraction preserves direct calls' **per-call resource ownership**.
-`RelocBackend` already manages frontend AUTO ownership, while a direct
-`execute_typed_transfer` needs an explicit `TransferResources` to retain
-scratch, streams and workers. The separate optimization in #231 adds that
-ownership to `WeightFetcher`; it is not part of this baseline.
+`WeightFetcher` owns one lazy `TransferResources` per canonical CUDA device.
+Use it as a context manager or call `close()` when finished. Every owner is
+closed even if model/transfer work or another owner's close fails. Each call
+refreshes payloads/scales and returns an independent output; this is sequential
+reuse, not asynchronous expert loading. `RelocBackend` already manages
+frontend AUTO ownership; direct dispatch calls still need an explicit owner.
+
+Each owner allows 64 MiB of retained typed scratch by default. The separate
+live-scratch limit defaults to `0` (uncapped). Programmatic callers can set
+`retained_bytes` and `live_bytes`; multiple devices multiply these limits.
+Input/output tensors, Torch allocator memory and frontend KV owners are
+outside this budget. `--weight-resources per-call` preserves the measurement
+control. See [the caller audit and qualification](../../../../docs/typed-transfer-callers.md).
 
 ## Examples
 
@@ -56,9 +64,14 @@ python3 libreloc/python/examples/workloads/run_workloads.py \
 The standard-library runner sets the build's Python and compiler paths for
 each child process. `--quick` selects small models, `--calibration` accepts
 `auto`, `none` or a `.cal` path, and `--output-dir` selects the report directory.
-`--build` and `--python` override the environment. `--timeout` bounds each
+`--weight-resources retained|per-call` selects direct weight ownership
+(default: retained). `--build` and `--python` override the environment. `--timeout` bounds each
 child (default 900 seconds). Exit status is 0 for success, 1 for failed
 checks/crashes/timeouts, or 2 for missing prerequisites.
+
+`weight_resources` records the policy, per-device limits and typed counters
+before/after close. These are completed-call gauges, not peak live memory;
+empty per-call snapshots mean no owner instrumentation, not zero allocations.
 
 Reports contain per-check observations, compilation/execution counters,
 dispatch rows, transfer bytes, model outputs, and transfer timings. The

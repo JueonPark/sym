@@ -100,6 +100,8 @@ def main():
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--quick", action="store_true", help="a tiny model and a short generation")
     parser.add_argument("--calibration", default="auto", help="auto, none or a .cal path for the dispatch cost model")
+    parser.add_argument("--weight-resources", choices=("retained", "per-call"), default="retained",
+                        help="direct weight-transfer resources (default: retained per CUDA device)")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--output", help="write the JSON report here")
     args = parser.parse_args()
@@ -116,7 +118,7 @@ def main():
     generator = torch.Generator().manual_seed(args.seed)
     model = OffloadedGPT(sizes, device, generator)
     prompt = torch.randint(0, sizes["vocab"], (sizes["prompt"],), generator=generator).to(device)
-    fetcher = common.WeightFetcher(report, calibration)
+    fetcher = common.WeightFetcher(report, calibration, resource_policy=args.weight_resources)
 
     def reference_weight(q, scale):
         return common.WeightFetcher.reference(q, scale, device)
@@ -146,7 +148,10 @@ def main():
                 outputs[path] = generate(model, prompt, sizes["new_tokens"], fetch, evict_kv, restore_kv)
         stats = backend.stats()
     finally:
-        backend.close()
+        try:
+            backend.close()
+        finally:
+            fetcher.close()
     (sym_tokens, sym_logits), (torch_tokens, torch_logits) = outputs["sym"], outputs["torch"]
     report.check("tokens_equal", sym_tokens == torch_tokens, f"sym {sym_tokens} vs torch {torch_tokens}")
     report.check("logits_equal", common.same_tensor(sym_logits, torch_logits),

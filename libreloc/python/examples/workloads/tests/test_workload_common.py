@@ -187,11 +187,12 @@ def test_weight_fetcher_matches_pytorch_for_every_shape_with_one_artifact():
     report = common.Report("fetch")
     fetcher = common.WeightFetcher(report)
     generator = torch.Generator().manual_seed(1)
-    for rows, cols in ((64, 96), (96, 64), (128, 128)):
-        q, scale = common.quantize_per_channel(torch.randn(rows, cols, generator=generator))
-        actual = fetcher.fetch(q, scale, "cuda:0")
-        assert actual.shape == (cols, rows) and actual.dtype == torch.float32
-        assert common.same_tensor(actual, common.WeightFetcher.reference(q, scale, "cuda:0"))
+    with fetcher:
+        for rows, cols in ((64, 96), (96, 64), (128, 128)):
+            q, scale = common.quantize_per_channel(torch.randn(rows, cols, generator=generator))
+            actual = fetcher.fetch(q, scale, "cuda:0")
+            assert actual.shape == (cols, rows) and actual.dtype == torch.float32
+            assert common.same_tensor(actual, common.WeightFetcher.reference(q, scale, "cuda:0"))
     assert fetcher.compiles == 1 and fetcher.shapes == {(64, 96), (96, 64), (128, 128)}
     assert report.data["plan_compiles"] == 1
     weights = report.data["bytes"]["weights"]
@@ -203,14 +204,18 @@ def test_weight_fetcher_matches_pytorch_for_every_shape_with_one_artifact():
 @needs_two_gpus
 @pytest.mark.parametrize("row", ["cpu_stages_cuda_stages@0", "cuda_dequant_relocate"])
 def test_weight_fetcher_reaches_a_device_that_is_not_current(row):
-    """Typed GPU rows select the destination and restore the caller's device."""
+    """GPU rows alternate devices without retiring each device's warm owner."""
     report = common.Report("fetch")
     fetcher = common.WeightFetcher(report, implementation=row, kind="expert_weights")
     q, scale = common.quantize_per_channel(torch.randn(512, 256, generator=torch.Generator().manual_seed(2)))
-    with torch.cuda.device(0):
+    with torch.cuda.device(0), fetcher:
         for device in ("cuda:0", "cuda:1", "cuda:0", "cuda:1"):
             actual = fetcher.fetch(q, scale, device)
             assert torch.cuda.current_device() == 0
             assert common.same_tensor(actual, common.WeightFetcher.reference(q, scale, device))
+        for stats in fetcher.resource_stats().values():
+            assert stats["context_creations"] == 1 and stats["requests"] == 2 and stats["hits"] == 1
+    for stats in fetcher.resource_stats().values():
+        assert stats["closed"] and stats["retained_bytes"] == stats["streams"] == stats["background_workers"] == 0
     assert report.data["dispatches"] == {row: 4}
     assert report.data["bytes"]["expert_weights"]["transfers"] == 4

@@ -1,0 +1,71 @@
+{
+  "original_measured_pr_head": "da840e4e37c6a73800b52e3632312c056368d0c3",
+  "restacked_code_revision": "5217c001b52d999d58465b4c13e0e7b250b9439e",
+  "standalone_base_revision": "fb28aad9038895c2a4c201b8d8b51c2a33484b7c",
+  "main_runtime_revision": "45d64958ee30b4c3fa8c0733e0a992d450ac3757",
+  "base_pr": 232,
+  "optimization_pr": 231,
+  "pr162_is_ancestor": false,
+  "compiler_runtime_sources_unchanged_from_main": true,
+  "source_comparison": {
+    "bench/typed_weight_resources.py": {
+      "byte_identical": true,
+      "sha256": "f2b11df27ed4752e1a92c35492870f6ef375cbe560a8262d8bad92a7266173ba"
+    },
+    "libreloc/python/examples/compiler_runtime_handoff.py": {
+      "byte_identical": true,
+      "sha256": "829d31e18bc541ab6a96cbf374abd4d3644932e836f40a3fab59062154d6fa47"
+    },
+    "libreloc/python/examples/workloads/llm_offload.py": {
+      "byte_identical": true,
+      "sha256": "34d5ea192f3e369212b96cd089968de6307fdd0812d17e8233808de7e4916157"
+    },
+    "libreloc/python/examples/workloads/moe_experts.py": {
+      "byte_identical": true,
+      "sha256": "d67fb53322704e93554121706ca5acb6d82abb27bb0221ee2614076712320772"
+    },
+    "libreloc/python/examples/workloads/tests/test_weight_resources.py": {
+      "byte_identical": true,
+      "sha256": "8626e911226ad6083788151d886bb1c2c814c2946da5e4b4a6332e4b63659ea6"
+    },
+    "libreloc/python/examples/workloads/common.py": {
+      "only_module_docstring_changed": true,
+      "current_sha256": "c44c12e8a244603d4da844a63a6de53e4fea611b4d4372714cfb7ea522c8edda"
+    },
+    "libreloc/python/examples/workloads/run_workloads.py": {
+      "child_environment_ast_identical": true
+    }
+  },
+  "measurement_note": "The committed 12 matched runs are the original measurements, not reruns of the rewritten history. Measured executable paths are preserved by the source comparisons above; runtime/compiler sources are unchanged. Validation after extraction is recorded separately.",
+  "validation": {
+    "standalone_base": {
+      "passed": 39,
+      "skipped": 0,
+      "seconds": 64.89,
+      "log": "standalone-weight-fetcher-tests.log"
+    },
+    "restacked_optimization": {
+      "passed": 51,
+      "skipped": 0,
+      "seconds": 81.6,
+      "log": "restacked-workload-tests.log"
+    },
+    "command": [
+      "/tmp/sym-210-venv/bin/python",
+      "-m",
+      "pytest",
+      "-q",
+      "--tb=short",
+      "libreloc/python/examples/workloads/tests"
+    ],
+    "environment": {
+      "PYTHONPATH": "/home/jueonpark/sym/build/issue210/python",
+      "SYM_BUILD": "/home/jueonpark/sym/build/issue210",
+      "SYM_RELOC_EXPORT": "/home/jueonpark/sym/build/issue210/sym/tools/sym-reloc-export",
+      "SYM_OPT": "/home/jueonpark/sym/build/issue210/sym/tools/sym-opt",
+      "OMP_NUM_THREADS": "8",
+      "MKL_NUM_THREADS": "8"
+    },
+    "excluded_tests": "Only the two DLRM/GNN missing-Torch CLI cases and their two GPU end-to-end cases are outside the standalone extraction. LLM/MoE, helper and retained-resource coverage is preserved."
+  }
+}

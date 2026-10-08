@@ -10,6 +10,7 @@ exit status 2.
 from __future__ import annotations
 
 import json
+from contextlib import ExitStack
 import os
 import pathlib
 import statistics
@@ -389,13 +390,27 @@ class WeightFetcher:
     float32[s1, s0]``. ``policy="auto"`` with a calibration lets the
     runtime's cost model choose where the dequantize runs; without one the
     runtime records ``no_calibration`` and takes the ``cpu_reference`` row.
-    Bytes are recorded under ``kind``; ``implementation`` forces a row (tests)."""
+    Bytes are recorded under ``kind``; ``implementation`` forces a row (tests).
 
-    def __init__(self, report, calibration=None, kind="weights", implementation=""):
+    Retain one bounded owner per canonical CUDA device until close(), or use
+    resource_policy="per-call" for the matched control. Use as a context manager
+    so every owner closes even if preparation, execution or the model fails.
+    Calls are sequential; this helper does not add concurrent/asynchronous work.
+    """
+
+    def __init__(self, report, calibration=None, kind="weights", implementation="", *,
+                 resource_policy="retained", retained_bytes=64 << 20, live_bytes=0):
         from reloc_torch.compiler import CompilerClient
         from reloc_torch.recipe import BindingParam, Dequantize, Recipe, TensorSpec, Transpose
         from reloc_torch.symbolic import Const, Symbol, dense_strides
 
+        if resource_policy not in ("retained", "per-call"):
+            raise ValueError("resource_policy must be retained or per-call")
+        self.resource_policy = resource_policy
+        self.retained_bytes, self.live_bytes = retained_bytes, live_bytes
+        self._resources = {}
+        self._cleanup = ExitStack()
+        self._closed = False
         rows, cols = Symbol("s0"), Symbol("s1")
 
         def spec(shape, dtype):
@@ -416,15 +431,60 @@ class WeightFetcher:
         self.implementation = implementation
         report.add_plan_compiles(1)
 
+    def resource_stats(self):
+        """Completed-call gauges; tensor inputs/outputs are outside these budgets."""
+        return {name: owner.stats()["typed"] for name, owner in self._resources.items()}
+
+    def close(self):
+        if self._closed:
+            return
+        self._closed = True
+        record = self.report.data["weight_resources"] = {
+            "policy": self.resource_policy,
+            "limits_per_device": {"retained_bytes": self.retained_bytes, "live_bytes": self.live_bytes},
+        }
+        # ExitStack attempts every owner's close, including when an earlier
+        # owner reports a completion/cleanup failure. Never discard quarantine.
+        try:
+            record["before_close"] = self.resource_stats()
+        finally:
+            try:
+                self._cleanup.close()
+            finally:
+                record["after_close"] = self.resource_stats()
+
+    def __enter__(self):
+        if self._closed:
+            raise RuntimeError("weight fetcher is closed")
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+        return False
+
     def fetch(self, q, scale, device):
         import torch
         from reloc_torch import dispatch
 
+        if self._closed:
+            raise RuntimeError("weight fetcher is closed")
         device = torch.device(device)
+        if device.type != "cuda":
+            raise ValueError("weight fetcher requires a CUDA destination")
+        device = torch.device("cuda", device.index if device.index is not None else torch.cuda.current_device())
         request = dispatch.prepare_typed_transfer(
             self.compiled, q, device, parameters={"scale": scale}, policy="auto",
             calibration=self.calibration, implementation=self.implementation)
-        result = dispatch.execute_typed_transfer(request)
+        owner = None
+        if self.resource_policy == "retained":
+            from reloc_torch import TransferResources
+
+            key = str(device)
+            if key not in self._resources:
+                self._resources[key] = self._cleanup.enter_context(TransferResources(
+                    max_typed_retained_bytes=self.retained_bytes, max_typed_live_bytes=self.live_bytes))
+            owner = self._resources[key]
+        result = dispatch.execute_typed_transfer(request, resources=owner)
         report = result.report
         self.shapes.add(tuple(q.shape))
         self.report.add_dispatch(report["implementation"])

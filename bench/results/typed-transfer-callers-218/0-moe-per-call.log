@@ -1,0 +1,11 @@
+moe_experts: PASS (6/6 checks)
+  devices: cuda:0; sizes: {'top_k': 2, 'd_model': 1024, 'd_ff': 2048, 'experts': 16, 'blocks': 2, 'batches': [256, 32, 8]}
+  sym transfers: 170; plan compiles: 1; typed dispatch rows: cuda_dequant_relocate=170; fallbacks/exclusions: 0
+  expert_weights: 170 Sym transfers moved 340.00 MiB over the link for 1360.00 MiB of destination tensors (sources 340.00 MiB)
+  expert_weights median per transfer: sym 1.18 ms / torch 0.44 ms (descriptive only)
+  note: calibration: /tmp/sym-218-worktree/calibration/epyc7351-2080ti.cal
+  note: 85 of 96 expert slots were active, and only those experts' weights moved
+  note: routing, token dispatch, GPU-to-GPU token moves and the combine are PyTorch in both passes
+  note: several GPUs show placement and correctness only: the multi-GPU throughput gate failed on this box (R3)
+  note: transfers are blocking; weight resources use the per-call policy
+  note: wire bytes follow from the recipe's dtype choice; equivalent PyTorch code moves the same bytes
