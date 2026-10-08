@@ -5,11 +5,13 @@ and workers with the existing `TransferResources` API. Payloads, scales,
 requests, caller streams, and output tensors remain fresh for each execution.
 This change has no compiler or native runtime implementation changes.
 
-The workload sources live in PR #162. This caller PR is stacked on that branch
-and must run against current main's runtime, including #197–#199. The measured
-runtime source is `45d64958ee30b4c3fa8c0733e0a992d450ac3757`. Historical numbers
-in #191 describe the earlier optimization series; they are not an additional
-gain from the caller adoption measured here.
+The baseline WeightFetcher and its LLM/MoE callers are extracted into
+[PR #232](https://github.com/JueonPark/sym/pull/232), based on main. This
+optimization is stacked on #232; it no longer depends on #162. Its ancestry
+includes the main runtime changes #197–#199. The measured runtime source is
+`45d64958ee30b4c3fa8c0733e0a992d450ac3757`, unchanged in both PRs. Historical
+numbers in #191 describe the earlier optimization series; they are not an
+additional gain from the caller adoption measured here.
 
 ## Audit and ownership
 
@@ -45,11 +47,11 @@ mean no retained-owner instrumentation, not zero resource allocations.
 
 ## Reproduce the matched policy comparison
 
-Build current main with CUDA enabled, Release, and NVTX disabled. Run the
-stacked caller sources with that staged runtime first on `PYTHONPATH`:
+Build this branch with CUDA enabled, Release, and NVTX disabled. Run the
+caller sources with the staged runtime first on `PYTHONPATH`:
 
 ```sh
-export SYM_BUILD=/path/to/current-main/build
+export SYM_BUILD=/path/to/this-branch/build
 export SYM_PYTHON=/path/to/qualified/python
 export PYTHONPATH="$SYM_BUILD/python"
 export SYM_RELOC_EXPORT="$SYM_BUILD/sym/tools/sym-reloc-export"
@@ -142,7 +144,8 @@ scratch allocation/free counts. The 64 MiB per-device retention limit remains
 separate from the uncapped live setting (`live_bytes=0`). No peak-live-memory
 claim follows from these completed-call gauges.
 
-All 55 workload tests passed. Validation covers changing payloads, scales, shapes, retained outputs, alternate
+The original four-workload suite passed all 55 tests. Validation covers
+changing payloads, scales, shapes, retained outputs, alternate
 caller streams, canonical device aliases, two/four-GPU use, explicit per-call
 execution, a hard live-budget failure, and cleanup when model/dispatch/owner
 close raises. All 11 selected current-main GPU typed dispatch tests passed
@@ -158,3 +161,21 @@ descriptive diagnostic, not the fresh-process workload comparison above. Its
 caller code matches `2957dd3`. Exact commands and environment details are in
 [environment.json](../bench/results/typed-transfer-callers-218/environment.json).
 No C++/compiler runtime code is changed by this caller PR.
+
+## Standalone WeightFetcher stack
+
+After extracting the baseline into #232, the standalone baseline passed all
+39 tests and the retained-resource branch passed all 51 tests, with no skips.
+The four tests removed from the original suite concern the DLRM/GNN command
+lines and their GPU examples, which remain in #162. All WeightFetcher,
+LLM/MoE, resource lifetime, and runner coverage remains in the new stack.
+
+The timing reports above retain their original source revisions and hashes;
+they are not relabeled as measurements of a rewritten commit. Revalidation
+checks that the measured LLM/MoE scripts, benchmark and handoff diagnostic
+are byte-identical, that `common.py` differs only in its module docstring,
+and that the runner's child environment is unchanged. Compiler/runtime
+sources still match the measured main revision. Only the runner's model
+selection, unrelated example tests, and documentation change during extraction.
+See [restack-validation.json](../bench/results/typed-transfer-callers-218/restack-validation.json)
+and the accompanying test logs for the current stack's checks.
