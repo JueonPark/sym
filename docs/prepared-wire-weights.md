@@ -118,3 +118,6 @@ for the three matrix shapes, respectively. Each call launches one
 `dequantS8F32Kernel`; there is no FP32-expanded weight upload. This trace was
 collected separately under competing CPU load and establishes representation
 and kernel identity only, not timing or overlap performance.
+
+Measured results, reuse break-even and compact evidence are in the
+[qualification report](../bench/issue224/README.md).
