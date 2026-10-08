@@ -213,8 +213,13 @@ def main():
                     for path,fn in methods.items():
                         for _ in range(5):
                             torch.cuda.nvtx.range_push('group220/'+name+'/'+path)
-                            outputs=fn();torch.cuda.synchronize()
+                            pending=fn();torch.cuda.synchronize()
                             torch.cuda.nvtx.range_pop()
+                            # Keep the preceding output alive throughout the
+                            # range. Releasing a Torch pinned CPU output can
+                            # record allocator events; attribute that retirement
+                            # outside the next implementation's call.
+                            outputs=pending
                             check(outputs,expected)
                     torch.cuda.profiler.stop()
                 row['correctness']=True
