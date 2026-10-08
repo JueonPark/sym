@@ -5,10 +5,10 @@ and workers with the existing `TransferResources` API. Payloads, scales,
 requests, caller streams, and output tensors remain fresh for each execution.
 This change has no compiler or native runtime implementation changes.
 
-The baseline WeightFetcher and its LLM/MoE callers are extracted into
-[PR #232](https://github.com/JueonPark/sym/pull/232), based on main. This
-optimization is stacked on #232; it no longer depends on #162. Its ancestry
-includes the main runtime changes #197–#199. The measured runtime source is
+The baseline WeightFetcher and its LLM/MoE callers were merged into main in
+[PR #232](https://github.com/JueonPark/sym/pull/232). This optimization is
+based directly on main and does not depend on #162. Its ancestry includes
+the runtime changes #197–#199. The measured runtime source is
 `45d64958ee30b4c3fa8c0733e0a992d450ac3757`, unchanged in both PRs. Historical
 numbers in #191 describe the earlier optimization series; they are not an
 additional gain from the caller adoption measured here.
