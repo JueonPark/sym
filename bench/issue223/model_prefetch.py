@@ -203,7 +203,8 @@ def make_model(case):
     generator = torch.Generator().manual_seed(223)
     if case.startswith('llm'):
         sizes = dict(vocab=2048, d_model=1024, heads=16, d_ff=4096, layers=4,
-                     prompt=256 if case == 'llm_prefill' else 8, new_tokens=1 if case == 'llm_prefill' else 4)
+                     prompt=1024 if case == 'llm_long_prefill' else (256 if case == 'llm_prefill' else 8),
+                     new_tokens=1 if 'prefill' in case else 4)
         if case == 'llm_one_layer':
             sizes.update(layers=1, prompt=1, new_tokens=1)
         model = OffloadedGPT(sizes, torch.device('cuda:0'), generator)
@@ -244,7 +245,7 @@ def make_model(case):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--cases', nargs='+', default=['llm_prefill', 'llm_decode', 'moe_dense', 'moe_sparse', 'llm_one_layer'])
+    parser.add_argument('--cases', nargs='+', default=['llm_long_prefill', 'llm_prefill', 'llm_decode', 'moe_dense', 'moe_sparse', 'llm_one_layer'])
     parser.add_argument('--paths', nargs='+', default=['sym_blocking', 'sym_serial', 'sym_prefetch', 'torch_serial',
                         'torch_prefetch', 'inductor_serial', 'inductor_prefetch'])
     parser.add_argument('--samples', type=int, default=30)

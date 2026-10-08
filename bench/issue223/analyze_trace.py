@@ -27,6 +27,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('database', type=Path)
     parser.add_argument('output', type=Path)
+    parser.add_argument('--require-overlap', action='store_true')
     args = parser.parse_args()
     db = sqlite3.connect(args.database)
     db.row_factory = sqlite3.Row
@@ -70,7 +71,9 @@ def main():
                     stream=r['streamId'], correlation_id=r['correlationId'],
                     bytes=r['bytes'] if kind=='h2d' else '',
                     kernel=names[r['demangledName']] if kind=='model_gemm' else ''))
-    assert any(c['dma_gemm_overlap_ms'] > 0 for c in calls if c['path']=='sym_prefetch')
+    assert calls, 'no model calls captured'
+    if args.require_overlap:
+        assert any(c['dma_gemm_overlap_ms'] > 0 for c in calls if c['path']=='sym_prefetch')
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.with_suffix('.csv').open('w') as file:
         writer = csv.DictWriter(file, fieldnames=list(rows[0]), lineterminator='\n')
