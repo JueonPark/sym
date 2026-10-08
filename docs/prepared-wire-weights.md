@@ -105,3 +105,15 @@ first preparation, and first completed loads (including first JIT use) remain
 separate. Model cases are four-layer GPT decode (four tokens) and top-2 MoE with
 one token; checkpoint preparation and first calls are separate from warm model
 timing. Source generation/pinning and exact comparisons are outside timing.
+
+First calls may reuse existing Inductor disk caches; they are process-first
+loads, not cold-cache compiler benchmarks. Matrix measurements host-wait
+completion and register each output with the consumer stream before returning;
+model measurements use the same lookahead scheduling on every path.
+
+The [correlated DMA trace](../bench/issue224/evidence/wire-trace.json) confirms
+weight/scale uploads of 262,144/4,096, 4,194,304/16,384, and 4,194,304/4,096 bytes
+for the three matrix shapes, respectively. Each call launches one
+`dequantS8F32Kernel`; there is no FP32-expanded weight upload. This trace was
+collected separately under competing CPU load and establishes representation
+and kernel identity only, not timing or overlap performance.

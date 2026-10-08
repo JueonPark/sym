@@ -67,11 +67,16 @@ class LoadPath:
     def load(self, q, s):
         if self.name == 'sym_packed':
             return self.owner.load('w')
-        group = self.fetcher.prepare_many([(q, s)], 'cuda:0') if self.name == 'sym_raw' else [self.prepared or (q, s)]
-        handle = self.queue.submit(group)
+        if self.name == 'sym_raw':
+            group = self.fetcher.prepare_many([(q, s)], 'cuda:0')
+            with self.queue.submit(group) as handle:
+                return handle.wait().tensors[0]
+        handle = self.queue.submit([self.prepared or (q, s)])
         try:
-            out, = handle.wait_stream()
             handle.wait()
+            handle.stream = torch.cuda.current_stream()
+            out, = handle.outputs
+            out.record_stream(handle.stream)
             return out
         finally:
             handle.close()
