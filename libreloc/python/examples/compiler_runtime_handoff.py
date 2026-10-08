@@ -462,8 +462,10 @@ def s_latency(ctx):
     transfer); the typed row times preparation plus execution per call
     (``includes_preparation``). Each sample ends with
     torch.cuda.synchronize(). No threshold is applied."""
+    from contextlib import nullcontext
+
     import torch
-    from reloc_torch import RelocBackend, dispatch
+    from reloc_torch import RelocBackend, TransferResources, dispatch
     from reloc_torch.compiler import CompilerClient
     from reloc_torch.recipe import Cast, Recipe, TensorSpec, Transpose
     from reloc_torch.symbolic import Const, dense_strides
@@ -495,16 +497,27 @@ def s_latency(ctx):
 
     def typed():
         request = dispatch.prepare_typed_transfer(compiled_cast, x, "cuda", parameters={}, policy="original_cpu")
-        return dispatch.execute_typed_transfer(request)
+        return dispatch.execute_typed_transfer(request, resources=owner)
 
-    report = dict(typed().report)
-    rows.append({"scenario": "typed_h2d_transpose_cast_f16", "elements": 1 << 20,
-                 "source_bytes": report["source_bytes"], "wire_bytes": report["wire_bytes"],
-                 "payload_bytes_transferred": report["payload_bytes_transferred"],
-                 "reloc_ms": _median_ms(typed, torch.cuda.synchronize),
-                 "pytorch_ms": _median_ms(lambda: x.t().contiguous().to("cuda", torch.float16), torch.cuda.synchronize),
-                 "implementation": report["implementation"], "placement_reason": report["placement_reason"],
-                 "includes_preparation": True})
+    for policy in ("per-call", "retained"):
+        with TransferResources() if policy == "retained" else nullcontext(None) as owner:
+            torch.cuda.synchronize()
+            start = time.perf_counter()
+            first = typed()
+            torch.cuda.synchronize()
+            first_ms = (time.perf_counter() - start) * 1e3
+            report = dict(first.report)
+            check(torch.equal(first.tensor.cpu(), x.t().contiguous().half()), "typed latency output differs")
+            row = {"scenario": "typed_h2d_transpose_cast_f16", "resource_policy": policy, "elements": 1 << 20,
+                   "source_bytes": report["source_bytes"], "wire_bytes": report["wire_bytes"],
+                   "payload_bytes_transferred": report["payload_bytes_transferred"],
+                   "first_transfer_ms": first_ms, "reloc_ms": _median_ms(typed, torch.cuda.synchronize),
+                   "implementation": report["implementation"], "placement_reason": report["placement_reason"],
+                   "includes_preparation": True,
+                   "resources_before_close": owner.stats()["typed"] if owner is not None else None}
+        row["resources_after_close"] = owner.stats()["typed"] if owner is not None else None
+        row["pytorch_ms"] = _median_ms(lambda: x.t().contiguous().to("cuda", torch.float16), torch.cuda.synchronize)
+        rows.append(row)
     return {"rows": rows, "backend_counters": {k: stats[k] for k in ("plan_compiles", "symbol_binds", "runtime_executions")},
             "note": "descriptive only; no speedup gate"}
 

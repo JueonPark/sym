@@ -9,7 +9,7 @@ import run_workloads as runner
 EXAMPLE_HEAD = (
     "import argparse, json, sys\n"
     "parser = argparse.ArgumentParser()\n"
-    "for flag in ('--output', '--device', '--devices', '--calibration'):\n"
+    "for flag in ('--output', '--device', '--devices', '--calibration', '--weight-resources'):\n"
     "    parser.add_argument(flag)\n"
     "parser.add_argument('--quick', action='store_true')\n"
     "a = parser.parse_args()\n"
@@ -55,10 +55,14 @@ def test_child_arguments_route_devices_and_calibration():
     args = runner.parse_args(["--quick", "--devices", "cuda:1,cuda:2", "--calibration", "none"])
     output = pathlib.Path("o.json")
     assert runner.child_arguments("llm", args, output) == [
-        "--output", "o.json", "--quick", "--device", "cuda:1", "--calibration", "none"]
+        "--output", "o.json", "--quick", "--device", "cuda:1", "--calibration", "none",
+        "--weight-resources", "retained"]
     assert runner.child_arguments("moe", args, output) == [
-        "--output", "o.json", "--quick", "--devices", "cuda:1,cuda:2", "--calibration", "none"]
+        "--output", "o.json", "--quick", "--devices", "cuda:1,cuda:2", "--calibration", "none",
+        "--weight-resources", "retained"]
     assert "--quick" not in runner.child_arguments("llm", runner.parse_args([]), output)
+    control = runner.parse_args(["--weight-resources", "per-call"])
+    assert runner.child_arguments("llm", control, output)[-2:] == ["--weight-resources", "per-call"]
 
 
 def test_classify_and_overall_exit():

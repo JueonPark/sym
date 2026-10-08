@@ -51,6 +51,23 @@ def test_each_example_passes_its_checks_at_quick_size(tmp_path, name):
     assert report["ok"] is True
     assert EXPECTED_CHECKS[name] <= set(report["checks"]), sorted(report["checks"])
     assert report["summary"]["checks_passed"] == report["summary"]["checks_total"]
+    if name in ("llm", "moe"):
+        resources = report["weight_resources"]
+        assert resources["policy"] == "retained"
+        assert resources["before_close"]
+        for stats in resources["before_close"].values():
+            assert stats["context_creations"] == 1 and stats["hits"] > 0
+        for stats in resources["after_close"].values():
+            assert stats["closed"] and stats["retained_bytes"] == stats["streams"] == 0
+
+
+@pytest.mark.parametrize("name", ["llm", "moe"])
+def test_direct_weight_per_call_control(tmp_path, name):
+    proc, output = run_runner(tmp_path, "--quick", "--only", name, "--weight-resources", "per-call")
+    assert proc.returncode == 0, output
+    resources = load(tmp_path, name)["weight_resources"]
+    assert resources["policy"] == "per-call"
+    assert resources["before_close"] == resources["after_close"] == {}
 
 
 @pytest.mark.skipif(torch.cuda.device_count() < 2, reason="needs two GPUs")
@@ -68,6 +85,9 @@ def test_moe_spreads_experts_over_every_listed_device(tmp_path):
     assert proc.returncode == 0, output
     fetches = load(tmp_path, "moe")["workload"]["fetches_per_device"]
     assert set(fetches) == set(devices.split(",")) and all(fetches.values()), fetches
+    resources = load(tmp_path, "moe")["weight_resources"]
+    assert set(resources["before_close"]) == set(fetches)
+    assert all(stats["context_creations"] == 1 for stats in resources["before_close"].values())
 
 
 def test_moe_without_calibration_uses_the_cpu_reference_row(tmp_path):

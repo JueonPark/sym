@@ -93,6 +93,8 @@ def main():
     parser.add_argument("--devices", default="cuda:0", help="comma-separated; expert e lives on device e %% n")
     parser.add_argument("--quick", action="store_true", help="a small model and two batches")
     parser.add_argument("--calibration", default="auto", help="auto, none or a .cal path for the dispatch cost model")
+    parser.add_argument("--weight-resources", choices=("retained", "per-call"), default="retained",
+                        help="direct weight-transfer resources (default: retained per CUDA device)")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--output", help="write the JSON report here")
     args = parser.parse_args()
@@ -107,7 +109,7 @@ def main():
     generator = torch.Generator().manual_seed(args.seed)
     model = OffloadedMoE(sizes, devices, generator)
     inputs = [torch.randn(tokens, sizes["d_model"], generator=generator).to(devices[0]) for tokens in sizes["batches"]]
-    fetcher = common.WeightFetcher(report, calibration, kind="expert_weights")
+    fetcher = common.WeightFetcher(report, calibration, kind="expert_weights", resource_policy=args.weight_resources)
     fetches = {str(device): 0 for device in devices}
 
     def sym_fetch(q, scale, device):
@@ -118,7 +120,7 @@ def main():
     paths = {"torch": common.reference_transfer(report, clock, "expert_weights", reference),
              "sym": common.sym_transfer(report, clock, "expert_weights", sym_fetch, reference, count_bytes=False)}
     routes, outputs = {}, {}
-    with torch.no_grad():
+    with fetcher, torch.no_grad():
         for path, fetch in paths.items():
             routes[path] = []
             outputs[path] = [model.forward(x, fetch, routes[path].append) for x in inputs]
@@ -139,7 +141,7 @@ def main():
     report.note("routing, token dispatch, GPU-to-GPU token moves and the combine are PyTorch in both passes")
     report.note("several GPUs show placement and correctness only: the multi-GPU throughput gate failed on this "
                 "box (R3)")
-    report.note("transfers are blocking; every Sym call includes per-call runtime setup")
+    report.note(f"transfers are blocking; weight resources use the {args.weight_resources} policy")
     return report.finish(args.output)
 
 

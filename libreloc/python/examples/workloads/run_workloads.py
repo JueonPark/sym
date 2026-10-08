@@ -46,6 +46,8 @@ def parse_args(argv=None):
     parser.add_argument("--devices", default="cuda:0",
                         help="comma-separated CUDA devices; llm uses the first device, moe uses all")
     parser.add_argument("--calibration", default="auto", help="auto, none or a .cal path (llm and moe)")
+    parser.add_argument("--weight-resources", choices=("retained", "per-call"), default="retained",
+                        help="direct typed weight resources for llm/moe (default: retained)")
     parser.add_argument("--build", help="Sym build tree (default: $SYM_BUILD or <repo>/build/torch-cuda)")
     parser.add_argument("--python", help="interpreter (default: $SYM_PYTHON or /tmp/sym-torch-cuda/bin/python)")
     parser.add_argument("--output-dir", help="reports and logs (default: a fresh temporary directory)")
@@ -106,6 +108,7 @@ def child_arguments(name, args, output):
         if calibration not in ("auto", "none"):
             calibration = str(pathlib.Path(calibration).absolute())
         argv += ["--calibration", calibration]
+        argv += ["--weight-resources", args.weight_resources]
     return argv
 
 
