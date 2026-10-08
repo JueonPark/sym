@@ -129,6 +129,9 @@ struct TransferOptions {
   // Typed dispatch only: an already-dense host buffer needs no layout gather.
   // The blocking caller must retain it until completion is established.
   bool directDenseUpload = true;
+  // Transform typed H2D chunks directly into an event-gated staging ring.
+  // False retains the whole-host-buffer execution control.
+  bool pipelineTypedH2D = true;
   PinningPolicy pinning = PinningPolicy::Pinned;
   // Auto needs an explicitly configured/calibrated threshold. Omission is
   // conservative pageable selection, not a universal hardware-independent gate.

@@ -84,6 +84,10 @@ py::dict reportDict(const reloc::dispatch::Report &r) {
   out["device_temp_bytes"] = r.deviceTempBytes;
   out["artifact_version"] = r.artifactVersion;
   out["executed"] = r.executed;
+  out["host_pipeline"] = r.hostPipeline;
+  out["host_chunks"] = r.hostChunks;
+  out["host_chunk_bytes"] = r.hostChunkBytes;
+  out["host_buffers"] = r.hostBuffers;
   out["staging"] = stagingReport(r.staging);
   return out;
 }
@@ -150,14 +154,13 @@ prepareDispatch(const Plan &bound, const reloc::BufferView &source,
   return std::get<reloc::dispatch::DispatchRequest>(std::move(prepared));
 }
 
-py::dict
-executeDispatchPy(reloc::dispatch::DispatchRequest &request,
-                  const py::object &callerStream, int nBuffers, int nStreams,
-                  int gatherThreads, std::shared_ptr<reloc::GatherPool> pool,
-                  const std::string &pinning,
-                  std::optional<size_t> minPinnedBytes, bool directDenseUpload,
-                  std::shared_ptr<reloc::dispatch::Resources> resources,
-                  const py::object &owners) {
+py::dict executeDispatchPy(
+    reloc::dispatch::DispatchRequest &request, const py::object &callerStream,
+    int nBuffers, int nStreams, int gatherThreads,
+    std::shared_ptr<reloc::GatherPool> pool, const std::string &pinning,
+    std::optional<size_t> minPinnedBytes, bool directDenseUpload, bool pipeline,
+    size_t chunkSize, std::shared_ptr<reloc::dispatch::Resources> resources,
+    const py::object &owners) {
   if (request.executing)
     raise({"already_executed", "typed request is executing"});
   request.executing = true;
@@ -187,6 +190,8 @@ executeDispatchPy(reloc::dispatch::DispatchRequest &request,
   request.report.staging.clear();
   options.staging = &request.report.staging;
   options.directDenseUpload = directDenseUpload;
+  options.pipelineTypedH2D = pipeline;
+  options.chunkSizeOverride = chunkSize;
   options.gatherThreads = static_cast<unsigned>(gatherThreads);
   options.gather = pool.get();
   if (!callerStream.is_none()) {
@@ -613,10 +618,11 @@ void registerDispatchBindings(py::module_ &m) {
         "TransferError('<code>: <detail>'); allocates and launches nothing.");
   m.def("execute_dispatch", &executeDispatchPy, py::arg("request"),
         py::kw_only(), py::arg("caller_stream") = py::none(),
-        py::arg("n_buffers") = 4, py::arg("n_streams") = 2,
+        py::arg("n_buffers") = 2, py::arg("n_streams") = 2,
         py::arg("gather_threads") = 1, py::arg("gather_pool") = nullptr,
         py::arg("pinning") = "auto", py::arg("min_pinned_bytes") = py::none(),
-        py::arg("direct_dense_upload") = true, py::arg("resources") = nullptr,
+        py::arg("direct_dense_upload") = true, py::arg("pipeline") = true,
+        py::arg("chunk_size") = 0, py::arg("resources") = nullptr,
         py::arg("owners") = py::none(),
         "Run the selected row and block until this request's work completed; "
         "returns the report with payload_bytes_transferred filled in. "

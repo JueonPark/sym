@@ -19,6 +19,7 @@
 #define RELOC_TYPEDEXECUTE_H
 
 #include "reloc/Bind.h"
+#include "reloc/ChunkSchedule.h"
 
 #include <cstdint>
 #include <optional>
@@ -116,6 +117,16 @@ std::optional<ExecutionError> executeHost(const Program &program, uint32_t from,
                                           uint32_t to, const void *src,
                                           void *dst, GatherPool *pool = nullptr,
                                           unsigned threads = 1);
+
+/// Execute one physical outer-row window from planChunks over a layout whose
+/// elementSize/totalBytes describe boundary `to`. `dst` points to the chunk's
+/// own storage, not an artificially rebased pointer. Channel maps still use
+/// global result coordinates. Rejects non-partitionable layouts or invalid
+/// windows before writing; use executeHost for the whole-buffer fallback.
+std::optional<ExecutionError>
+executeHostChunk(const Program &, uint32_t from, uint32_t to, const void *src,
+                 void *dst, const Chunk &, GatherPool *pool = nullptr,
+                 unsigned threads = 1, uint64_t chunkIndex = 0);
 
 } // namespace typed
 } // namespace reloc

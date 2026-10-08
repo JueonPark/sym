@@ -7,7 +7,7 @@
 # reloc-runtime-mlir-free CTest test and the CI assertion step — is on
 # the link interface of the built shared object.
 option(RELOC_ENABLE_CUDA "Build libreloc's CUDA backend (requires the CUDA toolkit)" OFF)
-option(RELOC_ENABLE_NVTX "Annotate H2D gather work for profiling (CUDA builds only)" OFF)
+option(RELOC_ENABLE_NVTX "Annotate native H2D gather/typed work for profiling (CUDA builds only)" OFF)
 if(RELOC_ENABLE_NVTX AND NOT RELOC_ENABLE_CUDA)
   message(FATAL_ERROR "RELOC_ENABLE_NVTX requires RELOC_ENABLE_CUDA")
 endif()

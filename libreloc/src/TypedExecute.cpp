@@ -1,6 +1,7 @@
 //===- TypedExecute.cpp - CPU reference execution of typed plans -------===//
 
 #include "reloc/TypedExecute.h"
+#include "Trace.h"
 
 #include "reloc/GatherPool.h"
 #include "reloc/Quant.h"
@@ -143,6 +144,7 @@ struct WalkState {
   uint32_t widthTo;
   std::vector<int64_t> lo; // pad lo per coalesced axis
   bool narrowRun = false;
+  int64_t destinationOrigin = 0; // global element offset of this local window
   std::atomic<bool> failed{false};
   std::mutex mutex;
   ExecutionError error;
@@ -194,7 +196,8 @@ bool element(WalkState &state, int64_t srcOff, int64_t dstOff,
     }
     bits = applyStage(stage, bits, channel);
   }
-  storeBits(state.dst + dstOff * state.widthTo, bits, state.widthTo);
+  storeBits(state.dst + (dstOff - state.destinationOrigin) * state.widthTo,
+            bits, state.widthTo);
   return true;
 }
 
@@ -205,8 +208,9 @@ void walk(WalkState &state, size_t depth, int64_t iBegin, int64_t iEnd,
   if (depth == r - 1) {
     if (state.narrowRun) {
       const auto *src = state.src + (srcOff + iBegin) * sizeof(float);
-      auto *dst =
-          state.dst + (dstOff + iBegin + state.lo[depth]) * sizeof(uint16_t);
+      auto *dst = state.dst + (dstOff + iBegin + state.lo[depth] -
+                               state.destinationOrigin) *
+                                  sizeof(uint16_t);
       // Scalar bit loads also support unaligned raw views; retain that path.
       if (reinterpret_cast<uintptr_t>(src) % alignof(float) == 0 &&
           reinterpret_cast<uintptr_t>(dst) % alignof(uint16_t) == 0) {
@@ -433,10 +437,11 @@ uint64_t applyStage(const StageArithmetic &stage, uint64_t bits,
   return bits;
 }
 
-std::optional<ExecutionError> executeHost(const Program &program, uint32_t from,
-                                          uint32_t to, const void *src,
-                                          void *dst, GatherPool *pool,
-                                          unsigned threads) {
+namespace {
+std::optional<ExecutionError>
+executeHostWindow(const Program &program, uint32_t from, uint32_t to,
+                  const void *src, void *dst, GatherPool *pool,
+                  unsigned threads, const Chunk *chunk, uint64_t chunkIndex) {
   const uint32_t stageCount = static_cast<uint32_t>(program.stages.size());
   if (from > to || to > stageCount)
     return fail("invalid_boundary", "stage range [" + std::to_string(from) +
@@ -450,11 +455,38 @@ std::optional<ExecutionError> executeHost(const Program &program, uint32_t from,
   if (auto *error = std::get_if<ExecutionError>(&fill))
     return *error;
   const uint32_t widthTo = widthAt(program, to);
-  if (const auto &bits = std::get<std::optional<uint64_t>>(fill))
-    fillPattern(static_cast<uint8_t *>(dst), *bits, widthTo,
-                program.resultElements);
-
   const BoundPlan &layout = program.plan.layout;
+  int64_t begin = 0, end = layout.extents.front(), origin = 0;
+  int64_t elements = program.resultElements;
+  if (chunk) {
+    auto wire = layout;
+    wire.elementSize = widthTo;
+    wire.totalBytes = bytesAt(program, to, true);
+    // A maximal target produces one window and checks row disjointness.
+    const auto whole =
+        planChunks(wire, 1, static_cast<size_t>(wire.totalBytes));
+    const auto &full = whole.chunks.front();
+    if (whole.serialized || full.bytes != size_t(wire.totalBytes) ||
+        chunk->paddedBegin < 0 || chunk->paddedEnd <= chunk->paddedBegin ||
+        chunk->paddedEnd > full.paddedEnd ||
+        chunk->byteOffset != chunk->paddedBegin * whole.rowBytes ||
+        chunk->bytes !=
+            size_t((chunk->paddedEnd - chunk->paddedBegin) * whole.rowBytes))
+      return fail("invalid_chunk",
+                  "chunk is not a disjoint physical row window");
+    begin = std::clamp(chunk->paddedBegin - whole.outerLo, int64_t(0), end);
+    end = std::clamp(chunk->paddedEnd - whole.outerLo, begin, end);
+    if (chunk->validBegin != begin || chunk->validEnd != end)
+      return fail("invalid_chunk",
+                  "chunk valid rows differ from its physical window");
+    origin = chunk->byteOffset / widthTo;
+    elements = static_cast<int64_t>(chunk->bytes / widthTo);
+  }
+  if (const auto &bits = std::get<std::optional<uint64_t>>(fill)) {
+    detail::TraceRange trace("reloc.typed.fill", chunkIndex);
+    fillPattern(static_cast<uint8_t *>(dst), *bits, widthTo, elements);
+  }
+
   WalkState state{program,
                   StageRange{from, to, false},
                   static_cast<const uint8_t *>(src),
@@ -462,6 +494,7 @@ std::optional<ExecutionError> executeHost(const Program &program, uint32_t from,
                   widthAt(program, from),
                   widthTo,
                   std::vector<int64_t>(layout.extents.size(), 0)};
+  state.destinationOrigin = origin;
   for (uint32_t k = from; k < to; ++k)
     if (program.stages[k].perChannel)
       state.range.needsCoordinates = true;
@@ -473,7 +506,6 @@ std::optional<ExecutionError> executeHost(const Program &program, uint32_t from,
       isF32(program.stages[from].input) && isF16(program.stages[from].output) &&
       layout.srcStrides.back() == 1 && layout.dstStrides.back() == 1;
 
-  const int64_t outer = layout.extents.front();
   int64_t innerSpan = 0;
   for (size_t k = 1; k < layout.dstStrides.size(); ++k)
     innerSpan += (layout.extents[k] - 1) * layout.dstStrides[k];
@@ -484,16 +516,35 @@ std::optional<ExecutionError> executeHost(const Program &program, uint32_t from,
     owned = std::make_unique<GatherPool>(threads);
     pool = owned.get();
   }
-  if (pool != nullptr && rowsDisjoint && pool->threadCount() > 1 && outer > 1) {
-    pool->parallelFor(
-        0, outer, /*minPerWorker=*/1,
-        [&](int64_t begin, int64_t end) { walkRows(state, begin, end); });
-  } else {
-    walkRows(state, 0, outer);
-  }
+  auto work = [&](int64_t first, int64_t last) {
+    detail::TraceRange trace("reloc.typed.transform.work", chunkIndex);
+    walkRows(state, first, last);
+  };
+  if (pool != nullptr && rowsDisjoint && pool->threadCount() > 1 &&
+      end - begin > 1)
+    pool->parallelFor(begin, end, /*minPerWorker=*/1, work);
+  else if (end > begin)
+    work(begin, end);
   if (state.failed.load())
     return state.error;
   return std::nullopt;
+}
+} // namespace
+
+std::optional<ExecutionError> executeHost(const Program &program, uint32_t from,
+                                          uint32_t to, const void *src,
+                                          void *dst, GatherPool *pool,
+                                          unsigned threads) {
+  return executeHostWindow(program, from, to, src, dst, pool, threads, nullptr,
+                           0);
+}
+
+std::optional<ExecutionError>
+executeHostChunk(const Program &program, uint32_t from, uint32_t to,
+                 const void *src, void *dst, const Chunk &chunk,
+                 GatherPool *pool, unsigned threads, uint64_t chunkIndex) {
+  return executeHostWindow(program, from, to, src, dst, pool, threads, &chunk,
+                           chunkIndex);
 }
 
 } // namespace typed

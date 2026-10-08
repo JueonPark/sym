@@ -485,4 +485,68 @@ TEST(TypedExecute, ApplyStageIsTheReferenceArithmetic) {
   EXPECT_EQ(reloc::typed::widthAt(program, 2), 4u);
 }
 
+TEST(TypedExecute, ChunkWindowsKeepGlobalChannelsFillsAndTailBits) {
+  const std::vector<Program> programs = {
+      mustPrepare(mustBind(typed_goldens::kCastPadHex, {})),
+      mustPrepare(mustBind(typed_goldens::kPadQuantizeHex, {})),
+      mustPrepare(mustBind(typed_goldens::kQuantizePadHex, {})),
+      mustPrepare(mustBind(typed_goldens::kWitnessChannelTransposeHex, {})),
+      mustPrepare(mustBind(typed_goldens::kQuantDequantSymHex, {{"N", 37}})),
+      mustPrepare(mustBind(typed_goldens::kDequantCastHex, {}))};
+  reloc::GatherPool workers(3);
+  for (const auto &program : programs) {
+    std::vector<uint8_t> src(program.plan.sourceBytes);
+    if (reloc::typed::widthAt(program, 0) == 4) {
+      const float values[] = {-0.0f,
+                              0.3f,
+                              -1.25f,
+                              65520.f,
+                              std::numeric_limits<float>::quiet_NaN(),
+                              std::numeric_limits<float>::infinity()};
+      for (size_t i = 0; i < src.size() / 4; ++i)
+        std::memcpy(src.data() + i * 4, &values[i % 6], 4);
+    } else {
+      for (size_t i = 0; i < src.size(); ++i)
+        src[i] = static_cast<uint8_t>(i * 17);
+    }
+    for (uint32_t boundary = 0; boundary <= program.stages.size(); ++boundary) {
+      if (!reloc::typed::padsSettledBy(program, boundary) ||
+          std::holds_alternative<ExecutionError>(
+              reloc::typed::fillAt(program, boundary)))
+        continue;
+      auto expected = run(program, 0, boundary, src);
+      auto layout = program.plan.layout;
+      layout.elementSize = reloc::typed::widthAt(program, boundary);
+      layout.totalBytes = expected.size();
+      for (size_t target : {size_t(1), size_t(7), size_t(29)}) {
+        const auto schedule = reloc::planChunks(layout, 2, target);
+        ASSERT_FALSE(schedule.serialized);
+        std::vector<uint8_t> actual(expected.size(), 0xAB);
+        for (const auto &chunk : schedule.chunks) {
+          // A local window with canaries catches negative/global stores even
+          // when a later chunk would overwrite the corrupted output bytes.
+          std::vector<uint8_t> window(chunk.bytes + 32, 0xA5);
+          auto error = reloc::typed::executeHostChunk(
+              program, 0, boundary, src.data(), window.data() + 16, chunk,
+              &workers);
+          ASSERT_FALSE(error.has_value()) << (error ? error->message : "");
+          EXPECT_TRUE(std::all_of(window.begin(), window.begin() + 16,
+                                  [](uint8_t v) { return v == 0xA5; }));
+          EXPECT_TRUE(std::all_of(window.end() - 16, window.end(),
+                                  [](uint8_t v) { return v == 0xA5; }));
+          std::copy(window.begin() + 16, window.end() - 16,
+                    actual.begin() + chunk.byteOffset);
+        }
+        EXPECT_EQ(actual, expected);
+        auto invalid = schedule.chunks.front();
+        ++invalid.byteOffset;
+        auto error = reloc::typed::executeHostChunk(
+            program, 0, boundary, src.data(), actual.data(), invalid);
+        ASSERT_TRUE(error.has_value());
+        EXPECT_EQ(error->code, "invalid_chunk");
+      }
+    }
+  }
+}
+
 } // namespace
