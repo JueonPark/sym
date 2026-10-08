@@ -218,7 +218,7 @@ def make_model(case):
         units = sizes['prompt'] if sizes['new_tokens'] == 1 else sizes['new_tokens']
     else:
         sizes = dict(d_model=1024, d_ff=2048, experts=8, blocks=2,
-                     tokens=512 if case == 'moe_dense' else 1)
+                     tokens=4096 if case == 'moe_large' else (512 if case == 'moe_dense' else 1))
         model = OffloadedMoE(sizes, [torch.device('cuda:0')], generator)
         containers = [expert for block in model.experts for expert in block]
         def new_input():
@@ -245,7 +245,7 @@ def make_model(case):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--cases', nargs='+', default=['llm_long_prefill', 'llm_prefill', 'llm_decode', 'moe_dense', 'moe_sparse', 'llm_one_layer'])
+    parser.add_argument('--cases', nargs='+', default=['llm_long_prefill', 'llm_prefill', 'llm_decode', 'moe_large', 'moe_dense', 'moe_sparse', 'llm_one_layer'])
     parser.add_argument('--paths', nargs='+', default=['sym_blocking', 'sym_serial', 'sym_prefetch', 'torch_serial',
                         'torch_prefetch', 'inductor_serial', 'inductor_prefetch'])
     parser.add_argument('--samples', type=int, default=30)

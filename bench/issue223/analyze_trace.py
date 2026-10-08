@@ -54,16 +54,25 @@ def main():
         assert dma and compute, f'missing correlated DMA or model GEMMs: {label}'
         assert all(root['start'] <= r['start'] <= r['end'] <= root['end'] for r in dma + compute)
         intervals = union((r['start'], r['end']) for r in compute)
+        consumer_streams = {r['streamId'] for r in compute}
+        model = [k for k in kernels if k['correlationId'] in correlated and k['streamId'] in consumer_streams]
+        model_intervals = union((r['start'], r['end']) for r in model)
+        model_overlap = sum(max(0, min(c['end'], b)-max(c['start'], a))
+                            for c in dma for a, b in model_intervals)
         overlap = sum(max(0, min(c['end'], b)-max(c['start'], a))
                       for c in dma for a, b in intervals)
         calls.append(dict(case=case, path=path, sample=int(sample), h2d_bytes=sum(c['bytes'] for c in dma),
             h2d_calls=len(dma), gemms=len(compute), dma_ms=sum(c['end']-c['start'] for c in dma)/1e6,
-            model_gemm_ms=sum(b-a for a,b in intervals)/1e6, dma_gemm_overlap_ms=overlap/1e6))
+            model_gemm_ms=sum(b-a for a,b in intervals)/1e6, dma_gemm_overlap_ms=overlap/1e6,
+            model_gpu_ms=sum(b-a for a,b in model_intervals)/1e6, dma_model_overlap_ms=model_overlap/1e6))
         if path.endswith(('_serial', '_blocking')):
-            assert overlap == 0, f'serial control overlapped: {label}'
+            assert model_overlap == 0, f'serial control overlapped: {label}'
         if (case, path) in retained:
             continue
         retained.add((case, path))
+        for a, b in model_intervals:
+            rows.append(dict(case=case, path=path, sample=sample, kind='model_kernel_union',
+                start_ns=a-root['start'], end_ns=b-root['start'], stream='', correlation_id='', bytes='', kernel=''))
         for kind, events in (('h2d', dma), ('model_gemm', compute)):
             for r in events:
                 rows.append(dict(case=case, path=path, sample=sample, kind=kind,
