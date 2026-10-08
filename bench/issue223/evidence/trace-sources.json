@@ -1,0 +1,17 @@
+[
+  {
+    "trace": "sym-223-short-overlap",
+    "database_sha256": "68842418d9c43d53c30522217c3a1470514f53494b250467623f9f68bcb87d24",
+    "extractor_output_sha256": "db936d90b4da01e4239daf6d978abedd3fe7f74e84e581861bdf81cc4c9a7bd2"
+  },
+  {
+    "trace": "sym-223-long-overlap",
+    "database_sha256": "c1834aeea4808a3756cbd46eb36838e5c4501c40d35e0b1926b32b666c113d19",
+    "extractor_output_sha256": "20286eeccf7a1a928f5f4f7cdacd8067103732a1c36c5e2a1eab1c029a892aa3"
+  },
+  {
+    "trace": "sym-223-moe-overlap",
+    "database_sha256": "b885fe9ca5671a3011670e126903d99ff7f5875c11652d1f77bba11e3bda4abc",
+    "extractor_output_sha256": "f431645d41e3839a56cd856bfd74e903845a3608f93ac0e72df1fbb9e764bfbf"
+  }
+]

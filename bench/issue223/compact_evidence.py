@@ -68,12 +68,12 @@ def main():
         by_kind = defaultdict(list)
         with path.with_suffix('.csv').open() as file:
             for row in csv.DictReader(file):
-                by_kind[row['case'],row['path'],row['kind']].append([
+                by_kind[row['case'],row['path'],int(row['sample']),row['kind']].append([
                     int(row['start_ns']), int(row['end_ns']),
                     *[int(row[k]) if row[k] else None for k in ('stream','correlation_id','bytes')],
                     row['kernel'] or None])
-        for (case, name, kind), values in by_kind.items():
-            intervals.append(dict(case=case, path=name, sample=0, kind=kind, intervals=compact(values)))
+        for (case, name, sample, kind), values in by_kind.items():
+            intervals.append(dict(case=case, path=name, sample=sample, kind=kind, intervals=compact(values)))
     if summaries:
         write_csv(args.output/'overlap.csv', summaries)
         write_csv(args.output/'intervals.csv', intervals)
