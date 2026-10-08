@@ -22,7 +22,7 @@ def union(intervals):
     return result
 
 
-def analyze(path, output):
+def analyze(path, output, first_per_path=False):
     db = sqlite3.connect(path); db.row_factory = sqlite3.Row
     names = {r['id']:r['value'] for r in db.execute('select id,value from StringIds')}
     nvtx = [dict(r) for r in db.execute('select * from NVTX_EVENTS where end is not null order by start')]
@@ -66,10 +66,15 @@ def analyze(path, output):
         requests.append(record)
     assert requests, 'no native typed pipeline activity captured'
     assert any(r['next_transform_overlap_ms']>0 for r in requests if r['path'].endswith('/ring2'))
+    if first_per_path:
+        first = {}
+        for request in requests: first.setdefault(request['path'],request['request'])
+        rows = [row for row in rows if row['request'] in first.values()]
     with output.with_suffix('.csv').open('w') as f:
-        writer = csv.DictWriter(f,fieldnames=list(rows[0])); writer.writeheader(); writer.writerows(rows)
+        writer = csv.DictWriter(f,fieldnames=list(rows[0]),lineterminator='\n'); writer.writeheader(); writer.writerows(rows)
     result = dict(sqlite_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
-                  intervals_csv=output.with_suffix('.csv').name,requests=requests)
+                  intervals_csv=output.with_suffix('.csv').name,
+                  interval_requests=sorted({row['request'] for row in rows}),requests=requests)
     output.with_suffix('.json').write_text(json.dumps(result,indent=2)+'\n')
     print(json.dumps(requests,indent=2))
 
@@ -77,4 +82,5 @@ def analyze(path, output):
 if __name__=='__main__':
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('sqlite',type=Path); p.add_argument('output',type=Path)
-    args = p.parse_args(); analyze(args.sqlite,args.output)
+    p.add_argument('--first-per-path',action='store_true',help='retain all summaries but only the first call per path in the interval CSV')
+    args = p.parse_args(); analyze(args.sqlite,args.output,args.first_per_path)
