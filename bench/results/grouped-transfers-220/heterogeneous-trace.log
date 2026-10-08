@@ -1,9 +1,0 @@
-Capture range started in the application.
-Capture range ended in the application.
-Generating '/tmp/nsys-report-ac1e.qdstrm'
-
-heterogeneous {'individual': (2.9901085, 3.1575789000000003), 'torch_batched': (0.7058230000000001, 1.2278142500000004), 'grouped': (1.5730225, 1.6828205)}
-Generated:
-    /tmp/sym220-trace-heterogeneous.nsys-rep
-
-Processing 2085 events: [==================================================100%]

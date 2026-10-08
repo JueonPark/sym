@@ -1,9 +1,0 @@
-Capture range started in the application.
-Capture range ended in the application.
-Generating '/tmp/nsys-report-0300.qdstrm'
-
-kv_h2d_small {'individual': (1.712288, 1.7453272), 'torch_batched': (0.524578, 1.0752955499999999), 'grouped': (1.189688, 1.220545)}
-Generated:
-    /tmp/sym220-trace-kv_h2d_small.nsys-rep
-
-Processing 2130 events: [==================================================100%]

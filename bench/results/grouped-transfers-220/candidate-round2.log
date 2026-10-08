@@ -1,7 +1,0 @@
-kv_h2d_small {'individual': (1.694493, 1.72764675), 'torch_batched': (0.517239, 0.60091515), 'grouped': (1.16194, 1.1940753499999999)}
-kv_d2h_small {'individual': (1.8585500000000001, 1.8840048500000002), 'torch_batched': (0.429327, 0.4723133), 'grouped': (1.376894, 1.4318901)}
-kv_h2d_large {'individual': (5.136841, 5.31224995), 'torch_batched': (3.1745385, 3.31731125), 'grouped': (4.3267299999999995, 4.83643495)}
-kv_d2h_large {'individual': (5.1531125, 5.4340468), 'torch_batched': (1.5467475, 1.56470255), 'grouped': (4.7624344999999995, 4.91207935)}
-weights_small {'individual': (2.07675, 2.11506), 'torch_batched': (0.673732, 0.69413805), 'grouped': (1.2626865, 1.2895488)}
-weights_large {'individual': (3.954177, 4.112603449999999), 'torch_batched': (2.7747634999999997, 2.80986065), 'grouped': (3.3262425, 3.6388657999999987)}
-heterogeneous {'individual': (2.9377035, 3.2655041), 'torch_batched': (0.693951, 0.7758877), 'grouped': (1.502999, 1.6110292)}

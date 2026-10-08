@@ -17,6 +17,11 @@ is empty, so its runtime/compiler sources match merged main. Every raw round
 records its loaded Python files, extension/runtime/compiler hashes, source and
 runtime revisions, environment and clocks. See [API and lifetime contract](../../../docs/grouped-transfers.md).
 
+Full raw rounds, CUDA timestamp exports, test/build logs and checksums are
+preserved in the [original qualification snapshot][raw-evidence]. This tree
+keeps the report, environment details and reproducible benchmark scripts;
+the generated artifacts are excluded from the implementation PR's file diff.
+
 ## Completed warm calls
 
 Three independent process rounds per revision, 100 completed samples per case
@@ -47,7 +52,7 @@ Candidate individual p50 changes range from −1.7% to +2.2% versus main;
 that control does not establish an individual-call optimization or a regression
 beyond machine/run variability. The grouped gains also appear against the
 individual path in the same candidate process. Raw distributions and both
-comparisons are in [comparison.json](comparison.json).
+comparisons are in the archived [comparison.json][comparison].
 
 The large-weight group p95 is 3.984 / 3.639 / 3.558 ms across the three rounds;
 main individual p95 is 4.018 / 4.042 / 4.609 ms. Tail latency is more variable
@@ -109,7 +114,8 @@ and two event records: producer ordering plus completion. Its backend report's
 `event_records=1` excludes the producer event managed inside `waitStream`;
 `caller_waits=1` reports that ordering separately. These are not two completion
 barriers. Event creation/destruction and every other CUDA runtime API are in
-`*-cuda.json`, including Torch allocator events and kernel activity.
+the archived `*-cuda.json` files, including Torch allocator events and kernel
+activity.
 
 Small weights reduce scale uploads from eight to one (512 bytes); large weights
 from four to one (16 KiB); heterogeneous weights from three to two (6 KiB total).
@@ -129,8 +135,9 @@ Trace runs are attribution diagnostics, not extra headline timing rounds.
 Output retirement occurs outside the next path's NVTX range, so releasing a
 previous Torch pinned output cannot be misattributed to a Sym call. Raw
 request-correlated API/memcpy/kernel timestamps and SQLite source hashes are
-retained in `*-cuda.json`. GPU durations overlap host work and are not added to
-completed latency. `*-trace-run.json` preserves the separate profiled run.
+retained in the [qualification snapshot][raw-evidence] as `*-cuda.json`.
+GPU durations overlap host work and are not added to completed latency.
+The archived `*-trace-run.json` files preserve the separate profiled runs.
 
 ## Memory and bounds
 
@@ -239,11 +246,13 @@ export SYM_RELOC_EXPORT=$SYM_BUILD/sym/tools/sym-reloc-export
 export SYM_OPT=$SYM_BUILD/sym/tools/sym-opt
 export SYM_RUNTIME_REVISION=dbb229c
 export OMP_NUM_THREADS=8 MKL_NUM_THREADS=8
+mkdir -p /tmp/sym220-evidence
 taskset -c 4-7,20-23 /tmp/sym-210-venv/bin/python \
-  bench/issue220/grouped_transfers.py --samples 100 --output candidate-round1.json
+  bench/issue220/grouped_transfers.py --samples 100 \
+  --output /tmp/sym220-evidence/candidate-round1.json
 # Main: use the main build/revision and add --individual-only.
 # Repeat three fresh processes each in the revision order above.
-python3 bench/issue220/summarize.py bench/results/grouped-transfers-220
+python3 bench/issue220/summarize.py /tmp/sym220-evidence
 ```
 
 CUDA attribution, repeated separately for each of the seven case names:
@@ -254,14 +263,16 @@ CUDA attribution, repeated separately for each of the seven case names:
   --force-overwrite=true -o /tmp/group220-weights \
   taskset -c 4-7,20-23 /tmp/sym-210-venv/bin/python \
   bench/issue220/grouped_transfers.py --case weights_small --samples 20 \
-  --trace --output weights_small-trace-run.json
+  --trace --output /tmp/sym220-evidence/weights_small-trace-run.json
 /usr/local/cuda-12.5/bin/nsys export --type=sqlite --force-overwrite=true \
   --output /tmp/group220-weights.sqlite /tmp/group220-weights.nsys-rep
-python3 bench/issue220/analyze_trace.py /tmp/group220-weights.sqlite weights_small-cuda.json
+python3 bench/issue220/analyze_trace.py /tmp/group220-weights.sqlite \
+  /tmp/sym220-evidence/weights_small-cuda.json
 ```
 
-The raw Nsight containers/SQLite files remain outside git; their correlated
-records and hashes are checked in. SHA256SUMS covers all evidence and harnesses.
+The raw Nsight containers/SQLite files remain outside git. Their correlated
+records and hashes are in the [qualification snapshot][raw-evidence], whose
+SHA256SUMS covers the original evidence and harnesses.
 
 ## Validation
 
@@ -281,4 +292,7 @@ records and hashes are checked in. SHA256SUMS covers all evidence and harnesses.
 Python suites were run separately with `PYTHONPATH` set to the corresponding
 staged build, and `SYM_RELOC_EXPORT` / `SYM_OPT` set to the built compiler tools.
 Logs, raw rounds, all CUDA attribution records and the machine-readable
-comparison accompany this report.
+comparison remain available in the [qualification snapshot][raw-evidence].
+
+[raw-evidence]: https://github.com/JueonPark/sym/tree/00817b63a139346294a3d9960800fef8008d6b9b/bench/results/grouped-transfers-220
+[comparison]: https://github.com/JueonPark/sym/blob/00817b63a139346294a3d9960800fef8008d6b9b/bench/results/grouped-transfers-220/comparison.json
