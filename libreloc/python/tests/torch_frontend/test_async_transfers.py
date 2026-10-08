@@ -266,3 +266,43 @@ def test_host_wait_registers_current_gpu_consumer(compiler, cuda_device):
         handle.close()
         assert consumer.query()
         assert torch.equal(actual.cpu(), torch.full((65536,), 3., dtype=torch.float16))
+
+
+def test_unknown_consumer_completion_retains_outputs_and_disables_queue(compiler, cuda_device, monkeypatch):
+    import reloc_torch.asynchronous as asynchronous
+    compiled = artifact(compiler)
+    retained = []
+    monkeypatch.setattr(asynchronous, '_QUARANTINE', retained)
+    queue = TransferQueue(cuda_device, gather_threads=2)
+    handle = queue.submit(group(compiled, torch.ones(65536)))
+    consumer = torch.cuda.Stream()
+    with torch.cuda.stream(consumer):
+        output, = handle.wait_stream()
+        delayed(consumer)
+        actual = output + 4
+    ref = weakref.ref(output)
+    del output
+    real_event = torch.cuda.Event
+
+    class FailedConsumerEvent:
+        def __init__(self):
+            self.event = real_event()
+        def record(self, stream):
+            self.event.record(stream)
+        def synchronize(self):
+            raise RuntimeError('consumer completion unknown')
+
+    monkeypatch.setattr(torch.cuda, 'Event', FailedConsumerEvent)
+    with pytest.raises(RuntimeError, match='consumer completion unknown'):
+        handle.close()
+    assert queue.stats()['closed'] and queue.stats()['held'] == 0
+    assert ref() is not None and len(retained) == 1
+    assert retained[0][-1]  # retain the event owners as well as tensors
+    with pytest.raises(RuntimeError, match='closed'):
+        queue.submit(group(compiled, torch.ones(128)))
+    queue.close()
+    consumer.synchronize()  # test-only proof: the injected failure was synthetic
+    assert torch.equal(actual.cpu(), torch.full((65536,), 5., dtype=torch.float16))
+    retained.clear()
+    gc.collect()
+    assert ref() is None
