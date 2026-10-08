@@ -651,6 +651,33 @@ std::variant<Choice, TransferError> select(const Program &program,
   return out;
 }
 
+// Populate only after both current views and the immutable selection are
+// qualified. Never reuse a request's mutable report/consumed state.
+DispatchRequest makeRequest(const Program &program, const BufferView &source,
+                            const BufferView &destination,
+                            TransferDirection direction,
+                            const Selection &choice) {
+  DispatchRequest request;
+  request.program = program;
+  request.source = source;
+  request.destination = destination;
+  request.direction = direction;
+  request.selected = choice.row;
+  Report &report = request.report;
+  report.implementation = choice.row.label();
+  report.policy = choice.policy;
+  report.placementReason = choice.reason;
+  report.method = choice.row.method;
+  report.wireBoundary = choice.row.wireBoundary;
+  report.sourceBytes = program.plan.sourceBytes;
+  report.wireBytes = choice.row.wireBytes;
+  report.destinationBytes = program.plan.destinationBytes;
+  report.parameterBytes = program.plan.parameterBytes;
+  report.deviceTempBytes = choice.row.deviceTempBytes;
+  report.artifactVersion = 1;
+  return request;
+}
+
 } // namespace
 
 //===----------------------------------------------------------------------===//
@@ -839,36 +866,52 @@ std::variant<DispatchRequest, TransferError>
 prepareDispatch(const Program &program, const BufferView &source,
                 const BufferView &destination, TransferDirection direction,
                 const Options &options) {
-  const auto &plan = program.plan;
-  DispatchRequest request;
-  request.program = program;
-  if (auto error = checkView(request.program, source, true, direction))
+  if (auto error = checkView(program, source, true, direction))
     return *error;
-  if (auto error = checkView(request.program, destination, false, direction))
+  if (auto error = checkView(program, destination, false, direction))
     return *error;
-  Capability capability =
-      queryCapability(request.program, direction, options.cuda);
-  auto selected = select(request.program, capability, options);
+  auto selected = selectImplementation(program, direction, options);
   if (auto *error = std::get_if<TransferError>(&selected))
     return *error;
-  const Choice &choice = std::get<Choice>(selected);
-  request.source = source;
-  request.destination = destination;
-  request.direction = direction;
-  request.selected = *choice.row;
-  Report &report = request.report;
-  report.implementation = choice.row->label();
-  report.policy = choice.policy;
-  report.placementReason = choice.reason;
-  report.method = choice.row->method;
-  report.wireBoundary = choice.row->wireBoundary;
-  report.sourceBytes = plan.sourceBytes;
-  report.wireBytes = choice.row->wireBytes;
-  report.destinationBytes = plan.destinationBytes;
-  report.parameterBytes = plan.parameterBytes;
-  report.deviceTempBytes = choice.row->deviceTempBytes;
-  report.artifactVersion = 1;
-  return request;
+  return makeRequest(program, source, destination, direction,
+                     std::get<Selection>(selected));
+}
+
+std::variant<DispatchTemplate, TransferError>
+prepareDispatchTemplate(const TypedBoundPlan &bound,
+                        TransferDirection direction, const Options &options) {
+  auto program = typed::prepareProgram(bound);
+  if (auto *error = std::get_if<typed::ExecutionError>(&program))
+    return fromExecution(*error);
+  DispatchTemplate result;
+  result.program = std::get<Program>(std::move(program));
+  result.capability = queryCapability(result.program, direction, options.cuda);
+  auto selected = select(result.program, result.capability, options);
+  if (auto *error = std::get_if<TransferError>(&selected))
+    return *error;
+  const auto &choice = std::get<Choice>(selected);
+  result.selection = Selection{*choice.row, choice.policy, choice.reason};
+  result.direction = direction;
+  result.cuda = options.cuda;
+  return result;
+}
+
+std::variant<DispatchRequest, TransferError>
+prepareDispatch(const DispatchTemplate &prepared, const BufferView &source,
+                const BufferView &destination) {
+  if (auto error =
+          checkView(prepared.program, source, true, prepared.direction))
+    return *error;
+  if (auto error =
+          checkView(prepared.program, destination, false, prepared.direction))
+    return *error;
+  const bool cuda =
+      source.kind == MemoryKind::Cuda || destination.kind == MemoryKind::Cuda;
+  if (cuda != prepared.cuda)
+    return fail("backend_mismatch",
+                "views do not match the prepared device end");
+  return makeRequest(prepared.program, source, destination, prepared.direction,
+                     prepared.selection);
 }
 
 std::optional<TransferError> executeDispatch(DispatchRequest &request,

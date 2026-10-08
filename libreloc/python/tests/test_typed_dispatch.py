@@ -327,3 +327,35 @@ def test_prefold_spec_names_only_the_s8_variants(artifacts):
         pyreloc.typed_prefold_spec(bound_for(artifacts, "quant_dequant", {"N": 8}))
     with pytest.raises(pyreloc.TransferError, match="prefold_unavailable"):
         pyreloc.typed_prefold_spec(bound_for(artifacts, "pad_quantize", {}))
+
+
+def test_dispatch_template_revalidates_views_and_has_no_execution_state(artifacts):
+    bound = bound_for(artifacts, "dequant_runtime", {"N": 8},
+                      {"s": scalar_f32(.5), "zp": scalar_i32(0)})
+    template = pyreloc.prepare_dispatch_template(bound, "h2d", "host", policy="original_cpu")
+    assert template.selection == pyreloc.select_dispatch(bound, "h2d", "host", policy="original_cpu")
+    template.selection["implementation"] = "invalid"
+    template.capability["eligible"].clear()
+    assert template.capability["eligible"]
+    with pytest.raises(AttributeError):
+        template.program = None
+    outputs = []
+    for value in (2, 6, -8):
+        src, dst = np.full(8, value, np.int8), np.empty(8, np.float32)
+        request = pyreloc.prepare_dispatch_from_template(template, view(src), view(dst))
+        report = pyreloc.execute_dispatch(request)
+        assert report["implementation"] == "cpu_reference"
+        np.testing.assert_array_equal(dst, np.full(8, value / 2, np.float32))
+        outputs.append((dst, dst.copy()))
+        with pytest.raises(pyreloc.TransferError, match="already_executed"):
+            pyreloc.execute_dispatch(request)
+    for dst, saved in outputs:
+        np.testing.assert_array_equal(dst, saved)
+    # A populated template must still reject each fresh malformed view.
+    with pytest.raises(pyreloc.TransferError):
+        pyreloc.prepare_dispatch_from_template(template, view(src[:4]), view(dst))
+    with pytest.raises(pyreloc.TransferError):
+        pyreloc.prepare_dispatch_from_template(template, view(src), view(dst[:4]))
+    cuda_template = pyreloc.prepare_dispatch_template(bound, "h2d", "cuda", policy="original_cpu")
+    with pytest.raises(pyreloc.TransferError, match="backend_mismatch"):
+        pyreloc.prepare_dispatch_from_template(cuda_template, view(src), view(dst))

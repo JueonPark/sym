@@ -84,6 +84,7 @@ class Phases:
         for name in ('bind_values', 'parameter_extents'):
             self.wrap(artifact.CompiledRecipe, name, 'binding')
         for name in ('prepare_typed_program', 'query_capability', 'select_dispatch',
+                     'prepare_dispatch_template', 'prepare_dispatch_from_template',
                      'prepare_dispatch', 'make_transfer', 'validate_transfer_source'):
             self.wrap(pyreloc, name, 'native_preparation')
         for name in ('execute_transfer', 'execute_dispatch'):
@@ -133,11 +134,16 @@ def metadata():
     import pyreloc
     import reloc_torch
     import torch
-    paths = [Path(__file__), *Path(reloc_torch.__file__).parent.glob('*.py'),
+    paths = [Path(__file__), REPO / 'libreloc/python/examples/workloads/common.py',
+             REPO / 'calibration/epyc7351-2080ti.cal',
+             *Path(reloc_torch.__file__).parent.glob('*.py'),
+             *Path(pyreloc.__file__).parent.glob('*.py'),
              *Path(pyreloc.__file__).parent.glob('_pyreloc*.so')]
     for name in ('SYM_RELOC_EXPORT', 'SYM_OPT'):
         paths.append(Path(os.environ[name]))
+    paths.extend(Path(pyreloc.__file__).parents[2].glob('libreloc/libreloc_runtime.so*'))
     return {'source_revision': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=REPO, text=True).strip(),
+            'runtime_revision': os.environ.get('SYM_RUNTIME_REVISION', 'unspecified; see hashes'),
             'source_changes': subprocess.check_output(['git', 'status', '--short'], cwd=REPO, text=True),
             'python': sys.version, 'torch': torch.__version__, 'torch_cuda': torch.version.cuda,
             'platform': platform.platform(), 'gpu': torch.cuda.get_device_name(0),
@@ -169,7 +175,11 @@ def case(name, stack):
     def change():
         q.neg_()
         scale.mul_(.5 if scale[0] > .01 else 2)
-    return q, lambda: fetcher.fetch(q, scale, 'cuda:0'), lambda: fetcher.reference(q, scale, 'cuda:0'), change, lambda: {'resources': fetcher.resource_stats(), 'dispatch': report.data['dispatches']}
+    def stats():
+        return {'resources': fetcher.resource_stats(), 'dispatch': report.data['dispatches'],
+                'execution_cache': fetcher.compiled.execution_cache_info()
+                if hasattr(fetcher.compiled, 'execution_cache_info') else None}
+    return q, lambda: fetcher.fetch(q, scale, 'cuda:0'), lambda: fetcher.reference(q, scale, 'cuda:0'), change, stats
 
 
 def completed(fn):
@@ -188,10 +198,13 @@ def main():
     p.add_argument('--output', type=Path, required=True)
     p.add_argument('--samples', type=int, default=100)
     p.add_argument('--profile-samples', type=int, default=30)
-    p.add_argument('--case', nargs='+', default=['kv_evict', 'kv_restore', 'weight_1m', 'weight_4m'])
+    p.add_argument('--case', nargs='+', choices=['kv_evict', 'kv_restore', 'weight_1m', 'weight_4m'],
+                   default=['kv_evict', 'kv_restore', 'weight_1m', 'weight_4m'])
     p.add_argument('--trace', action='store_true')
     p.add_argument('--cprofile', action='store_true')
     args = p.parse_args()
+    if args.samples < 1 or args.profile_samples < 1:
+        p.error('sample counts must be positive')
     torch.set_num_threads(8)
     torch.set_num_interop_threads(1)
     torch.manual_seed(219)
@@ -241,6 +254,8 @@ def main():
                     prof.disable()
                     with args.output.with_suffix('.' + name + '.cprofile.txt').open('w') as stream:
                         pstats.Stats(prof, stream=stream).strip_dirs().sort_stats('tottime').print_stats(35)
+                    profile_path = args.output.with_suffix('.' + name + '.cprofile.txt')
+                    profile_path.write_text(profile_path.read_text().rstrip() + '\n')
                 row['stats'] = stats()
                 row['correctness'] = True
                 result['cases'][name] = row

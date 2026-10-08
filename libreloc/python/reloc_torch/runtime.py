@@ -12,7 +12,6 @@ never re-intercepted.
 from __future__ import annotations
 
 from contextlib import contextmanager
-import dataclasses
 from dataclasses import dataclass, field
 import importlib
 import os
@@ -21,7 +20,6 @@ from typing import Protocol
 
 from . import compat
 from .artifact import UnsupportedRecipe
-from .eligibility import _metadata_reason
 from .resources import AUTO, TransferResources, _transfer_configuration
 from .symbolic import GuardError, expression
 
@@ -179,10 +177,29 @@ def source_reason(src):
 
     if not compat.is_plain_tensor_or_parameter(src):
         return "tensor_subclass"
-    metadata = compat.tensor_metadata(src)
-    if metadata.requires_grad and not torch.is_grad_enabled():
-        metadata = dataclasses.replace(metadata, requires_grad=False)
-    return _metadata_reason(metadata)
+    # Runtime admission uses only these live fields. The observation record
+    # additionally queries pinning and builds strings/tuples which eligibility
+    # never reads; do not make those queries on every request.
+    if src.requires_grad and torch.is_grad_enabled():
+        return "requires_grad"
+    device = src.device
+    if (device.type not in ("cpu", "cuda") or
+            (device.type == "cpu" and device.index is not None) or
+            (device.type == "cuda" and (device.index is None or device.index < 0))):
+        return "unsupported_device"
+    if src.dtype not in (torch.float32, torch.float16, torch.int8):
+        return "unsupported_dtype"
+    if src.layout != torch.strided:
+        return "unsupported_layout"
+    if not src.shape:
+        return "unsupported_rank"
+    if any(d == 0 for d in src.shape) or src.untyped_storage().nbytes() == 0:
+        return "empty_tensor"
+    if src.storage_offset() != 0:
+        return "storage_offset"
+    if not src.is_contiguous():
+        return "unsupported_layout"
+    return None
 
 
 def bind_symbols(compiled, src):
@@ -217,19 +234,49 @@ def bind_plan(compiled, bindings):
     if diagnostics is not None:
         diagnostics.increment("symbol_binds")
     try:
-        return pyreloc.bind(compiled.decoded_plan, bindings)
+        return compiled.bind_layout(bindings)
     except pyreloc.BindError as error:
         raise UnsupportedRecipe("bind_error", str(error)) from error
 
 
 @contextmanager
-def _validated_binding(compiled, src, bindings):
+def _validated_binding(compiled, src, bindings, destination=None):
     previous = getattr(_local, "validated_binding", None)
-    _local.validated_binding = (compiled, src, compat.storage_snapshot(src), dict(bindings))
+    import torch
+
+    _local.validated_binding = (compiled, src, compat.storage_snapshot(src), dict(bindings),
+                               destination, (src.requires_grad, torch.is_grad_enabled()))
     try:
         yield
     finally:
         _local.validated_binding = previous
+
+
+def _validated_preparation(compiled, src):
+    """Reuse only admission/binding from this exact live frontend invocation.
+
+    The storage/metadata snapshot and gradient state are read again. A direct
+    caller or a changed source takes the full admission path. Nothing survives
+    the surrounding thread-local scope, and returned bindings are fresh.
+    """
+    import torch
+
+    checked = getattr(_local, "validated_binding", None)
+    if (checked is not None and checked[0] is compiled and checked[1] is src
+            and checked[4] is not None
+            and checked[5] == (src.requires_grad, torch.is_grad_enabled())
+            and checked[2] == compat.storage_snapshot(src)):
+        return dict(checked[3]), checked[4]
+    return None
+
+
+def _prepared_destination(compiled, bindings, device, shared):
+    if shared is None:
+        return destination_descriptor(compiled, bindings, device)
+    descriptor = shared[1]
+    if descriptor.device == device:
+        return descriptor
+    return ConcreteDescriptor(descriptor.shape, descriptor.strides, descriptor.dtype, device)
 
 
 @contextmanager
@@ -543,7 +590,7 @@ def execute_or_fallback(entry, src, symbols, device, *, non_blocking=False, decl
         if typed:
             options["parameters"] = dict(zip(names, parameters))
         try:
-            with _counting_binds(entry.diagnostics), _validated_binding(entry.compiled, src, bindings):
+            with _counting_binds(entry.diagnostics), _validated_binding(entry.compiled, src, bindings, destination):
                 call = entry.runtime.preflight(entry.compiled, src, device, **options)
         except UnsupportedRecipe as error:
             return _fallback(entry, src, symbols, error.reason, promised, parameters)

@@ -99,15 +99,7 @@ checkedProgram(const reloc::typed::Program &program) {
   return program;
 }
 
-template <typename Plan>
-py::dict queryCapability(const Plan &bound, const std::string &direction,
-                         const std::string &device) {
-  if (device != "host" && device != "cuda")
-    throw py::value_error("device must be 'host' or 'cuda', got '" + device +
-                          "'");
-  const auto &program = checkedProgram(bound);
-  auto capability = reloc::dispatch::queryCapability(
-      program, parseDirection(direction), device == "cuda");
+py::dict capabilityDict(const reloc::dispatch::Capability &capability) {
   py::list eligible, excluded;
   for (const auto &row : capability.eligible)
     eligible.append(rowDict(row));
@@ -121,6 +113,18 @@ py::dict queryCapability(const Plan &bound, const std::string &direction,
   out["eligible"] = eligible;
   out["excluded"] = excluded;
   return out;
+}
+
+template <typename Plan>
+py::dict queryCapability(const Plan &bound, const std::string &direction,
+                         const std::string &device) {
+  if (device != "host" && device != "cuda")
+    throw py::value_error("device must be 'host' or 'cuda', got '" + device +
+                          "'");
+  const auto &program = checkedProgram(bound);
+  auto capability = reloc::dispatch::queryCapability(
+      program, parseDirection(direction), device == "cuda");
+  return capabilityDict(capability);
 }
 
 template <typename Plan>
@@ -259,6 +263,40 @@ py::dict selectDispatch(const Plan &bound, const std::string &direction,
   return out;
 }
 
+reloc::dispatch::DispatchTemplate
+prepareTemplate(const reloc::TypedBoundPlan &bound,
+                const std::string &direction, const std::string &device,
+                const std::string &policy,
+                const reloc::costmodel::CostModel *calibration, int threads,
+                const std::string &implementation) {
+  if (device != "host" && device != "cuda")
+    throw py::value_error("device must be 'host' or 'cuda'");
+  if (threads < 1)
+    throw py::value_error("threads must be >= 1");
+  reloc::dispatch::Options options;
+  options.policy = parsePolicy(policy);
+  options.model = calibration;
+  options.threads = threads;
+  options.cuda = device == "cuda";
+  options.implementation = implementation;
+  auto prepared = reloc::dispatch::prepareDispatchTemplate(
+      bound, parseDirection(direction), options);
+  if (auto *error = std::get_if<reloc::TransferError>(&prepared))
+    raise(*error);
+  return std::get<reloc::dispatch::DispatchTemplate>(std::move(prepared));
+}
+
+reloc::dispatch::DispatchRequest
+fromTemplate(const reloc::dispatch::DispatchTemplate &prepared,
+             const reloc::BufferView &source,
+             const reloc::BufferView &destination) {
+  auto request =
+      reloc::dispatch::prepareDispatch(prepared, source, destination);
+  if (auto *error = std::get_if<reloc::TransferError>(&request))
+    raise(*error);
+  return std::get<reloc::dispatch::DispatchRequest>(std::move(request));
+}
+
 py::dict prefoldSpec(const reloc::TypedBoundPlan &bound) {
   auto spec = reloc::dispatch::prefoldSpecFor(bound);
   if (auto *error = std::get_if<reloc::TransferError>(&spec))
@@ -283,6 +321,35 @@ void registerDispatchBindings(py::module_ &m) {
       "prepare_typed_program",
       [](const reloc::TypedBoundPlan &p) { return checkedProgram(p); },
       py::arg("bound"));
+  using Template = reloc::dispatch::DispatchTemplate;
+  py::class_<Template>(m, "DispatchTemplate")
+      .def_property_readonly(
+          "program",
+          [](const Template &t) -> const reloc::typed::Program & {
+            return t.program;
+          },
+          py::return_value_policy::reference_internal)
+      .def_property_readonly(
+          "capability",
+          [](const Template &t) { return capabilityDict(t.capability); })
+      .def_property_readonly("selection", [](const Template &t) {
+        py::dict result = rowDict(t.selection.row);
+        result["policy"] = t.selection.policy;
+        result["placement_reason"] = t.selection.reason;
+        return result;
+      });
+  m.def("prepare_dispatch_template", &prepareTemplate, py::arg("bound"),
+        py::arg("direction"), py::arg("device") = "host", py::kw_only(),
+        py::arg("policy") = "auto",
+        py::arg("calibration") =
+            static_cast<const reloc::costmodel::CostModel *>(nullptr),
+        py::arg("threads") = 8, py::arg("implementation") = "",
+        "Prepare immutable checked arithmetic, capability and selection, "
+        "without views or execution state.");
+  m.def("prepare_dispatch_from_template", &fromTemplate, py::arg("prepared"),
+        py::arg("source"), py::arg("destination"),
+        "Validate fresh views and create an independent single-use request; "
+        "never reselect a row.");
   using Resources = reloc::dispatch::Resources;
   py::class_<Resources, std::shared_ptr<Resources>>(m, "DispatchResources")
       .def(py::init<size_t, size_t, unsigned, unsigned>(), py::kw_only(),

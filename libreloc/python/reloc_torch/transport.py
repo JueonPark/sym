@@ -30,6 +30,8 @@ from .runtime import (
     bind_symbols,
     destination_descriptor,
     source_reason,
+    _validated_preparation,
+    _prepared_destination,
 )
 
 
@@ -93,9 +95,11 @@ def prepare_transfer(compiled, source, device, *, non_blocking=False):
     if non_blocking:
         raise UnsupportedRecipe("nonblocking_unavailable", "blocking transfers only")
     device = torch.device(device)
-    reason = source_reason(source)
-    if reason is not None:
-        raise UnsupportedRecipe(reason, f"source tensor rejected: {reason}")
+    shared = _validated_preparation(compiled, source)
+    if shared is None:
+        reason = source_reason(source)
+        if reason is not None:
+            raise UnsupportedRecipe(reason, f"source tensor rejected: {reason}")
     direction = compiled.recipe.direction
     expected = _DIRECTIONS.get(direction)
     if expected is None or (source.device.type, device.type) != expected:
@@ -103,7 +107,7 @@ def prepare_transfer(compiled, source, device, *, non_blocking=False):
             "direction_mismatch",
             f"{direction} recipe cannot move {source.device} -> {device}",
         )
-    bindings = bind_symbols(compiled, source)
+    bindings = shared[0] if shared is not None else bind_symbols(compiled, source)
     bound = bind_plan(compiled, bindings)
     if direction == "h2d":
         if not pyreloc.cuda_enabled or not torch.cuda.is_available():
@@ -127,7 +131,7 @@ def prepare_transfer(compiled, source, device, *, non_blocking=False):
                 f"source storage belongs to cuda:{owner}, tensor declares cuda:{index}",
             )
         view = _storage_view(source, "cuda", index)
-    destination = destination_descriptor(compiled, bindings, target)
+    destination = _prepared_destination(compiled, bindings, target, shared)
     try:
         span = pyreloc.validate_transfer_source(bound, view, direction)
     except pyreloc.TransferError as error:

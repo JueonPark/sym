@@ -127,6 +127,25 @@ struct Selection {
   std::string reason; // stable placement reason
 };
 
+/// Immutable after prepareDispatchTemplate: checked arithmetic and a policy
+/// decision, with no buffer pointers, stream, resources or consumed state.
+/// Parameters are owned value snapshots. A new request validates fresh views
+/// on every use. The Python binding exposes only read-only observations.
+struct DispatchTemplate {
+  typed::Program program;
+  Capability capability;
+  Selection selection;
+  TransferDirection direction = TransferDirection::HostToDevice;
+  bool cuda = false;
+};
+
+std::variant<DispatchTemplate, TransferError>
+prepareDispatchTemplate(const TypedBoundPlan &, TransferDirection,
+                        const Options &);
+std::variant<DispatchRequest, TransferError>
+prepareDispatch(const DispatchTemplate &, const BufferView &,
+                const BufferView &);
+
 /// Pure selection without views: capability for `direction`/`options.cuda`,
 /// then the policy. Lets a bridge fix the row at preparation time and force
 /// exactly that row when the destination exists (Options::implementation).
