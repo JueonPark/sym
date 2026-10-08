@@ -15,7 +15,7 @@ import sys
 import time
 
 import torch
-from reloc_torch import RelocBackend
+from reloc_torch import RelocBackend, TransferResources
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'issue221'))
 from typed_pipeline import metadata
@@ -53,7 +53,10 @@ def gnn(args):
         methods, owners, pinned = {}, {}, {}
         for name in args.paths:
             if name in ('ring1', 'ring2', 'unfused'):
-                backend = RelocBackend(transfer_options=dict(gather_threads=8, n_streams=1,
+                resources = stack.enter_context(TransferResources(max_typed_live_bytes=64 << 20,
+                    max_typed_retained_bytes=64 << 20, max_typed_background_workers=7, max_typed_streams=1))
+                backend = RelocBackend(transfer_resources=resources,
+                    transfer_options=dict(gather_threads=8, n_streams=1,
                     n_buffers=1 if name == 'ring1' else 2, pinning='pinned'))
                 stack.callback(backend.close)
                 owners[name] = backend
