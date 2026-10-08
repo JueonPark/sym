@@ -6,6 +6,8 @@ preparation for completed KV and typed weight transfers. The
 was recorded before implementing these changes. It distinguishes exclusive
 host phases from overlapping CUDA work; its historical percentages are not
 assumed to apply to later revisions.
+The [matched results](../bench/results/request-overhead-219/README.md) include
+first-call latency, warmed distributions, phase costs and reproduction commands.
 
 ## What is reused
 

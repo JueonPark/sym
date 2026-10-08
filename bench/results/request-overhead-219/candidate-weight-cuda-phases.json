@@ -1,0 +1,2250 @@
+{
+  "sqlite_sha256": "502893efd94546464ec0afd2b3a4cd0bd21e8f11996fa925e62ca9a400fab997",
+  "scope": "Instrumented diagnostic only. Runtime synchronization API durations are a subset of the native host interval. GPU activity overlaps host intervals and is not additive. Raw timestamps are Nsight nanoseconds.",
+  "mean_ms": {
+    "native_completion_wait_ms": 0.192416,
+    "native_other_ms": 0.461456
+  },
+  "requests": [
+    {
+      "label": "request219/weight_4m",
+      "start": 14852324,
+      "end": 16389306,
+      "phases": [
+        {
+          "start": 14909493,
+          "end": 14936274,
+          "text": "phase219/fresh_validation/source_reason"
+        },
+        {
+          "start": 14953056,
+          "end": 14975639,
+          "text": "phase219/binding/bind_values"
+        },
+        {
+          "start": 14981310,
+          "end": 14988754,
+          "text": "phase219/binding/parameter_extents"
+        },
+        {
+          "start": 14998312,
+          "end": 15042677,
+          "text": "phase219/fresh_validation/_parameter_snapshot"
+        },
+        {
+          "start": 15095428,
+          "end": 15138680,
+          "text": "phase219/fresh_validation/_storage_view"
+        },
+        {
+          "start": 15144341,
+          "end": 15154911,
+          "text": "phase219/descriptors/destination_descriptor"
+        },
+        {
+          "start": 15183045,
+          "end": 15192453,
+          "text": "phase219/fresh_validation/storage_snapshot"
+        },
+        {
+          "start": 15226738,
+          "end": 15272886,
+          "text": "phase219/fresh_validation/recheck"
+        },
+        {
+          "start": 15230115,
+          "end": 15236467,
+          "text": "phase219/fresh_validation/storage_snapshot"
+        },
+        {
+          "start": 15241326,
+          "end": 15245193,
+          "text": "phase219/binding/parameter_extents"
+        },
+        {
+          "start": 15249061,
+          "end": 15268548,
+          "text": "phase219/fresh_validation/_parameter_snapshot"
+        },
+        {
+          "start": 15278357,
+          "end": 15334283,
+          "text": "phase219/output_allocation/empty_strided"
+        },
+        {
+          "start": 15339884,
+          "end": 15356175,
+          "text": "phase219/fresh_validation/_storage_view"
+        },
+        {
+          "start": 15360804,
+          "end": 15383026,
+          "text": "phase219/native_preparation/prepare_dispatch_from_template"
+        },
+        {
+          "start": 15429274,
+          "end": 16287451,
+          "text": "phase219/native_including_completion/execute_dispatch"
+        },
+        {
+          "start": 16340853,
+          "end": 16384707,
+          "text": "phase219/explicit_completion/synchronize"
+        }
+      ],
+      "cuda_runtime_apis": [
+        {
+          "start": 15458149,
+          "end": 15464592,
+          "correlationId": 11,
+          "name": "cudaEventCreateWithFlags_v3020"
+        },
+        {
+          "start": 15465313,
+          "end": 15473599,
+          "correlationId": 12,
+          "name": "cudaEventRecord_v3020"
+        },
+        {
+          "start": 15474551,
+          "end": 15479821,
+          "correlationId": 13,
+          "name": "cudaStreamWaitEvent_v3020"
+        },
+        {
+          "start": 15480312,
+          "end": 15481955,
+          "correlationId": 14,
+          "name": "cudaStreamWaitEvent_v3020"
+        },
+        {
+          "start": 15482486,
+          "end": 15484470,
+          "correlationId": 15,
+          "name": "cudaEventDestroy_v3020"
+        },
+        {
+          "start": 15490060,
+          "end": 15966479,
+          "correlationId": 18,
+          "name": "cudaMemcpyAsync_v3020"
+        },
+        {
+          "start": 15968463,
+          "end": 15970427,
+          "correlationId": 20,
+          "name": "cudaEventCreateWithFlags_v3020"
+        },
+        {
+          "start": 15970807,
+          "end": 15972621,
+          "correlationId": 21,
+          "name": "cudaEventRecord_v3020"
+        },
+        {
+          "start": 15974935,
+          "end": 16051020,
+          "correlationId": 23,
+          "name": "cudaEventSynchronize_v3020"
+        },
+        {
+          "start": 16051401,
+          "end": 16052423,
+          "correlationId": 24,
+          "name": "cudaEventDestroy_v3020"
+        },
+        {
+          "start": 16080867,
+          "end": 16091978,
+          "correlationId": 26,
+          "name": "cudaMemcpyAsync_v3020"
+        },
+        {
+          "start": 16096297,
+          "end": 16142815,
+          "correlationId": 27,
+          "name": "cudaLaunchKernel_v7000"
+        },
+        {
+          "start": 16146402,
+          "end": 16148005,
+          "correlationId": 31,
+          "name": "cudaEventCreateWithFlags_v3020"
+        },
+        {
+          "start": 16148386,
+          "end": 16150189,
+          "correlationId": 32,
+          "name": "cudaEventRecord_v3020"
+        },
+        {
+          "start": 16151512,
+          "end": 16263516,
+          "correlationId": 34,
+          "name": "cudaEventSynchronize_v3020"
+        },
+        {
+          "start": 16263836,
+          "end": 16264818,
+          "correlationId": 35,
+          "name": "cudaEventDestroy_v3020"
+        },
+        {
+          "start": 16373365,
+          "end": 16380990,
+          "correlationId": 38,
+          "name": "cudaDeviceSynchronize_v3020"
+        }
+      ],
+      "native_completion_wait_ms": 0.188089,
+      "native_other_ms": 0.670088,
+      "gpu_activity_not_additive": [
+        {
+          "start": 15626387,
+          "end": 16045654,
+          "deviceId": 0,
+          "streamId": 16,
+          "correlationId": 18,
+          "kind": "memcpy",
+          "bytes": 4194304,
+          "copy_kind": 1
+        },
+        {
+          "start": 16093142,
+          "end": 16094966,
+          "deviceId": 0,
+          "streamId": 16,
+          "correlationId": 26,
+          "kind": "memcpy",
+          "bytes": 16384,
+          "copy_kind": 1
+        },
+        {
+          "start": 16139670,
+          "end": 16260983,
+          "deviceId": 0,
+          "streamId": 16,
+          "correlationId": 27,
+          "kind": "kernel",
+          "name": "reloc::cuda::<unnamed>::dequantRelocateKernel(const signed char *, float *, reloc::cuda::<unnamed>::Axes, const float *, long)"
+        }
+      ]
+    },
+    {
+      "label": "request219/weight_4m",
+      "start": 17432465,
+      "end": 18581056,
+      "phases": [
+        {
+          "start": 17470758,
+          "end": 17488743,
+          "text": "phase219/fresh_validation/source_reason"
+        },
+        {
+          "start": 17497830,
+          "end": 17515333,
+          "text": "phase219/binding/bind_values"
+        },
+        {
+          "start": 17519391,
+          "end": 17525833,
+          "text": "phase219/binding/parameter_extents"
+        },
+        {
+          "start": 17533708,
+          "end": 17562614,
+          "text": "phase219/fresh_validation/_parameter_snapshot"
+        },
+        {
+          "start": 17603792,
+          "end": 17631034,
+          "text": "phase219/fresh_validation/_storage_view"
+        },
+        {
+          "start": 17635863,
+          "end": 17644931,
+          "text": "phase219/descriptors/destination_descriptor"
+        },
+        {
+          "start": 17665630,
+          "end": 17673505,
+          "text": "phase219/fresh_validation/storage_snapshot"
+        },
+        {
+          "start": 17704334,
+          "end": 17747085,
+          "text": "phase219/fresh_validation/recheck"
+        },
+        {
+          "start": 17707269,
+          "end": 17713061,
+          "text": "phase219/fresh_validation/storage_snapshot"
+        },
+        {
+          "start": 17717649,
+          "end": 17720915,
+          "text": "phase219/binding/parameter_extents"
+        },
+        {
+          "start": 17725073,
+          "end": 17742887,
+          "text": "phase219/fresh_validation/_parameter_snapshot"
+        },
+        {
+          "start": 17752606,
+          "end": 17775399,
+          "text": "phase219/output_allocation/empty_strided"
+        },
+        {
+          "start": 17780579,
+          "end": 17795638,
+          "text": "phase219/fresh_validation/_storage_view"
+        },
+        {
+          "start": 17800217,
+          "end": 17819163,
+          "text": "phase219/native_preparation/prepare_dispatch_from_template"
+        },
+        {
+          "start": 17853058,
+          "end": 18497036,
+          "text": "phase219/native_including_completion/execute_dispatch"
+        },
+        {
+          "start": 18541110,
+          "end": 18576267,
+          "text": "phase219/explicit_completion/synchronize"
+        }
+      ],
+      "cuda_runtime_apis": [
+        {
+          "start": 17876833,
+          "end": 17880690,
+          "correlationId": 160,
+          "name": "cudaEventCreateWithFlags_v3020"
+        },
+        {
+          "start": 17881171,
+          "end": 17885219,
+          "correlationId": 161,
+          "name": "cudaEventRecord_v3020"
+        },
+        {
+          "start": 17885720,
+          "end": 17889527,
+          "correlationId": 162,
+          "name": "cudaStreamWaitEvent_v3020"
+        },
+        {
+          "start": 17889858,
+          "end": 17891040,
+          "correlationId": 163,
+          "name": "cudaStreamWaitEvent_v3020"
+        },
+        {
+          "start": 17891411,
+          "end": 17893154,
+          "correlationId": 164,
+          "name": "cudaEventDestroy_v3020"
+        },
+        {
+          "start": 17897382,
+          "end": 18233463,
+          "correlationId": 167,
+          "name": "cudaMemcpyAsync_v3020"
+        },
+        {
+          "start": 18235317,
+          "end": 18237050,
+          "correlationId": 169,
+          "name": "cudaEventCreateWithFlags_v3020"
+        },
+        {
+          "start": 18237421,
+          "end": 18239224,
+          "correlationId": 170,
+          "name": "cudaEventRecord_v3020"
+        },
+        {
+          "start": 18240917,
+          "end": 18318155,
+          "correlationId": 172,
+          "name": "cudaEventSynchronize_v3020"
+        },
+        {
+          "start": 18318515,
+          "end": 18319567,
+          "correlationId": 173,
+          "name": "cudaEventDestroy_v3020"
+        },
+        {
+          "start": 18326631,
+          "end": 18337251,
+          "correlationId": 175,
+          "name": "cudaMemcpyAsync_v3020"
+        },
+        {
+          "start": 18339465,
+          "end": 18356748,
+          "correlationId": 176,
+          "name": "cudaLaunchKernel_v7000"
+        },
+        {
+          "start": 18359754,
+          "end": 18361077,
+          "correlationId": 180,
+          "name": "cudaEventCreateWithFlags_v3020"
+        },
+        {
+          "start": 18361397,
+          "end": 18362950,
+          "correlationId": 181,
+          "name": "cudaEventRecord_v3020"
+        },
+        {
+          "start": 18364423,
+          "end": 18479182,
+          "correlationId": 183,
+          "name": "cudaEventSynchronize_v3020"
+        },
+        {
+          "start": 18479472,
+          "end": 18480314,
+          "correlationId": 184,
+          "name": "cudaEventDestroy_v3020"
+        },
+        {
+          "start": 18566418,
+          "end": 18572830,
+          "correlationId": 187,
+          "name": "cudaDeviceSynchronize_v3020"
+        }
+      ],
+      "native_completion_wait_ms": 0.191997,
+      "native_other_ms": 0.451981,
+      "gpu_activity_not_additive": [
+        {
+          "start": 17979807,
+          "end": 18313761,
+          "deviceId": 0,
+          "streamId": 16,
+          "correlationId": 167,
+          "kind": "memcpy",
+          "bytes": 4194304,
+          "copy_kind": 1
+        },
+        {
+          "start": 18338593,
+          "end": 18340641,
+          "deviceId": 0,
+          "streamId": 16,
+          "correlationId": 175,
+          "kind": "memcpy",
+          "bytes": 16384,
+          "copy_kind": 1
+        },
+        {
+          "start": 18354913,
+          "end": 18476578,
+          "deviceId": 0,
+          "streamId": 16,
+          "correlationId": 176,
+          "kind": "kernel",
+          "name": "reloc::cuda::<unnamed>::dequantRelocateKernel(const signed char *, float *, reloc::cuda::<unnamed>::Axes, const float *, long)"
+        }
+      ]
+    },
+    {
+      "label": "request219/weight_4m",
+      "start": 19530557,
+      "end": 20631748,
+      "phases": [
+        {
+          "start": 19564813,
+          "end": 19581494,
+          "text": "phase219/fresh_validation/source_reason"
+        },
+        {
+          "start": 19590532,
+          "end": 19607113,
+          "text": "phase219/binding/bind_values"
+        },
+        {
+          "start": 19611031,
+          "end": 19617493,
+          "text": "phase219/binding/parameter_extents"
+        },
+        {
+          "start": 19624637,
+          "end": 19650546,
+          "text": "phase219/fresh_validation/_parameter_snapshot"
+        },
+        {
+          "start": 19690011,
+          "end": 19712665,
+          "text": "phase219/fresh_validation/_storage_view"
+        },
+        {
+          "start": 19716823,
+          "end": 19725359,
+          "text": "phase219/descriptors/destination_descriptor"
+        },
+        {
+          "start": 19743874,
+          "end": 19752861,
+          "text": "phase219/fresh_validation/storage_snapshot"
+        },
+        {
+          "start": 19780754,
+          "end": 19822835,
+          "text": "phase219/fresh_validation/recheck"
+        },
+        {
+          "start": 19783900,
+          "end": 19789902,
+          "text": "phase219/fresh_validation/storage_snapshot"
+        },
+        {
+          "start": 19794220,
+          "end": 19797506,
+          "text": "phase219/binding/parameter_extents"
+        },
+        {
+          "start": 19800963,
+          "end": 19818807,
+          "text": "phase219/fresh_validation/_parameter_snapshot"
+        },
+        {
+          "start": 19827574,
+          "end": 19848955,
+          "text": "phase219/output_allocation/empty_strided"
+        },
+        {
+          "start": 19853804,
+          "end": 19869043,
+          "text": "phase219/fresh_validation/_storage_view"
+        },
+        {
+          "start": 19873772,
+          "end": 19891215,
+          "text": "phase219/native_preparation/prepare_dispatch_from_template"
+        },
+        {
+          "start": 19923567,
+          "end": 20550633,
+          "text": "phase219/native_including_completion/execute_dispatch"
+        },
+        {
+          "start": 20594306,
+          "end": 20628652,
+          "text": "phase219/explicit_completion/synchronize"
+        }
+      ],
+      "cuda_runtime_apis": [
+        {
+          "start": 19946390,
+          "end": 19950238,
+          "correlationId": 309,
+          "name": "cudaEventCreateWithFlags_v3020"
+        },
+        {
+          "start": 19950959,
+          "end": 19955127,
+          "correlationId": 310,
+          "name": "cudaEventRecord_v3020"
+        },
+        {
+          "start": 19955688,
+          "end": 19958724,
+          "correlationId": 311,
+          "name": "cudaStreamWaitEvent_v3020"
+        },
+        {
+          "start": 19959045,
+          "end": 19960227,
+          "correlationId": 312,
+          "name": "cudaStreamWaitEvent_v3020"
+        },
+        {
+          "start": 19960547,
+          "end": 19962110,
+          "correlationId": 313,
+          "name": "cudaEventDestroy_v3020"
+        },
+        {
+          "start": 19966118,
+          "end": 20291168,
+          "correlationId": 316,
+          "name": "cudaMemcpyAsync_v3020"
+        },
+        {
+          "start": 20293022,
+          "end": 20295085,
+          "correlationId": 318,
+          "name": "cudaEventCreateWithFlags_v3020"
+        },
+        {
+          "start": 20295516,
+          "end": 20297600,
+          "correlationId": 319,
+          "name": "cudaEventRecord_v3020"
+        },
+        {
+          "start": 20299203,
+          "end": 20375729,
+          "correlationId": 321,
+          "name": "cudaEventSynchronize_v3020"
+        },
+        {
+          "start": 20376040,
+          "end": 20376952,
+          "correlationId": 322,
+          "name": "cudaEventDestroy_v3020"
+        },
+        {
+          "start": 20383404,
+          "end": 20392271,
+          "correlationId": 324,
+          "name": "cudaMemcpyAsync_v3020"
+        },
+        {
+          "start": 20394355,
+          "end": 20409985,
+          "correlationId": 325,
+          "name": "cudaLaunchKernel_v7000"
+        },
+        {
+          "start": 20413131,
+          "end": 20414583,
+          "correlationId": 329,
+          "name": "cudaEventCreateWithFlags_v3020"
+        },
+        {
+          "start": 20414934,
+          "end": 20416547,
+          "correlationId": 330,
+          "name": "cudaEventRecord_v3020"
+        },
+        {
+          "start": 20417769,
+          "end": 20533240,
+          "correlationId": 332,
+          "name": "cudaEventSynchronize_v3020"
+        },
+        {
+          "start": 20533520,
+          "end": 20534472,
+          "correlationId": 333,
+          "name": "cudaEventDestroy_v3020"
+        },
+        {
+          "start": 20618953,
+          "end": 20625335,
+          "correlationId": 336,
+          "name": "cudaDeviceSynchronize_v3020"
+        }
+      ],
+      "native_completion_wait_ms": 0.191997,
+      "native_other_ms": 0.435069,
+      "gpu_activity_not_additive": [
+        {
+          "start": 20042985,
+          "end": 20371691,
+          "deviceId": 0,
+          "streamId": 16,
+          "correlationId": 316,
+          "kind": "memcpy",
+          "bytes": 4194304,
+          "copy_kind": 1
+        },
+        {
+          "start": 20393579,
+          "end": 20395404,
+          "deviceId": 0,
+          "streamId": 16,
+          "correlationId": 324,
+          "kind": "memcpy",
+          "bytes": 16384,
+          "copy_kind": 1
+        },
+        {
+          "start": 20409163,
+          "end": 20530924,
+          "deviceId": 0,
+          "streamId": 16,
+          "correlationId": 325,
+          "kind": "kernel",
+          "name": "reloc::cuda::<unnamed>::dequantRelocateKernel(const signed char *, float *, reloc::cuda::<unnamed>::Axes, const float *, long)"
+        }
+      ]
+    },
+    {
+      "label": "request219/weight_4m",
+      "start": 21582571,
+      "end": 22689212,
+      "phases": [
+        {
+          "start": 21615714,
+          "end": 21632226,
+          "text": "phase219/fresh_validation/source_reason"
+        },
+        {
+          "start": 21641283,
+          "end": 21656142,
+          "text": "phase219/binding/bind_values"
+        },
+        {
+          "start": 21660009,
+          "end": 21665439,
+          "text": "phase219/binding/parameter_extents"
+        },
+        {
+          "start": 21672573,
+          "end": 21697751,
+          "text": "phase219/fresh_validation/_parameter_snapshot"
+        },
+        {
+          "start": 21736645,
+          "end": 21759178,
+          "text": "phase219/fresh_validation/_storage_view"
+        },
+        {
+          "start": 21764047,
+          "end": 21783815,
+          "text": "phase219/descriptors/destination_descriptor"
+        },
+        {
+          "start": 21802801,
+          "end": 21810686,
+          "text": "phase219/fresh_validation/storage_snapshot"
+        },
+        {
+          "start": 21838149,
+          "end": 21881662,
+          "text": "phase219/fresh_validation/recheck"
+        },
+        {
+          "start": 21841215,
+          "end": 21847286,
+          "text": "phase219/fresh_validation/storage_snapshot"
+        },
+        {
+          "start": 21852757,
+          "end": 21855963,
+          "text": "phase219/binding/parameter_extents"
+        },
+        {
+          "start": 21859339,
+          "end": 21877564,
+          "text": "phase219/fresh_validation/_parameter_snapshot"
+        },
+        {
+          "start": 21886441,
+          "end": 21908313,
+          "text": "phase219/output_allocation/empty_strided"
+        },
+        {
+          "start": 21913332,
+          "end": 21928601,
+          "text": "phase219/fresh_validation/_storage_view"
+        },
+        {
+          "start": 21933000,
+          "end": 21950563,
+          "text": "phase219/native_preparation/prepare_dispatch_from_template"
+        },
+        {
+          "start": 21981833,
+          "end": 22610342,
+          "text": "phase219/native_including_completion/execute_dispatch"
+        },
+        {
+          "start": 22652081,
+          "end": 22686166,
+          "text": "phase219/explicit_completion/synchronize"
+        }
+      ],
+      "cuda_runtime_apis": [
+        {
+          "start": 22004075,
+          "end": 22007502,
+          "correlationId": 458,
+          "name": "cudaEventCreateWithFlags_v3020"
+        },
+        {
+          "start": 22008053,
+          "end": 22012381,
+          "correlationId": 459,
+          "name": "cudaEventRecord_v3020"
+        },
+        {
+          "start": 22013072,
+          "end": 22016238,
+          "correlationId": 460,
+          "name": "cudaStreamWaitEvent_v3020"
+        },
+        {
+          "start": 22016549,
+          "end": 22017872,
+          "correlationId": 461,
+          "name": "cudaStreamWaitEvent_v3020"
+        },
+        {
+          "start": 22018212,
+          "end": 22019745,
+          "correlationId": 462,
+          "name": "cudaEventDestroy_v3020"
+        },
+        {
+          "start": 22023863,
+          "end": 22348021,
+          "correlationId": 465,
+          "name": "cudaMemcpyAsync_v3020"
+        },
+        {
+          "start": 22350005,
+          "end": 22352129,
+          "correlationId": 467,
+          "name": "cudaEventCreateWithFlags_v3020"
+        },
+        {
+          "start": 22352510,
+          "end": 22354313,
+          "correlationId": 468,
+          "name": "cudaEventRecord_v3020"
+        },
+        {
+          "start": 22355746,
+          "end": 22433554,
+          "correlationId": 470,
+          "name": "cudaEventSynchronize_v3020"
+        },
+        {
+          "start": 22433835,
+          "end": 22434847,
+          "correlationId": 471,
+          "name": "cudaEventDestroy_v3020"
+        },
+        {
+          "start": 22441880,
+          "end": 22451048,
+          "correlationId": 473,
+          "name": "cudaMemcpyAsync_v3020"
+        },
+        {
+          "start": 22453212,
+          "end": 22469273,
+          "correlationId": 474,
+          "name": "cudaLaunchKernel_v7000"
+        },
+        {
+          "start": 22472479,
+          "end": 22474012,
+          "correlationId": 478,
+          "name": "cudaEventCreateWithFlags_v3020"
+        },
+        {
+          "start": 22474322,
+          "end": 22475855,
+          "correlationId": 479,
+          "name": "cudaEventRecord_v3020"
+        },
+        {
+          "start": 22477037,
+          "end": 22591716,
+          "correlationId": 481,
+          "name": "cudaEventSynchronize_v3020"
+        },
+        {
+          "start": 22592007,
+          "end": 22592938,
+          "correlationId": 482,
+          "name": "cudaEventDestroy_v3020"
+        },
+        {
+          "start": 22676618,
+          "end": 22682780,
+          "correlationId": 485,
+          "name": "cudaDeviceSynchronize_v3020"
+        }
+      ],
+      "native_completion_wait_ms": 0.192487,
+      "native_other_ms": 0.436022,
+      "gpu_activity_not_additive": [
+        {
+          "start": 22099604,
+          "end": 22429589,
+          "deviceId": 0,
+          "streamId": 16,
+          "correlationId": 465,
+          "kind": "memcpy",
+          "bytes": 4194304,
+          "copy_kind": 1
+        },
+        {
+          "start": 22452405,
+          "end": 22454230,
+          "deviceId": 0,
+          "streamId": 16,
+          "correlationId": 473,
+          "kind": "memcpy",
+          "bytes": 16384,
+          "copy_kind": 1
+        },
+        {
+          "start": 22468054,
+          "end": 22589782,
+          "deviceId": 0,
+          "streamId": 16,
+          "correlationId": 474,
+          "kind": "kernel",
+          "name": "reloc::cuda::<unnamed>::dequantRelocateKernel(const signed char *, float *, reloc::cuda::<unnamed>::Axes, const float *, long)"
+        }
+      ]
+    },
+    {
+      "label": "request219/weight_4m",
+      "start": 23638823,
+      "end": 24730896,
+      "phases": [
+        {
+          "start": 23673309,
+          "end": 23690111,
+          "text": "phase219/fresh_validation/source_reason"
+        },
+        {
+          "start": 23698828,
+          "end": 23713836,
+          "text": "phase219/binding/bind_values"
+        },
+        {
+          "start": 23717614,
+          "end": 23723274,
+          "text": "phase219/binding/parameter_extents"
+        },
+        {
+          "start": 23730628,
+          "end": 23756738,
+          "text": "phase219/fresh_validation/_parameter_snapshot"
+        },
+        {
+          "start": 23796013,
+          "end": 23817775,
+          "text": "phase219/fresh_validation/_storage_view"
+        },
+        {
+          "start": 23822063,
+          "end": 23831050,
+          "text": "phase219/descriptors/destination_descriptor"
+        },
+        {
+          "start": 23850287,
+          "end": 23858172,
+          "text": "phase219/fresh_validation/storage_snapshot"
+        },
+        {
+          "start": 23886065,
+          "end": 23927003,
+          "text": "phase219/fresh_validation/recheck"
+        },
+        {
+          "start": 23889081,
+          "end": 23895012,
+          "text": "phase219/fresh_validation/storage_snapshot"
+        },
+        {
+          "start": 23899140,
+          "end": 23902306,
+          "text": "phase219/binding/parameter_extents"
+        },
+        {
+          "start": 23905853,
+          "end": 23923146,
+          "text": "phase219/fresh_validation/_parameter_snapshot"
+        },
+        {
+          "start": 23931892,
+          "end": 23954005,
+          "text": "phase219/output_allocation/empty_strided"
+        },
+        {
+          "start": 23958814,
+          "end": 23972951,
+          "text": "phase219/fresh_validation/_storage_view"
+        },
+        {
+          "start": 23977289,
+          "end": 23993390,
+          "text": "phase219/native_preparation/prepare_dispatch_from_template"
+        },
+        {
+          "start": 24024249,
+          "end": 24652236,
+          "text": "phase219/native_including_completion/execute_dispatch"
+        },
+        {
+          "start": 24694196,
+          "end": 24727640,
+          "text": "phase219/explicit_completion/synchronize"
+        }
+      ],
+      "cuda_runtime_apis": [
+        {
+          "start": 24045549,
+          "end": 24049036,
+          "correlationId": 607,
+          "name": "cudaEventCreateWithFlags_v3020"
+        },
+        {
+          "start": 24049627,
+          "end": 24054105,
+          "correlationId": 608,
+          "name": "cudaEventRecord_v3020"
+        },
+        {
+          "start": 24054707,
+          "end": 24057682,
+          "correlationId": 609,
+          "name": "cudaStreamWaitEvent_v3020"
+        },
+        {
+          "start": 24058013,
+          "end": 24059165,
+          "correlationId": 610,
+          "name": "cudaStreamWaitEvent_v3020"
+        },
+        {
+          "start": 24059526,
+          "end": 24060999,
+          "correlationId": 611,
+          "name": "cudaEventDestroy_v3020"
+        },
+        {
+          "start": 24065167,
+          "end": 24391960,
+          "correlationId": 614,
+          "name": "cudaMemcpyAsync_v3020"
+        },
+        {
+          "start": 24393813,
+          "end": 24395757,
+          "correlationId": 616,
+          "name": "cudaEventCreateWithFlags_v3020"
+        },
+        {
+          "start": 24396158,
+          "end": 24397961,
+          "correlationId": 617,
+          "name": "cudaEventRecord_v3020"
+        },
+        {
+          "start": 24399364,
+          "end": 24479407,
+          "correlationId": 619,
+          "name": "cudaEventSynchronize_v3020"
+        },
+        {
+          "start": 24479747,
+          "end": 24480679,
+          "correlationId": 620,
+          "name": "cudaEventDestroy_v3020"
+        },
+        {
+          "start": 24487602,
+          "end": 24496499,
+          "correlationId": 622,
+          "name": "cudaMemcpyAsync_v3020"
+        },
+        {
+          "start": 24498383,
+          "end": 24513432,
+          "correlationId": 623,
+          "name": "cudaLaunchKernel_v7000"
+        },
+        {
+          "start": 24516678,
+          "end": 24518181,
+          "correlationId": 627,
+          "name": "cudaEventCreateWithFlags_v3020"
+        },
+        {
+          "start": 24518491,
+          "end": 24520124,
+          "correlationId": 628,
+          "name": "cudaEventRecord_v3020"
+        },
+        {
+          "start": 24521327,
+          "end": 24635805,
+          "correlationId": 630,
+          "name": "cudaEventSynchronize_v3020"
+        },
+        {
+          "start": 24636066,
+          "end": 24636957,
+          "correlationId": 631,
+          "name": "cudaEventDestroy_v3020"
+        },
+        {
+          "start": 24717581,
+          "end": 24724023,
+          "correlationId": 634,
+          "name": "cudaDeviceSynchronize_v3020"
+        }
+      ],
+      "native_completion_wait_ms": 0.194521,
+      "native_other_ms": 0.433466,
+      "gpu_activity_not_additive": [
+        {
+          "start": 24147294,
+          "end": 24474911,
+          "deviceId": 0,
+          "streamId": 16,
+          "correlationId": 614,
+          "kind": "memcpy",
+          "bytes": 4194304,
+          "copy_kind": 1
+        },
+        {
+          "start": 24497920,
+          "end": 24499744,
+          "deviceId": 0,
+          "streamId": 16,
+          "correlationId": 622,
+          "kind": "memcpy",
+          "bytes": 16384,
+          "copy_kind": 1
+        },
+        {
+          "start": 24512352,
+          "end": 24633728,
+          "deviceId": 0,
+          "streamId": 16,
+          "correlationId": 623,
+          "kind": "kernel",
+          "name": "reloc::cuda::<unnamed>::dequantRelocateKernel(const signed char *, float *, reloc::cuda::<unnamed>::Axes, const float *, long)"
+        }
+      ]
+    },
+    {
+      "label": "request219/weight_4m",
+      "start": 25672643,
+      "end": 26729709,
+      "phases": [
+        {
+          "start": 25704453,
+          "end": 25720233,
+          "text": "phase219/fresh_validation/source_reason"
+        },
+        {
+          "start": 25728840,
+          "end": 25742476,
+          "text": "phase219/binding/bind_values"
+        },
+        {
+          "start": 25745973,
+          "end": 25751513,
+          "text": "phase219/binding/parameter_extents"
+        },
+        {
+          "start": 25757655,
+          "end": 25781250,
+          "text": "phase219/fresh_validation/_parameter_snapshot"
+        },
+        {
+          "start": 25816377,
+          "end": 25838559,
+          "text": "phase219/fresh_validation/_storage_view"
+        },
+        {
+          "start": 25842557,
+          "end": 25850051,
+          "text": "phase219/descriptors/destination_descriptor"
+        },
+        {
+          "start": 25865781,
+          "end": 25872344,
+          "text": "phase219/fresh_validation/storage_snapshot"
+        },
+        {
+          "start": 25897261,
+          "end": 25934983,
+          "text": "phase219/fresh_validation/recheck"
+        },
+        {
+          "start": 25899876,
+          "end": 25904916,
+          "text": "phase219/fresh_validation/storage_snapshot"
+        },
+        {
+          "start": 25908863,
+          "end": 25911839,
+          "text": "phase219/binding/parameter_extents"
+        },
+        {
+          "start": 25914865,
+          "end": 25931366,
+          "text": "phase219/fresh_validation/_parameter_snapshot"
+        },
+        {
+          "start": 25939111,
+          "end": 25960482,
+          "text": "phase219/output_allocation/empty_strided"
+        },
+        {
+          "start": 25964930,
+          "end": 25978596,
+          "text": "phase219/fresh_validation/_storage_view"
+        },
+        {
+          "start": 25982464,
+          "end": 25997863,
+          "text": "phase219/native_preparation/prepare_dispatch_from_template"
+        },
+        {
+          "start": 26026648,
+          "end": 26657511,
+          "text": "phase219/native_including_completion/execute_dispatch"
+        },
+        {
+          "start": 26695283,
+          "end": 26727064,
+          "text": "phase219/explicit_completion/synchronize"
+        }
+      ],
+      "cuda_runtime_apis": [
+        {
+          "start": 26047187,
+          "end": 26050323,
+          "correlationId": 756,
+          "name": "cudaEventCreateWithFlags_v3020"
+        },
+        {
+          "start": 26050794,
+          "end": 26055002,
+          "correlationId": 757,
+          "name": "cudaEventRecord_v3020"
+        },
+        {
+          "start": 26055473,
+          "end": 26058398,
+          "correlationId": 758,
+          "name": "cudaStreamWaitEvent_v3020"
+        },
+        {
+          "start": 26058699,
+          "end": 26060032,
+          "correlationId": 759,
+          "name": "cudaStreamWaitEvent_v3020"
+        },
+        {
+          "start": 26060352,
+          "end": 26061995,
+          "correlationId": 760,
+          "name": "cudaEventDestroy_v3020"
+        },
+        {
+          "start": 26066294,
+          "end": 26400902,
+          "correlationId": 763,
+          "name": "cudaMemcpyAsync_v3020"
+        },
+        {
+          "start": 26402525,
+          "end": 26404168,
+          "correlationId": 765,
+          "name": "cudaEventCreateWithFlags_v3020"
+        },
+        {
+          "start": 26404539,
+          "end": 26406302,
+          "correlationId": 766,
+          "name": "cudaEventRecord_v3020"
+        },
+        {
+          "start": 26407695,
+          "end": 26484992,
+          "correlationId": 768,
+          "name": "cudaEventSynchronize_v3020"
+        },
+        {
+          "start": 26485253,
+          "end": 26486114,
+          "correlationId": 769,
+          "name": "cudaEventDestroy_v3020"
+        },
+        {
+          "start": 26491755,
+          "end": 26499550,
+          "correlationId": 771,
+          "name": "cudaMemcpyAsync_v3020"
+        },
+        {
+          "start": 26501734,
+          "end": 26517484,
+          "correlationId": 772,
+          "name": "cudaLaunchKernel_v7000"
+        },
+        {
+          "start": 26520239,
+          "end": 26521562,
+          "correlationId": 776,
+          "name": "cudaEventCreateWithFlags_v3020"
+        },
+        {
+          "start": 26521832,
+          "end": 26523275,
+          "correlationId": 777,
+          "name": "cudaEventRecord_v3020"
+        },
+        {
+          "start": 26524407,
+          "end": 26640799,
+          "correlationId": 779,
+          "name": "cudaEventSynchronize_v3020"
+        },
+        {
+          "start": 26641060,
+          "end": 26641851,
+          "correlationId": 780,
+          "name": "cudaEventDestroy_v3020"
+        },
+        {
+          "start": 26717967,
+          "end": 26723858,
+          "correlationId": 783,
+          "name": "cudaDeviceSynchronize_v3020"
+        }
+      ],
+      "native_completion_wait_ms": 0.193689,
+      "native_other_ms": 0.437174,
+      "gpu_activity_not_additive": [
+        {
+          "start": 26151592,
+          "end": 26480618,
+          "deviceId": 0,
+          "streamId": 16,
+          "correlationId": 763,
+          "kind": "memcpy",
+          "bytes": 4194304,
+          "copy_kind": 1
+        },
+        {
+          "start": 26501193,
+          "end": 26503018,
+          "deviceId": 0,
+          "streamId": 16,
+          "correlationId": 771,
+          "kind": "memcpy",
+          "bytes": 16384,
+          "copy_kind": 1
+        },
+        {
+          "start": 26516906,
+          "end": 26638602,
+          "deviceId": 0,
+          "streamId": 16,
+          "correlationId": 772,
+          "kind": "kernel",
+          "name": "reloc::cuda::<unnamed>::dequantRelocateKernel(const signed char *, float *, reloc::cuda::<unnamed>::Axes, const float *, long)"
+        }
+      ]
+    },
+    {
+      "label": "request219/weight_4m",
+      "start": 27667838,
+      "end": 28728121,
+      "phases": [
+        {
+          "start": 27700040,
+          "end": 27716311,
+          "text": "phase219/fresh_validation/source_reason"
+        },
+        {
+          "start": 27724376,
+          "end": 27738213,
+          "text": "phase219/binding/bind_values"
+        },
+        {
+          "start": 27741619,
+          "end": 27746689,
+          "text": "phase219/binding/parameter_extents"
+        },
+        {
+          "start": 27753211,
+          "end": 27776626,
+          "text": "phase219/fresh_validation/_parameter_snapshot"
+        },
+        {
+          "start": 27813276,
+          "end": 27834486,
+          "text": "phase219/fresh_validation/_storage_view"
+        },
+        {
+          "start": 27838794,
+          "end": 27846579,
+          "text": "phase219/descriptors/destination_descriptor"
+        },
+        {
+          "start": 27863381,
+          "end": 27870114,
+          "text": "phase219/fresh_validation/storage_snapshot"
+        },
+        {
+          "start": 27895533,
+          "end": 27933044,
+          "text": "phase219/fresh_validation/recheck"
+        },
+        {
+          "start": 27898298,
+          "end": 27903578,
+          "text": "phase219/fresh_validation/storage_snapshot"
+        },
+        {
+          "start": 27907285,
+          "end": 27910100,
+          "text": "phase219/binding/parameter_extents"
+        },
+        {
+          "start": 27913206,
+          "end": 27929387,
+          "text": "phase219/fresh_validation/_parameter_snapshot"
+        },
+        {
+          "start": 27937102,
+          "end": 27958022,
+          "text": "phase219/output_allocation/empty_strided"
+        },
+        {
+          "start": 27962571,
+          "end": 27976036,
+          "text": "phase219/fresh_validation/_storage_view"
+        },
+        {
+          "start": 27979924,
+          "end": 27995974,
+          "text": "phase219/native_preparation/prepare_dispatch_from_template"
+        },
+        {
+          "start": 28024439,
+          "end": 28657195,
+          "text": "phase219/native_including_completion/execute_dispatch"
+        },
+        {
+          "start": 28694326,
+          "end": 28725486,
+          "text": "phase219/explicit_completion/synchronize"
+        }
+      ],
+      "cuda_runtime_apis": [
+        {
+          "start": 28046080,
+          "end": 28049386,
+          "correlationId": 905,
+          "name": "cudaEventCreateWithFlags_v3020"
+        },
+        {
+          "start": 28049977,
+          "end": 28054356,
+          "correlationId": 906,
+          "name": "cudaEventRecord_v3020"
+        },
+        {
+          "start": 28054907,
+          "end": 28058363,
+          "correlationId": 907,
+          "name": "cudaStreamWaitEvent_v3020"
+        },
+        {
+          "start": 28058664,
+          "end": 28059916,
+          "correlationId": 908,
+          "name": "cudaStreamWaitEvent_v3020"
+        },
+        {
+          "start": 28060267,
+          "end": 28061820,
+          "correlationId": 909,
+          "name": "cudaEventDestroy_v3020"
+        },
+        {
+          "start": 28066148,
+          "end": 28401929,
+          "correlationId": 912,
+          "name": "cudaMemcpyAsync_v3020"
+        },
+        {
+          "start": 28403582,
+          "end": 28405405,
+          "correlationId": 914,
+          "name": "cudaEventCreateWithFlags_v3020"
+        },
+        {
+          "start": 28405766,
+          "end": 28407800,
+          "correlationId": 915,
+          "name": "cudaEventRecord_v3020"
+        },
+        {
+          "start": 28409132,
+          "end": 28486259,
+          "correlationId": 917,
+          "name": "cudaEventSynchronize_v3020"
+        },
+        {
+          "start": 28486540,
+          "end": 28487392,
+          "correlationId": 918,
+          "name": "cudaEventDestroy_v3020"
+        },
+        {
+          "start": 28493373,
+          "end": 28500857,
+          "correlationId": 920,
+          "name": "cudaMemcpyAsync_v3020"
+        },
+        {
+          "start": 28502761,
+          "end": 28518050,
+          "correlationId": 921,
+          "name": "cudaLaunchKernel_v7000"
+        },
+        {
+          "start": 28520785,
+          "end": 28522118,
+          "correlationId": 925,
+          "name": "cudaEventCreateWithFlags_v3020"
+        },
+        {
+          "start": 28522388,
+          "end": 28523821,
+          "correlationId": 926,
+          "name": "cudaEventRecord_v3020"
+        },
+        {
+          "start": 28524873,
+          "end": 28640894,
+          "correlationId": 928,
+          "name": "cudaEventSynchronize_v3020"
+        },
+        {
+          "start": 28641135,
+          "end": 28641946,
+          "correlationId": 929,
+          "name": "cudaEventDestroy_v3020"
+        },
+        {
+          "start": 28716779,
+          "end": 28722560,
+          "correlationId": 932,
+          "name": "cudaDeviceSynchronize_v3020"
+        }
+      ],
+      "native_completion_wait_ms": 0.193148,
+      "native_other_ms": 0.439608,
+      "gpu_activity_not_additive": [
+        {
+          "start": 28152018,
+          "end": 28481971,
+          "deviceId": 0,
+          "streamId": 16,
+          "correlationId": 912,
+          "kind": "memcpy",
+          "bytes": 4194304,
+          "copy_kind": 1
+        },
+        {
+          "start": 28502419,
+          "end": 28504244,
+          "deviceId": 0,
+          "streamId": 16,
+          "correlationId": 920,
+          "kind": "memcpy",
+          "bytes": 16384,
+          "copy_kind": 1
+        },
+        {
+          "start": 28517684,
+          "end": 28639060,
+          "deviceId": 0,
+          "streamId": 16,
+          "correlationId": 921,
+          "kind": "kernel",
+          "name": "reloc::cuda::<unnamed>::dequantRelocateKernel(const signed char *, float *, reloc::cuda::<unnamed>::Axes, const float *, long)"
+        }
+      ]
+    },
+    {
+      "label": "request219/weight_4m",
+      "start": 29667863,
+      "end": 30753374,
+      "phases": [
+        {
+          "start": 29700315,
+          "end": 29716286,
+          "text": "phase219/fresh_validation/source_reason"
+        },
+        {
+          "start": 29724421,
+          "end": 29750591,
+          "text": "phase219/binding/bind_values"
+        },
+        {
+          "start": 29754168,
+          "end": 29759438,
+          "text": "phase219/binding/parameter_extents"
+        },
+        {
+          "start": 29772843,
+          "end": 29798733,
+          "text": "phase219/fresh_validation/_parameter_snapshot"
+        },
+        {
+          "start": 29834942,
+          "end": 29856663,
+          "text": "phase219/fresh_validation/_storage_view"
+        },
+        {
+          "start": 29860701,
+          "end": 29868185,
+          "text": "phase219/descriptors/destination_descriptor"
+        },
+        {
+          "start": 29884296,
+          "end": 29891109,
+          "text": "phase219/fresh_validation/storage_snapshot"
+        },
+        {
+          "start": 29917048,
+          "end": 29956454,
+          "text": "phase219/fresh_validation/recheck"
+        },
+        {
+          "start": 29921046,
+          "end": 29926286,
+          "text": "phase219/fresh_validation/storage_snapshot"
+        },
+        {
+          "start": 29930073,
+          "end": 29933209,
+          "text": "phase219/binding/parameter_extents"
+        },
+        {
+          "start": 29936305,
+          "end": 29952686,
+          "text": "phase219/fresh_validation/_parameter_snapshot"
+        },
+        {
+          "start": 29960511,
+          "end": 29982233,
+          "text": "phase219/output_allocation/empty_strided"
+        },
+        {
+          "start": 29986621,
+          "end": 30000407,
+          "text": "phase219/fresh_validation/_storage_view"
+        },
+        {
+          "start": 30004375,
+          "end": 30020446,
+          "text": "phase219/native_preparation/prepare_dispatch_from_template"
+        },
+        {
+          "start": 30048529,
+          "end": 30680104,
+          "text": "phase219/native_including_completion/execute_dispatch"
+        },
+        {
+          "start": 30718778,
+          "end": 30750588,
+          "text": "phase219/explicit_completion/synchronize"
+        }
+      ],
+      "cuda_runtime_apis": [
+        {
+          "start": 30069369,
+          "end": 30072705,
+          "correlationId": 1054,
+          "name": "cudaEventCreateWithFlags_v3020"
+        },
+        {
+          "start": 30073377,
+          "end": 30077394,
+          "correlationId": 1055,
+          "name": "cudaEventRecord_v3020"
+        },
+        {
+          "start": 30077905,
+          "end": 30081222,
+          "correlationId": 1056,
+          "name": "cudaStreamWaitEvent_v3020"
+        },
+        {
+          "start": 30081522,
+          "end": 30082805,
+          "correlationId": 1057,
+          "name": "cudaStreamWaitEvent_v3020"
+        },
+        {
+          "start": 30083125,
+          "end": 30084548,
+          "correlationId": 1058,
+          "name": "cudaEventDestroy_v3020"
+        },
+        {
+          "start": 30088165,
+          "end": 30423565,
+          "correlationId": 1061,
+          "name": "cudaMemcpyAsync_v3020"
+        },
+        {
+          "start": 30425568,
+          "end": 30427172,
+          "correlationId": 1063,
+          "name": "cudaEventCreateWithFlags_v3020"
+        },
+        {
+          "start": 30427492,
+          "end": 30429095,
+          "correlationId": 1064,
+          "name": "cudaEventRecord_v3020"
+        },
+        {
+          "start": 30430658,
+          "end": 30507344,
+          "correlationId": 1066,
+          "name": "cudaEventSynchronize_v3020"
+        },
+        {
+          "start": 30507605,
+          "end": 30508447,
+          "correlationId": 1067,
+          "name": "cudaEventDestroy_v3020"
+        },
+        {
+          "start": 30514508,
+          "end": 30522684,
+          "correlationId": 1069,
+          "name": "cudaMemcpyAsync_v3020"
+        },
+        {
+          "start": 30525299,
+          "end": 30540548,
+          "correlationId": 1070,
+          "name": "cudaLaunchKernel_v7000"
+        },
+        {
+          "start": 30543393,
+          "end": 30544776,
+          "correlationId": 1074,
+          "name": "cudaEventCreateWithFlags_v3020"
+        },
+        {
+          "start": 30545066,
+          "end": 30546469,
+          "correlationId": 1075,
+          "name": "cudaEventRecord_v3020"
+        },
+        {
+          "start": 30547752,
+          "end": 30663963,
+          "correlationId": 1077,
+          "name": "cudaEventSynchronize_v3020"
+        },
+        {
+          "start": 30664204,
+          "end": 30665115,
+          "correlationId": 1078,
+          "name": "cudaEventDestroy_v3020"
+        },
+        {
+          "start": 30741531,
+          "end": 30747593,
+          "correlationId": 1081,
+          "name": "cudaDeviceSynchronize_v3020"
+        }
+      ],
+      "native_completion_wait_ms": 0.192897,
+      "native_other_ms": 0.438678,
+      "gpu_activity_not_additive": [
+        {
+          "start": 30174428,
+          "end": 30503422,
+          "deviceId": 0,
+          "streamId": 16,
+          "correlationId": 1061,
+          "kind": "memcpy",
+          "bytes": 4194304,
+          "copy_kind": 1
+        },
+        {
+          "start": 30524318,
+          "end": 30526142,
+          "deviceId": 0,
+          "streamId": 16,
+          "correlationId": 1069,
+          "kind": "memcpy",
+          "bytes": 16384,
+          "copy_kind": 1
+        },
+        {
+          "start": 30539870,
+          "end": 30661726,
+          "deviceId": 0,
+          "streamId": 16,
+          "correlationId": 1070,
+          "kind": "kernel",
+          "name": "reloc::cuda::<unnamed>::dequantRelocateKernel(const signed char *, float *, reloc::cuda::<unnamed>::Axes, const float *, long)"
+        }
+      ]
+    },
+    {
+      "label": "request219/weight_4m",
+      "start": 31688718,
+      "end": 32755142,
+      "phases": [
+        {
+          "start": 31721601,
+          "end": 31738252,
+          "text": "phase219/fresh_validation/source_reason"
+        },
+        {
+          "start": 31746648,
+          "end": 31762338,
+          "text": "phase219/binding/bind_values"
+        },
+        {
+          "start": 31765825,
+          "end": 31771105,
+          "text": "phase219/binding/parameter_extents"
+        },
+        {
+          "start": 31778329,
+          "end": 31802775,
+          "text": "phase219/fresh_validation/_parameter_snapshot"
+        },
+        {
+          "start": 31840297,
+          "end": 31861618,
+          "text": "phase219/fresh_validation/_storage_view"
+        },
+        {
+          "start": 31865335,
+          "end": 31872649,
+          "text": "phase219/descriptors/destination_descriptor"
+        },
+        {
+          "start": 31888850,
+          "end": 31895703,
+          "text": "phase219/fresh_validation/storage_snapshot"
+        },
+        {
+          "start": 31921442,
+          "end": 31959484,
+          "text": "phase219/fresh_validation/recheck"
+        },
+        {
+          "start": 31924337,
+          "end": 31929527,
+          "text": "phase219/fresh_validation/storage_snapshot"
+        },
+        {
+          "start": 31933184,
+          "end": 31936350,
+          "text": "phase219/binding/parameter_extents"
+        },
+        {
+          "start": 31939236,
+          "end": 31955687,
+          "text": "phase219/fresh_validation/_parameter_snapshot"
+        },
+        {
+          "start": 31964153,
+          "end": 31984923,
+          "text": "phase219/output_allocation/empty_strided"
+        },
+        {
+          "start": 31989592,
+          "end": 32003138,
+          "text": "phase219/fresh_validation/_storage_view"
+        },
+        {
+          "start": 32007285,
+          "end": 32022995,
+          "text": "phase219/native_preparation/prepare_dispatch_from_template"
+        },
+        {
+          "start": 32053323,
+          "end": 32681912,
+          "text": "phase219/native_including_completion/execute_dispatch"
+        },
+        {
+          "start": 32721117,
+          "end": 32752347,
+          "text": "phase219/explicit_completion/synchronize"
+        }
+      ],
+      "cuda_runtime_apis": [
+        {
+          "start": 32074444,
+          "end": 32077359,
+          "correlationId": 1203,
+          "name": "cudaEventCreateWithFlags_v3020"
+        },
+        {
+          "start": 32077910,
+          "end": 32082459,
+          "correlationId": 1204,
+          "name": "cudaEventRecord_v3020"
+        },
+        {
+          "start": 32082950,
+          "end": 32085805,
+          "correlationId": 1205,
+          "name": "cudaStreamWaitEvent_v3020"
+        },
+        {
+          "start": 32086096,
+          "end": 32087348,
+          "correlationId": 1206,
+          "name": "cudaStreamWaitEvent_v3020"
+        },
+        {
+          "start": 32087849,
+          "end": 32089342,
+          "correlationId": 1207,
+          "name": "cudaEventDestroy_v3020"
+        },
+        {
+          "start": 32092979,
+          "end": 32426836,
+          "correlationId": 1210,
+          "name": "cudaMemcpyAsync_v3020"
+        },
+        {
+          "start": 32428699,
+          "end": 32430392,
+          "correlationId": 1212,
+          "name": "cudaEventCreateWithFlags_v3020"
+        },
+        {
+          "start": 32430733,
+          "end": 32432607,
+          "correlationId": 1213,
+          "name": "cudaEventRecord_v3020"
+        },
+        {
+          "start": 32434330,
+          "end": 32510946,
+          "correlationId": 1215,
+          "name": "cudaEventSynchronize_v3020"
+        },
+        {
+          "start": 32511207,
+          "end": 32512068,
+          "correlationId": 1216,
+          "name": "cudaEventDestroy_v3020"
+        },
+        {
+          "start": 32517649,
+          "end": 32525293,
+          "correlationId": 1218,
+          "name": "cudaMemcpyAsync_v3020"
+        },
+        {
+          "start": 32527227,
+          "end": 32542536,
+          "correlationId": 1219,
+          "name": "cudaLaunchKernel_v7000"
+        },
+        {
+          "start": 32545161,
+          "end": 32546554,
+          "correlationId": 1223,
+          "name": "cudaEventCreateWithFlags_v3020"
+        },
+        {
+          "start": 32546845,
+          "end": 32548247,
+          "correlationId": 1224,
+          "name": "cudaEventRecord_v3020"
+        },
+        {
+          "start": 32549349,
+          "end": 32665431,
+          "correlationId": 1226,
+          "name": "cudaEventSynchronize_v3020"
+        },
+        {
+          "start": 32665661,
+          "end": 32666473,
+          "correlationId": 1227,
+          "name": "cudaEventDestroy_v3020"
+        },
+        {
+          "start": 32742919,
+          "end": 32749321,
+          "correlationId": 1230,
+          "name": "cudaDeviceSynchronize_v3020"
+        }
+      ],
+      "native_completion_wait_ms": 0.192698,
+      "native_other_ms": 0.435891,
+      "gpu_activity_not_additive": [
+        {
+          "start": 32179238,
+          "end": 32507015,
+          "deviceId": 0,
+          "streamId": 16,
+          "correlationId": 1210,
+          "kind": "memcpy",
+          "bytes": 4194304,
+          "copy_kind": 1
+        },
+        {
+          "start": 32527144,
+          "end": 32528935,
+          "deviceId": 0,
+          "streamId": 16,
+          "correlationId": 1218,
+          "kind": "memcpy",
+          "bytes": 16384,
+          "copy_kind": 1
+        },
+        {
+          "start": 32541767,
+          "end": 32663272,
+          "deviceId": 0,
+          "streamId": 16,
+          "correlationId": 1219,
+          "kind": "kernel",
+          "name": "reloc::cuda::<unnamed>::dequantRelocateKernel(const signed char *, float *, reloc::cuda::<unnamed>::Axes, const float *, long)"
+        }
+      ]
+    },
+    {
+      "label": "request219/weight_4m",
+      "start": 33690195,
+      "end": 34749566,
+      "phases": [
+        {
+          "start": 33721315,
+          "end": 33737816,
+          "text": "phase219/fresh_validation/source_reason"
+        },
+        {
+          "start": 33746302,
+          "end": 33760490,
+          "text": "phase219/binding/bind_values"
+        },
+        {
+          "start": 33763936,
+          "end": 33769447,
+          "text": "phase219/binding/parameter_extents"
+        },
+        {
+          "start": 33775398,
+          "end": 33799584,
+          "text": "phase219/fresh_validation/_parameter_snapshot"
+        },
+        {
+          "start": 33835563,
+          "end": 33857434,
+          "text": "phase219/fresh_validation/_storage_view"
+        },
+        {
+          "start": 33861632,
+          "end": 33868856,
+          "text": "phase219/descriptors/destination_descriptor"
+        },
+        {
+          "start": 33884897,
+          "end": 33891780,
+          "text": "phase219/fresh_validation/storage_snapshot"
+        },
+        {
+          "start": 33917890,
+          "end": 33955081,
+          "text": "phase219/fresh_validation/recheck"
+        },
+        {
+          "start": 33920435,
+          "end": 33925685,
+          "text": "phase219/fresh_validation/storage_snapshot"
+        },
+        {
+          "start": 33929181,
+          "end": 33932167,
+          "text": "phase219/binding/parameter_extents"
+        },
+        {
+          "start": 33935093,
+          "end": 33951524,
+          "text": "phase219/fresh_validation/_parameter_snapshot"
+        },
+        {
+          "start": 33959299,
+          "end": 33980539,
+          "text": "phase219/output_allocation/empty_strided"
+        },
+        {
+          "start": 33985429,
+          "end": 33998874,
+          "text": "phase219/fresh_validation/_storage_view"
+        },
+        {
+          "start": 34002712,
+          "end": 34019534,
+          "text": "phase219/native_preparation/prepare_dispatch_from_template"
+        },
+        {
+          "start": 34048128,
+          "end": 34677348,
+          "text": "phase219/native_including_completion/execute_dispatch"
+        },
+        {
+          "start": 34714690,
+          "end": 34746851,
+          "text": "phase219/explicit_completion/synchronize"
+        }
+      ],
+      "cuda_runtime_apis": [
+        {
+          "start": 34068888,
+          "end": 34071944,
+          "correlationId": 1352,
+          "name": "cudaEventCreateWithFlags_v3020"
+        },
+        {
+          "start": 34072735,
+          "end": 34076713,
+          "correlationId": 1353,
+          "name": "cudaEventRecord_v3020"
+        },
+        {
+          "start": 34077224,
+          "end": 34080159,
+          "correlationId": 1354,
+          "name": "cudaStreamWaitEvent_v3020"
+        },
+        {
+          "start": 34080450,
+          "end": 34081572,
+          "correlationId": 1355,
+          "name": "cudaStreamWaitEvent_v3020"
+        },
+        {
+          "start": 34081893,
+          "end": 34083385,
+          "correlationId": 1356,
+          "name": "cudaEventDestroy_v3020"
+        },
+        {
+          "start": 34087032,
+          "end": 34420889,
+          "correlationId": 1359,
+          "name": "cudaMemcpyAsync_v3020"
+        },
+        {
+          "start": 34422332,
+          "end": 34424226,
+          "correlationId": 1361,
+          "name": "cudaEventCreateWithFlags_v3020"
+        },
+        {
+          "start": 34424606,
+          "end": 34426580,
+          "correlationId": 1362,
+          "name": "cudaEventRecord_v3020"
+        },
+        {
+          "start": 34427903,
+          "end": 34505360,
+          "correlationId": 1364,
+          "name": "cudaEventSynchronize_v3020"
+        },
+        {
+          "start": 34505611,
+          "end": 34506593,
+          "correlationId": 1365,
+          "name": "cudaEventDestroy_v3020"
+        },
+        {
+          "start": 34512774,
+          "end": 34520579,
+          "correlationId": 1367,
+          "name": "cudaMemcpyAsync_v3020"
+        },
+        {
+          "start": 34522763,
+          "end": 34538023,
+          "correlationId": 1368,
+          "name": "cudaLaunchKernel_v7000"
+        },
+        {
+          "start": 34540718,
+          "end": 34542070,
+          "correlationId": 1372,
+          "name": "cudaEventCreateWithFlags_v3020"
+        },
+        {
+          "start": 34542381,
+          "end": 34543824,
+          "correlationId": 1373,
+          "name": "cudaEventRecord_v3020"
+        },
+        {
+          "start": 34545046,
+          "end": 34660226,
+          "correlationId": 1375,
+          "name": "cudaEventSynchronize_v3020"
+        },
+        {
+          "start": 34660466,
+          "end": 34661298,
+          "correlationId": 1376,
+          "name": "cudaEventDestroy_v3020"
+        },
+        {
+          "start": 34738425,
+          "end": 34744015,
+          "correlationId": 1379,
+          "name": "cudaDeviceSynchronize_v3020"
+        }
+      ],
+      "native_completion_wait_ms": 0.192637,
+      "native_other_ms": 0.436583,
+      "gpu_activity_not_additive": [
+        {
+          "start": 34172848,
+          "end": 34500721,
+          "deviceId": 0,
+          "streamId": 16,
+          "correlationId": 1359,
+          "kind": "memcpy",
+          "bytes": 4194304,
+          "copy_kind": 1
+        },
+        {
+          "start": 34522161,
+          "end": 34524018,
+          "deviceId": 0,
+          "streamId": 16,
+          "correlationId": 1367,
+          "kind": "memcpy",
+          "bytes": 16384,
+          "copy_kind": 1
+        },
+        {
+          "start": 34537169,
+          "end": 34658418,
+          "deviceId": 0,
+          "streamId": 16,
+          "correlationId": 1368,
+          "kind": "kernel",
+          "name": "reloc::cuda::<unnamed>::dequantRelocateKernel(const signed char *, float *, reloc::cuda::<unnamed>::Axes, const float *, long)"
+        }
+      ]
+    }
+  ]
+}

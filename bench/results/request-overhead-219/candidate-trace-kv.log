@@ -1,0 +1,6 @@
+Capture range started in the application.
+Capture range ended in the application.
+Generating '/tmp/nsys-report-854c.qdstrm'
+kv_restore {'sym': (0.49034500000000003, 0.510087), 'torch': (0.1338, 0.1903423)}
+Generated:
+    /tmp/sym219-candidate-kv.nsys-rep

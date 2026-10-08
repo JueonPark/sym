@@ -1,0 +1,315 @@
+{
+  "aggregation": "Median of per-process-round statistics; p95 is not pooled.",
+  "preparation_scope": "Sum of exclusive host categories excluding output allocation, native execution/completion and explicit end sync. Instrumented, not headline timing.",
+  "rounds_per_variant": 3,
+  "cases": {
+    "kv_evict": {
+      "main": {
+        "warm": {
+          "sym": {
+            "p50_ms": 0.5503205,
+            "p95_ms": 0.5822879000000001
+          },
+          "torch": {
+            "p50_ms": 0.110596,
+            "p95_ms": 0.11940115
+          }
+        },
+        "first_completed_ms": {
+          "sym": [
+            265.189932,
+            263.558376,
+            263.582441
+          ],
+          "torch": [
+            20.526665,
+            20.628498,
+            20.682762
+          ]
+        },
+        "exclusive_phase_mean_ms": {
+          "frontend_and_other_validation": 0.3255182,
+          "binding": 0.021969233333333334,
+          "descriptors": 0.0126704,
+          "fresh_validation": 0.1009765,
+          "native_preparation": 0.009295766666666667,
+          "output_allocation": 0.009916966666666667,
+          "native_including_completion": 0.1215219,
+          "explicit_completion": 0.023976033333333334
+        },
+        "preparation_mean_ms": 0.47153626666666665
+      },
+      "candidate": {
+        "warm": {
+          "sym": {
+            "p50_ms": 0.5129429999999999,
+            "p95_ms": 0.5446545999999999
+          },
+          "torch": {
+            "p50_ms": 0.1098445,
+            "p95_ms": 0.12082655
+          }
+        },
+        "first_completed_ms": {
+          "sym": [
+            262.871589,
+            264.438136,
+            262.666644
+          ],
+          "torch": [
+            21.077875,
+            20.767754,
+            20.768235
+          ]
+        },
+        "exclusive_phase_mean_ms": {
+          "frontend_and_other_validation": 0.3291985333333333,
+          "binding": 0.010061233333333332,
+          "descriptors": 0.006715566666666666,
+          "fresh_validation": 0.07404996666666666,
+          "native_preparation": 0.0103926,
+          "output_allocation": 0.009929333333333333,
+          "native_including_completion": 0.1219356,
+          "explicit_completion": 0.0239787
+        },
+        "preparation_mean_ms": 0.4307678
+      },
+      "sym_reduction_percent": {
+        "p50_ms": 6.791951235689031,
+        "p95_ms": 6.4630056712496
+      },
+      "preparation_reduction_percent": 8.645881462069227
+    },
+    "kv_restore": {
+      "main": {
+        "warm": {
+          "sym": {
+            "p50_ms": 0.5392535,
+            "p95_ms": 0.5532720999999999
+          },
+          "torch": {
+            "p50_ms": 0.123525,
+            "p95_ms": 0.19131565
+          }
+        },
+        "first_completed_ms": {
+          "sym": [
+            87.064093,
+            87.556951,
+            87.414159
+          ],
+          "torch": [
+            0.172329,
+            0.159504,
+            0.788775
+          ]
+        },
+        "exclusive_phase_mean_ms": {
+          "frontend_and_other_validation": 0.3184281,
+          "binding": 0.022344466666666667,
+          "descriptors": 0.013158533333333333,
+          "fresh_validation": 0.11823476666666667,
+          "native_preparation": 0.009724066666666666,
+          "output_allocation": 0.015376266666666668,
+          "native_including_completion": 0.08078176666666667,
+          "explicit_completion": 0.023168433333333332
+        },
+        "preparation_mean_ms": 0.4816802
+      },
+      "candidate": {
+        "warm": {
+          "sym": {
+            "p50_ms": 0.484309,
+            "p95_ms": 0.49786705
+          },
+          "torch": {
+            "p50_ms": 0.1243325,
+            "p95_ms": 0.18893739999999998
+          }
+        },
+        "first_completed_ms": {
+          "sym": [
+            87.348735,
+            87.607067,
+            86.865411
+          ],
+          "torch": [
+            0.155086,
+            0.158743,
+            0.163051
+          ]
+        },
+        "exclusive_phase_mean_ms": {
+          "frontend_and_other_validation": 0.31817116666666667,
+          "binding": 0.0101551,
+          "descriptors": 0.006572166666666666,
+          "fresh_validation": 0.07403066666666666,
+          "native_preparation": 0.01049,
+          "output_allocation": 0.015265066666666667,
+          "native_including_completion": 0.0812164,
+          "explicit_completion": 0.023555933333333334
+        },
+        "preparation_mean_ms": 0.4190955333333333
+      },
+      "sym_reduction_percent": {
+        "p50_ms": 10.18899274645414,
+        "p95_ms": 10.014069026795303
+      },
+      "preparation_reduction_percent": 12.992991338790072
+    },
+    "weight_1m": {
+      "main": {
+        "warm": {
+          "sym": {
+            "p50_ms": 0.535281,
+            "p95_ms": 0.5487164999999999
+          },
+          "torch": {
+            "p50_ms": 0.26255550000000005,
+            "p95_ms": 0.2749396
+          }
+        },
+        "first_completed_ms": {
+          "sym": [
+            2.327139,
+            2.422551,
+            2.300529
+          ],
+          "torch": [
+            10.133069,
+            9.824239,
+            9.837615
+          ]
+        },
+        "exclusive_phase_mean_ms": {
+          "frontend_and_other_validation": 0.11915553333333334,
+          "binding": 0.0375731,
+          "descriptors": 0.007191366666666667,
+          "fresh_validation": 0.11001766666666667,
+          "native_preparation": 0.052998366666666664,
+          "output_allocation": 0.013227933333333334,
+          "native_including_completion": 0.2131927,
+          "explicit_completion": 0.020857166666666666
+        },
+        "preparation_mean_ms": 0.3257508333333333
+      },
+      "candidate": {
+        "warm": {
+          "sym": {
+            "p50_ms": 0.4616905,
+            "p95_ms": 0.47645129999999997
+          },
+          "torch": {
+            "p50_ms": 0.26432449999999996,
+            "p95_ms": 0.27601254999999997
+          }
+        },
+        "first_completed_ms": {
+          "sym": [
+            2.363078,
+            2.40119,
+            2.33804
+          ],
+          "torch": [
+            10.188283,
+            10.135794,
+            9.784513
+          ]
+        },
+        "exclusive_phase_mean_ms": {
+          "frontend_and_other_validation": 0.1262356,
+          "binding": 0.0168757,
+          "descriptors": 0.006255766666666667,
+          "fresh_validation": 0.0866222,
+          "native_preparation": 0.0083691,
+          "output_allocation": 0.0129368,
+          "native_including_completion": 0.21096466666666666,
+          "explicit_completion": 0.020477433333333333
+        },
+        "preparation_mean_ms": 0.24440493333333332
+      },
+      "sym_reduction_percent": {
+        "p50_ms": 13.748012726026149,
+        "p95_ms": 13.169860939118827
+      },
+      "preparation_reduction_percent": 24.971816393409075
+    },
+    "weight_4m": {
+      "main": {
+        "warm": {
+          "sym": {
+            "p50_ms": 1.0073265,
+            "p95_ms": 1.0524893499999999
+          },
+          "torch": {
+            "p50_ms": 0.686184,
+            "p95_ms": 0.71342035
+          }
+        },
+        "first_completed_ms": {
+          "sym": [
+            1.854728,
+            1.853025,
+            1.844759
+          ],
+          "torch": [
+            1.206211,
+            1.225257,
+            1.222121
+          ]
+        },
+        "exclusive_phase_mean_ms": {
+          "frontend_and_other_validation": 0.1531981,
+          "binding": 0.053769566666666664,
+          "descriptors": 0.008467266666666667,
+          "fresh_validation": 0.13528556666666666,
+          "native_preparation": 0.0701078,
+          "output_allocation": 0.014716433333333334,
+          "native_including_completion": 0.5664872,
+          "explicit_completion": 0.028010933333333335
+        },
+        "preparation_mean_ms": 0.4215428666666667
+      },
+      "candidate": {
+        "warm": {
+          "sym": {
+            "p50_ms": 0.9010785,
+            "p95_ms": 0.9372417500000001
+          },
+          "torch": {
+            "p50_ms": 0.678183,
+            "p95_ms": 0.7083631499999999
+          }
+        },
+        "first_completed_ms": {
+          "sym": [
+            1.874395,
+            1.867442,
+            1.873233
+          ],
+          "torch": [
+            1.212022,
+            1.222722,
+            1.199077
+          ]
+        },
+        "exclusive_phase_mean_ms": {
+          "frontend_and_other_validation": 0.16888223333333333,
+          "binding": 0.022224166666666666,
+          "descriptors": 0.0075053333333333335,
+          "fresh_validation": 0.1053485,
+          "native_preparation": 0.014838966666666667,
+          "output_allocation": 0.014212233333333333,
+          "native_including_completion": 0.5646999333333333,
+          "explicit_completion": 0.02841926666666667
+        },
+        "preparation_mean_ms": 0.3197643
+      },
+      "sym_reduction_percent": {
+        "p50_ms": 10.547523568574835,
+        "p95_ms": 10.950001536832632
+      },
+      "preparation_reduction_percent": 24.14429817576481
+    }
+  }
+}

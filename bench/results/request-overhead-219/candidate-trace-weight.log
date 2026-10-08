@@ -1,0 +1,6 @@
+Capture range started in the application.
+Capture range ended in the application.
+Generating '/tmp/nsys-report-f204.qdstrm'
+weight_4m {'sym': (0.9317070000000001, 1.2170413500000001), 'torch': (0.7030755, 0.7796980500000001)}
+Generated:
+    /tmp/sym219-candidate-weight.nsys-rep
