@@ -1,0 +1,41 @@
+         5983 function calls in 0.018 seconds
+
+   Ordered by: internal time
+   List reduced from 115 to 35 due to restriction <35>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+       30    0.006    0.000    0.006    0.000 {built-in method pyreloc._pyreloc.execute_dispatch}
+       30    0.001    0.000    0.006    0.000 dispatch.py:134(prepare_typed_transfer)
+       30    0.001    0.000    0.011    0.000 dispatch.py:224(_execute_typed_transfer)
+       30    0.001    0.000    0.018    0.001 common.py:465(fetch)
+       60    0.001    0.000    0.001    0.000 transport.py:45(_storage_view)
+       30    0.001    0.000    0.001    0.000 {built-in method pyreloc._pyreloc.prepare_dispatch}
+       30    0.000    0.000    0.000    0.000 {built-in method pyreloc._pyreloc.bind_typed}
+       30    0.000    0.000    0.001    0.000 compat.py:152(tensor_metadata)
+       60    0.000    0.000    0.001    0.000 dispatch.py:43(_parameter_snapshot)
+       30    0.000    0.000    0.000    0.000 {built-in method torch.empty_strided}
+       30    0.000    0.000    0.000    0.000 {built-in method pyreloc._pyreloc.select_dispatch}
+       30    0.000    0.000    0.000    0.000 {built-in method pyreloc._pyreloc.query_capability}
+       30    0.000    0.000    0.018    0.001 request_overhead.py:172(<lambda>)
+       30    0.000    0.000    0.000    0.000 {method 'is_pinned' of 'torch._C.TensorBase' objects}
+       60    0.000    0.000    0.000    0.000 {method 'numpy' of 'torch._C.TensorBase' objects}
+       60    0.000    0.000    0.001    0.000 compat.py:411(storage_snapshot)
+      120    0.000    0.000    0.001    0.000 compat.py:399(storage_span)
+       60    0.000    0.000    0.000    0.000 {method 'detach' of 'torch._C.TensorBase' objects}
+       30    0.000    0.000    0.000    0.000 {built-in method pyreloc._pyreloc.prepare_typed_program}
+       30    0.000    0.000    0.000    0.000 resources.py:16(_transfer_configuration)
+       30    0.000    0.000    0.000    0.000 artifact.py:711(_tensor_spec)
+       30    0.000    0.000    0.000    0.000 runtime.py:245(destination_descriptor)
+       30    0.000    0.000    0.001    0.000 dispatch.py:110(recheck)
+      608    0.000    0.000    0.000    0.000 {built-in method builtins.isinstance}
+       31    0.000    0.000    0.000    0.000 _utils.py:605(_get_device_index)
+       60    0.000    0.000    0.000    0.000 artifact.py:151(parameter_extents)
+       60    0.000    0.000    0.000    0.000 symbolic.py:28(ev)
+       30    0.000    0.000    0.001    0.000 __init__.py:1297(current_stream)
+      180    0.000    0.000    0.000    0.000 {method 'stride' of 'torch._C.TensorBase' objects}
+       30    0.000    0.000    0.000    0.000 eligibility.py:74(_is_dense_contiguous)
+      120    0.000    0.000    0.000    0.000 compat.py:140(is_plain_tensor_or_parameter)
+       30    0.000    0.000    0.000    0.000 streams.py:37(__new__)
+       30    0.000    0.000    0.001    0.000 compat.py:425(cuda_stream_handle)
+       30    0.000    0.000    0.011    0.000 dispatch.py:210(execute_typed_transfer)
+       30    0.000    0.000    0.000    0.000 artifact.py:127(bind_values)

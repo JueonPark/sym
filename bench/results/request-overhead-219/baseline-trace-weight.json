@@ -1,0 +1,443 @@
+{
+  "metadata": {
+    "source_revision": "98f5fa1fb0dba82c1339ab8fc23e48e946b122f6",
+    "source_changes": "?? bench/issue219/\n?? bench/results/request-overhead-219/\n",
+    "python": "3.14.7 (main, Sep  1 2026, 14:18:09) [Clang 22.1.3 ]",
+    "torch": "2.14.0+cu126",
+    "torch_cuda": "12.6",
+    "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.35",
+    "gpu": "NVIDIA GeForce RTX 2080 Ti",
+    "gpu_driver": [
+      "595.71.05",
+      "595.71.05",
+      "595.71.05",
+      "595.71.05"
+    ],
+    "cpu_affinity": [
+      4,
+      5,
+      6,
+      7,
+      20,
+      21,
+      22,
+      23
+    ],
+    "threads": 8,
+    "interop_threads": 1,
+    "runtime_package": "/home/jueonpark/sym/build/issue210/python/reloc_torch/__init__.py",
+    "sha256": {
+      "/tmp/sym-219-worktree/bench/issue219/request_overhead.py": "85e00032b2ffeef649ecb591c670ec6b8c7444a69da27539a249a866983c01f9",
+      "/home/jueonpark/sym/build/issue210/python/reloc_torch/recipe.py": "056fcb1bb7f45eb80dcba74c0d04b0298936e93c7c85b67770c8070726eda391",
+      "/home/jueonpark/sym/build/issue210/python/reloc_torch/fx_import.py": "219d25cd25182ad836b382fe9accb22018ac0c9cc006f1afd6324813c1cc788b",
+      "/home/jueonpark/sym/build/issue210/python/reloc_torch/artifact.py": "eff9b6b631002a3e8e9ebc61393d0b4051624cf5b336eecef8ecc26efd11c8d2",
+      "/home/jueonpark/sym/build/issue210/python/reloc_torch/transport.py": "f698e86226f5de8bc36b03869d9decb9afc563ea18446a6f9e14129e06fe38b6",
+      "/home/jueonpark/sym/build/issue210/python/reloc_torch/ops.py": "206b5527bec35652e3f44f70f09645e51e90242ab91fa7ffb6f9a7ee01e3b4a6",
+      "/home/jueonpark/sym/build/issue210/python/reloc_torch/symbolic.py": "12098435eb9ce300f820c68502f861830e36bbdaa8a1a95bdb97689bc2d76b24",
+      "/home/jueonpark/sym/build/issue210/python/reloc_torch/runtime.py": "79a13966c3cb89470f51438eabe877526d7750bc500b4ecdec3936655670634d",
+      "/home/jueonpark/sym/build/issue210/python/reloc_torch/mlir_emit.py": "35bf58e0fe72dd73fbf261ad46702bec5ce43d313e7d4f3442ddf8caafdd8da0",
+      "/home/jueonpark/sym/build/issue210/python/reloc_torch/cache.py": "6ca4b154343629ab35af523dd5c84f6d96afd7c320c42e6db814d18bcac3bd7b",
+      "/home/jueonpark/sym/build/issue210/python/reloc_torch/compiler.py": "f8d5cc6456fa5accefbbc136a335a403772f290c87b14397d77520af2ac0b02c",
+      "/home/jueonpark/sym/build/issue210/python/reloc_torch/backend.py": "0eff5564ab5c30bba649cf2a5cab6177a400e8dfae79e054ffbfc20ce1ac23de",
+      "/home/jueonpark/sym/build/issue210/python/reloc_torch/eligibility.py": "be729ca0c3ee577d4b35fb0b0533c6b4c2843abbd9d0bdd2d1f3e1119a299fb1",
+      "/home/jueonpark/sym/build/issue210/python/reloc_torch/eager.py": "061a89849e19e333b68f44b986f6af41705596a32ef8ac46a2eb338f2a2ffdf6",
+      "/home/jueonpark/sym/build/issue210/python/reloc_torch/weights.py": "da09e2362247ea2d83e99465aad7d5a8b6e43066acd0cd33390fadc6a9111cfc",
+      "/home/jueonpark/sym/build/issue210/python/reloc_torch/index_select.py": "58b5c0173ba7283b736f4af78063de27d0ea3d237dc9b119c5d2f8a37708fa33",
+      "/home/jueonpark/sym/build/issue210/python/reloc_torch/compat.py": "632a67bdc71eb149ceaa86e6bd759ad436e2229fc377b92a5515548736c6673d",
+      "/home/jueonpark/sym/build/issue210/python/reloc_torch/prefold.py": "3d39c83e9015576f562d98ef01ff6626feb66f98f5982c77069791648416b277",
+      "/home/jueonpark/sym/build/issue210/python/reloc_torch/graph_inventory.py": "56b03b050c724e7cdab806b8722fafd61d337bf3fd4d8aa1fffc6bbc2fbf9a2c",
+      "/home/jueonpark/sym/build/issue210/python/reloc_torch/observer.py": "d6cc7efce1ba61757fd95a0f6abd6a9e1fcc103bb9e0442ba6ec7e8325489bdc",
+      "/home/jueonpark/sym/build/issue210/python/reloc_torch/resources.py": "f7c5d7dc605913eacfcafe4a098016173cef8f3da9dbb9d27a0081a1d525dc7b",
+      "/home/jueonpark/sym/build/issue210/python/reloc_torch/dispatch.py": "2e933a17d4c6395eea11cbf0f853a0c7d3214f49f362cca3b921eda297570203",
+      "/home/jueonpark/sym/build/issue210/python/reloc_torch/indexed_artifact.py": "398bb6395409f64cda374fbf0fc2ece007c08989f6195bfb61c82bb203af22a1",
+      "/home/jueonpark/sym/build/issue210/python/reloc_torch/records.py": "031c3bdaa5fb9c000f09271f30fc72bd3f63d7b59d70960317446e890ec64a1b",
+      "/home/jueonpark/sym/build/issue210/python/reloc_torch/__init__.py": "6223e6232dbfc24fd8416fdafc568c6f03902a74ff6b71ad61bda6ae827f5682",
+      "/home/jueonpark/sym/build/issue210/python/reloc_torch/diagnostics.py": "4728fc3fdd9e5592be195bec5930b1cec49c7cbb7b334be8e03759dbd09eee62",
+      "/home/jueonpark/sym/build/issue210/python/pyreloc/_pyreloc.cpython-314-x86_64-linux-gnu.so": "4a57f1733e36b26b485dda9960a7ce2abf2de5cc4d7154bacbdf6c56ac37b875",
+      "/home/jueonpark/sym/build/issue210/sym/tools/sym-reloc-export": "5272bef56aceb41655e3597e15757c1087f69dfda7b8b2492b3f401846fd534a",
+      "/home/jueonpark/sym/build/issue210/sym/tools/sym-opt": "0589b36cd83f6686ef47032db338ed81b7f539edf86a64d26f68790b2dfdf075"
+    }
+  },
+  "cases": {
+    "weight_4m": {
+      "source_bytes": 4194304,
+      "first_completed_ms": {
+        "torch": 41.366408,
+        "sym": 14.202564
+      },
+      "warm": {
+        "sym": {
+          "p50_ms": 1.0232345,
+          "p95_ms": 1.09032425,
+          "mean_ms": 1.0421128,
+          "samples_ms": [
+            1.083034,
+            1.096289,
+            1.021997,
+            1.018862,
+            1.048919,
+            1.061393,
+            1.022669,
+            1.021496,
+            1.02342,
+            1.023049
+          ]
+        },
+        "torch": {
+          "p50_ms": 0.705945,
+          "p95_ms": 0.9058314999999996,
+          "mean_ms": 0.7391726,
+          "samples_ms": [
+            1.063948,
+            0.706626,
+            0.710955,
+            0.688111,
+            0.704743,
+            0.693221,
+            0.711366,
+            0.705264,
+            0.712578,
+            0.694914
+          ]
+        }
+      },
+      "diagnostic_phases": [
+        {
+          "total_ms": 2.090905,
+          "exclusive_ms": {
+            "frontend_and_other_validation": 0.30298,
+            "fresh_validation": 0.366558,
+            "binding": 0.150296,
+            "descriptors": 0.018696,
+            "native_preparation": 0.129016,
+            "output_allocation": 0.053041,
+            "native_including_completion": 1.005806,
+            "explicit_completion": 0.064512
+          },
+          "calls": {
+            "source_reason": 1,
+            "bind_values": 1,
+            "parameter_extents": 2,
+            "_parameter_snapshot": 2,
+            "bind_typed": 1,
+            "_storage_view": 2,
+            "destination_descriptor": 1,
+            "prepare_typed_program": 1,
+            "query_capability": 1,
+            "select_dispatch": 1,
+            "storage_snapshot": 2,
+            "recheck": 1,
+            "empty_strided": 1,
+            "prepare_dispatch": 1,
+            "execute_dispatch": 1,
+            "synchronize": 1
+          }
+        },
+        {
+          "total_ms": 1.671065,
+          "exclusive_ms": {
+            "frontend_and_other_validation": 0.273601,
+            "fresh_validation": 0.284462,
+            "binding": 0.104188,
+            "descriptors": 0.019267,
+            "native_preparation": 0.125409,
+            "output_allocation": 0.037782,
+            "native_including_completion": 0.766271,
+            "explicit_completion": 0.060085
+          },
+          "calls": {
+            "source_reason": 1,
+            "bind_values": 1,
+            "parameter_extents": 2,
+            "_parameter_snapshot": 2,
+            "bind_typed": 1,
+            "_storage_view": 2,
+            "destination_descriptor": 1,
+            "prepare_typed_program": 1,
+            "query_capability": 1,
+            "select_dispatch": 1,
+            "storage_snapshot": 2,
+            "recheck": 1,
+            "empty_strided": 1,
+            "prepare_dispatch": 1,
+            "execute_dispatch": 1,
+            "synchronize": 1
+          }
+        },
+        {
+          "total_ms": 1.622872,
+          "exclusive_ms": {
+            "frontend_and_other_validation": 0.246698,
+            "fresh_validation": 0.27193,
+            "binding": 0.112175,
+            "descriptors": 0.017613,
+            "native_preparation": 0.127443,
+            "output_allocation": 0.037381,
+            "native_including_completion": 0.749197,
+            "explicit_completion": 0.060435
+          },
+          "calls": {
+            "source_reason": 1,
+            "bind_values": 1,
+            "parameter_extents": 2,
+            "_parameter_snapshot": 2,
+            "bind_typed": 1,
+            "_storage_view": 2,
+            "destination_descriptor": 1,
+            "prepare_typed_program": 1,
+            "query_capability": 1,
+            "select_dispatch": 1,
+            "storage_snapshot": 2,
+            "recheck": 1,
+            "empty_strided": 1,
+            "prepare_dispatch": 1,
+            "execute_dispatch": 1,
+            "synchronize": 1
+          }
+        },
+        {
+          "total_ms": 1.567066,
+          "exclusive_ms": {
+            "frontend_and_other_validation": 0.237842,
+            "fresh_validation": 0.25664,
+            "binding": 0.10045,
+            "descriptors": 0.016682,
+            "native_preparation": 0.132884,
+            "output_allocation": 0.032692,
+            "native_including_completion": 0.732256,
+            "explicit_completion": 0.05762
+          },
+          "calls": {
+            "source_reason": 1,
+            "bind_values": 1,
+            "parameter_extents": 2,
+            "_parameter_snapshot": 2,
+            "bind_typed": 1,
+            "_storage_view": 2,
+            "destination_descriptor": 1,
+            "prepare_typed_program": 1,
+            "query_capability": 1,
+            "select_dispatch": 1,
+            "storage_snapshot": 2,
+            "recheck": 1,
+            "empty_strided": 1,
+            "prepare_dispatch": 1,
+            "execute_dispatch": 1,
+            "synchronize": 1
+          }
+        },
+        {
+          "total_ms": 1.59001,
+          "exclusive_ms": {
+            "frontend_and_other_validation": 0.252799,
+            "fresh_validation": 0.260868,
+            "binding": 0.103418,
+            "descriptors": 0.017624,
+            "native_preparation": 0.12027,
+            "output_allocation": 0.032402,
+            "native_including_completion": 0.740521,
+            "explicit_completion": 0.062108
+          },
+          "calls": {
+            "source_reason": 1,
+            "bind_values": 1,
+            "parameter_extents": 2,
+            "_parameter_snapshot": 2,
+            "bind_typed": 1,
+            "_storage_view": 2,
+            "destination_descriptor": 1,
+            "prepare_typed_program": 1,
+            "query_capability": 1,
+            "select_dispatch": 1,
+            "storage_snapshot": 2,
+            "recheck": 1,
+            "empty_strided": 1,
+            "prepare_dispatch": 1,
+            "execute_dispatch": 1,
+            "synchronize": 1
+          }
+        },
+        {
+          "total_ms": 2.170335,
+          "exclusive_ms": {
+            "frontend_and_other_validation": 0.270686,
+            "fresh_validation": 0.272969,
+            "binding": 0.590295,
+            "descriptors": 0.016652,
+            "native_preparation": 0.125579,
+            "output_allocation": 0.041569,
+            "native_including_completion": 0.786609,
+            "explicit_completion": 0.065976
+          },
+          "calls": {
+            "source_reason": 1,
+            "bind_values": 1,
+            "parameter_extents": 2,
+            "_parameter_snapshot": 2,
+            "bind_typed": 1,
+            "_storage_view": 2,
+            "destination_descriptor": 1,
+            "prepare_typed_program": 1,
+            "query_capability": 1,
+            "select_dispatch": 1,
+            "storage_snapshot": 2,
+            "recheck": 1,
+            "empty_strided": 1,
+            "prepare_dispatch": 1,
+            "execute_dispatch": 1,
+            "synchronize": 1
+          }
+        },
+        {
+          "total_ms": 1.615668,
+          "exclusive_ms": {
+            "frontend_and_other_validation": 0.248019,
+            "fresh_validation": 0.271066,
+            "binding": 0.100523,
+            "descriptors": 0.017955,
+            "native_preparation": 0.133365,
+            "output_allocation": 0.033274,
+            "native_including_completion": 0.746252,
+            "explicit_completion": 0.065214
+          },
+          "calls": {
+            "source_reason": 1,
+            "bind_values": 1,
+            "parameter_extents": 2,
+            "_parameter_snapshot": 2,
+            "bind_typed": 1,
+            "_storage_view": 2,
+            "destination_descriptor": 1,
+            "prepare_typed_program": 1,
+            "query_capability": 1,
+            "select_dispatch": 1,
+            "storage_snapshot": 2,
+            "recheck": 1,
+            "empty_strided": 1,
+            "prepare_dispatch": 1,
+            "execute_dispatch": 1,
+            "synchronize": 1
+          }
+        },
+        {
+          "total_ms": 1.586874,
+          "exclusive_ms": {
+            "frontend_and_other_validation": 0.242811,
+            "fresh_validation": 0.263644,
+            "binding": 0.096503,
+            "descriptors": 0.017193,
+            "native_preparation": 0.122684,
+            "output_allocation": 0.032101,
+            "native_including_completion": 0.754869,
+            "explicit_completion": 0.057069
+          },
+          "calls": {
+            "source_reason": 1,
+            "bind_values": 1,
+            "parameter_extents": 2,
+            "_parameter_snapshot": 2,
+            "bind_typed": 1,
+            "_storage_view": 2,
+            "destination_descriptor": 1,
+            "prepare_typed_program": 1,
+            "query_capability": 1,
+            "select_dispatch": 1,
+            "storage_snapshot": 2,
+            "recheck": 1,
+            "empty_strided": 1,
+            "prepare_dispatch": 1,
+            "execute_dispatch": 1,
+            "synchronize": 1
+          }
+        },
+        {
+          "total_ms": 1.566505,
+          "exclusive_ms": {
+            "frontend_and_other_validation": 0.235316,
+            "fresh_validation": 0.266589,
+            "binding": 0.107445,
+            "descriptors": 0.017333,
+            "native_preparation": 0.120411,
+            "output_allocation": 0.032271,
+            "native_including_completion": 0.732927,
+            "explicit_completion": 0.054213
+          },
+          "calls": {
+            "source_reason": 1,
+            "bind_values": 1,
+            "parameter_extents": 2,
+            "_parameter_snapshot": 2,
+            "bind_typed": 1,
+            "_storage_view": 2,
+            "destination_descriptor": 1,
+            "prepare_typed_program": 1,
+            "query_capability": 1,
+            "select_dispatch": 1,
+            "storage_snapshot": 2,
+            "recheck": 1,
+            "empty_strided": 1,
+            "prepare_dispatch": 1,
+            "execute_dispatch": 1,
+            "synchronize": 1
+          }
+        },
+        {
+          "total_ms": 1.525487,
+          "exclusive_ms": {
+            "frontend_and_other_validation": 0.236831,
+            "fresh_validation": 0.249836,
+            "binding": 0.10429,
+            "descriptors": 0.016521,
+            "native_preparation": 0.127232,
+            "output_allocation": 0.03162,
+            "native_including_completion": 0.707548,
+            "explicit_completion": 0.051609
+          },
+          "calls": {
+            "source_reason": 1,
+            "bind_values": 1,
+            "parameter_extents": 2,
+            "_parameter_snapshot": 2,
+            "bind_typed": 1,
+            "_storage_view": 2,
+            "destination_descriptor": 1,
+            "prepare_typed_program": 1,
+            "query_capability": 1,
+            "select_dispatch": 1,
+            "storage_snapshot": 2,
+            "recheck": 1,
+            "empty_strided": 1,
+            "prepare_dispatch": 1,
+            "execute_dispatch": 1,
+            "synchronize": 1
+          }
+        }
+      ],
+      "stats": {
+        "resources": {
+          "cuda:0": {
+            "requests": 39,
+            "hits": 38,
+            "context_creations": 1,
+            "device_allocations": 2,
+            "host_allocations": 1,
+            "frees": 0,
+            "retained_bytes": 4751360,
+            "device_bytes": 4734976,
+            "host_bytes": 16384,
+            "background_workers": 0,
+            "streams": 2,
+            "closed": false,
+            "quarantined": false,
+            "process_valid": true
+          }
+        },
+        "dispatch": {
+          "cuda_dequant_relocate": 39
+        }
+      },
+      "correctness": true
+    }
+  },
+  "scope": "Completed calls include fresh allocation and completion; first Sym frontend KV call includes graph compilation. Weights compile before timing. Source mutations/oracles and owner close are outside timing. Instrumented phases are a separate diagnostic, exclusively partitioning host wall time. Native execution includes completion waits; GPU activity is not additive."
+}

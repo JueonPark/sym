@@ -1,0 +1,41 @@
+         14833 function calls (14803 primitive calls) in 0.023 seconds
+
+   Ordered by: internal time
+   List reduced from 205 to 35 due to restriction <35>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+       30    0.002    0.000    0.002    0.000 {built-in method pyreloc._pyreloc.execute_transfer}
+       30    0.001    0.000    0.023    0.001 eval_frame.py:1146(compile_wrapper)
+       60    0.001    0.000    0.002    0.000 compat.py:152(tensor_metadata)
+       30    0.001    0.000    0.016    0.001 runtime.py:486(execute_or_fallback)
+      120    0.001    0.000    0.018    0.000 _ops.py:910(__call__)
+       60    0.001    0.000    0.001    0.000 transport.py:45(_storage_view)
+      180    0.001    0.000    0.001    0.000 compat.py:411(storage_snapshot)
+      240    0.000    0.000    0.001    0.000 compat.py:399(storage_span)
+      870    0.000    0.000    0.001    0.000 {built-in method builtins.getattr}
+  210/180    0.000    0.000    0.020    0.000 eval_frame.py:1523(_fn)
+       60    0.000    0.000    0.000    0.000 {method 'is_pinned' of 'torch._C.TensorBase' objects}
+       30    0.000    0.000    0.005    0.000 transport.py:141(execute_transfer)
+       30    0.000    0.000    0.004    0.000 transport.py:90(prepare_transfer)
+       60    0.000    0.000    0.001    0.000 runtime.py:225(_validated_binding)
+       30    0.000    0.000    0.016    0.001 ops.py:55(_execute)
+       30    0.000    0.000    0.000    0.000 {built-in method torch.empty_strided}
+       30    0.000    0.000    0.021    0.001 request_overhead.py:157(reference)
+       30    0.000    0.000    0.001    0.000 runtime.py:275(verify_result)
+       90    0.000    0.000    0.000    0.000 {built-in method torch._ops.aten.}
+       30    0.000    0.000    0.019    0.001 <eval_with_key>.7:4(forward)
+       30    0.000    0.000    0.000    0.000 {built-in method pyreloc._pyreloc.bind}
+       60    0.000    0.000    0.000    0.000 runtime.py:245(destination_descriptor)
+      390    0.000    0.000    0.000    0.000 {method 'stride' of 'torch._C.TensorBase' objects}
+       60    0.000    0.000    0.000    0.000 eligibility.py:74(_is_dense_contiguous)
+       30    0.000    0.000    0.017    0.001 autograd.py:41(redispatch_no_grad)
+       30    0.000    0.000    0.004    0.000 runtime.py:402(preflight)
+      968    0.000    0.000    0.000    0.000 {built-in method builtins.isinstance}
+      180    0.000    0.000    0.017    0.000 _compile.py:42(inner)
+       30    0.000    0.000    0.005    0.000 runtime.py:438(execute)
+       60    0.000    0.000    0.001    0.000 eligibility.py:43(_metadata_reason)
+       30    0.000    0.000    0.000    0.000 artifact.py:711(_tensor_spec)
+      510    0.000    0.000    0.000    0.000 {built-in method torch._C._dynamo.eval_frame.set_eval_frame}
+      300    0.000    0.000    0.000    0.000 {method 'untyped_storage' of 'torch._C.TensorBase' objects}
+       30    0.000    0.000    0.000    0.000 _config_module.py:992(change)
+       90    0.000    0.000    0.000    0.000 symbolic.py:28(ev)

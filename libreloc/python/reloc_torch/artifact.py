@@ -135,6 +135,29 @@ class CompiledRecipe:
         return (pyreloc.load_typed_plan if self.typed else pyreloc.load_plan)(self.plan_bytes)
 
     @cached_property
+    def _execution_templates(self):
+        from .execution_templates import TemplateCache
+        return TemplateCache()
+
+    def execution_cache_info(self):
+        """Immutable metadata cache counters; excludes live requests and tensors."""
+        return self._execution_templates.info()
+
+    def clear_execution_cache(self):
+        """Discard retained execution metadata; live requests remain independent."""
+        self._execution_templates.clear()
+
+    def bind_layout(self, bindings):
+        import pyreloc
+
+        key = ("layout", tuple(sorted(bindings.items())))
+        bound = self._execution_templates.get(key)
+        if bound is None:
+            bound = pyreloc.bind(self.decoded_plan, bindings)
+            bound = self._execution_templates.put(key, bound)
+        return bound
+
+    @cached_property
     def _destination_metadata(self):
         @lru_cache(maxsize=32)
         def describe(items):
@@ -148,21 +171,26 @@ class CompiledRecipe:
             return shape, strides, logical.dtype
         return describe
 
+    @cached_property
+    def _parameter_metadata(self):
+        @lru_cache(maxsize=32)
+        def describe(items):
+            symbols = dict(items)
+            return tuple((declaration.name, declaration.dtype, tuple(
+                extent.evaluate(symbols, checked=True) for extent in declaration.extents
+            )) for declaration in self.parameters)
+        return describe
+
     def parameter_extents(self, symbols):
         """Concrete ``{name: (dtype, extents)}`` of every declared runtime
         parameter under bound wire symbols (``bind_values``' result), in
         declaration order. The caller supplies the bytes; ``bind_typed``
         re-checks dtype, extents, byte size and values."""
-        out = {}
-        for declaration in self.parameters:
-            try:
-                extents = tuple(
-                    extent.evaluate(symbols, checked=True) for extent in declaration.extents
-                )
-            except KeyError as error:
-                raise GuardError("missing_symbol") from error
-            out[declaration.name] = (declaration.dtype, extents)
-        return out
+        try:
+            return {name: (dtype, extents) for name, dtype, extents in
+                    self._parameter_metadata(tuple(sorted(symbols.items())))}
+        except KeyError as error:
+            raise GuardError("missing_symbol") from error
 
     def to_bytes(self):
         """Serialize portable metadata and plan bytes without live FX/Torch state."""

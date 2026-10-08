@@ -26,6 +26,7 @@ decision are errors, never fallback signals. Requests are single-use.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import operator
 from threading import Lock
 from types import MappingProxyType
 
@@ -33,7 +34,10 @@ import pyreloc
 
 from . import compat
 from .artifact import UnsupportedRecipe
-from .runtime import ConcreteDescriptor, bind_symbols, destination_descriptor, source_reason
+from .runtime import (
+    ConcreteDescriptor, bind_symbols, destination_descriptor, source_reason,
+    _validated_preparation, _prepared_destination,
+)
 from .transport import _code, _storage_view
 
 POLICIES = ("auto", "original_cpu")
@@ -99,6 +103,7 @@ class PreparedTypedTransfer:
     selected: dict
     program: object = None
     request: object = None
+    template: object = field(default=None, kw_only=True)
     consumed: bool = False
     staging: tuple = field(default=(), init=False)
     _storage: tuple = field(init=False, repr=False)
@@ -131,6 +136,17 @@ class PreparedTypedTransfer:
         return MappingProxyType(dict(self.selected))
 
 
+@dataclass(frozen=True)
+class _TypedTemplate:
+    bound: object
+    native: object
+    capability: tuple
+    selection: tuple
+
+    def capability_dict(self):
+        return {name: [dict(row) for row in rows] for name, rows in self.capability}
+
+
 def prepare_typed_transfer(
     compiled, source, device, *, parameters=None, policy="auto", calibration=None,
     threads=8, implementation="",
@@ -142,16 +158,18 @@ def prepare_typed_transfer(
     if policy not in POLICIES:
         raise ValueError(f"policy must be one of {POLICIES}, got {policy!r}")
     device = torch.device(device)
-    reason = source_reason(source)
-    if reason is not None:
-        raise UnsupportedRecipe(reason, f"source tensor rejected: {reason}")
+    shared = _validated_preparation(compiled, source)
+    if shared is None:
+        reason = source_reason(source)
+        if reason is not None:
+            raise UnsupportedRecipe(reason, f"source tensor rejected: {reason}")
     direction = compiled.recipe.direction
     expected = _DIRECTIONS.get(direction)
     if expected is None or (source.device.type, device.type) != expected:
         raise UnsupportedRecipe(
             "direction_mismatch", f"{direction} recipe cannot move {source.device} -> {device}"
         )
-    bindings = bind_symbols(compiled, source)
+    bindings = shared[0] if shared is not None else bind_symbols(compiled, source)
     declared = compiled.parameter_extents(bindings)
     parameters = dict(parameters or {})
     missing = sorted(set(declared) - set(parameters))
@@ -162,19 +180,40 @@ def prepare_typed_transfer(
             f"declared parameters {sorted(declared)}; missing {missing}, unexpected {extra}",
         )
     snapshots = {name: _parameter_snapshot(name, parameters[name], declared[name]) for name in declared}
+    # Normalize cache-key scalars before lookup so e.g. 1.0 cannot hit the
+    # integer thread key and bypass native argument validation.
+    threads = operator.index(threads)
+    if not 1 <= threads <= (1 << 31) - 1:
+        raise ValueError("threads must be between 1 and 2147483647")
+    if not isinstance(implementation, str):
+        raise TypeError("implementation must be a string")
+    if calibration is not None and type(calibration) is not pyreloc.Calibration:
+        raise TypeError("calibration must be pyreloc.Calibration or None")
+    cuda_available = pyreloc.cuda_enabled and torch.cuda.is_available()
+    index = (device.index if device.index is not None else
+             torch.cuda.current_device() if cuda_available else None) if direction == "h2d" else source.device.index
+    # Calibration is immutable in Python. Hold its object identity in the key
+    # (not id(calibration), which can be reused after destruction).
+    parameter_key = tuple((name, dtype, tuple(extents), data)
+                          for name, (dtype, extents, data) in sorted(snapshots.items()))
+    parameter_bytes = sum(len(data) for _, _, _, data in parameter_key)
+    key = ("typed", tuple(sorted(bindings.items())), parameter_key, direction,
+           source.device.type, source.device.index, device.type, index,
+           policy, calibration, threads, implementation)
+    cache = compiled._execution_templates
+    template = cache.get(key, parameter_bytes)
     try:
-        plan = compiled.decoded_plan
-        bound = pyreloc.bind_typed(plan, bindings, snapshots)
+        bound = template.bound if template is not None else pyreloc.bind_typed(
+            compiled.decoded_plan, bindings, snapshots)
     except pyreloc.DecodeError as error:
         raise RuntimeError(f"compiled recipe holds an invalid typed plan: {error}") from error
     except pyreloc.BindError as error:
         raise UnsupportedRecipe("bind_error", str(error)) from error
-    # Parameters and the typed binding are checked before the device is: a
-    # CPU-only host still reports every recipe/parameter problem precisely.
-    if not pyreloc.cuda_enabled or not torch.cuda.is_available():
+    # Invalid parameter values still fail binding before CUDA availability,
+    # including on hosts without a CUDA runtime. Cache hits use exact bytes.
+    if not cuda_available:
         raise UnsupportedRecipe("cuda_unavailable", "no CUDA-capable runtime")
     if direction == "h2d":
-        index = device.index if device.index is not None else torch.cuda.current_device()
         target = torch.device("cuda", index)
         view = _storage_view(source, "host", -1)
     else:
@@ -191,19 +230,24 @@ def prepare_typed_transfer(
                 f"source storage belongs to cuda:{owner}, tensor declares cuda:{index}",
             )
         view = _storage_view(source, "cuda", index)
-    destination = destination_descriptor(compiled, bindings, target)
-    try:
-        program = pyreloc.prepare_typed_program(bound)
-        capability = pyreloc.query_capability(program, direction, "cuda")
-        selected = pyreloc.select_dispatch(
-            program, direction, "cuda", policy=policy, calibration=calibration,
-            threads=threads, implementation=implementation,
-        )
-    except pyreloc.TransferError as error:
-        raise UnsupportedRecipe(_code(error), str(error)) from error
+    destination = _prepared_destination(compiled, bindings, target, shared)
+    if template is None:
+        try:
+            native = pyreloc.prepare_dispatch_template(
+                bound, direction, "cuda", policy=policy, calibration=calibration,
+                threads=threads, implementation=implementation,
+            )
+        except pyreloc.TransferError as error:
+            raise UnsupportedRecipe(_code(error), str(error)) from error
+        template = _TypedTemplate(bound, native, tuple(
+            (name, tuple(tuple(row.items()) for row in rows))
+            for name, rows in native.capability.items()), tuple(native.selection.items()))
+        template = cache.put(key, template, parameter_bytes)
     return PreparedTypedTransfer(
-        compiled, source, bindings, bound, destination, direction, target, view,
-        policy, calibration, threads, parameters, snapshots, capability, selected, program=program,
+        compiled, source, bindings, template.bound, destination, direction, target, view,
+        policy, calibration, threads, parameters, snapshots,
+        template.capability_dict(), dict(template.selection), program=template.native.program,
+        template=template.native,
     )
 
 
@@ -254,11 +298,14 @@ def _execute_typed_transfer(request, *, n_buffers, n_streams, gather_threads,
         dst_view = _storage_view(out, "host", -1)
         cuda_device = request.source.device
     try:
-        native = pyreloc.prepare_dispatch(
-            request.program, request.source_view, dst_view, request.direction,
-            policy=request.policy, calibration=request.calibration, threads=request.threads,
-            implementation=request.selected["implementation"],
-        )
+        if request.template is not None:
+            native = pyreloc.prepare_dispatch_from_template(request.template, request.source_view, dst_view)
+        else:
+            native = pyreloc.prepare_dispatch(
+                request.program, request.source_view, dst_view, request.direction,
+                policy=request.policy, calibration=request.calibration, threads=request.threads,
+                implementation=request.selected["implementation"],
+            )
     except pyreloc.TransferError as error:
         raise RuntimeError(f"typed dispatch rejected at execution: {error}") from error
     request.request = native

@@ -1,0 +1,438 @@
+{
+  "metadata": {
+    "source_revision": "b0e8e65aa2d41385476aa04d264ac48fd145b038",
+    "runtime_revision": "b0e8e65aa2d41385476aa04d264ac48fd145b038",
+    "source_changes": "?? bench/results/request-overhead-219/candidate-kv-cuda-phases.json\n?? bench/results/request-overhead-219/candidate-round1.json\n?? bench/results/request-overhead-219/candidate-round1.log\n?? bench/results/request-overhead-219/candidate-round2.json\n?? bench/results/request-overhead-219/candidate-round2.log\n?? bench/results/request-overhead-219/candidate-round3.json\n?? bench/results/request-overhead-219/candidate-round3.log\n?? bench/results/request-overhead-219/candidate-trace-kv.json\n?? bench/results/request-overhead-219/candidate-trace-kv.log\n?? bench/results/request-overhead-219/candidate-trace-weight.log\n?? bench/results/request-overhead-219/comparison.json\n?? bench/results/request-overhead-219/ctest.log\n?? bench/results/request-overhead-219/main-round1.json\n?? bench/results/request-overhead-219/main-round1.log\n?? bench/results/request-overhead-219/main-round2.json\n?? bench/results/request-overhead-219/main-round2.log\n?? bench/results/request-overhead-219/main-round3.json\n?? bench/results/request-overhead-219/main-round3.log\n?? bench/results/request-overhead-219/pytest.log\n",
+    "python": "3.14.7 (main, Sep  1 2026, 14:18:09) [Clang 22.1.3 ]",
+    "torch": "2.14.0+cu126",
+    "torch_cuda": "12.6",
+    "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.35",
+    "gpu": "NVIDIA GeForce RTX 2080 Ti",
+    "gpu_driver": [
+      "595.71.05",
+      "595.71.05",
+      "595.71.05",
+      "595.71.05"
+    ],
+    "cpu_affinity": [
+      4,
+      5,
+      6,
+      7,
+      20,
+      21,
+      22,
+      23
+    ],
+    "threads": 8,
+    "interop_threads": 1,
+    "runtime_package": "/tmp/sym-219-build/python/reloc_torch/__init__.py",
+    "sha256": {
+      "/tmp/sym-219-worktree/bench/issue219/request_overhead.py": "70c70e81038a6d9635646862e05aa713ee5e5372a786207ebe9b3bb917c6c063",
+      "/tmp/sym-219-worktree/libreloc/python/examples/workloads/common.py": "c44c12e8a244603d4da844a63a6de53e4fea611b4d4372714cfb7ea522c8edda",
+      "/tmp/sym-219-worktree/calibration/epyc7351-2080ti.cal": "d8614162850d2187c5d6ca7b8ee634cb0ef556d71e0c269a01746d1d33a905ab",
+      "/tmp/sym-219-build/python/reloc_torch/recipe.py": "056fcb1bb7f45eb80dcba74c0d04b0298936e93c7c85b67770c8070726eda391",
+      "/tmp/sym-219-build/python/reloc_torch/fx_import.py": "219d25cd25182ad836b382fe9accb22018ac0c9cc006f1afd6324813c1cc788b",
+      "/tmp/sym-219-build/python/reloc_torch/artifact.py": "8298ac46e90e1ec72c1ef8f81c57ad9101991cb9f715c7969efe13d78f3b794c",
+      "/tmp/sym-219-build/python/reloc_torch/transport.py": "ea01018f2e83954387a134685498aa0ee7f07d1ac11b5cd236d7924948f9ebb9",
+      "/tmp/sym-219-build/python/reloc_torch/ops.py": "206b5527bec35652e3f44f70f09645e51e90242ab91fa7ffb6f9a7ee01e3b4a6",
+      "/tmp/sym-219-build/python/reloc_torch/symbolic.py": "12098435eb9ce300f820c68502f861830e36bbdaa8a1a95bdb97689bc2d76b24",
+      "/tmp/sym-219-build/python/reloc_torch/runtime.py": "bd80a7575be2204432c8b6be5aeb83ea356be8a18b5dfa803cb0cf9cfe00c66f",
+      "/tmp/sym-219-build/python/reloc_torch/mlir_emit.py": "35bf58e0fe72dd73fbf261ad46702bec5ce43d313e7d4f3442ddf8caafdd8da0",
+      "/tmp/sym-219-build/python/reloc_torch/cache.py": "6ca4b154343629ab35af523dd5c84f6d96afd7c320c42e6db814d18bcac3bd7b",
+      "/tmp/sym-219-build/python/reloc_torch/compiler.py": "f8d5cc6456fa5accefbbc136a335a403772f290c87b14397d77520af2ac0b02c",
+      "/tmp/sym-219-build/python/reloc_torch/backend.py": "0eff5564ab5c30bba649cf2a5cab6177a400e8dfae79e054ffbfc20ce1ac23de",
+      "/tmp/sym-219-build/python/reloc_torch/eligibility.py": "be729ca0c3ee577d4b35fb0b0533c6b4c2843abbd9d0bdd2d1f3e1119a299fb1",
+      "/tmp/sym-219-build/python/reloc_torch/execution_templates.py": "8541114736283f7c5c49a3603e8852f33fb3d35f3eb5d10aaf42095c4ff5f812",
+      "/tmp/sym-219-build/python/reloc_torch/eager.py": "061a89849e19e333b68f44b986f6af41705596a32ef8ac46a2eb338f2a2ffdf6",
+      "/tmp/sym-219-build/python/reloc_torch/weights.py": "da09e2362247ea2d83e99465aad7d5a8b6e43066acd0cd33390fadc6a9111cfc",
+      "/tmp/sym-219-build/python/reloc_torch/compat.py": "632a67bdc71eb149ceaa86e6bd759ad436e2229fc377b92a5515548736c6673d",
+      "/tmp/sym-219-build/python/reloc_torch/prefold.py": "3d39c83e9015576f562d98ef01ff6626feb66f98f5982c77069791648416b277",
+      "/tmp/sym-219-build/python/reloc_torch/graph_inventory.py": "56b03b050c724e7cdab806b8722fafd61d337bf3fd4d8aa1fffc6bbc2fbf9a2c",
+      "/tmp/sym-219-build/python/reloc_torch/observer.py": "d6cc7efce1ba61757fd95a0f6abd6a9e1fcc103bb9e0442ba6ec7e8325489bdc",
+      "/tmp/sym-219-build/python/reloc_torch/resources.py": "f7c5d7dc605913eacfcafe4a098016173cef8f3da9dbb9d27a0081a1d525dc7b",
+      "/tmp/sym-219-build/python/reloc_torch/dispatch.py": "6482234a5f32f04b534a655f999f6c074073461b1226fd683e96e50df15d32ef",
+      "/tmp/sym-219-build/python/reloc_torch/records.py": "031c3bdaa5fb9c000f09271f30fc72bd3f63d7b59d70960317446e890ec64a1b",
+      "/tmp/sym-219-build/python/reloc_torch/__init__.py": "6223e6232dbfc24fd8416fdafc568c6f03902a74ff6b71ad61bda6ae827f5682",
+      "/tmp/sym-219-build/python/reloc_torch/diagnostics.py": "4728fc3fdd9e5592be195bec5930b1cec49c7cbb7b334be8e03759dbd09eee62",
+      "/tmp/sym-219-build/python/pyreloc/torch_interop.py": "1e27351d8e3a7ab59c5174bb8cffe388c006fd5dc9ef80c05de0e19baf367d5b",
+      "/tmp/sym-219-build/python/pyreloc/__init__.py": "c0906828f9c44aa947332e350e7c99d48fd37b23c495f148c743963f69d7786f",
+      "/tmp/sym-219-build/python/pyreloc/_pyreloc.cpython-314-x86_64-linux-gnu.so": "7af9e9fd8b34253b387336a4f2f5e0bd9529883761a5f8e95452030fe9079ec4",
+      "/tmp/sym-219-build/sym/tools/sym-reloc-export": "5cac89774bb810b61aed96b23e025cfeb4c77a2c63f5229e3a019d2f823030a0",
+      "/tmp/sym-219-build/sym/tools/sym-opt": "4c3fdb46f34d0298987f27d2887b8c47d3c1f3d1710d01ce1a08a9c33ac2d94f",
+      "/tmp/sym-219-build/libreloc/libreloc_runtime.so": "2c6d43d2025651cc328b2d930f0e648c7eddfd17b383d0e1c25d3c6b223f5bd3"
+    }
+  },
+  "cases": {
+    "weight_4m": {
+      "source_bytes": 4194304,
+      "first_completed_ms": {
+        "torch": 41.658018,
+        "sym": 7.082439
+      },
+      "warm": {
+        "sym": {
+          "p50_ms": 0.9317070000000001,
+          "p95_ms": 1.2170413500000001,
+          "mean_ms": 0.96867765,
+          "samples_ms": [
+            1.21081,
+            1.028181,
+            0.938099,
+            0.925324,
+            0.932799,
+            0.94886,
+            0.924764,
+            0.93324,
+            0.935054,
+            0.924824,
+            0.924554,
+            0.935484,
+            1.335437,
+            0.934592,
+            0.923221,
+            0.927129,
+            0.919905,
+            0.918392,
+            0.922269,
+            0.930615
+          ]
+        },
+        "torch": {
+          "p50_ms": 0.7030755,
+          "p95_ms": 0.7796980500000001,
+          "mean_ms": 0.72039965,
+          "samples_ms": [
+            1.06905,
+            0.710926,
+            0.709684,
+            0.694444,
+            0.71267,
+            0.694224,
+            0.70744,
+            0.703722,
+            0.705896,
+            0.690527,
+            0.707138,
+            0.690147,
+            0.764469,
+            0.68133,
+            0.710405,
+            0.68175,
+            0.702429,
+            0.679095,
+            0.701098,
+            0.691549
+          ]
+        }
+      },
+      "diagnostic_phases": [
+        {
+          "total_ms": 1.531782,
+          "exclusive_ms": {
+            "frontend_and_other_validation": 0.271859,
+            "fresh_validation": 0.206373,
+            "binding": 0.045657,
+            "descriptors": 0.013436,
+            "output_allocation": 0.059063,
+            "native_preparation": 0.024717,
+            "native_including_completion": 0.862906,
+            "explicit_completion": 0.047771
+          },
+          "calls": {
+            "source_reason": 1,
+            "bind_values": 1,
+            "parameter_extents": 2,
+            "_parameter_snapshot": 2,
+            "_storage_view": 2,
+            "destination_descriptor": 1,
+            "storage_snapshot": 2,
+            "recheck": 1,
+            "empty_strided": 1,
+            "prepare_dispatch_from_template": 1,
+            "execute_dispatch": 1,
+            "synchronize": 1
+          }
+        },
+        {
+          "total_ms": 1.143591,
+          "exclusive_ms": {
+            "frontend_and_other_validation": 0.20998,
+            "fresh_validation": 0.152992,
+            "binding": 0.034696,
+            "descriptors": 0.011683,
+            "output_allocation": 0.025268,
+            "native_preparation": 0.02116,
+            "native_including_completion": 0.648236,
+            "explicit_completion": 0.039576
+          },
+          "calls": {
+            "source_reason": 1,
+            "bind_values": 1,
+            "parameter_extents": 2,
+            "_parameter_snapshot": 2,
+            "_storage_view": 2,
+            "destination_descriptor": 1,
+            "storage_snapshot": 2,
+            "recheck": 1,
+            "empty_strided": 1,
+            "prepare_dispatch_from_template": 1,
+            "execute_dispatch": 1,
+            "synchronize": 1
+          }
+        },
+        {
+          "total_ms": 1.097754,
+          "exclusive_ms": {
+            "frontend_and_other_validation": 0.194874,
+            "fresh_validation": 0.144055,
+            "binding": 0.033603,
+            "descriptors": 0.011121,
+            "output_allocation": 0.023936,
+            "native_preparation": 0.019787,
+            "native_including_completion": 0.631304,
+            "explicit_completion": 0.039074
+          },
+          "calls": {
+            "source_reason": 1,
+            "bind_values": 1,
+            "parameter_extents": 2,
+            "_parameter_snapshot": 2,
+            "_storage_view": 2,
+            "destination_descriptor": 1,
+            "storage_snapshot": 2,
+            "recheck": 1,
+            "empty_strided": 1,
+            "prepare_dispatch_from_template": 1,
+            "execute_dispatch": 1,
+            "synchronize": 1
+          }
+        },
+        {
+          "total_ms": 1.103034,
+          "exclusive_ms": {
+            "frontend_and_other_validation": 0.190391,
+            "fresh_validation": 0.142181,
+            "binding": 0.031922,
+            "descriptors": 0.023054,
+            "output_allocation": 0.024437,
+            "native_preparation": 0.019868,
+            "native_including_completion": 0.633088,
+            "explicit_completion": 0.038093
+          },
+          "calls": {
+            "source_reason": 1,
+            "bind_values": 1,
+            "parameter_extents": 2,
+            "_parameter_snapshot": 2,
+            "_storage_view": 2,
+            "destination_descriptor": 1,
+            "storage_snapshot": 2,
+            "recheck": 1,
+            "empty_strided": 1,
+            "prepare_dispatch_from_template": 1,
+            "execute_dispatch": 1,
+            "synchronize": 1
+          }
+        },
+        {
+          "total_ms": 1.088225,
+          "exclusive_ms": {
+            "frontend_and_other_validation": 0.192234,
+            "fresh_validation": 0.140368,
+            "binding": 0.03092,
+            "descriptors": 0.011672,
+            "output_allocation": 0.024577,
+            "native_preparation": 0.018275,
+            "native_including_completion": 0.632206,
+            "explicit_completion": 0.037973
+          },
+          "calls": {
+            "source_reason": 1,
+            "bind_values": 1,
+            "parameter_extents": 2,
+            "_parameter_snapshot": 2,
+            "_storage_view": 2,
+            "destination_descriptor": 1,
+            "storage_snapshot": 2,
+            "recheck": 1,
+            "empty_strided": 1,
+            "prepare_dispatch_from_template": 1,
+            "execute_dispatch": 1,
+            "synchronize": 1
+          }
+        },
+        {
+          "total_ms": 1.05392,
+          "exclusive_ms": {
+            "frontend_and_other_validation": 0.172791,
+            "fresh_validation": 0.131119,
+            "binding": 0.028444,
+            "descriptors": 0.009989,
+            "output_allocation": 0.023635,
+            "native_preparation": 0.017303,
+            "native_including_completion": 0.635051,
+            "explicit_completion": 0.035588
+          },
+          "calls": {
+            "source_reason": 1,
+            "bind_values": 1,
+            "parameter_extents": 2,
+            "_parameter_snapshot": 2,
+            "_storage_view": 2,
+            "destination_descriptor": 1,
+            "storage_snapshot": 2,
+            "recheck": 1,
+            "empty_strided": 1,
+            "prepare_dispatch_from_template": 1,
+            "execute_dispatch": 1,
+            "synchronize": 1
+          }
+        },
+        {
+          "total_ms": 1.057256,
+          "exclusive_ms": {
+            "frontend_and_other_validation": 0.174604,
+            "fresh_validation": 0.131269,
+            "binding": 0.028174,
+            "descriptors": 0.010209,
+            "output_allocation": 0.023224,
+            "native_preparation": 0.018014,
+            "native_including_completion": 0.636875,
+            "explicit_completion": 0.034887
+          },
+          "calls": {
+            "source_reason": 1,
+            "bind_values": 1,
+            "parameter_extents": 2,
+            "_parameter_snapshot": 2,
+            "_storage_view": 2,
+            "destination_descriptor": 1,
+            "storage_snapshot": 2,
+            "recheck": 1,
+            "empty_strided": 1,
+            "prepare_dispatch_from_template": 1,
+            "execute_dispatch": 1,
+            "synchronize": 1
+          }
+        },
+        {
+          "total_ms": 1.082314,
+          "exclusive_ms": {
+            "frontend_and_other_validation": 0.183239,
+            "fresh_validation": 0.134948,
+            "binding": 0.040827,
+            "descriptors": 0.009909,
+            "output_allocation": 0.023936,
+            "native_preparation": 0.018105,
+            "native_including_completion": 0.635652,
+            "explicit_completion": 0.035698
+          },
+          "calls": {
+            "source_reason": 1,
+            "bind_values": 1,
+            "parameter_extents": 2,
+            "_parameter_snapshot": 2,
+            "_storage_view": 2,
+            "destination_descriptor": 1,
+            "storage_snapshot": 2,
+            "recheck": 1,
+            "empty_strided": 1,
+            "prepare_dispatch_from_template": 1,
+            "execute_dispatch": 1,
+            "synchronize": 1
+          }
+        },
+        {
+          "total_ms": 1.063047,
+          "exclusive_ms": {
+            "frontend_and_other_validation": 0.181065,
+            "fresh_validation": 0.132895,
+            "binding": 0.030698,
+            "descriptors": 0.009629,
+            "output_allocation": 0.023274,
+            "native_preparation": 0.017633,
+            "native_including_completion": 0.632446,
+            "explicit_completion": 0.035407
+          },
+          "calls": {
+            "source_reason": 1,
+            "bind_values": 1,
+            "parameter_extents": 2,
+            "_parameter_snapshot": 2,
+            "_storage_view": 2,
+            "destination_descriptor": 1,
+            "storage_snapshot": 2,
+            "recheck": 1,
+            "empty_strided": 1,
+            "prepare_dispatch_from_template": 1,
+            "execute_dispatch": 1,
+            "synchronize": 1
+          }
+        },
+        {
+          "total_ms": 1.056486,
+          "exclusive_ms": {
+            "frontend_and_other_validation": 0.173963,
+            "fresh_validation": 0.132142,
+            "binding": 0.028795,
+            "descriptors": 0.009748,
+            "output_allocation": 0.023986,
+            "native_preparation": 0.018756,
+            "native_including_completion": 0.633168,
+            "explicit_completion": 0.035928
+          },
+          "calls": {
+            "source_reason": 1,
+            "bind_values": 1,
+            "parameter_extents": 2,
+            "_parameter_snapshot": 2,
+            "_storage_view": 2,
+            "destination_descriptor": 1,
+            "storage_snapshot": 2,
+            "recheck": 1,
+            "empty_strided": 1,
+            "prepare_dispatch_from_template": 1,
+            "execute_dispatch": 1,
+            "synchronize": 1
+          }
+        }
+      ],
+      "stats": {
+        "resources": {
+          "cuda:0": {
+            "requests": 59,
+            "hits": 58,
+            "context_creations": 1,
+            "device_allocations": 2,
+            "host_allocations": 1,
+            "frees": 0,
+            "retained_bytes": 4751360,
+            "device_bytes": 4734976,
+            "host_bytes": 16384,
+            "background_workers": 0,
+            "streams": 2,
+            "closed": false,
+            "quarantined": false,
+            "process_valid": true
+          }
+        },
+        "dispatch": {
+          "cuda_dequant_relocate": 59
+        },
+        "execution_cache": {
+          "entries": 2,
+          "parameter_key_bytes": 32768,
+          "max_entries": 32,
+          "max_parameter_key_bytes": 262144,
+          "hits": 57,
+          "misses": 2,
+          "evictions": 0,
+          "bypasses": 0
+        }
+      },
+      "correctness": true
+    }
+  },
+  "scope": "Completed calls include fresh allocation and completion; first Sym frontend KV call includes graph compilation. Weights compile before timing. Source mutations/oracles and owner close are outside timing. Instrumented phases are a separate diagnostic, exclusively partitioning host wall time. Native execution includes completion waits; GPU activity is not additive."
+}
