@@ -20,6 +20,8 @@ inline constexpr uint32_t kWireFormatVersion = 0;
 /// The typed wire-format version decodeTypedPlan decodes (C3, issue #143;
 /// spec: "Wire Format v1"). v0 stays frozen and byte-identical.
 inline constexpr uint32_t kTypedWireFormatVersion = 1;
+/// Dense row-selection plans with an explicit index operand; v0/v1 unchanged.
+inline constexpr uint32_t kIndexedWireFormatVersion = 2;
 
 /// Human-readable library identification.
 const char *versionString();

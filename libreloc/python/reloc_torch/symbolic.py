@@ -102,6 +102,7 @@ class SymbolSource:
     name: str
     axis: int
     equal_axes: tuple[int, ...] = ()
+    operand: str = 'source'
 
 
 def expression(value):
@@ -198,11 +199,13 @@ def infer_reshape(source_shape, target_shape):
 
 
 def operation_shape(shape, operation):
-    from .recipe import TYPED_OPERATIONS, Pad, Reshape, Transpose
+    from .recipe import TYPED_OPERATIONS, IndexSelect, Pad, Reshape, Transpose
     if isinstance(operation, TYPED_OPERATIONS):
         # Value transforms are element-wise: the logical shape is unchanged.
         return tuple(shape)
     match operation:
+        case IndexSelect(indices, 0):
+            return (expression(indices.shape[0]), *shape[1:])
         case Transpose(perm):
             if sorted(perm) != list(range(len(shape))):
                 raise UnsupportedSymbolicExpr('invalid permutation')
@@ -218,7 +221,7 @@ def operation_shape(shape, operation):
     raise UnsupportedSymbolicExpr('unknown operation')
 
 
-def bind_recipe(recipe, sources, concrete_source):
+def bind_recipe(recipe, sources, concrete_source, *, bindings=None):
     """Validate before a standalone binder call; return canonical symbol values.
 
     Python integers provide exact guard arithmetic; every intermediate and byte
@@ -231,7 +234,7 @@ def bind_recipe(recipe, sources, concrete_source):
         raise GuardError('positive_extent')
     for d in (*shape, *concrete_source.strides, concrete_source.offset):
         _i64(d)
-    bindings = {}
+    bindings = dict(bindings or {})
     for source in sources:
         if not 0 <= source.axis < len(shape) or any(not 0 <= a < len(shape) for a in source.equal_axes):
             raise GuardError('source_descriptor')

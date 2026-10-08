@@ -939,4 +939,69 @@ TypedDecodeResult decodeTypedPlan(const uint8_t *data, size_t size) {
   return plan;
 }
 
+std::optional<std::string>
+validateIndexedPlan(const IndexedRelocationPlan &plan) {
+  auto zero = [](const ExprStream &s) {
+    return s.size() == 1 && s[0].op == ExprOp::PushConst && s[0].value == 0;
+  };
+  for (const TensorDesc *d : {&plan.source, &plan.indices, &plan.result}) {
+    if (d->extents.empty() || !d->strides.empty() || !zero(d->offset))
+      return "indexed plan requires dense zero-offset positive-rank "
+             "descriptors";
+    for (const auto &e : d->extents)
+      if (e.size() == 1 && e[0].op == ExprOp::PushConst && e[0].value <= 0)
+        return "indexed plan extents must be positive";
+  }
+  if (plan.axis != 0 || plan.indices.extents.size() != 1 ||
+      plan.indices.elementType.kind != ElementTypeKind::Integer ||
+      (plan.indices.elementType.bitwidth != 32 &&
+       plan.indices.elementType.bitwidth != 64))
+    return "indexed plan requires axis 0 and rank-one i32/i64 indices";
+  if (plan.source.extents.size() != plan.result.extents.size())
+    return "indexed plan source/result rank mismatch";
+  for (size_t i = 0; i < plan.result.extents.size(); ++i) {
+    const auto &a = plan.result.extents[i];
+    const auto &b = i == 0 ? plan.indices.extents[0] : plan.source.extents[i];
+    if (a.size() == 1 && b.size() == 1 && a[0].op == ExprOp::PushConst &&
+        b[0].op == ExprOp::PushConst && a[0].value != b[0].value)
+      return "indexed plan result extent mismatch";
+  }
+  auto f = [](ElementType t, uint32_t bits) {
+    return t.kind == ElementTypeKind::Float && t.bitwidth == bits;
+  };
+  auto a = plan.source.elementType, b = plan.result.elementType;
+  bool same = a.kind == b.kind && a.bitwidth == b.bitwidth;
+  bool supported = f(a, 32) || f(a, 16) ||
+                   (a.kind == ElementTypeKind::Integer && a.bitwidth == 8);
+  if ((same && supported && plan.policy == NumericPolicyKind::Exact) ||
+      (f(a, 32) && f(b, 16) && plan.policy == NumericPolicyKind::IeeeRne) ||
+      (f(a, 16) && f(b, 32) && plan.policy == NumericPolicyKind::Exact))
+    return std::nullopt;
+  return "indexed plan has an unsupported type/policy pair";
+}
+
+IndexedDecodeResult decodeIndexedPlan(const uint8_t *data, size_t size) {
+  ByteReader reader(data, size);
+  IndexedRelocationPlan plan;
+  if (!parseHeader(reader, data, kIndexedWireFormatVersion, plan.symbols) ||
+      !parseTensorDesc(reader, plan.symbols.size(), plan.source) ||
+      !parseTensorDesc(reader, plan.symbols.size(), plan.indices) ||
+      !parseTensorDesc(reader, plan.symbols.size(), plan.result) ||
+      !reader.readU32(plan.axis))
+    return reader.error();
+  uint8_t policy = 0;
+  if (!reader.readU8(policy))
+    return reader.error();
+  plan.policy = static_cast<NumericPolicyKind>(policy);
+  if (reader.remaining()) {
+    reader.failHere("trailing bytes after indexed plan");
+    return reader.error();
+  }
+  if (auto error = validateIndexedPlan(plan)) {
+    reader.failHere(*error);
+    return reader.error();
+  }
+  return plan;
+}
+
 } // namespace reloc

@@ -60,6 +60,73 @@ standalone view remains a PyTorch operation. No new kernel is required.
 dimensions, alias safety, compiler fallback, native host execution at multiple
 symbolic sizes, and GPU-marked H2D/D2H execution with f32/f16/i8 and a fused cast.
 
+`torch.index_select`, `Tensor.index_select`, and `aten.index_select.default`
+can start a captured H2D region. The supported case selects dimension 0 (also
+`-rank`) from a dense, zero-offset CPU tensor of rank >= 1, using a CPU int32
+or int64 vector. The result transfers to CUDA, optionally with one FP32↔FP16
+cast; dtype-preserving FP32, FP16 and int8 transfers are also supported.
+Selection must be inside the compiled function:
+
+```python
+backend = RelocBackend()
+def load_features(features, nodes):
+    return torch.index_select(features, 0, nodes).to("cuda:0", dtype=torch.float16)
+load_features = torch.compile(load_features, backend=backend, dynamic=True)
+```
+
+The host executor reads selected rows directly into transfer staging, fusing
+the optional cast without allocating a gathered feature tensor. Indices are
+snapshotted and bounds-checked before launch; ordering and duplicates are
+preserved, including when the selection is longer than the source. Index
+values are never cached with the compiled artifact. Symbolic selection length
+comes from the index vector, and remaining extents come from the source.
+The portable recipe records the physical source, a separate index operand,
+and the optional cast. It emits `reloc.index_select` over `!sym.tensor` types;
+the compiler folds this into `#reloc.indexed_plan` and exports wire v2 with
+a schema-3 manifest. Native decode/bind validates the index dtype, length,
+values, output shape and byte footprints before execution. The frontend
+binds symbolic dimensions from the appropriate operand rather than fabricating
+a gathered source descriptor. Portable `CompiledRecipe` format 3 retains
+this contract across save/load; v0/v1 artifacts are unchanged.
+
+Other dimensions, CUDA indices, empty tensors, non-dense sources, `out=`,
+autograd, nonblocking copies and additional layouts/value transforms remain
+PyTorch operations. Escaping gathered intermediates and unsafe mutations also
+prevent fusion. A standalone CPU `index_select` is unchanged. Invalid indices
+fall back before launch so the original PyTorch bounds error is preserved.
+This is separate work from the completed view support in #210.
+
+`test_indexed_plan.py` checks compiler-to-runtime execution in a fresh process
+without Torch, malformed wire data and invalid bindings. Compiler lit tests
+cover verification, folding, unsupported chains and v0/v1 compatibility.
+`test_index_select.py` checks portable artifact admission, native host execution, bounds/capacity validation,
+rounding, dynamic CUDA capture and stale index snapshots. The runnable
+`libreloc/python/examples/torch_index_select.py` compares completed eager and
+fused feature transfers with the GNN example's 128-column shape. Any measured
+gain applies to that region; it is not an end-to-end GNN speedup.
+
+The indexed executor uses the retained typed transform/H2D ring: chunks contain
+whole selected rows and write directly to local wire-format staging. Configure
+`pinning="pinned"` in `RelocBackend(transfer_options=...)` to permit asynchronous
+DMA; unconfigured automatic pinning remains pageable. Source descriptors and
+symbolic metadata proofs are reused. Each call snapshots and validates current
+indices and builds a fresh native request; index values and input tensors are
+not retained in a request cache.
+
+Advanced indexing (`features[nodes]`) has different negative-index semantics
+and is not captured. For the PR #162 GNN workload, move the nonnegative row
+selection inside the compiled function using the explicit `index_select` form
+above. Graph sampling and model inference remain outside this measured region.
+Additional layouts after selection currently fall back; the supported result
+layout is dense with the source's inner dimensions preserved.
+
+EmbeddingBag sum-pooling is not indexed-selection support. Pooling remains in
+Torch, with its original FP32 accumulation and ordering; narrowing individual
+embeddings before the reduction can change results. The separate DLRM coverage
+and opportunity measurement is documented with the [#222 qualification](qualification/index-select/README.md).
+That report also compares completed full producer regions against eager Torch,
+Inductor, and the pre-fusion Sym path, including small-selection regressions.
+
 Compile and persist a verified artifact explicitly, then bind its symbols from
 the concrete source tensor before calling the standalone runtime:
 

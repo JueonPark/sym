@@ -51,6 +51,16 @@ public:
                                          std::vector<std::string> *symbolNames);
   FailureOr<std::vector<uint8_t>>
   encodeTyped(TypedPlanAttr plan, std::vector<std::string> *symbolNames);
+  FailureOr<std::vector<uint8_t>>
+  encodeIndexed(IndexedPlanAttr plan, std::vector<std::string> *symbolNames) {
+    if (failed(emitDesc(plan.getSource())) ||
+        failed(emitDesc(plan.getIndices())) ||
+        failed(emitDesc(plan.getResult())))
+      return failure();
+    emitU32(0); // selection axis
+    emitU8(plan.getPolicy() == "ieee_rne" ? 0 : 1);
+    return assemble(2, symbolNames);
+  }
 
 private:
   // --- primitive emitters (into `body`) ---
@@ -528,6 +538,14 @@ PlanEncoder::assemble(uint32_t version, std::vector<std::string> *symbolNames) {
 }
 
 } // namespace
+
+FailureOr<std::vector<uint8_t>>
+mlir::reloc::encodeIndexedPlan(IndexedPlanAttr plan, Location loc,
+                               std::vector<std::string> *symbolNames) {
+  if (!plan)
+    return failure();
+  return PlanEncoder(loc).encodeIndexed(plan, symbolNames);
+}
 
 FailureOr<std::vector<uint8_t>>
 mlir::reloc::encodePlan(PlanAttr plan, Location loc,

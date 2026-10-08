@@ -19,6 +19,12 @@
 namespace mlir {
 namespace reloc {
 
+/// Wire v2: physical source, runtime index descriptor, logical result and
+/// numerical policy. Existing v0/v1 encodings stay unchanged.
+FailureOr<std::vector<uint8_t>>
+encodeIndexedPlan(IndexedPlanAttr plan, Location loc,
+                  std::vector<std::string> *symbolNames = nullptr);
+
 /// Encode `plan` into wire format v0. The result is a pure function of the
 /// attribute (deterministic across processes and builds). Inputs the format
 /// cannot represent (complex element types, pad values wider than 64 bits,

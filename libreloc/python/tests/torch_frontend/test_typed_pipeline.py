@@ -142,12 +142,13 @@ def test_ring_is_retained_bounded_and_orders_after_current_stream(compiler, cuda
 
 @pytest.mark.gpu
 @pytest.mark.parametrize('mode', [1, 2, 3, 4])
-def test_pipeline_failure_drains_or_quarantines_every_owner(mode, cuda_device):
+@pytest.mark.parametrize('indexed', [False, True])
+def test_pipeline_failure_drains_or_quarantines_every_owner(mode, indexed, cuda_device):
     shim = Path(pyreloc.__file__).resolve().parent.parent / 'libtyped_dispatch_faults.so'
     assert shim.is_file()
     env = dict(os.environ, LD_PRELOAD=str(shim), SYM_DISPATCH_FAULT_SHIM=str(shim))
     result = subprocess.run([sys.executable,
-        str(Path(__file__).with_name('typed_pipeline_fault_scenario.py')), str(mode)],
+        str(Path(__file__).with_name('typed_pipeline_fault_scenario.py')), str(mode), str(int(indexed))],
         env=env, text=True, capture_output=True, timeout=45)
     assert result.returncode == 0, result.stdout + result.stderr
     assert '"passed": true' in result.stdout

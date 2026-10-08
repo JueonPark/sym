@@ -15,6 +15,42 @@
 using namespace mlir;
 using namespace mlir::reloc;
 
+LogicalResult
+IndexedPlanAttr::verify(function_ref<InFlightDiagnostic()> emitError,
+                        TensorDescAttr source, TensorDescAttr indices,
+                        TensorDescAttr result, StringRef policy) {
+  for (auto desc : {source, indices, result}) {
+    if (desc.getExtents().empty() || !desc.getStrides().empty() ||
+        !sym::UnificationSolver::isConstantValue(desc.getOffset(), 0))
+      return emitError() << "indexed plan requires dense, zero-offset, "
+                            "positive-rank descriptors";
+    for (Attribute extent : desc.getExtents())
+      if (auto c = dyn_cast<sym::ConstantExprAttr>(extent);
+          c && c.getValue() <= 0)
+        return emitError() << "indexed plan extents must be positive";
+  }
+  Type indexType = indices.getElementType();
+  if (indices.getExtents().size() != 1 ||
+      !(indexType.isSignlessInteger(32) || indexType.isSignlessInteger(64)))
+    return emitError() << "indices must be a rank-one i32/i64 tensor";
+  auto src = source.getExtents(), dst = result.getExtents();
+  if (src.size() != dst.size())
+    return emitError() << "index_select preserves source rank";
+  for (size_t i = 0; i < dst.size(); ++i)
+    if (proveEqual(dst[i], i == 0 ? indices.getExtents()[0] : src[i]) ==
+        Proof::Disproven)
+      return emitError() << "index_select result extent mismatch at axis " << i;
+  Type from = source.getElementType(), to = result.getElementType();
+  bool identity =
+      from == to && (from.isF32() || from.isF16() || from.isSignlessInteger(8));
+  if ((identity && policy == "exact") ||
+      (from.isF32() && to.isF16() && policy == "ieee_rne") ||
+      (from.isF16() && to.isF32() && policy == "exact"))
+    return success();
+  return emitError() << "indexed plan supports identity or f32/f16 casts with "
+                        "the matching policy";
+}
+
 //===----------------------------------------------------------------------===//
 // Shared parse helpers
 //===----------------------------------------------------------------------===//

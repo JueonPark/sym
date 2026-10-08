@@ -102,18 +102,51 @@ struct RelocFoldPass : public impl::RelocFoldPassBase<RelocFoldPass> {
     // order-independent between the two segments.
     if (Operation *rootDef = chain.front()->getOperand(0).getDefiningOp())
       if (!isFoldableChainOp(rootDef) &&
-          !isa<PlanResultOp, TypedPlanResultOp>(rootDef))
+          !isa<PlanResultOp, TypedPlanResultOp, IndexedPlanResultOp>(rootDef))
         for (Value operand : rootDef->getOperands())
           if (operand.getDefiningOp() &&
               isFoldableChainOp(operand.getDefiningOp()))
             return markFallback(chain, "structural");
     for (Operation *user : tail->getResult(0).getUsers())
       if (!isFoldableChainOp(user) &&
-          !isa<PlanResultOp, TypedPlanResultOp>(user))
+          !isa<PlanResultOp, TypedPlanResultOp, IndexedPlanResultOp>(user))
         for (Value result : user->getResults())
           for (Operation *downstream : result.getUsers())
             if (isFoldableChainOp(downstream))
               return markFallback(chain, "structural");
+
+    if (llvm::any_of(chain,
+                     [](Operation *op) { return isa<IndexSelectOp>(op); })) {
+      auto select = dyn_cast<IndexSelectOp>(chain.front());
+      if (!select || chain.size() > 2 ||
+          (chain.size() == 2 && !isa<CastOp>(tail)))
+        return markFallback(chain, "indexed_chain_unsupported");
+      auto descriptor = [&](Type type) {
+        auto tensor = cast<sym::SymbolicTensorType>(type);
+        return TensorDescAttr::get(&getContext(), tensor.getShape(), {},
+                                   sym::ConstantExprAttr::get(&getContext(), 0),
+                                   tensor.getElementType());
+      };
+      StringRef policy =
+          chain.size() == 1
+              ? "exact"
+              : stringifyNumericPolicy(cast<CastOp>(tail).getPolicy());
+      auto plan = IndexedPlanAttr::getChecked(
+          [&] { return tail->emitError(); }, &getContext(),
+          descriptor(select.getInput().getType()),
+          descriptor(select.getIndices().getType()),
+          descriptor(tail->getResult(0).getType()), policy);
+      if (!plan)
+        return failure();
+      OpBuilder rewriter(tail);
+      auto result = rewriter.create<IndexedPlanResultOp>(
+          tail->getLoc(), tail->getResult(0).getType(), select.getInput(),
+          select.getIndices(), plan);
+      tail->getResult(0).replaceAllUsesWith(result.getResult());
+      for (Operation *op : llvm::reverse(chain))
+        op->erase();
+      return success();
+    }
 
     // Fold front-to-back; any transfer-function bail falls the whole
     // chain back (all-or-nothing). A typed transfer function leaves its
