@@ -9,6 +9,7 @@ from contextlib import ExitStack
 import csv
 import hashlib
 import json
+import os
 from pathlib import Path
 import statistics
 import sys
@@ -203,6 +204,8 @@ def main():
         writer.writeheader()
         writer.writerows(samples)
     provenance = metadata()
+    provenance['thread_environment'] = {name: os.environ.get(name) for name in
+        ('OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OMP_WAIT_POLICY', 'GOMP_SPINCOUNT', 'TORCHINDUCTOR_COMPILE_THREADS')}
     provenance['sha256'][str(Path(__file__).resolve())] = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     args.output.with_suffix('.json').write_text(json.dumps(dict(metadata=provenance,
         configuration=vars(args) | {'output': str(args.output)}, results=results), indent=2) + '\n')
