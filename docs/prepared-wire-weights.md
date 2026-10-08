@@ -106,8 +106,9 @@ separate. Model cases are four-layer GPT decode (four tokens) and top-2 MoE with
 one token; checkpoint preparation and first calls are separate from warm model
 timing. Source generation/pinning and exact comparisons are outside timing.
 
-First calls may reuse existing Inductor disk caches; they are process-first
-loads, not cold-cache compiler benchmarks. Matrix measurements host-wait
+First calls are the first per shape/path and can benefit from earlier cases
+warming allocators and existing Inductor disk caches. They are not cold-cache
+compiler or completely cold-system benchmarks. Matrix measurements host-wait
 completion and register each output with the consumer stream before returning;
 model measurements use the same lookahead scheduling on every path.
 

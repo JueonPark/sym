@@ -47,6 +47,8 @@ class _Entry:
     source: object
     template: object
     bindings: dict
+    capability: dict
+    selection: dict
     info: object
 
 
@@ -159,7 +161,8 @@ class PreparedWireWeights:
                     channel_axis=0, zero_point=0, wire_bytes=wire, parameter_bytes=parameter,
                     payload_bytes=wire + parameter, output_bytes=wire * 4,
                     prepared_bytes=size, pinned_bytes=pinned))
-                self._entries[name] = _Entry(packed, template, bindings, info)
+                self._entries[name] = _Entry(packed, template, bindings,
+                    template.capability, template.selection, info)
                 self._revision = revision
                 return info
             except BaseException:
@@ -219,7 +222,7 @@ class PreparedWireWeights:
                 requests.append(PreparedTypedTransfer(self._compiled, source, entry.bindings,
                     None, destination, 'h2d', device, _storage_view(source, 'host', -1),
                     'auto', None, self._queue_options['gather_threads'], {}, {},
-                    native.capability, native.selection, template=native))
+                    entry.capability, entry.selection, template=native))
             return prepare_transfer_group(requests)
 
     def submit(self, names):
