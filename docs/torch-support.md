@@ -176,6 +176,11 @@ For compiled surrounding compute, opt into
 See [composition coverage and limitations](torch-integration.md#compose-transfers-with-inductor-225)
 and [model-inclusive performance qualification](../bench/issue225/README.md).
 
+For measured native/CPU/GPU transform selection, opt into
+`RelocBackend(placement=PlacementPolicy(profile, context=...))`.
+See [completed-call placement](completed-placement.md) for qualified recipes,
+profile compatibility, calibration, and conservative fallback behavior.
+
 `reloc_torch.RelocBackend(compiler=..., runtime=...)` is a callable
 `torch.compile` backend and `reloc_torch.eager_transfers(backend=...)` is a
 scoped dispatch mode. Both route through one executor,

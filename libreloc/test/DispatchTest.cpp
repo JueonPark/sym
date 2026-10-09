@@ -224,13 +224,12 @@ TEST(Dispatch, CapabilityListsOnlyImplementedRows) {
             (std::set<std::string>{"cpu_reference", "cuda_stages_then_cpu@1",
                                    "cuda_stages_then_cpu@2"}));
 
-  // A narrowing cast has no CUDA kernel: only the reference.
+  // Both widening and narrowing are now device-qualified.
   Program dc = mustPrepare(mustBind(typed_goldens::kDequantCastHex, {}));
   Capability cast = reloc::dispatch::queryCapability(
       dc, TransferDirection::HostToDevice, true);
-  EXPECT_EQ(labels(cast), (std::set<std::string>{"cpu_reference"}));
-  EXPECT_EQ(exclusion(cast, "cpu_stages_cuda_stages@1"),
-            "stage 1: no_cuda_kernel:cast_f32_f16");
+  EXPECT_EQ(labels(cast), (std::set<std::string>{"cpu_reference",
+                                                 "cpu_stages_cuda_stages@1"}));
   EXPECT_EQ(exclusion(cast, "cuda_dequant_relocate"), "rank below two");
 
   // Pads: no cut before the pad enters, no fused relocate kernel.
@@ -505,7 +504,7 @@ TEST(Dispatch, AutoTranslatesAdviceOnlyToEligibleRows) {
     TypedBoundPlan plan = mustBind(typed_goldens::kDequantCastHex, {});
     std::vector<uint8_t> src(4), dst(8);
     Options explicitRow = options;
-    explicitRow.implementation = "cpu_stages_cuda_stages@1";
+    explicitRow.implementation = "cpu_stages_cuda_stages@0";
     auto prepared = reloc::dispatch::prepareDispatch(
         plan, view(src.data(), 4, {4}, 1), view(dst.data(), 8, {4}, 2),
         TransferDirection::HostToDevice, explicitRow);

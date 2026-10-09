@@ -61,7 +61,7 @@ class TransferResources:
     and tensor owners for the process lifetime; close() reports that failure.
     """
 
-    __slots__ = ("_native", "_typed", "_pid", "__weakref__")
+    __slots__ = ("_native", "_typed", "_pid", "_configuration", "__weakref__")
 
     def __init__(self, *, max_retained_bytes=256 << 20, max_contexts=4,
                  max_contexts_per_device=2, max_background_workers=64,
@@ -70,6 +70,8 @@ class TransferResources:
                  max_typed_streams=8, max_typed_background_workers=64):
         import pyreloc
 
+        self._configuration = {name: value for name, value in locals().items()
+                               if name not in ('self', 'pyreloc')}
         self._pid = os.getpid()
         self._native = pyreloc.TransferResourceCache(
             max_retained_bytes=max_retained_bytes, max_contexts=max_contexts,

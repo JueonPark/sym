@@ -115,6 +115,7 @@ class RelocBackend:
         registry=REGISTRY,
         compute_backend="eager",
         inductor_options=None,
+        placement=None,
     ):
         if compute_backend not in ("eager", "inductor"):
             raise ValueError("compute_backend must be 'eager' or 'inductor'")
@@ -125,6 +126,13 @@ class RelocBackend:
         if self._inductor_options.get("triton.cudagraphs"):
             raise ValueError("Sym transfer ops do not support CUDA graph capture")
         self._inductor_options["triton.cudagraphs"] = False
+        if placement is not None:
+            from .placement import PlacementPolicy
+            if not isinstance(placement, PlacementPolicy):
+                raise TypeError("placement must be PlacementPolicy or None")
+            if runtime is not None:
+                raise ValueError("custom runtime owns its placement policy")
+        self._placement = placement
         if transfer_resources is _UNSPECIFIED_RESOURCES:
             transfer_resources = AUTO if runtime is None else None
         if runtime is not None and (transfer_resources is not None or transfer_options is not None):
@@ -162,6 +170,7 @@ class RelocBackend:
                 self._runtime = TransportAdapter(
                     transfer_resources=self._transfer_resources,
                     transfer_options=self._transfer_options,
+                    placement=self._placement,
                 )
             return self._runtime
 
@@ -197,6 +206,8 @@ class RelocBackend:
             result["compute_backend"] = self._compute_backend
         result["cache_entries"] = len(self._cache)
         result["cache_rejections"] = self._cache.rejections
+        if self._placement is not None:
+            result["placement"] = self._placement.stats()
         # Custom adapters need not expose resource counters. Do not construct
         # the lazy adapter/cache merely to observe it, or hold backend locks
         # across an injected adapter's code.

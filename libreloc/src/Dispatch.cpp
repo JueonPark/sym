@@ -94,7 +94,7 @@ std::string deviceElementwiseReason(const Program &p, uint32_t k,
   case ValueTransformKind::Cast:
     if (isF16(stage.input) && isF32(stage.output))
       return {}; // convertF16F32, exact
-    return "no_cuda_kernel:cast_f32_f16";
+    return {};   // convertF32F16, ieee_rne
   case ValueTransformKind::Quantize:
     break; // quantizeF32S8, bit-identical to the CPU scalar contract
   case ValueTransformKind::Dequantize:
@@ -514,8 +514,12 @@ std::optional<TransferError> runDeviceStages(const Program &program,
     const int64_t channelSize = elements / channels;
     switch (stage.transform) {
     case ValueTransformKind::Cast:
-      cuda::convertF16F32(static_cast<const uint16_t *>(input),
-                          static_cast<float *>(output), elements, stream);
+      if (isF32(stage.input))
+        cuda::convertF32F16(static_cast<const float *>(input),
+                            static_cast<uint16_t *>(output), elements, stream);
+      else
+        cuda::convertF16F32(static_cast<const uint16_t *>(input),
+                            static_cast<float *>(output), elements, stream);
       break;
     case ValueTransformKind::Quantize: {
       std::vector<float> inv = stage.perChannel

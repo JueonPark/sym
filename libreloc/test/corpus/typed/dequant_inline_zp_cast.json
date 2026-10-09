@@ -7,7 +7,8 @@
             "cpu_reference"
           ],
           "h2d": [
-            "cpu_reference"
+            "cpu_reference",
+            "cpu_stages_cuda_stages@1"
           ]
         },
         "host": {

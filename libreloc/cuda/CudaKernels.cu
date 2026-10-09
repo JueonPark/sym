@@ -148,6 +148,13 @@ __global__ void convertF16F32Kernel(const __half *src, float *dst,
     dst[i] = __half2float(src[i]);
 }
 
+__global__ void convertF32F16Kernel(const float *src, __half *dst,
+                                    int64_t count) {
+  int64_t i = blockIdx.x * static_cast<int64_t>(blockDim.x) + threadIdx.x;
+  if (i < count)
+    dst[i] = __float2half_rn(src[i]);
+}
+
 __global__ void unpackS4S8Kernel(const uint8_t *src, int8_t *dst,
                                  int64_t pairs) {
   int64_t i = blockIdx.x * static_cast<int64_t>(blockDim.x) + threadIdx.x;
@@ -245,6 +252,13 @@ void convertF16F32(const uint16_t *dSrc, float *dDst, int64_t count,
   convertF16F32Kernel<<<static_cast<unsigned>(gridFor(count)), kThreads, 0,
                         asStream(stream)>>>(
       reinterpret_cast<const __half *>(dSrc), dDst, count);
+}
+
+void convertF32F16(const float *dSrc, uint16_t *dDst, int64_t count,
+                   void *stream) {
+  convertF32F16Kernel<<<static_cast<unsigned>(gridFor(count)), kThreads, 0,
+                        asStream(stream)>>>(
+      dSrc, reinterpret_cast<__half *>(dDst), count);
 }
 
 void unpackS4S8(const uint8_t *dSrc, int8_t *dDst, int64_t pairs,
