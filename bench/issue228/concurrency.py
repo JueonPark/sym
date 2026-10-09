@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 import hashlib
 import json
+import mmap
 import os
 from pathlib import Path
 import sys
@@ -73,25 +74,38 @@ def main(args):
             executors = [stack.enter_context(ThreadPoolExecutor(1)) for _ in range(count)]
             def init(i):
                 os.sched_setaffinity(0, HOME if config.get('remote') else config['cpus'][i])
-                # NumPy fills on this caller, avoiding OpenMP first-touch on other nodes.
-                sources = [torch.from_numpy(np.random.default_rng(228+i+j).standard_normal(shape, dtype=np.float32))
-                           for j in range(group_size)]
+                # Fresh mappings avoid malloc arenas recycling pages from another node.
+                sources, placements = [], []
+                for j in range(group_size):
+                    storage = mmap.mmap(-1, int(np.prod(shape))*4, flags=mmap.MAP_PRIVATE | mmap.MAP_ANONYMOUS)
+                    array = np.ndarray(shape, dtype=np.float32, buffer=storage)
+                    np.random.default_rng(228+i+j).standard_normal(shape, dtype=np.float32, out=array)
+                    sources.append(torch.from_numpy(array))
+                    address = array.ctypes.data
+                    maps = Path('/proc/self/maps').read_text().splitlines()
+                    mapping = next(line.split()[0] for line in maps if
+                        int(line.split('-')[0],16) <= address < int(line.split()[0].split('-')[1],16))
+                    start = int(mapping.split('-')[0], 16)
+                    numa = next((line for line in Path('/proc/self/numa_maps').read_text().splitlines()
+                                 if int(line.split()[0],16)==start), '')
+                    placements.append(dict(mapping=mapping, source_address=hex(address), numa=numa))
                 os.sched_setaffinity(0, config['cpus'][i])
                 torch.cuda.set_device(config['devices'][i])
                 stream = torch.cuda.Stream()
-                return sources, stream
+                return sources, stream, placements
             data = [ex.submit(init, i).result() for i, ex in enumerate(executors)]
             start = time.perf_counter_ns()
             fast = torch.compile(transform, fullgraph=True, options={'emulate_precision_casts': True})
             if not args.trace:
-                for sources, _ in data:
+                for sources, _, _ in data:
                     for source in sources: fast(source)
             compile_ms = (time.perf_counter_ns() - start) / 1e6
             paths = args.paths or ['shared', 'independent', 'torch', 'inductor'] + (['queue'] if group_size > 1 else [])
             paths = paths[args.round % len(paths):] + paths[:args.round % len(paths)]
             row = dict(name=name, config=config, shape=shape, source_bytes=count*group_size*np.prod(shape).item()*4,
                        wire_bytes=count*group_size*np.prod(shape).item()*(4 if dtype=='float32' else 2),
-                       compile_and_prime_ms=compile_ms, recipe_sha256=hashlib.sha256(compiled.to_bytes()).hexdigest(), paths={})
+                       compile_and_prime_ms=compile_ms, source_placement=[x[2] for x in data],
+                       recipe_sha256=hashlib.sha256(compiled.to_bytes()).hexdigest(), paths={})
             for path in paths:
                 with ExitStack() as owners_stack:
                     def resource(slots, budget):
@@ -114,7 +128,7 @@ def main(args):
                                 max_output_bytes=32 << 20, **kwargs)))
                         if args.variant == 'baseline': owners = [q._resources for q in queues]
                     def call(i):
-                        sources, stream = data[i]
+                        sources, stream, _ = data[i]
                         with torch.cuda.stream(stream):
                             start = time.perf_counter_ns()
                             if args.trace: torch.cuda.nvtx.range_push(f'sym228/{name}/{path}/device{config["devices"][i]}')
@@ -150,7 +164,7 @@ def main(args):
                         elapsed = (time.perf_counter_ns()-start)/1e6
                         if args.trace: torch.cuda.nvtx.range_pop()
                         if check:
-                            for (tensors, _), (sources, _) in zip(outputs, data):
+                            for (tensors, _), (sources, _, _) in zip(outputs, data):
                                 for tensor, source in zip(tensors, sources):
                                     assert torch.equal(tensor.cpu().view(torch.uint8), transform(source).view(torch.uint8)), (name, path)
                         return elapsed, [value[1] for value in outputs]
@@ -162,7 +176,7 @@ def main(args):
                     before = [o.stats()['typed'] for o in dict.fromkeys(owners)]
                     totals, calls = [], []
                     for _ in range(args.samples):
-                        for sources, _ in data:
+                        for sources, _, _ in data:
                             for x in sources: np.negative(x.numpy(), out=x.numpy())
                         total, latencies = batch(not args.trace)
                         totals.append(total)

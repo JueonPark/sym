@@ -45,8 +45,11 @@ statistics expose actual retained resources and configured limits.
 Affinity is explicit in every raw row. On the measured EPYC 7351, CPUs
 `4-7,20-23` are four physical cores plus SMT on NUMA node 1. GPUs 0/1 share its
 PCIe root. The parallel split is `4,5,20,21` / `6,7,22,23`. GPU 3 is on node 3;
-its caller uses `12,13,28,29`. NumPy allocates and first-touches each source on
-its submitting thread before workers are created. The remote-source control
+its caller uses `12,13,28,29`. Each source uses a fresh anonymous mapping, filled by NumPy on its
+submitting thread before workers are created. This avoids recycling malloc
+arena pages placed by earlier configurations. Raw records include the source
+address and its containing `/proc/self/numa_maps` entry; adjacent mappings can
+merge, so an entry may cover more than one source. The remote-source control
 first-touches both sources on node 1, then uses the same local worker placement
 as the local-source control. This is first-touch placement under Linux's
 existing policy, not an explicit page binding or migration guarantee. CPU
