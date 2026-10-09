@@ -10,6 +10,9 @@ import threading
 
 COUNTERS = (
     "dynamo_compiles",
+    "inductor_compiles",
+    "inductor_compile_failures",
+    "inductor_executions",
     "plan_compiles",
     "symbol_binds",
     "cache_hits",

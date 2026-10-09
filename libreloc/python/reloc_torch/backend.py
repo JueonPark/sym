@@ -54,18 +54,25 @@ def identity_recipe(rank, dtype, direction):
 
 
 class GraphCallable:
-    """Executes the rewritten graph, or the untouched original when autograd is live."""
+    """Owns graph handles and an optional inference-only Inductor executor."""
 
-    def __init__(self, original, rewritten, registrations):
+    def __init__(self, original, rewritten, registrations, *, executor=None, backend=None):
         self.original = original
         self.rewritten = rewritten
         self._registrations = list(registrations)
+        self._executor = executor
+        self._backend = backend
 
     @property
     def handles(self):
         return tuple(registration.handle for registration in self._registrations)
 
     def __call__(self, *args, **kwargs):
+        if self._executor is not None:
+            self._backend._require_open()
+            _require_inference()
+            self._backend.diagnostics.increment("inductor_executions")
+            return self._executor(*args, **kwargs)
         if (
             self.rewritten is None
             or self.rewritten is self.original
@@ -90,6 +97,10 @@ class RelocBackend:
     sharing a lazy cache across compiled/eager layout calls. Explicit ``None``
     uses per-call resources. Resource owners and injected runtimes are borrowed;
     ``transfer_options`` copies the buffer/stream/gather execution settings.
+    ``compute_backend="inductor"`` passes the rewritten graph through Inductor
+    and requires no_grad/inference_mode at capture and execution. Compilation
+    errors propagate; CUDA graph capture and training are not supported in this
+    mode. ``inductor_options`` configures the qualified Inductor compiler.
     """
 
     def __init__(
@@ -102,7 +113,18 @@ class RelocBackend:
         cache_capacity=DEFAULT_CAPACITY,
         importer=None,
         registry=REGISTRY,
+        compute_backend="eager",
+        inductor_options=None,
     ):
+        if compute_backend not in ("eager", "inductor"):
+            raise ValueError("compute_backend must be 'eager' or 'inductor'")
+        if inductor_options is not None and compute_backend != "inductor":
+            raise ValueError("inductor_options requires compute_backend='inductor'")
+        self._compute_backend = compute_backend
+        self._inductor_options = dict(inductor_options or {})
+        if self._inductor_options.get("triton.cudagraphs"):
+            raise ValueError("Sym transfer ops do not support CUDA graph capture")
+        self._inductor_options["triton.cudagraphs"] = False
         if transfer_resources is _UNSPECIFIED_RESOURCES:
             transfer_resources = AUTO if runtime is None else None
         if runtime is not None and (transfer_resources is not None or transfer_options is not None):
@@ -172,6 +194,7 @@ class RelocBackend:
             result["live_handles"] = len(self._live)
             runtime = self._runtime
             result["closed"] = self._closed
+            result["compute_backend"] = self._compute_backend
         result["cache_entries"] = len(self._cache)
         result["cache_rejections"] = self._cache.rejections
         # Custom adapters need not expose resource counters. Do not construct
@@ -228,6 +251,8 @@ class RelocBackend:
         self._require_open()
         compat.check_version()
         self.diagnostics.increment("dynamo_compiles")
+        if self._compute_backend == "inductor":
+            _require_inference()
         if _needs_autograd(tuple(example_inputs or ())):
             self.diagnostics.record_exclusion("requires_grad")
             return GraphCallable(gm, None, ())
@@ -235,6 +260,25 @@ class RelocBackend:
         for exclusion in report.exclusions:
             self.diagnostics.record_exclusion(exclusion.reason)
         rewritten, registrations = self._rewrite(gm, report.candidates)
+        if self._compute_backend == "inductor":
+            try:
+                # Inductor/AOT may mutate their input graph. Keep both our
+                # original fallback and inspectable rewritten graph intact.
+                from torch.fx import GraphModule
+
+                graph = GraphModule(rewritten, copy.deepcopy(rewritten.graph))
+                executor = compat.compile_inductor(graph, example_inputs, self._inductor_options)
+            except Exception:
+                self.diagnostics.increment("inductor_compile_failures")
+                for registration in registrations:
+                    with self._lock:
+                        entry = self._live.pop(registration, None)
+                    if entry is not None:
+                        entry.close()
+                    registration.release()
+                raise
+            self.diagnostics.increment("inductor_compiles")
+            return GraphCallable(gm, rewritten, registrations, executor=executor, backend=self)
         return GraphCallable(gm, rewritten, registrations)
 
     def _rewrite(self, gm, candidates):
@@ -310,6 +354,14 @@ class RelocBackend:
         with self._lock:
             self._replaced += replaced
         return rewritten, registrations
+
+
+def _require_inference():
+    import torch
+
+    if torch.is_grad_enabled():
+        raise RuntimeError("Sym + Inductor requires torch.no_grad() or torch.inference_mode(); "
+                           "use Inductor alone for training")
 
 
 def _region_reason(nodes, candidate):

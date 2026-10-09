@@ -471,6 +471,13 @@ def statically_at_least(value, bound):
     return False
 
 
+def compile_inductor(graph, example_inputs, options):
+    """Version-qualified Inductor boundary, including its AOT inference pass."""
+    import torch._inductor
+
+    return torch._inductor.compile(graph, example_inputs, options=options)
+
+
 def symbolic_capture(function, *inputs):
     """Capture canonical ATen code without real transfers on the pinned wheel."""
     check_version()

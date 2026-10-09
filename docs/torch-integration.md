@@ -174,6 +174,54 @@ backend.close()
   gradient-requiring source, the recipe is replayed through PyTorch and
   recorded.
 
+### Compose transfers with Inductor (#225)
+
+```python
+backend = RelocBackend(compute_backend="inductor")
+compiled = torch.compile(model, backend=backend, fullgraph=True, dynamic=True)
+with torch.no_grad():
+    result = compiled(inputs)
+print(backend.stats()["inductor_compiles"])
+backend.close()  # invalidates compiled callables and their transfer handles
+```
+
+The default `compute_backend="eager"` executes the rewritten FX graph as before.
+The opt-in `"inductor"` mode sends a copy of that graph through the qualified
+Torch 2.14 Inductor/AOT pipeline, including graphs with no accepted transfer.
+Sym's layout, typed and indexed custom ops remain opaque calls with their
+existing fake metadata, runtime guards and fresh output contract. Inductor
+compiles the surrounding tensor computation. No graph-level eager fallback is
+installed: Inductor compilation errors propagate and release new handles.
+An unsupported transfer region stays in the graph for Inductor; an expected
+runtime guard miss replays only that region through its original Torch code,
+with the existing reason counter. Execution errors after launch still surface.
+Leave Dynamo's global `suppress_errors` disabled to retain this error contract.
+
+Composition is **inference only**: capture and every invocation require
+`torch.no_grad()` or `torch.inference_mode()`, including inputs without gradients.
+Training should use Inductor alone; default RelocBackend retains its existing
+autograd fallback. Transfer ops retain process-local handles and are not a
+portable compiled model. CUDA graph capture is unsupported: this mode forces
+`triton.cudagraphs=False` and rejects an explicit true value. Optional
+`inductor_options={...}` passes other qualified compiler settings; use this
+argument rather than `torch.compile(mode=..., options=...)` with this backend.
+
+`inductor_compiles`, `inductor_compile_failures` and `inductor_executions` expose
+the handoff separately from Dynamo callbacks and Sym artifact compilation.
+The tests also verify actual generated kernels, changing symbolic sizes,
+nondefault-stream ordering, exact output strides and live parameter updates.
+
+An asynchronous `PreparedWireWeights.prefetch()` window is a second supported
+boundary: keep queue ownership and iteration in Python and compile the tensor
+compute function consuming each delivered group. This preserves bounded
+lookahead and overlaps submitted work where hardware/scheduling allow it.
+Queue methods are not Dynamo graph operations. The
+[model benchmark](../bench/issue225/README.md) uses this boundary for GPT/MoE and
+an integrated transfer-plus-compute graph for DLRM/GraphSAGE, with matched
+Inductor controls and explicit capture exclusions. The implementation follows
+PyTorch's [FX backend contract](https://docs.pytorch.org/docs/main/user_guide/torch_compiler/torch.compiler_custom_backends.html)
+and [opaque custom-op/fake-kernel integration](https://docs.pytorch.org/tutorials/advanced/python_custom_ops.html).
+
 ### Explicit resources for direct transfers
 
 Direct `prepare_transfer` / `execute_transfer` callers can share a bounded
