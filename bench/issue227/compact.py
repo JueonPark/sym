@@ -30,6 +30,8 @@ def main(args):
                             dist=value if phase=='end_to_end' else value.get(phase)
                             if dist:distribution(run,case,[],'model',path,phase,dist)
                         record=dict(run=run,case=case,path=path,
+                            configuration={k:v for k,v in row['configuration'].items() if k!='preparation'},
+                            preparation=row['configuration'].get('preparation',{}).get(path),
                             first_completed_ms=value['first_completed_ms'],
                             first_generated_kernels=value['first_generated_kernels'],
                             first_compile_ms=value['first_stats']['compile_ms'],
