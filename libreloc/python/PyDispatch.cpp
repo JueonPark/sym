@@ -85,6 +85,7 @@ py::dict reportDict(const reloc::dispatch::Report &r) {
   out["artifact_version"] = r.artifactVersion;
   out["executed"] = r.executed;
   out["host_pipeline"] = r.hostPipeline;
+  out["host_kernel"] = r.hostKernel;
   out["host_chunks"] = r.hostChunks;
   out["host_chunk_bytes"] = r.hostChunkBytes;
   out["host_buffers"] = r.hostBuffers;

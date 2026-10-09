@@ -17,6 +17,11 @@ namespace detail {
 void transpose32Scalar(const uint8_t *src, uint8_t *dst, int64_t rows,
                        int64_t columns, int64_t srcStride);
 
+// Same address contract, with runtime AVX2 dispatch. Also used to gather a
+// bounded tile before typed value stages; never interprets the element bits.
+void transpose32(const uint8_t *src, uint8_t *dst, int64_t rows,
+                 int64_t columns, int64_t srcStride);
+
 // Recognize an unpadded dense rank-2 transpose and materialize only the
 // requested destination rows. Uses gatherChunk's rebased-destination contract.
 // Returns false without touching buffers when the plan is not supported.

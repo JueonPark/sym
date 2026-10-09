@@ -657,15 +657,17 @@ TEST(Dispatch, PrefoldSpecMatchesOnlyTheS8QuantizeVariants) {
   EXPECT_NE(reason(mustBind(typed_goldens::kPadQuantizeHex, {}))
                 .find("prefold_unavailable: layout has pads"),
             std::string::npos);
-  // A channel map that is not a bare result dimension ((d0 mod B) here,
-  // equal to d0 in value) is conservatively unavailable: the prefolder
-  // indexes channels by the outer axis and nothing proves the map is it.
+  // (d0 mod B) is proved to be d0 only when B covers the result extent.
+  // A wrapping expression must retain the generic channel evaluator.
   params.clear();
   params["s"] = f32Param({0.5f, 0.25f, 0.125f}, true);
   EXPECT_NE(
-      reason(mustBind(typed_goldens::kQuantizeTransposeHex, {{"B", 8}}, params))
+      reason(mustBind(typed_goldens::kQuantizeTransposeHex, {{"B", 2}}, params))
           .find("not the coalesced outer axis"),
       std::string::npos);
+  EXPECT_TRUE(std::holds_alternative<reloc::dispatch::PrefoldSpec>(
+      reloc::dispatch::prefoldSpecFor(
+          mustBind(typed_goldens::kQuantizeTransposeHex, {{"B", 8}}, params))));
 }
 
 TEST(Dispatch, SelectionWithoutBuffersMatchesPreparation) {

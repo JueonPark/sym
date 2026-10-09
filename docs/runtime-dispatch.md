@@ -60,6 +60,46 @@ has not entered yet (`pads_not_settled`). The implemented C1 tables:
 Anything else (other type pairs, other policies) is `unsupported_stage`
 before any buffer is touched, for every row including the reference.
 
+### CPU kernels
+
+`cpu_reference` and CPU portions of split rows share qualified CPU kernels;
+the name denotes C1 semantics, not forced scalar execution. The dispatch
+report's `host_kernel` identifies the selected family:
+
+| Family | Qualification and execution |
+| --- | --- |
+| `contiguous_cast` | Unit inner source/destination strides, single f32→f16 cast; existing runtime-qualified SIMD conversion, including scalar tails. |
+| `contiguous_stages` | Unit inner strides; blocks of at most 256 elements retain every intermediate value in typed stack buffers. |
+| `tiled_transpose` | Dense rank-two source transpose, unit inner destination stride, optional result padding; 32×32 tiles, shared AVX2 32-bit transpose, constant-width 8/16-bit traversal, then contiguous value stages. |
+| `indexed_rows` | Existing checked indexed-row copy/conversion path. |
+| `generic` | Other strides or channel expressions; checked coordinate and scalar-stage evaluation. |
+| `direct_dense` / `not_applicable` | Direct upload bypasses host work / no CPU layout or value stages. |
+
+Buffered/tiled stages reuse qualified narrowing and quantization kernels and
+add AVX2/F16C widening and AVX2 dequantization, with portable scalar fallbacks.
+There are no global ISA flags. Widening preserves the scalar reference's
+NaN bit patterns; dequantize/cast chains retain both roundings. External
+buffers may be unaligned. Tiles use global logical padding coordinates and
+chunk-local destination storage.
+
+Specialized per-channel stages require a proved logical result coordinate,
+valid parameter bounds, and a channel block at least as long as the inner
+run. Runs split at channel boundaries. `(dN mod M)` is equivalent to `dN`
+only when the bound positive modulus covers that axis's entire padded
+logical extent. Wrapping expressions and inner-channel variation retain
+the generic evaluator and its errors. This same proof can qualify an outer
+channel for the existing device/prefold kernels.
+
+Each typed chunk independently chooses useful worker partitions. Tiled and
+buffered stages require roughly 256 KiB of input-plus-output traffic per
+worker; direct contiguous casts and indexed rows retain the 1 MiB gather
+floor. Tiny windows execute inline, while compute-heavy generic evaluation
+keeps its existing row partitioning. Retained pools keep their configured
+capacity; unused workers sleep. These are bounded ahead-of-time kernels:
+less than 8 KiB of scratch per worker, no shape-specific generated code or
+code cache. [Issue #226 measurements](../bench/issue226/README.md) separate
+isolated kernel and completed-call performance.
+
 ## Capability table
 
 `S` is the stage count, `k` a stage boundary (0 = source side). "Wire" is the

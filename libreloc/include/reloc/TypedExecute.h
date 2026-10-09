@@ -6,8 +6,9 @@
 // stage's C1 arithmetic with its parameters as host scalars (the reciprocal
 // of a quantize scale formed once, in binary32, from the declared scale),
 // plus the coordinate bookkeeping that per-channel stages need. Qualified
-// contiguous f32->f16 cast runs use the existing SIMD converters; the scalar
-// walker remains the fallback for other layouts/stage ranges. executeHost
+// contiguous runs and dense matrix transposes use buffered/tiled SIMD stages;
+// the checked scalar walker remains the fallback for other layouts and
+// channel maps. Every intermediate rounding is preserved. executeHost
 // runs the layout and any contiguous range of stages on dense host buffers;
 // the same function is the forced `original_cpu` baseline and the CPU half
 // of every partitioned path in Dispatch.h. MLIR/Torch/GPU-free; no cost
@@ -109,6 +110,18 @@ int64_t bytesAt(const Program &program, uint32_t boundary, bool resultLayout);
 /// per-channel parameter entry (0 per tensor). Pure; asserts the range.
 uint64_t applyStage(const StageArithmetic &stage, uint64_t bits,
                     int64_t channel);
+
+enum class HostKernel {
+  Generic,
+  ContiguousCast,
+  ContiguousStages,
+  TiledTranspose,
+  IndexedRows
+};
+/// Pure plan/range qualification. Complex channel expressions retain the
+/// generic checked walker. No code generation or shape cache is involved.
+HostKernel hostKernel(const Program &, uint32_t from, uint32_t to);
+const char *hostKernelName(HostKernel);
 
 /// Execute the layout and stages [from, to) on the host. `src` is the dense
 /// SOURCE-layout buffer of boundary-`from` values (no pads), `dst` the dense

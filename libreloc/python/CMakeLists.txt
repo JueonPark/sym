@@ -34,6 +34,11 @@ set_target_properties(pyreloc_ext PROPERTIES
   LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/python/pyreloc)
 
 if(SYM_BUILD_TESTS)
+  pybind11_add_module(typed_host_test MODULE tests/TypedHostHarness.cpp)
+  target_link_libraries(typed_host_test PRIVATE reloc_runtime)
+  set_target_properties(typed_host_test PROPERTIES
+    OUTPUT_NAME _typed_host_test
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/python)
   # Fault injection is available only in the build tree, never in installed wheels.
   pybind11_add_module(pyreloc_transfer_test MODULE tests/TransferResourceHarness.cpp)
   target_link_libraries(pyreloc_transfer_test PRIVATE reloc_runtime)

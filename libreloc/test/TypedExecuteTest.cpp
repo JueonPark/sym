@@ -13,6 +13,7 @@
 #include "TypedGoldens.h"
 #include "reloc/Decode.h"
 #include "reloc/GatherPool.h"
+#include "reloc/Quant.h"
 #include "gtest/gtest.h"
 
 #include <algorithm>
@@ -20,6 +21,7 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <random>
 #include <string>
 #include <variant>
 #include <vector>
@@ -369,8 +371,8 @@ TEST(TypedExecute, EqualSizedAxesDoNotConcealAWrongChannelMapping) {
   Program program = mustPrepare(
       mustBind(typed_goldens::kQuantizeTransposeHex, {{"B", 3}}, parameters));
   ASSERT_TRUE(program.stages[0].perChannel);
-  EXPECT_FALSE(program.stages[0].channelIsDim)
-      << "(d0 mod B) is not a bare dim";
+  EXPECT_TRUE(program.stages[0].channelIsDim)
+      << "(d0 mod B) is identity over the proved result extent";
   std::vector<float> x(9);
   for (int b = 0; b < 3; ++b)
     for (int c = 0; c < 3; ++c)
@@ -547,6 +549,153 @@ TEST(TypedExecute, ChunkWindowsKeepGlobalChannelsFillsAndTailBits) {
       }
     }
   }
+}
+
+Program matrixProgram(Program p, int64_t rows, int64_t columns) {
+  p.plan.fills.clear();
+  p.plan.layout.padRegions.clear();
+  p.plan.sourceExtents = {columns, rows};
+  p.plan.resultExtents = {rows, columns};
+  p.sourceElements = p.resultElements = rows * columns;
+  p.resultStrides = {columns, 1};
+  p.plan.layout.extents = {rows, columns};
+  p.plan.layout.srcStrides = {1, rows};
+  p.plan.layout.dstStrides = {columns, 1};
+  p.plan.layout.elementSize = reloc::typed::widthAt(p, p.stages.size());
+  p.plan.layout.totalBytes = p.resultElements * p.plan.layout.elementSize;
+  return p;
+}
+
+TEST(TypedExecute, TiledNarrowingOddShapesUnalignedAndChunkWindows) {
+  std::mt19937 random(226);
+  reloc::GatherPool pool(8);
+  for (const auto &[rows, columns] : std::vector<std::pair<int64_t, int64_t>>{
+           {1, 17}, {7, 9}, {33, 65}, {257, 519}, {1025, 1031}}) {
+    auto p = matrixProgram(
+        mustPrepare(mustBind(typed_goldens::kCastPadHex, {})), rows, columns);
+    ASSERT_EQ(reloc::typed::hostKernel(p, 0, 1),
+              reloc::typed::HostKernel::TiledTranspose);
+    std::vector<float> input(rows * columns);
+    for (auto &x : input) {
+      const uint32_t bits = random();
+      std::memcpy(&x, &bits, 4);
+    }
+    std::vector<uint16_t> expected(input.size());
+    for (int64_t r = 0; r < rows; ++r)
+      for (int64_t c = 0; c < columns; ++c)
+        expected[r * columns + c] =
+            reloc::quant::narrowF32F16(input[c * rows + r]);
+    // Every raw alignment modulo eight; sentinel guards catch tail writes.
+    for (int offset : {0, 1, 3, 7}) {
+      std::vector<uint8_t> src(input.size() * 4 + 16, 0xaa);
+      std::vector<uint8_t> dst(input.size() * 2 + 16, 0xbb);
+      std::memcpy(src.data() + offset, input.data(), input.size() * 4);
+      ASSERT_FALSE(reloc::typed::executeHost(p, 0, 1, src.data() + offset,
+                                             dst.data() + offset, &pool));
+      EXPECT_EQ(
+          std::memcmp(dst.data() + offset, expected.data(), input.size() * 2),
+          0);
+      EXPECT_TRUE(std::all_of(dst.begin(), dst.begin() + offset,
+                              [](uint8_t x) { return x == 0xbb; }));
+      EXPECT_TRUE(std::all_of(dst.begin() + offset + input.size() * 2,
+                              dst.end(), [](uint8_t x) { return x == 0xbb; }));
+    }
+    auto schedule = reloc::planChunks(p.plan.layout, 1, columns * 2 * 7);
+    for (const auto &chunk : schedule.chunks) {
+      std::vector<uint8_t> output(chunk.bytes + 2, 0xab);
+      ASSERT_FALSE(reloc::typed::executeHostChunk(
+          p, 0, 1, input.data(), output.data() + 1, chunk, &pool));
+      EXPECT_EQ(std::memcmp(output.data() + 1,
+                            reinterpret_cast<const uint8_t *>(expected.data()) +
+                                chunk.byteOffset,
+                            chunk.bytes),
+                0);
+      EXPECT_EQ(output.front(), 0xab);
+      EXPECT_EQ(output.back(), 0xab);
+    }
+  }
+}
+
+TEST(TypedExecute, TiledWideningPreservesEveryHalfBitPattern) {
+  auto p = matrixProgram(mustPrepare(mustBind(typed_goldens::kCastPadHex, {})),
+                         256, 256);
+  p.stages[0].input = {ElementTypeKind::Float, 16};
+  p.stages[0].output = {ElementTypeKind::Float, 32};
+  p.stages[0].policy = reloc::NumericPolicyKind::Exact;
+  p.plan.sourceType = p.stages[0].input;
+  std::vector<uint16_t> source(65536);
+  std::vector<float> output(65536);
+  for (int i = 0; i < 65536; ++i)
+    source[i] = i;
+  ASSERT_FALSE(
+      reloc::typed::executeHost(p, 0, 1, source.data(), output.data()));
+  for (int r = 0; r < 256; ++r)
+    for (int c = 0; c < 256; ++c)
+      EXPECT_EQ(bitsOf(output[r * 256 + c]),
+                bitsOf(reloc::quant::widenF16F32(source[c * 256 + r])));
+}
+
+TEST(TypedExecute, TiledMultistagePreservesRoundingAndSimpleChannelAxis) {
+  for (int64_t rows : {33, 65}) {
+    const int64_t columns = 71;
+    auto p =
+        matrixProgram(mustPrepare(mustBind(typed_goldens::kDequantCastHex, {})),
+                      rows, columns);
+    auto &stage = p.stages[0];
+    stage.perChannel = stage.channelIsDim = true;
+    stage.channelDim = 0;
+    stage.channelLength = rows;
+    stage.scale.resize(rows);
+    stage.zeroPoint.resize(rows);
+    for (int64_t r = 0; r < rows; ++r) {
+      stage.scale[r] = (r + 1) * .0137f;
+      stage.zeroPoint[r] = r % 2 ? -128 : 127;
+    }
+    std::vector<int8_t> input(rows * columns);
+    std::vector<uint16_t> output(input.size());
+    for (size_t i = 0; i < input.size(); ++i)
+      input[i] = static_cast<int8_t>(i);
+    ASSERT_EQ(reloc::typed::hostKernel(p, 0, 2),
+              reloc::typed::HostKernel::TiledTranspose);
+    ASSERT_FALSE(
+        reloc::typed::executeHost(p, 0, 2, input.data(), output.data()));
+    for (int64_t r = 0; r < rows; ++r)
+      for (int64_t c = 0; c < columns; ++c)
+        EXPECT_EQ(
+            output[r * columns + c],
+            reloc::quant::narrowF32F16(oracleDequantize(
+                input[c * rows + r], stage.zeroPoint[r], stage.scale[r])));
+  }
+}
+
+TEST(TypedExecute,
+     BufferedStageChainPreservesLossyIntermediateAndFallbackCoverage) {
+  auto p =
+      mustPrepare(mustBind(typed_goldens::kQuantDequantSymHex, {{"N", 65539}}));
+  ASSERT_EQ(reloc::typed::hostKernel(p, 0, 2),
+            reloc::typed::HostKernel::ContiguousStages);
+  std::vector<float> source(65539), output(source.size());
+  for (size_t i = 0; i < source.size(); ++i)
+    source[i] = (static_cast<int>(i % 501) - 250) * .25f;
+  source[0] = std::numeric_limits<float>::quiet_NaN();
+  source[1] = std::numeric_limits<float>::infinity();
+  source[2] = -source[1];
+  source[3] = -0.f;
+  ASSERT_FALSE(reloc::typed::executeHost(p, 0, 2, source.data(), output.data(),
+                                         nullptr, 8));
+  for (size_t i = 0; i < source.size(); ++i)
+    EXPECT_EQ(bitsOf(output[i]),
+              bitsOf(oracleDequantize(oracleQuantize(source[i], .5f), 0, .5f)));
+  ParameterMap parameters;
+  parameters["s"] = f32Param({1.f, .5f, .25f}, true);
+  auto complex = mustPrepare(
+      mustBind(typed_goldens::kQuantizeTransposeHex, {{"B", 2}}, parameters));
+  EXPECT_EQ(reloc::typed::hostKernel(complex, 0, 1),
+            reloc::typed::HostKernel::Generic);
+  const std::vector<float> x = {1.f, 2.f, 3.f, 4.f, 5.f, 6.f};
+  // (d0 mod 2) wraps on the third row: the last scale must not be used.
+  EXPECT_EQ(valuesOf<int8_t>(run(complex, 0, 1, bytesOf(x))),
+            (std::vector<int8_t>{1, 4, 4, 10, 3, 6}));
 }
 
 } // namespace

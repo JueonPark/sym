@@ -100,6 +100,7 @@ struct Report {
   uint32_t artifactVersion = 1; // the typed wire format version
   bool executed = false;
   std::string hostPipeline = "not_applicable";
+  std::string hostKernel = "not_applicable";
   size_t hostChunks = 0, hostChunkBytes = 0, hostBuffers = 0;
   std::vector<StagingDecision> staging;
 };
