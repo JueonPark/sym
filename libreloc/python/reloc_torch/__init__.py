@@ -37,10 +37,16 @@ __all__ = (
     "execute_transfer_group",
     "TransferQueue",
     "TransferCompletion",
+    "PlacementPolicy",
+    "PlacementProfile",
 )
 
 
 def __getattr__(name):
+    if name in {"PlacementPolicy", "PlacementProfile"}:
+        from .placement import PlacementPolicy, PlacementProfile
+        globals().update(PlacementPolicy=PlacementPolicy, PlacementProfile=PlacementProfile)
+        return globals()[name]
     if name == "PreparedWireWeights":
         from .wire_weights import PreparedWireWeights
         globals()[name] = PreparedWireWeights

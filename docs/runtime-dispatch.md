@@ -31,6 +31,11 @@ accepts fresh typed/layout preparations and completes them with one barrier,
 independent output storage, shared compatible parameter uploads and bounded
 scratch. Callers choose the group at their consumer's completion boundary.
 
+The optional Torch frontend [completed-cost placement policy](completed-placement.md)
+ranks native Torch, CPU-transform and GPU-transform calls using compatible
+whole-call observations. It is separate from this lower-level typed dispatch
+cost model and from pinned/pageable allocation selection.
+
 ## Program model and the reference
 
 A typed bound plan is one layout (an index map with fused pad fills in the
@@ -72,13 +77,13 @@ and `torch_frontend/test_dispatch.py -m gpu` against a NumPy oracle).
 | `cuda_dequant_relocate` | H2D (CUDA) | raw s8 source to the device; `dequantRelocateS8F32` (layout + stage 0 fused); stages `[1,S)` element-wise | source bytes | stage 0 = dequantize, zero point 0, per tensor or channel = coalesced outer axis (= result axis 0); no pads; rank ≥ 2; unit inner dst stride; later stages device-qualified | B |
 | `cuda_relocate_f32` | H2D (CUDA) | raw f32 source to the device; `relocateF32` (layout); stages `[0,S)` element-wise | source bytes | f32 source; no pads; rank ≤ 8; every stage device-qualified | B |
 
-**Device-qualified element-wise stages** (the existing kernels, each
-bit-identical to the reference by its own tests):
+**Device-qualified element-wise stages** (checked against the numerical
+contract; cast NaN payload/sign is outside C1 bit-exact conformance):
 
 | Stage | Kernel | Restriction |
 | --- | --- | --- |
 | cast f16 → f32 exact | `cuda::convertF16F32` | none |
-| cast f32 → f16 ieee_rne | — | `no_cuda_kernel:cast_f32_f16` (no GPU narrowing kernel exists) |
+| cast f32 → f16 ieee_rne | `cuda::convertF32F16` | none; non-NaN values bit exact, NaN-ness preserved |
 | quantize symmetric_rne | `cuda::quantizeF32S8` | per tensor; per channel only when the channel map is the outermost axis of the buffer the kernel runs over (result axis 0 for H2D; for D2H, source axis 0 mapped one-to-one to a result axis) — `channel_not_outer_result_axis` / `channel_not_source_outer_axis` otherwise |
 | dequantize affine | `cuda::dequantS8F32` | zero point 0 only (`no_cuda_kernel:nonzero_zero_point`); channel rule as above |
 

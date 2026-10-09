@@ -387,9 +387,10 @@ class TransportAdapter:
 
     MODULE = f"{__package__}.transport"
 
-    def __init__(self, *, transfer_resources=None, transfer_options=None):
+    def __init__(self, *, transfer_resources=None, transfer_options=None, placement=None):
         self._transfer_options = _transfer_configuration(transfer_resources, transfer_options)
         self._owns_resources = transfer_resources is AUTO
+        self.placement = placement
         self._resources = None if self._owns_resources else transfer_resources
         self._pid = os.getpid()
         self._lock = threading.Lock()
@@ -447,7 +448,23 @@ class TransportAdapter:
             return "reloc_torch.transport/unavailable"
         return f"reloc_torch.transport/{getattr(self._module, 'CAPABILITY_IDENTITY', '0')}"
 
-    def preflight(self, compiled, src, device, *, non_blocking=False, parameters=None, index=None):
+    def placement_configuration(self):
+        """Scalar settings plus owner generation; pinning remains a separate knob."""
+        self._require_open()
+        with self._lock:
+            resources = self._resources
+        retained = self._owns_resources or resources is not None
+        limits = (dict(resources._configuration) if resources is not None else
+                  dict(TransferResources.__init__.__kwdefaults__) if retained else None)
+        options = dict(self._transfer_options)
+        pool = options.pop('gather_pool', None)
+        if pool is not None:
+            options['gather_pool_threads'] = pool.threads
+        generation = resources.native.stats()['generation'] if resources is not None else 0
+        return dict(options=options, resource_limits=limits, retained=retained,
+                    completion='blocking'), (id(resources), generation), retained
+
+    def preflight(self, compiled, src, device, *, non_blocking=False, parameters=None, index=None, implementation=""):
         self._require_open()
         import torch
 
@@ -467,6 +484,7 @@ class TransportAdapter:
             else:
                 request = self._dispatch().prepare_typed_transfer(
                     compiled, src, device, parameters=dict(parameters or {}), threads=threads,
+                    implementation=implementation,
                 )
         else:
             request = self._module.prepare_transfer(compiled, src, device, non_blocking=non_blocking)
@@ -596,6 +614,30 @@ def execute_or_fallback(entry, src, symbols, device, *, non_blocking=False, decl
                 f"{destination.shape}/{destination.strides}"
             )
         options = {"non_blocking": non_blocking}
+        placement = getattr(entry.runtime, 'placement', None)
+        decision = placement.choose(entry.compiled, src, device, entry.runtime) if placement is not None else None
+        if decision is not None:
+            from .placement import gpu_implementation, replay
+            path = decision[0]
+            if path in ('native', 'torch_cpu', 'torch_gpu'):
+                # Selection is complete. Any launch failure is terminal; never
+                # retry another implementation after work may have started.
+                try:
+                    if path == 'native':
+                        result = entry.original(src, *entry.scalar_arguments(symbols or ()), *parameters)
+                        cuda_device = device if entry.direction == 'h2d' else src.device
+                        torch.cuda.current_stream(cuda_device).synchronize()
+                    else:
+                        result = replay(entry.compiled.recipe, src, device, path)
+                    result = verify_result(result, src, promised)
+                except Exception as error:
+                    raise ExecutionError(f"placement {path} execution failed for {entry.describe()}: {error}",
+                                         direction=entry.direction, handle=entry.handle) from error
+                placement.succeeded(decision, entry.runtime)
+                return result
+            if typed:
+                options['implementation'] = ('cpu_reference' if path == 'sym_cpu' else
+                                             gpu_implementation(entry.compiled.recipe))
         if entry.indexed:
             if not isinstance(entry.runtime, TransportAdapter):
                 return _fallback(entry, src, symbols, 'indexed_runtime_unavailable', promised, parameters)
@@ -606,6 +648,11 @@ def execute_or_fallback(entry, src, symbols, device, *, non_blocking=False, decl
             with _counting_binds(entry.diagnostics), _validated_binding(entry.compiled, src, bindings, destination):
                 call = entry.runtime.preflight(entry.compiled, src, device, **options)
         except UnsupportedRecipe as error:
+            if decision is not None:
+                # Do not label a forced/calibrated Sym row as a native run.
+                # Capability failures precede launch and remain explicit.
+                raise UnsupportedRecipe('placement_unavailable',
+                                        f'{decision[0]}: {error}') from error
             return _fallback(entry, src, symbols, error.reason, promised, parameters)
         if call.bindings != bindings or tuple(call.destination.shape) != destination.shape:
             raise RuntimeError("runtime adapter disagreed with the frontend binding")
@@ -624,7 +671,10 @@ def execute_or_fallback(entry, src, symbols, device, *, non_blocking=False, decl
         if getattr(call, "report", None) is not None:
             entry.diagnostics.record_dispatch(call.report)
         entry.diagnostics.record_staging(getattr(call, "staging", ()))
-        return verify_result(result, src, promised)
+        result = verify_result(result, src, promised)
+        if decision is not None:
+            placement.succeeded(decision, entry.runtime)
+        return result
 
 
 __all__ = (

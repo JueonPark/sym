@@ -4,10 +4,13 @@
       "capability": {
         "cuda": {
           "d2h": [
-            "cpu_reference"
+            "cpu_reference",
+            "cuda_stages_then_cpu@1"
           ],
           "h2d": [
-            "cpu_reference"
+            "cpu_reference",
+            "cpu_stages_cuda_stages@0",
+            "cuda_relocate_f32"
           ]
         },
         "host": {

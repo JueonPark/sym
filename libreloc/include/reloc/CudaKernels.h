@@ -64,6 +64,12 @@ void dequantS8F32(const int8_t *dSrc, float *dDst, int64_t channels,
 void convertF16F32(const uint16_t *dSrc, float *dDst, int64_t count,
                    void *stream = nullptr);
 
+/// IEEE RNE f32 -> f16, retaining subnormals and overflowing to infinity.
+/// Non-NaN bits match the CPU reference; NaN payloads are outside C1
+/// conformance.
+void convertF32F16(const float *dSrc, uint16_t *dDst, int64_t count,
+                   void *stream = nullptr);
+
 /// `unpack_s4_s8` (Method A r=0.125 receive path): int4 nibble unpack,
 /// exact inverse of the CPU packS8S4 on saturated values. Byte i ->
 /// dDst[2i] = sign-extended low nibble, dDst[2i+1] = high nibble.

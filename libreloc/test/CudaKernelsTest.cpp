@@ -415,6 +415,48 @@ TEST(CudaTypedSemantics, ExactWideningWitnessBits) {
   EXPECT_TRUE(std::isnan(got[6]));
 }
 
+TEST(CudaTypedSemantics, NarrowingRneWitnessesAndRandomBits) {
+  std::vector<float> src = {
+      0.0f,      -0.0f,      0x1p-24f,        0x1p-25f,           0x1.8p-25f,
+      0x1p-14f,  65504.0f,   65519.99f,       65520.0f,           1e5f,
+      HUGE_VALF, -HUGE_VALF, 1.0f + 0x1p-11f, 1.0f + 3 * 0x1p-12f};
+  const uint16_t witnesses[] = {0x0000, 0x8000, 0x0001, 0x0000, 0x0001,
+                                0x0400, 0x7bff, 0x7bff, 0x7c00, 0x7c00,
+                                0x7c00, 0xfc00, 0x3c00, 0x3c01};
+  std::mt19937 rng(227);
+  for (int i = 0; i < 65539; ++i) {
+    uint32_t bits = rng();
+    float value;
+    std::memcpy(&value, &bits, sizeof(value));
+    src.push_back(value);
+  }
+  std::vector<uint16_t> want(src.size());
+  reloc::quant::convertF32F16(src.data(), want.data(), src.size(),
+                              reloc::quant::Variant::Scalar);
+  DeviceBuffer dSrc(src.size() * 4), dDst(src.size() * 2);
+  ASSERT_TRUE(dSrc.valid());
+  ASSERT_TRUE(dDst.valid());
+  upload(dSrc, src);
+  cudaStream_t stream;
+  ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+  reloc::cuda::convertF32F16(dSrc.as<float>(), dDst.as<uint16_t>(), src.size(),
+                             stream);
+  ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+  ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+  auto got = download<uint16_t>(dDst, src.size());
+  for (size_t i = 0; i < src.size(); ++i) {
+    if (std::isnan(src[i])) {
+      EXPECT_EQ(got[i] & 0x7c00, 0x7c00);
+      EXPECT_NE(got[i] & 0x03ff, 0);
+    } else {
+      EXPECT_EQ(got[i], want[i]) << "i=" << i;
+    }
+    if (i < sizeof(witnesses) / sizeof(witnesses[0])) {
+      EXPECT_EQ(got[i], witnesses[i]);
+    }
+  }
+}
+
 TEST(CudaScatterRandom, PermutationRoundTrips) {
   const int64_t n = (1 << 20) + 7;
   std::vector<float> src =
