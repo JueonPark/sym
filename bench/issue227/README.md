@@ -31,9 +31,13 @@ All timings synchronize the request's current stream and include allocation
 and frontend costs. Correctness checks happen outside timing. Inductor
 compilation happens before timing and CUDA graphs/TF32 are disabled. Controls
 rotate within samples; forced-path order rotates between rounds. Selection
-alone is timed separately without binding, copying or GPU work. Regret is
-automatic median / best qualified forced warm median − 1, including selector
-overhead. Report all misses; exploratory runs are excluded from acceptance.
+alone is timed separately without binding, copying or GPU work. Held-out forced
+paths and automatic selection also run in the same rotated interleaved loop,
+so regret compares equal cache/allocator pressure. Regret is automatic median /
+best qualified interleaved forced warm median − 1, including selector overhead;
+path regret excludes that overhead. Report all misses; exploratory runs are
+excluded from acceptance. An initial run using consecutive forced samples for
+regret was discarded because its scheduling differed from automatic samples.
 
 Hypotheses: reduce small KV latency by at least 30% versus the current Sym
 backend; keep median held-out regret within 10% and p95 within 20%. These are

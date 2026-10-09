@@ -138,19 +138,28 @@ def run(args):
                                 with policy.force(path):
                                     compiled(x)
                             runs = dict(controls,automatic=lambda:compiled(x))
+                            def forced(path):
+                                def execute():
+                                    with policy.force(path):
+                                        return compiled(x)
+                                return execute
+                            runs.update({f'forced_{path}':forced(path) for path in paths})
                             values = {n:[] for n in runs}
+                            automatic_decision = None
                             for i in range(args.samples):
                                 order = list(runs)
                                 order = order[(i+args.round)%len(order):]+order[:(i+args.round)%len(order)]
                                 for path in order:
                                     value,ms = measure(runs[path],device)
+                                    if path == 'automatic':
+                                        automatic_decision = policy.stats()['last']
                                     check(value,expected)
                                     values[path].append(ms)
                             row['controls'] = {n:summary(v) for n,v in values.items()}
-                            row['decision'] = policy.stats()['last']
-                            best = min(row['paths'][p+'_warm']['p50_ms'] for p in paths)
+                            row['decision'] = automatic_decision
+                            best = min(row['controls']['forced_'+p]['p50_ms'] for p in paths)
                             row['regret'] = row['controls']['automatic']['p50_ms']/best-1
-                            row['path_regret'] = row['paths'][row['decision']['path']+'_warm']['p50_ms']/best-1
+                            row['path_regret'] = row['controls']['forced_'+row['decision']['path']]['p50_ms']/best-1
                             # Selector only: same shape/family, no copy, binding or GPU work.
                             dims = tuple(Const(n) for n in shape)
                             output = tuple(dims[i] for i in perm)
