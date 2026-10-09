@@ -123,6 +123,17 @@ def test_unqualified_recipe_keeps_existing_runtime():
         policy.choose(*args)
 
 
+def test_d2h_warm_history_is_specific_to_source_device():
+    policy, runtime = PlacementPolicy(), Runtime()
+    spec = SimpleNamespace(recipe=recipe(direction='d2h'))
+    def choose(index):
+        source = SimpleNamespace(shape=(16,8),stride=lambda:(8,1),device=torch.device('cuda',index))
+        return policy.choose(spec,source,torch.device('cpu'),runtime)
+    policy.succeeded(choose(0),runtime)
+    assert choose(0)[2]['resource_state'] == 'warm'
+    assert choose(1)[2]['resource_state'] == 'cold'
+
+
 @pytest.mark.gpu
 def test_selected_execution_failure_never_retries(cuda_device,monkeypatch):
     from reloc_torch.runtime import ExecutionError

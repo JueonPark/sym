@@ -271,7 +271,8 @@ class PlacementPolicy:
                 self._execution = execution
                 self._execution_key = json.dumps(execution, sort_keys=True)
             execution_key = self._execution_key
-        key = (identity, shape, strides, str(device), execution_key,
+        cuda_device = device if recipe.direction == 'h2d' else source.device
+        key = (identity, shape, strides, str(cuda_device), execution_key,
                (context['cpu_load'], context['gpu_load'], context['overlap']), epoch)
         eligible = candidates(recipe)
         import pyreloc
@@ -293,7 +294,6 @@ class PlacementPolicy:
                 raise ValueError(f'placement {forced} is not qualified for this recipe')
             choice, reason = forced, 'forced'
         elif self.profile is not None:
-            cuda_device = device if recipe.direction == 'h2d' else source.device
             try:
                 current_hardware = hardware(cuda_device)
             except (OSError, RuntimeError, ValueError, StopIteration, subprocess.SubprocessError):
