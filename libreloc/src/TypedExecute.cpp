@@ -214,7 +214,7 @@ void walk(WalkState &state, size_t depth, int64_t iBegin, int64_t iEnd,
       auto *dst = state.dst + (dstOff + iBegin + state.lo[depth] -
                                state.destinationOrigin) *
                                   sizeof(uint16_t);
-      // Scalar bit loads also support unaligned raw views; retain that path.
+      // Unaligned external views use the buffered memcpy loads below.
       if (reinterpret_cast<uintptr_t>(src) % alignof(float) == 0 &&
           reinterpret_cast<uintptr_t>(dst) % alignof(uint16_t) == 0) {
         quant::convertF32F16(reinterpret_cast<const float *>(src),
@@ -650,8 +650,8 @@ executeHostWindow(const Program &program, uint32_t from, uint32_t to,
   // windows. Apply the bandwidth-oriented floor only to qualified kernels.
   // Tiling and multiple conversions do more work per byte than a direct
   // cast/copy. 256 KiB lets a default 1 MiB wire chunk use the worker budget
-  // while keeping tiny windows inline. Existing contiguous casts keep the
-  // gather/copy floor of 1 MiB.
+  // while keeping tiny windows inline. Direct contiguous casts use the
+  // existing gather/copy floor of 1 MiB.
   const int64_t grain =
       kernel == HostKernel::Generic
           ? 1

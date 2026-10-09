@@ -92,7 +92,7 @@ channel for the existing device/prefold kernels.
 
 Each typed chunk independently chooses useful worker partitions. Tiled and
 buffered stages require roughly 256 KiB of input-plus-output traffic per
-worker; direct contiguous casts and indexed rows retain the 1 MiB gather
+worker; direct contiguous casts and indexed rows use the 1 MiB gather
 floor. Tiny windows execute inline, while compute-heavy generic evaluation
 keeps its existing row partitioning. Retained pools keep their configured
 capacity; unused workers sleep. These are bounded ahead-of-time kernels:

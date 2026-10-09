@@ -585,7 +585,7 @@ TEST(TypedExecute, TiledNarrowingOddShapesUnalignedAndChunkWindows) {
       for (int64_t c = 0; c < columns; ++c)
         expected[r * columns + c] =
             reloc::quant::narrowF32F16(input[c * rows + r]);
-    // Every raw alignment modulo eight; sentinel guards catch tail writes.
+    // Aligned and odd byte offsets; sentinel guards catch tail writes.
     for (int offset : {0, 1, 3, 7}) {
       std::vector<uint8_t> src(input.size() * 4 + 16, 0xaa);
       std::vector<uint8_t> dst(input.size() * 2 + 16, 0xbb);

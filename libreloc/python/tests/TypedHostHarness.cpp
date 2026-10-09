@@ -1,5 +1,5 @@
-// Build-only host-kernel timing; no Python, allocation, binding or DMA in
-// samples. Transform loads/stores are part of the measured kernel.
+// Build-only host-kernel timing. External plan/buffer/pool preparation and
+// Python are outside samples; executeHost and its bookkeeping are timed.
 #include "reloc/GatherPool.h"
 #include "reloc/TypedExecute.h"
 #include <chrono>
