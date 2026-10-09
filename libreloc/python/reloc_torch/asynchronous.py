@@ -165,17 +165,27 @@ class TransferCompletion:
 class TransferQueue:
     """One CUDA device/copy queue with bounded outstanding output reservations.
 
-    CPU calls serialize, and a new native submission completes the preceding
-    producer before reusing scratch. Already enqueued consumers run concurrently
-    on their own streams. Fresh outputs never alias earlier outputs. A caller
+    CPU submissions to this queue serialize. Optional resources can be shared
+    across queues: multiple typed contexts allow independent native producers,
+    while admission completes an older producer when all slots are occupied.
+    Closing a queue drains its handles and closes only resources it created.
+    Already enqueued consumers run concurrently on their own streams. Fresh
+    outputs never alias earlier outputs. A caller
     retaining tensors after close() owns that memory outside the queue's budget.
     Use an explicit context manager to drain, including on model exceptions.
     """
 
     def __init__(self, device='cuda:0', *, max_in_flight=2, max_output_bytes=128 << 20,
-                 max_scratch_bytes=64 << 20, gather_threads=8, pinning='pinned'):
+                 max_scratch_bytes=64 << 20, gather_threads=8, pinning='pinned',
+                 resources=None):
         import torch
         from .resources import TransferResources
+        if resources is not None:
+            if not isinstance(resources, TransferResources):
+                raise TypeError('resources must be TransferResources')
+            resources.native_typed  # reject inherited use before any CUDA access
+            if resources.closed:
+                raise RuntimeError('transfer resources are closed')
         self.max_in_flight = _positive(max_in_flight, 'max_in_flight')
         self.max_output_bytes = _positive(max_output_bytes, 'max_output_bytes')
         self.max_scratch_bytes = _positive(max_scratch_bytes, 'max_scratch_bytes')
@@ -196,7 +206,8 @@ class TransferQueue:
         # Allocate outputs on a dedicated stream. Ignoring the allocator's
         # stream would let a private DMA race with a recycled caller-stream block.
         self._stream = torch.cuda.Stream(device=self.device)
-        self._resources = TransferResources(max_typed_retained_bytes=max_scratch_bytes,
+        self._owns_resources = resources is None
+        self._resources = resources if resources is not None else TransferResources(max_typed_retained_bytes=max_scratch_bytes,
             max_typed_live_bytes=max_scratch_bytes, max_typed_background_workers=gather_threads - 1,
             max_typed_streams=1)
 
@@ -271,6 +282,7 @@ class TransferQueue:
             return dict(submitted=self._submitted, held=len(self._held), output_bytes=self._bytes,
                         peak_output_bytes=self._peak_bytes, peak_in_flight=self._peak_handles,
                         closed=self._closed, resources=self._resources.stats()['typed'],
+                        owns_resources=self._owns_resources,
                         totals=self._totals | {'dispatches': dict(self._totals['dispatches'])})
 
     def prefetch(self, groups):
@@ -287,7 +299,8 @@ class TransferQueue:
                 except Exception as failure:
                     error = error or failure
             try:
-                self._resources.close()
+                if self._owns_resources:
+                    self._resources.close()
             except Exception as failure:
                 error = error or failure
             if error is not None:

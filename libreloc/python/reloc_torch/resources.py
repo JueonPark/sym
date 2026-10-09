@@ -53,7 +53,10 @@ class TransferResources:
 
     Layout limits and typed limits are separate: max_retained_bytes bounds
     layout staging; max_typed_retained_bytes bounds combined typed host/device
-    scratch (default 64 MiB). Typed calls serialize within one owner. Optional
+    scratch (default 64 MiB). Typed calls default to one serial context; opt in
+    to multiple contexts for per-device/configuration reuse and concurrent
+    leases. Typed byte, stream and worker limits are divided among slots,
+    bounding the whole owner. Optional
     max_typed_live_bytes also caps scratch during execution (0 = unlimited).
     Construction and stats do not initialize CUDA.
     Use a context manager or close() before shutdown. clear() retires idle
@@ -67,7 +70,9 @@ class TransferResources:
                  max_contexts_per_device=2, max_background_workers=64,
                  max_live_staging_bytes=None, acquire_timeout_ms=None,
                  max_typed_retained_bytes=64 << 20, max_typed_live_bytes=0,
-                 max_typed_streams=8, max_typed_background_workers=64):
+                 max_typed_streams=8, max_typed_background_workers=64,
+                 max_typed_contexts=1, max_typed_contexts_per_device=1,
+                 typed_acquire_timeout_ms=None):
         import pyreloc
 
         self._configuration = {name: value for name, value in locals().items()
@@ -86,6 +91,9 @@ class TransferResources:
             max_live_bytes=max_typed_live_bytes,
             max_background_workers=max_typed_background_workers,
             max_streams=max_typed_streams,
+            max_contexts=max_typed_contexts,
+            max_contexts_per_device=max_typed_contexts_per_device,
+            acquire_timeout_ms=typed_acquire_timeout_ms,
         )
 
     @property

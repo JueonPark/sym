@@ -20,6 +20,7 @@ add_library(reloc_runtime SHARED
   src/TypedKernels.cpp
   src/Dispatch.cpp
   src/DispatchResources.cpp
+  src/DispatchResourcePool.cpp
   src/Bind.cpp
   src/Execute.cpp
   src/Transpose.cpp

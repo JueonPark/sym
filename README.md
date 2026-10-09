@@ -91,6 +91,7 @@ establish a speed advantage over PyTorch.
 | Use compiled/eager PyTorch transfers or prepare inference weights | [PyTorch integration](docs/torch-integration.md) |
 | Write recipes, save artifacts, and use the Python/C++ runtime | [Plan export](docs/reloc-export.md) · [Runtime APIs](libreloc/README.md) |
 | Choose typed execution paths and inspect transferred bytes | [Runtime dispatch](docs/runtime-dispatch.md) |
+| Reuse typed contexts across GPUs and bound concurrent transfers | [Typed context ownership](docs/typed-contexts.md) |
 | Work with symbolic shapes in MLIR | [Symbolic shapes](docs/symbolic-shapes.md) |
 | Reproduce examples, tests, and CPU/CUDA results | [Integration guide](docs/runtime-integration.md) |
 | Fetch offloaded int8 weights in LLM and MoE examples | [WeightFetcher examples](libreloc/python/examples/workloads/README.md) |
