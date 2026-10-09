@@ -2,8 +2,10 @@
 
 #include "reloc/TypedExecute.h"
 #include "Trace.h"
+#include "TypedKernels.h"
 
 #include "reloc/GatherPool.h"
+#include "reloc/Pipeline.h"
 #include "reloc/Quant.h"
 #include "reloc/TypedValue.h"
 
@@ -144,6 +146,7 @@ struct WalkState {
   uint32_t widthTo;
   std::vector<int64_t> lo; // pad lo per coalesced axis
   bool narrowRun = false;
+  bool bufferedRun = false;
   int64_t destinationOrigin = 0; // global element offset of this local window
   std::atomic<bool> failed{false};
   std::mutex mutex;
@@ -211,13 +214,22 @@ void walk(WalkState &state, size_t depth, int64_t iBegin, int64_t iEnd,
       auto *dst = state.dst + (dstOff + iBegin + state.lo[depth] -
                                state.destinationOrigin) *
                                   sizeof(uint16_t);
-      // Scalar bit loads also support unaligned raw views; retain that path.
+      // Unaligned external views use the buffered memcpy loads below.
       if (reinterpret_cast<uintptr_t>(src) % alignof(float) == 0 &&
           reinterpret_cast<uintptr_t>(dst) % alignof(uint16_t) == 0) {
         quant::convertF32F16(reinterpret_cast<const float *>(src),
                              reinterpret_cast<uint16_t *>(dst), iEnd - iBegin);
         return;
       }
+    }
+    if (state.bufferedRun) {
+      const int64_t offset = dstOff + iBegin + state.lo[depth];
+      detail::stages(state.program, state.range.from, state.range.to,
+                     state.src + (srcOff + iBegin) * state.widthFrom,
+                     state.dst +
+                         (offset - state.destinationOrigin) * state.widthTo,
+                     iEnd - iBegin, offset);
+      return;
     }
     for (int64_t i = iBegin; i < iEnd; ++i) {
       if (state.failed.load(std::memory_order_relaxed))
@@ -327,11 +339,22 @@ prepareProgram(const TypedBoundPlan &plan) {
         return fail("invalid_parameter",
                     where + "zero point length disagrees with the scale");
       const ExprStream &channel = bound.channel;
-      if (channel.size() == 1 && channel.front().op == ExprOp::PushDim &&
+      if (!channel.empty() && channel.front().op == ExprOp::PushDim &&
           channel.front().value >= 0 &&
           static_cast<size_t>(channel.front().value) < rank) {
-        stage.channelIsDim = true;
         stage.channelDim = static_cast<uint32_t>(channel.front().value);
+        stage.channelIsDim = channel.size() == 1;
+        // Exported reshapes can leave (dN mod extent). Prove identity over
+        // the full logical result, including padding; never infer an axis
+        // from equal parameter lengths or simplify a wrapping expression.
+        if (channel.size() == 3 && channel[2].op == ExprOp::Mod &&
+            (channel[1].op == ExprOp::PushConst ||
+             channel[1].op == ExprOp::PushSym)) {
+          int64_t modulus = 0;
+          if (evalChannel({channel[1]}, plan.symbols, {}, modulus, why) &&
+              modulus > 0 && plan.resultExtents[stage.channelDim] <= modulus)
+            stage.channelIsDim = true;
+        }
       }
       program.needsCoordinates = true;
     } else {
@@ -437,7 +460,52 @@ uint64_t applyStage(const StageArithmetic &stage, uint64_t bits,
   return bits;
 }
 
+HostKernel hostKernel(const Program &p, uint32_t from, uint32_t to) {
+  if (from > to || to > p.stages.size())
+    return HostKernel::Generic;
+  if (p.indexedSourceRows)
+    return HostKernel::IndexedRows;
+  const auto &l = p.plan.layout;
+  if (!detail::simpleChannels(p, from, to, l.extents.back()))
+    return HostKernel::Generic;
+  if (l.extents.size() == 2 && l.srcStrides[0] == 1 &&
+      l.srcStrides[1] == l.extents[0] && l.dstStrides[1] == 1 &&
+      l.dstStrides[0] >= l.extents[1])
+    return HostKernel::TiledTranspose;
+  if (l.srcStrides.back() == 1 && l.dstStrides.back() == 1) {
+    if (to == from + 1 &&
+        p.stages[from].transform == ValueTransformKind::Cast &&
+        isF32(p.stages[from].input) && isF16(p.stages[from].output))
+      return HostKernel::ContiguousCast;
+    return HostKernel::ContiguousStages;
+  }
+  return HostKernel::Generic;
+}
+
+const char *hostKernelName(HostKernel kernel) {
+  switch (kernel) {
+  case HostKernel::Generic:
+    return "generic";
+  case HostKernel::ContiguousCast:
+    return "contiguous_cast";
+  case HostKernel::ContiguousStages:
+    return "contiguous_stages";
+  case HostKernel::TiledTranspose:
+    return "tiled_transpose";
+  case HostKernel::IndexedRows:
+    return "indexed_rows";
+  }
+  return "generic";
+}
+
 namespace {
+// A chunk gets its own worker decision. Do not wake every retained worker for
+// a tiny window; also avoid constructing an ephemeral pool for inline work.
+int64_t workerFloor(int64_t bytesPerUnit,
+                    int64_t minBytes = kMinGatherBytesPerWorker) {
+  return std::max<int64_t>(1, (minBytes + bytesPerUnit - 1) / bytesPerUnit);
+}
+
 std::optional<ExecutionError>
 executeHostWindow(const Program &program, uint32_t from, uint32_t to,
                   const void *src, void *dst, GatherPool *pool,
@@ -471,7 +539,7 @@ executeHostWindow(const Program &program, uint32_t from, uint32_t to,
       last = chunk->validEnd;
     }
     auto rows = [&](int64_t begin, int64_t end) {
-      detail::TraceRange trace("reloc.typed.transform.work", chunkIndex);
+      reloc::detail::TraceRange trace("reloc.typed.transform.work", chunkIndex);
       for (int64_t row = begin; row < end; ++row) {
         const auto *input = static_cast<const uint8_t *>(src) +
                             program.rowIndices[row] * columns * inputWidth;
@@ -495,12 +563,13 @@ executeHostWindow(const Program &program, uint32_t from, uint32_t to,
       }
     };
     std::unique_ptr<GatherPool> owned;
-    if (!pool && threads != 1) {
+    const int64_t grain = workerFloor(columns * (inputWidth + outputWidth));
+    if (!pool && threads != 1 && last - first >= 2 * grain) {
       owned = std::make_unique<GatherPool>(threads);
       pool = owned.get();
     }
     if (pool)
-      pool->parallelFor(first, last, 1, rows);
+      pool->parallelFor(first, last, grain, rows);
     else
       rows(first, last);
     return std::nullopt;
@@ -541,7 +610,7 @@ executeHostWindow(const Program &program, uint32_t from, uint32_t to,
     elements = static_cast<int64_t>(chunk->bytes / widthTo);
   }
   if (const auto &bits = std::get<std::optional<uint64_t>>(fill)) {
-    detail::TraceRange trace("reloc.typed.fill", chunkIndex);
+    reloc::detail::TraceRange trace("reloc.typed.fill", chunkIndex);
     fillPattern(static_cast<uint8_t *>(dst), *bits, widthTo, elements);
   }
 
@@ -558,31 +627,55 @@ executeHostWindow(const Program &program, uint32_t from, uint32_t to,
       state.range.needsCoordinates = true;
   for (const PadRegion &p : layout.padRegions)
     state.lo[p.axis] = p.lo;
-  state.narrowRun =
-      to == from + 1 &&
-      program.stages[from].transform == ValueTransformKind::Cast &&
-      isF32(program.stages[from].input) && isF16(program.stages[from].output) &&
-      layout.srcStrides.back() == 1 && layout.dstStrides.back() == 1;
+  const HostKernel kernel = hostKernel(program, from, to);
+  state.narrowRun = kernel == HostKernel::ContiguousCast;
+  state.bufferedRun = state.narrowRun || kernel == HostKernel::ContiguousStages;
 
   int64_t innerSpan = 0;
   for (size_t k = 1; k < layout.dstStrides.size(); ++k)
     innerSpan += (layout.extents[k] - 1) * layout.dstStrides[k];
   const bool rowsDisjoint = layout.dstStrides.front() >= innerSpan + 1;
 
+  const bool tiled = kernel == HostKernel::TiledTranspose;
+  const int64_t units =
+      tiled ? (end - begin + detail::kTypedTile - 1) / detail::kTypedTile
+            : end - begin;
+  int64_t rowElements = 1;
+  for (size_t k = 1; k < layout.extents.size(); ++k)
+    rowElements *= layout.extents[k];
+  const int64_t unitBytes =
+      std::min<int64_t>(rowElements, kMinGatherBytesPerWorker) *
+      (state.widthFrom + state.widthTo) * (tiled ? detail::kTypedTile : 1);
+  // Scalar coordinate evaluation is compute-bound even for small byte
+  // windows. Apply the bandwidth-oriented floor only to qualified kernels.
+  // Tiling and multiple conversions do more work per byte than a direct
+  // cast/copy. 256 KiB lets a default 1 MiB wire chunk use the worker budget
+  // while keeping tiny windows inline. Direct contiguous casts use the
+  // existing gather/copy floor of 1 MiB.
+  const int64_t grain =
+      kernel == HostKernel::Generic
+          ? 1
+          : workerFloor(unitBytes, state.narrowRun ? kMinGatherBytesPerWorker
+                                                   : 256 * 1024);
   std::unique_ptr<GatherPool> owned;
-  if (pool == nullptr && threads != 1) {
+  if (pool == nullptr && threads != 1 && rowsDisjoint && units >= 2 * grain) {
     owned = std::make_unique<GatherPool>(threads);
     pool = owned.get();
   }
   auto work = [&](int64_t first, int64_t last) {
-    detail::TraceRange trace("reloc.typed.transform.work", chunkIndex);
-    walkRows(state, first, last);
+    reloc::detail::TraceRange trace("reloc.typed.transform.work", chunkIndex);
+    if (tiled)
+      detail::transpose(program, from, to, state.src, state.dst,
+                        begin + first * detail::kTypedTile,
+                        std::min(end, begin + last * detail::kTypedTile),
+                        origin, state.lo[0], state.lo[1]);
+    else
+      walkRows(state, begin + first, begin + last);
   };
-  if (pool != nullptr && rowsDisjoint && pool->threadCount() > 1 &&
-      end - begin > 1)
-    pool->parallelFor(begin, end, /*minPerWorker=*/1, work);
+  if (pool != nullptr && rowsDisjoint && pool->threadCount() > 1 && units > 1)
+    pool->parallelFor(0, units, grain, work);
   else if (end > begin)
-    work(begin, end);
+    work(0, units);
   if (state.failed.load())
     return state.error;
   return std::nullopt;

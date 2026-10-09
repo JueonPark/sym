@@ -608,6 +608,7 @@ std::optional<TransferError> executeCuda(DispatchRequest &request,
       // identity proof applies to ordinary dense typed inputs; their existing
       // source-owner contract keeps bytes alive until completion.
       request.report.hostPipeline = "direct_dense";
+      request.report.hostKernel = "direct_dense";
       request.report.hostChunks = 1;
       request.report.hostBuffers = 0;
       request.report.hostChunkBytes = wireBytes;
@@ -863,6 +864,17 @@ DispatchRequest makeRequest(const Program &program, const BufferView &source,
   report.parameterBytes = program.plan.parameterBytes;
   report.deviceTempBytes = choice.row.deviceTempBytes;
   report.artifactVersion = program.indexedSourceRows ? 2 : 1;
+  const Implementation &row = choice.row;
+  const uint32_t stages = static_cast<uint32_t>(program.stages.size());
+  if (row.id == kCpuReference)
+    report.hostKernel =
+        typed::hostKernelName(typed::hostKernel(program, 0, stages));
+  else if (row.id == kCpuStagesCudaStages)
+    report.hostKernel =
+        typed::hostKernelName(typed::hostKernel(program, 0, row.wireBoundary));
+  else if (row.id == kCudaStagesThenCpu)
+    report.hostKernel = typed::hostKernelName(
+        typed::hostKernel(program, row.wireBoundary, stages));
   return request;
 }
 

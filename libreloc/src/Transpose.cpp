@@ -100,6 +100,17 @@ void transpose32Scalar(const uint8_t *src, uint8_t *dst, int64_t rows,
   }
 }
 
+void transpose32(const uint8_t *src, uint8_t *dst, int64_t rows,
+                 int64_t columns, int64_t srcStride) {
+#ifdef RELOC_TRANSPOSE_AVX2
+  if (copyRunAvx2Available()) {
+    transpose32Avx2(src, dst, rows, columns, srcStride);
+    return;
+  }
+#endif
+  transpose32Scalar(src, dst, rows, columns, srcStride);
+}
+
 bool tryGatherTranspose32(const BoundPlan &bound, const uint8_t *src,
                           uint8_t *dst, int64_t outerBegin, int64_t outerEnd) {
   if (bound.typed || bound.elementSize != kBytes || !bound.padRegions.empty() ||
@@ -125,13 +136,7 @@ bool tryGatherTranspose32(const BoundPlan &bound, const uint8_t *src,
     copyRun(dst, src, static_cast<size_t>(rows * columns * kBytes));
     return true;
   }
-#ifdef RELOC_TRANSPOSE_AVX2
-  if (copyRunAvx2Available()) {
-    transpose32Avx2(src, dst, rows, columns, bound.srcStrides[1]);
-    return true;
-  }
-#endif
-  transpose32Scalar(src, dst, rows, columns, bound.srcStrides[1]);
+  transpose32(src, dst, rows, columns, bound.srcStrides[1]);
   return true;
 }
 

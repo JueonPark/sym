@@ -17,6 +17,7 @@ add_library(reloc_runtime SHARED
   src/Decode.cpp
   src/TypedValue.cpp
   src/TypedExecute.cpp
+  src/TypedKernels.cpp
   src/Dispatch.cpp
   src/DispatchResources.cpp
   src/Bind.cpp
