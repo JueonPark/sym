@@ -30,6 +30,7 @@ __all__ = (
     "eager_transfers",
     "prepare_weights",
     "PreparedWeights",
+    "PreparedWireWeights",
     "TransferResources",
     "AUTO",
     "prepare_transfer_group",
@@ -40,6 +41,10 @@ __all__ = (
 
 
 def __getattr__(name):
+    if name == "PreparedWireWeights":
+        from .wire_weights import PreparedWireWeights
+        globals()[name] = PreparedWireWeights
+        return PreparedWireWeights
     if name in {"TransferQueue", "TransferCompletion"}:
         from .asynchronous import TransferQueue, TransferCompletion
         globals().update(TransferQueue=TransferQueue, TransferCompletion=TransferCompletion)

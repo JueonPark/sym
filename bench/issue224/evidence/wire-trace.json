@@ -1,0 +1,62 @@
+{
+  "source_revision": "2b9510464b6656491d07b3ccdc7f7d67ea3b4b11",
+  "trace_tool": "Nsight Systems 2024.2.3.38",
+  "purpose": "DMA bytes and kernel identity only; no timing or overlap inference under competing CPU load",
+  "extraction": "Join GPU memcpy/kernel activity to CUDA runtime by correlationId; runtime call fully inside named NVTX range",
+  "rows": [
+    {
+      "shape": [
+        256,
+        1024
+      ],
+      "range": "issue224/(256, 1024)/sym_packed/0",
+      "sqlite_sha256": "260ab22056bf4d55be512b7b74dd4da52941be2859ecc7f245ad9ea6ca084ee1",
+      "h2d_pinned_bytes": [
+        262144,
+        4096
+      ],
+      "copy_correlations": [
+        26,
+        28
+      ],
+      "kernel": "reloc::cuda::<unnamed>::dequantS8F32Kernel(const signed char *, float *, long, const float *, long)",
+      "kernel_correlation": 29
+    },
+    {
+      "shape": [
+        1024,
+        4096
+      ],
+      "range": "issue224/(1024, 4096)/sym_packed/0",
+      "sqlite_sha256": "291c35f6df587c751d5beac99d48ac9d19a98271482d1809e9801c2560297b52",
+      "h2d_pinned_bytes": [
+        4194304,
+        16384
+      ],
+      "copy_correlations": [
+        7871,
+        7873
+      ],
+      "kernel": "reloc::cuda::<unnamed>::dequantS8F32Kernel(const signed char *, float *, long, const float *, long)",
+      "kernel_correlation": 7874
+    },
+    {
+      "shape": [
+        4096,
+        1024
+      ],
+      "range": "issue224/(4096, 1024)/sym_packed/0",
+      "sqlite_sha256": "0e55058276f7fdb8056987da43b95c44655c5f16d6a04c7e8d31d11fd2077c55",
+      "h2d_pinned_bytes": [
+        4194304,
+        4096
+      ],
+      "copy_correlations": [
+        15686,
+        15688
+      ],
+      "kernel": "reloc::cuda::<unnamed>::dequantS8F32Kernel(const signed char *, float *, long, const float *, long)",
+      "kernel_correlation": 15689
+    }
+  ]
+}
