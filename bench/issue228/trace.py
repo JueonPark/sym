@@ -51,6 +51,7 @@ def main(args):
     assert summaries and witnesses, 'no qualified overlap witness captured'
     result = dict(sqlite_sha256=hashlib.sha256(args.sqlite.read_bytes()).hexdigest(),
                   runtime_sha256=hashlib.sha256(args.runtime.read_bytes()).hexdigest(),
+                  run=json.loads(args.run.read_text()),
                   summaries=summaries, witnesses=witnesses)
     args.output.write_bytes(gzip.compress((json.dumps(result, separators=(',', ':'))+'\n').encode(), mtime=0))
     for label in counts:
@@ -64,4 +65,5 @@ if __name__ == '__main__':
     parser.add_argument('sqlite', type=Path)
     parser.add_argument('output', type=Path)
     parser.add_argument('--runtime', type=Path, required=True)
+    parser.add_argument('--run', type=Path, required=True)
     main(parser.parse_args())
