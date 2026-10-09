@@ -86,8 +86,9 @@ def _execute_transfer_group(group, *, resources=None, gather_threads=8, gather_p
 
     Output/source allocations and cached immutable metadata are outside the
     scratch budget. No payload packing or output aliasing is introduced.
-    Resources serialize groups on one owner; use separate owners for concurrent
-    groups. Any submission failure consumes the whole group, never retries it.
+    A resource owner admits groups using its bounded typed context leases.
+    Multiple contexts permit concurrent groups; the default is one context.
+    Any submission failure consumes the whole group, never retries it.
     """
     import torch
     from .resources import TransferResources, _transfer_configuration

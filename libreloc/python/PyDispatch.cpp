@@ -554,10 +554,13 @@ void registerDispatchBindings(py::module_ &m) {
         "synchronous.");
   using Resources = reloc::dispatch::Resources;
   py::class_<Resources, std::shared_ptr<Resources>>(m, "DispatchResources")
-      .def(py::init<size_t, size_t, unsigned, unsigned>(), py::kw_only(),
-           py::arg("max_retained_bytes") = size_t(64) << 20,
+      .def(py::init<size_t, size_t, unsigned, unsigned, unsigned, unsigned,
+                    std::optional<uint64_t>>(),
+           py::kw_only(), py::arg("max_retained_bytes") = size_t(64) << 20,
            py::arg("max_live_bytes") = 0,
-           py::arg("max_background_workers") = 64, py::arg("max_streams") = 8)
+           py::arg("max_background_workers") = 64, py::arg("max_streams") = 8,
+           py::arg("max_contexts") = 1, py::arg("max_contexts_per_device") = 1,
+           py::arg("acquire_timeout_ms") = py::none())
       .def("stats",
            [](Resources &r) {
              reloc::dispatch::ResourceStats s;
@@ -585,6 +588,40 @@ void registerDispatchBindings(py::module_ &m) {
              out["closed"] = s.closed;
              out["quarantined"] = s.quarantined;
              out["process_valid"] = s.processValid;
+             out["live_bytes"] = s.liveBytes;
+             out["active_contexts"] = s.activeContexts;
+             out["peak_active_contexts"] = s.peakActiveContexts;
+             out["queued"] = s.queued;
+             out["admission_waits"] = s.admissionWaits;
+             out["evictions"] = s.evictions;
+             py::dict limits;
+             limits["retained_bytes"] = s.retainedLimit;
+             limits["live_bytes"] = s.liveLimit;
+             limits["background_workers"] = s.workerLimit;
+             limits["streams"] = s.streamLimit;
+             limits["contexts"] = s.contextLimit;
+             limits["contexts_per_device"] = s.perDeviceLimit;
+             out["limits"] = limits;
+             py::list contexts;
+             for (const auto &c : s.contextDetails) {
+               py::dict row;
+               row["device"] = c.device;
+               row["active"] = c.active;
+               row["background_workers"] = c.backgroundWorkers;
+               row["borrowed_workers"] = c.borrowedWorkers;
+               row["streams"] = c.streams;
+               row["retained_bytes"] = c.retainedBytes;
+               row["retained_limit"] = c.retainedLimit;
+               row["live_limit"] = c.liveLimit;
+               py::list cpus;
+               for (size_t word = 0; word < c.affinity.size(); ++word)
+                 for (unsigned bit = 0; bit < sizeof(unsigned long) * 8; ++bit)
+                   if (c.affinity[word] & (1ul << bit))
+                     cpus.append(word * sizeof(unsigned long) * 8 + bit);
+               row["affinity"] = cpus;
+               contexts.append(row);
+             }
+             out["contexts"] = contexts;
              return out;
            })
       .def("clear",

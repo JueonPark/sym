@@ -1,5 +1,6 @@
 #include "reloc/DispatchResources.h"
 #include "DispatchGroupInternal.h"
+#include "DispatchResourcePool.h"
 #include "TransferResourcePolicy.h"
 #include "reloc/GatherPool.h"
 #ifdef RELOC_ENABLE_CUDA
@@ -17,6 +18,25 @@ namespace {
 TransferError fail(const char *code, const char *message) {
   return {code, message};
 }
+unsigned resourceThreads(const DispatchRequest *request,
+                         const GroupRequest *group,
+                         const TransferOptions &options) {
+  auto gpuRow = [](const DispatchRequest &r) {
+    return r.selected.id == kCudaDequantRelocate ||
+           r.selected.id == kCudaRelocateF32;
+  };
+  const bool gpuOnly =
+      (group || options.directDenseUpload) &&
+      (request ? gpuRow(*request)
+               : std::all_of(group->items.begin(), group->items.end(),
+                             [&](const auto &item) {
+                               const auto *r =
+                                   std::get_if<DispatchRequest>(&item);
+                               return r && gpuRow(*r);
+                             }));
+  unsigned threads = options.gather || gpuOnly ? 1 : options.gatherThreads;
+  return threads ? threads : std::max(1u, std::thread::hardware_concurrency());
+}
 #ifdef RELOC_ENABLE_CUDA
 // A freed scratch block is NOT made available within the same dispatch: a
 // launch on another queue may still be reading it. Only finish() recycles it.
@@ -31,6 +51,7 @@ class ScratchBackend : public CudaBackend {
   std::string scratchError_;
   TransferOptions options_;
   size_t requestPeak_ = 0;
+  std::shared_ptr<ScratchGauge> gauge_;
   size_t liveLimit() const {
     if (!options_.maxScratchBytes)
       return liveLimit_;
@@ -45,6 +66,7 @@ class ScratchBackend : public CudaBackend {
     else
       std::free(b.pointer);
     live_ -= b.bytes;
+    gauge_->remove(b.bytes);
     ++frees;
     b.pointer = nullptr;
   }
@@ -123,6 +145,7 @@ class ScratchBackend : public CudaBackend {
     }
     blocks_.push_back({p, capacity, device, pinned, true});
     live_ += capacity;
+    gauge_->add(capacity);
     requestPeak_ = std::max(requestPeak_, live_);
     peakLiveBytes = std::max(peakLiveBytes, live_);
     if (device)
@@ -137,9 +160,10 @@ public:
   uint64_t deviceAllocations = 0, hostAllocations = 0, frees = 0;
   uint64_t copyCalls = 0, eventRecords = 0, eventWaits = 0, callerWaits = 0;
   size_t peakLiveBytes = 0;
-  ScratchBackend(int streams, int device, size_t retained, size_t live)
+  ScratchBackend(int streams, int device, size_t retained, size_t live,
+                 std::shared_ptr<ScratchGauge> gauge)
       : CudaBackend(streams, device), retainedLimit_(retained),
-        liveLimit_(live) {}
+        liveLimit_(live), gauge_(std::move(gauge)) {}
   ~ScratchBackend() override {
     for (auto &b : blocks_)
       release(b);
@@ -219,9 +243,10 @@ struct Context : detail::QuarantineNode {
   unsigned threads;
   std::shared_ptr<void> owners;
   Context(int streams, int device, size_t retained, size_t live,
-          unsigned threads, std::vector<unsigned long> affinity)
-      : backend(streams, device, retained, live), affinity(std::move(affinity)),
-        threads(threads) {
+          unsigned threads, std::vector<unsigned long> affinity,
+          std::shared_ptr<ScratchGauge> gauge)
+      : backend(streams, device, retained, live, std::move(gauge)),
+        affinity(std::move(affinity)), threads(threads) {
     if (threads > 1 && !backend.failed())
       workers = std::make_unique<GatherPool>(threads);
   }
@@ -234,6 +259,9 @@ struct Completion::State {
   // Keep the caller's group, buffer owners, and borrowed worker pool alive.
   // Context also owns this token so unknown completion can quarantine it.
   std::shared_ptr<void> owners;
+  // Release admission only after the engine mutex is unlocked, including
+  // destructor, query and failure paths.
+  std::shared_ptr<void> lease;
   GroupRequest *group = nullptr;
   std::vector<group_detail::HostCompletion> host;
   ResourceStats before;
@@ -249,6 +277,7 @@ struct Resources::Impl {
   size_t retainedLimit, liveLimit;
   unsigned maxWorkers, maxStreams;
   ResourceStats counters;
+  std::shared_ptr<ScratchGauge> gauge;
   std::weak_ptr<Completion::State> pending;
 #ifdef RELOC_ENABLE_CUDA
   std::unique_ptr<Context> context;
@@ -265,9 +294,10 @@ struct Resources::Impl {
   }
 #endif
   bool valid() const { return process == detail::currentProcessIdentity(); }
-  Impl(size_t retained, size_t live, unsigned workers, unsigned streams)
+  Impl(size_t retained, size_t live, unsigned workers, unsigned streams,
+       std::shared_ptr<ScratchGauge> gauge)
       : retainedLimit(retained), liveLimit(live), maxWorkers(workers),
-        maxStreams(streams) {}
+        maxStreams(streams), gauge(std::move(gauge)) {}
   std::optional<TransferError> finishPending() {
     if (auto work = pending.lock()) {
       work->finishLocked(true);
@@ -276,6 +306,11 @@ struct Resources::Impl {
     return std::nullopt;
   }
 };
+
+std::shared_ptr<Resources> Resources::Pool::create(const Slot &s) {
+  return std::shared_ptr<Resources>(new Resources(
+      std::make_shared<Impl>(s.retained, s.live, s.workers, s.streams, gauge)));
+}
 
 bool Completion::State::finishLocked(bool wait) {
   if (complete)
@@ -365,20 +400,33 @@ TransferOutcome Completion::wait() {
     return {fail("process_mismatch", "completion belongs to another process")};
   if (GatherPool::inCallback())
     return {fail("reentrant_call", "cannot wait from a gather callback")};
-  std::lock_guard<std::mutex> lock(state_->owner->mu);
-  state_->finishLocked(true);
-  return state_->outcome;
+  std::shared_ptr<void> lease;
+  TransferOutcome outcome;
+  {
+    std::lock_guard<std::mutex> lock(state_->owner->mu);
+    state_->finishLocked(true);
+    lease = std::move(state_->lease);
+    outcome = state_->outcome;
+  }
+  return outcome;
 }
 std::variant<bool, TransferError> Completion::query() {
   if (!state_->owner->valid())
     return fail("process_mismatch", "completion belongs to another process");
   if (GatherPool::inCallback())
     return fail("reentrant_call", "cannot query from a gather callback");
-  std::lock_guard<std::mutex> lock(state_->owner->mu);
-  bool done = state_->finishLocked(false);
-  if (state_->outcome.error)
-    return *state_->outcome.error;
-  return done;
+  std::shared_ptr<void> lease;
+  std::variant<bool, TransferError> result;
+  {
+    std::lock_guard<std::mutex> lock(state_->owner->mu);
+    bool done = state_->finishLocked(false);
+    if (done)
+      lease = std::move(state_->lease);
+    result = state_->outcome.error
+                 ? std::variant<bool, TransferError>(*state_->outcome.error)
+                 : std::variant<bool, TransferError>(done);
+  }
+  return result;
 }
 std::optional<TransferError> Completion::waitStream(const void *consumer) {
   if (!state_->owner->valid())
@@ -399,16 +447,23 @@ std::optional<TransferError> Completion::waitStream(const void *consumer) {
 }
 
 Resources::Resources(size_t retained, size_t live, unsigned workers,
-                     unsigned streams)
-    : impl_(std::make_shared<Impl>(retained, live, workers, streams)) {
-  if (!streams)
-    throw std::invalid_argument("max_streams must be positive");
-}
+                     unsigned streams, unsigned contexts, unsigned perDevice,
+                     std::optional<uint64_t> timeout)
+    : pool_(std::make_shared<Pool>(retained, live, workers, streams, contexts,
+                                   perDevice, timeout)) {}
+Resources::Resources(std::shared_ptr<Impl> impl) : impl_(std::move(impl)) {}
 Resources::~Resources() {
+  if (pool_) {
+    if (!pool_->valid())
+      (void)new std::shared_ptr<Pool>(std::move(pool_));
+    return;
+  }
   if (!impl_->valid())
     (void)new std::shared_ptr<Impl>(std::move(impl_)); // no inherited cleanup
 }
 ResourceStats Resources::stats() const {
+  if (pool_)
+    return pool_->stats();
   if (!impl_->valid()) {
     ResourceStats s;
     s.processValid = false;
@@ -430,6 +485,8 @@ ResourceStats Resources::stats() const {
   return s;
 }
 std::optional<TransferError> Resources::clear() {
+  if (pool_)
+    return pool_->drain(false);
   if (!impl_->valid())
     return fail("process_mismatch",
                 "typed resources belong to another process");
@@ -448,6 +505,8 @@ std::optional<TransferError> Resources::clear() {
   return std::nullopt;
 }
 std::optional<TransferError> Resources::close() {
+  if (pool_)
+    return pool_->drain(true);
   if (!impl_->valid())
     return fail("process_mismatch",
                 "typed resources belong to another process");
@@ -486,6 +545,22 @@ Resources::executeImpl(DispatchRequest *request, GroupRequest *group,
                        int device, int streams, const TransferOptions &options,
                        std::shared_ptr<void> owners,
                        std::shared_ptr<Completion::State> pending) {
+  if (pool_) {
+    if (!owners)
+      return {fail("invalid_options",
+                   "typed execution needs strong buffer owners")};
+    if (request ? request->consumed : group->consumed)
+      return {fail("already_executed", "typed request already executed")};
+    auto acquired = pool_->acquire(
+        {device, streams, resourceThreads(request, group, options),
+         options.gather ? unsigned(options.gather->threadCount() - 1) : 0,
+         detail::currentCpuAffinity()});
+    if (auto *error = std::get_if<TransferError>(&acquired))
+      return {*error};
+    const auto &lease = std::get<std::shared_ptr<Pool::Lease>>(acquired);
+    return lease->resources->executeImpl(request, group, device, streams,
+                                         options, std::move(owners));
+  }
   if (!impl_->valid())
     return {
         fail("process_mismatch", "typed resources belong to another process")};
@@ -494,22 +569,7 @@ Resources::executeImpl(DispatchRequest *request, GroupRequest *group,
   if (!owners)
     return {
         fail("invalid_options", "typed execution needs strong buffer owners")};
-  auto gpuRow = [](const DispatchRequest &r) {
-    return r.selected.id == kCudaDequantRelocate ||
-           r.selected.id == kCudaRelocateF32;
-  };
-  const bool gpuOnly =
-      (group || options.directDenseUpload) &&
-      (request ? gpuRow(*request)
-               : std::all_of(group->items.begin(), group->items.end(),
-                             [&](const auto &item) {
-                               const auto *r =
-                                   std::get_if<DispatchRequest>(&item);
-                               return r && gpuRow(*r);
-                             }));
-  unsigned threads = options.gather || gpuOnly ? 1 : options.gatherThreads;
-  if (!threads)
-    threads = std::max(1u, std::thread::hardware_concurrency());
+  const unsigned threads = resourceThreads(request, group, options);
   if (threads - 1 > impl_->maxWorkers || streams < 1 ||
       unsigned(streams) > impl_->maxStreams)
     return {fail("resource_limit", "typed stream/worker limit exceeded")};
@@ -534,7 +594,7 @@ Resources::executeImpl(DispatchRequest *request, GroupRequest *group,
   if (!impl_->context) {
     impl_->context = std::make_unique<Context>(
         streams, device, impl_->retainedLimit, impl_->liveLimit, threads,
-        std::move(affinity));
+        std::move(affinity), impl_->gauge);
     ++s.contexts;
   } else
     ++s.hits;
@@ -624,6 +684,26 @@ Resources::submit(GroupRequest &group, const TransferOptions &options,
     return fail(
         "invalid_options",
         "asynchronous groups require CUDA and a positive scratch limit");
+  if (pool_) {
+    if (!owners)
+      return fail("invalid_options",
+                  "typed execution needs strong buffer owners");
+    if (group.consumed)
+      return fail("already_executed", "typed request already executed");
+    auto acquired = pool_->acquire(
+        {group.device, 1, resourceThreads(nullptr, &group, options),
+         options.gather ? unsigned(options.gather->threadCount() - 1) : 0,
+         detail::currentCpuAffinity()});
+    if (auto *error = std::get_if<TransferError>(&acquired))
+      return *error;
+    const auto &lease = std::get<std::shared_ptr<Pool::Lease>>(acquired);
+    auto result = lease->resources->submit(group, options, std::move(owners));
+    if (auto *completion = std::get_if<std::shared_ptr<Completion>>(&result)) {
+      (*completion)->state_->lease = lease;
+      pool_->submitted(*lease, *completion);
+    }
+    return result;
+  }
   auto state = std::make_shared<Completion::State>();
   state->owner = impl_;
   state->owners = owners;
