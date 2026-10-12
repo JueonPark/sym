@@ -59,6 +59,14 @@ def test_binary_change_even_with_preserved_mtime(compiler, identity_recipe, tmp_
     os.utime(binary, ns=(stat.st_atime_ns, stat.st_mtime_ns))
     c.compile(identity_recipe)
     assert c.cache_stats()["misses"] == 2
+    # A same-size rebuild with restored mtime still changes ctime.
+    stat = binary.stat()
+    with binary.open("r+b") as stream:
+        stream.seek(-9, 2)
+        stream.write(b"rebuilt!!")
+    os.utime(binary, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+    c.compile(identity_recipe)
+    assert c.cache_stats()["misses"] == 3
 
 
 def test_namespace_schema_recipe_and_direction_invalidations(compiler, identity_recipe, split_transpose_recipe, tmp_path):
