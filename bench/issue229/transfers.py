@@ -4,6 +4,7 @@ import argparse
 from contextlib import ExitStack
 import hashlib
 import json
+import os
 from pathlib import Path
 import sys
 import time
@@ -24,6 +25,22 @@ POLICIES = dict(pinned=dict(pinning='pinned'), pageable=dict(pinning='pageable')
 SIZES = dict(dlrm=[128, 512, 2048, 4096], gnn=[1024, 9085, 35180, 65539],
              kv_restore=[8, 33, 512, 2048], kv_evict=[8, 33, 512, 2048],
              weight=[(31, 33), (256, 1024), (1024, 1024), (1024, 4096), (4096, 1024), (2049, 1025)])
+
+
+def qualified_metadata():
+    result = metadata()
+    files = {Path(line.split()[-1]) for line in Path('/proc/self/maps').read_text().splitlines()
+             if 'libreloc_runtime.so' in line}
+    result['loaded_runtime_sha256'] = {str(f): hashlib.sha256(f.read_bytes()).hexdigest() for f in files}
+    result['benchmark_sha256'] = {str(f.relative_to(ROOT)): hashlib.sha256(f.read_bytes()).hexdigest()
+        for directory in ('issue219', 'issue221', 'issue223', 'issue224', 'issue225', 'issue229')
+        for f in (ROOT/'bench'/directory).glob('*.py')}
+    result['thread_environment'] = {k: os.environ.get(k) for k in (
+        'OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OMP_WAIT_POLICY', 'GOMP_SPINCOUNT',
+        'TORCHINDUCTOR_COMPILE_THREADS', 'TORCHINDUCTOR_CACHE_DIR')}
+    result['interop_threads'] = torch.get_num_interop_threads()
+    result['python'] = sys.version
+    return result
 
 
 def owner():
@@ -302,7 +319,7 @@ def main():
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
     torch.cuda.init()
-    result = dict(metadata=metadata(), configuration=vars(args)|{'output': str(args.output)}, families={})
+    result = dict(metadata=qualified_metadata(), configuration=vars(args)|{'output': str(args.output)}, families={})
     result['metadata']['harness_sha256'] = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     with torch.no_grad():
         for kind in args.families:

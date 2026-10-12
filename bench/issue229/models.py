@@ -14,7 +14,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'bench/issue225'))
 from bench.issue225 import compare
 from bench.issue219.request_overhead import Phases
-from bench.issue229.transfers import POLICIES, rotate
+from bench.issue229.transfers import POLICIES, rotate, qualified_metadata
 from reloc_torch import RelocBackend
 
 PATHS = ['torch', 'inductor'] + ['sym_'+p+'_inductor' for p in POLICIES]
@@ -44,7 +44,7 @@ def main():
     torch.backends.cudnn.allow_tf32 = False
     torch._dynamo.config.recompile_limit = 64
     torch.cuda.init()
-    result = dict(metadata=compare.metadata(), configuration=vars(args)|{'output': str(args.output)}, cases={})
+    result = dict(metadata=qualified_metadata(), configuration=vars(args)|{'output': str(args.output)}, cases={})
     result['metadata']['harness_sha256'] = {
         str(f.relative_to(ROOT)): hashlib.sha256(f.read_bytes()).hexdigest()
         for f in [Path(__file__), Path(compare.__file__), ROOT/'bench/issue225/models.py']}
