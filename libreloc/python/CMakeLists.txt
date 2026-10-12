@@ -53,6 +53,11 @@ endif()
 
 # Local CUDA fault qualification; excluded from wheels/install targets.
 if(SYM_BUILD_TESTS AND RELOC_ENABLE_CUDA AND UNIX AND NOT APPLE)
+  pybind11_add_module(cuda_kernel_test MODULE tests/CudaKernelHarness.cpp)
+  target_link_libraries(cuda_kernel_test PRIVATE reloc_runtime CUDA::cudart)
+  set_target_properties(cuda_kernel_test PROPERTIES
+    OUTPUT_NAME _cuda_kernel_test
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/python)
   add_library(typed_dispatch_faults SHARED tests/DispatchFaultShim.cpp)
   target_include_directories(typed_dispatch_faults PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
   target_link_libraries(typed_dispatch_faults PRIVATE ${CMAKE_DL_LIBS})

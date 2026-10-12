@@ -59,9 +59,11 @@ of that slot waits for the previous DMA. Each DMA waits for an available copy
 engine and its producer. Pageable submission may add a driver staging copy or
 host wait. Estimate this schedule, or calibrate its completed time directly.
 Do not add the full CPU time to the full DMA time and then charge overlap again.
-The typed CPU reference currently transforms the whole wire buffer before
-copying, so it needs a different schedule from the chunked layout pipeline.
-A direct typed upload has no Sym CPU transpose to overlap.
+Since #221, eligible CPU-producing typed H2D plans also use a bounded
+transform/copy ring. Whole-buffer fallback and `pipeline=False` still need a
+different schedule from either ring. A direct typed upload has no Sym CPU
+transpose to overlap. The current workload qualification, including cold,
+growth and reuse measurements, is in [the #229 report](../bench/issue229/README.md).
 
 Model inputs should include:
 
