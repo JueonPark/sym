@@ -51,7 +51,7 @@ if(SYM_BUILD_TESTS)
     ENVIRONMENT "PYTHONPATH=${CMAKE_BINARY_DIR}/python")
 endif()
 
-# Local CUDA fault qualification; excluded from wheels/install targets.
+# Local CUDA timing/fault qualification; excluded from wheels/install targets.
 if(SYM_BUILD_TESTS AND RELOC_ENABLE_CUDA AND UNIX AND NOT APPLE)
   pybind11_add_module(cuda_kernel_test MODULE tests/CudaKernelHarness.cpp)
   target_link_libraries(cuda_kernel_test PRIVATE reloc_runtime CUDA::cudart)

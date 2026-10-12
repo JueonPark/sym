@@ -1,0 +1,41 @@
+{
+  "base": "8342acc3e407f67477fa7181bad4d2719727a5d0",
+  "measured_source": "267115de4bd08558fcedf89e4bd00107279b5310",
+  "cpu": "AMD EPYC 7351",
+  "gpu": "NVIDIA GeForce RTX 2080 Ti, GPU 0",
+  "affinity": [
+    4,
+    5,
+    6,
+    7,
+    20,
+    21,
+    22,
+    23
+  ],
+  "cpu_numa_node": 1,
+  "compiler": "GNU C++ 11.4.0",
+  "cuda_toolkit": "12.5",
+  "runtime_cuda_architectures": [
+    75,
+    89
+  ],
+  "build": "Release (-O3); identical baseline/candidate flags; NVTX off for headline, on only for separate traces",
+  "nsight_systems": "2024.2.3.38",
+  "clocks": "unlocked; observed clocks and driver recorded in every run",
+  "frozen_baseline": "Reused /tmp/sym-228-build; executable sources at its 1d94674 revision are identical to 8342acc under libreloc/ and sym/.",
+  "validation": {
+    "ctest_passed": 6,
+    "compiler_tests_passed": 41,
+    "python_passed": 1214,
+    "python_skipped": 4,
+    "workload_passed": 58,
+    "release_dequant_tests_passed": 4,
+    "isolated_processes": 18,
+    "foreign_build_or_gpu_processes": [],
+    "model_warm_recompiles": 0
+  },
+  "kernel_harness_sha256": {
+    "_cuda_kernel_test.cpython-314-x86_64-linux-gnu.so": "43829a8f0d1d0e0f586329bdcd3671c998d299091d0fcab3da551c5bf724557e"
+  }
+}
