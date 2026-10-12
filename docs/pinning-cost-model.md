@@ -26,6 +26,10 @@ this policy neither registers that input nor adds a staging copy to satisfy a
 forced mode. Typed parameter uploads are assessed independently of the weights.
 The layout ring uses total wire bytes for comparison, then reports its actual
 allocated capacity and active slots separately.
+The typed H2D ring introduced in #221 assesses each staging slot's chunk
+bytes. Thus an explicit 8 MiB gate can remain pageable for a much larger
+request using approximately 1 MiB chunks. Read the per-stage decisions rather
+than inferring memory kind from the total tensor size.
 
 A configured threshold is meaningful only within its measured device,
 direction, layout, CPU/NUMA placement, thread count, chunk schedule, budgets and
