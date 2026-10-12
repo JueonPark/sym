@@ -22,6 +22,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <random>
 #include <vector>
 
@@ -313,6 +314,95 @@ TEST(CudaDequantRelocate, MatchesHostOracle) {
     ASSERT_EQ(cudaSuccess, cudaDeviceSynchronize());
     std::vector<float> got = download<float>(dDst, want.size());
     ASSERT_EQ(0, std::memcmp(want.data(), got.data(), want.size() * 4));
+  }
+}
+
+TEST(CudaDequantRelocate, TileEdgesFreshScalesAndOffsetPointers) {
+  cudaStream_t stream = nullptr;
+  ASSERT_EQ(cudaSuccess,
+            cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+  struct CloseStream {
+    cudaStream_t stream;
+    ~CloseStream() { cudaStreamDestroy(stream); }
+  } close{stream};
+  for (auto shape : {std::pair<int64_t, int64_t>{1, 1},
+                     {1, 65},
+                     {65, 1},
+                     {31, 33},
+                     {32, 32},
+                     {33, 31},
+                     {129, 517},
+                     {1025, 2049}}) {
+    const auto b = transposePlan(shape.first, shape.second);
+    const size_t count = shape.first * shape.second;
+    std::vector<int8_t> source(count + 2, 17);
+    std::vector<float> scales(shape.first), sentinel(count + 2, -12345.f);
+    for (size_t i = 0; i < count; ++i)
+      source[i + 1] = static_cast<int8_t>(int(i % 256) - 128);
+    DeviceBuffer src(source.size()), scale(scales.size() * 4),
+        dst(sentinel.size() * 4), control(sentinel.size() * 4);
+    ASSERT_TRUE(src.valid() && scale.valid() && dst.valid() && control.valid());
+    for (int revision = 0; revision < 2; ++revision) {
+      SCOPED_TRACE(::testing::Message() << shape.first << "x" << shape.second
+                                        << " revision " << revision);
+      for (size_t c = 0; c < scales.size(); ++c)
+        scales[c] = c % 3 == 0   ? -0.f
+                    : c % 3 == 1 ? std::numeric_limits<float>::denorm_min()
+                                 : (revision + 1) * .007f * float(c + 1);
+      upload(src, source);
+      upload(scale, scales);
+      upload(dst, sentinel);
+      upload(control, sentinel);
+      // Pageable cudaMemcpy may return after staging, before the default
+      // stream copy completes. The nonblocking consumer does not wait for it.
+      ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(nullptr));
+      reloc::cuda::dequantRelocateS8F32(b, src.as<int8_t>() + 1,
+                                        dst.as<float>() + 1, scale.as<float>(),
+                                        stream);
+      reloc::cuda::dequantRelocateNaiveS8F32(b, src.as<int8_t>() + 1,
+                                             control.as<float>() + 1,
+                                             scale.as<float>(), stream);
+      ASSERT_EQ(cudaSuccess, cudaGetLastError());
+      ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+      auto got = download<float>(dst, sentinel.size());
+      auto generic = download<float>(control, sentinel.size());
+      auto expected = cpuDequantRelocate(
+          b, std::vector<int8_t>(source.begin() + 1, source.end() - 1), scales);
+      EXPECT_EQ(got.front(), sentinel.front());
+      EXPECT_EQ(got.back(), sentinel.back());
+      EXPECT_EQ(0, std::memcmp(got.data() + 1, expected.data(), count * 4));
+      EXPECT_EQ(0, std::memcmp(got.data(), generic.data(), got.size() * 4));
+      for (size_t i = 1; i <= count; ++i)
+        source[i] = static_cast<int8_t>(int((i + 93) % 256) - 128);
+    }
+  }
+}
+
+TEST(CudaDequantRelocate, GenericRankAndStrideFallback) {
+  reloc::BoundPlan rank3;
+  rank3.extents = {7, 5, 3};
+  rank3.srcStrides = {1, 21, 7};
+  rank3.dstStrides = {15, 3, 1};
+  rank3.elementSize = 4;
+  auto strided = transposePlan(17, 35);
+  strided.srcStrides = {2, 34};
+  for (const auto &b : {rank3, strided}) {
+    std::vector<int8_t> src(maxSrcOffset(b) + 1);
+    for (size_t i = 0; i < src.size(); ++i)
+      src[i] = static_cast<int8_t>(int(i % 256) - 128);
+    std::vector<float> scales(b.extents[0], .03125f);
+    auto expected = cpuDequantRelocate(b, src, scales);
+    DeviceBuffer input(src.size()), scale(scales.size() * 4),
+        dst(expected.size() * 4);
+    ASSERT_TRUE(input.valid() && scale.valid() && dst.valid());
+    upload(input, src);
+    upload(scale, scales);
+    reloc::cuda::dequantRelocateS8F32(b, input.as<int8_t>(), dst.as<float>(),
+                                      scale.as<float>());
+    ASSERT_EQ(cudaSuccess, cudaGetLastError());
+    ASSERT_EQ(cudaSuccess, cudaDeviceSynchronize());
+    auto got = download<float>(dst, expected.size());
+    EXPECT_EQ(0, std::memcmp(got.data(), expected.data(), expected.size() * 4));
   }
 }
 

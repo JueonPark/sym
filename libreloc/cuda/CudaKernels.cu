@@ -182,6 +182,26 @@ __global__ void dequantRelocateKernel(const int8_t *src, float *dst, Axes a,
   dst[dstOff] = static_cast<float>(src[srcOff]) * scales[c0];
 }
 
+// Dense INT8 [in,out] -> FP32 [out,in]. Scale by the input column before
+// transposing a padded shared tile, so both global reads and writes coalesce.
+__global__ void dequantTransposeTiledKernel(const int8_t *src, float *dst,
+                                            const float *scales, int64_t rows,
+                                            int64_t cols) {
+  __shared__ float tile[kTile][kTile + 1];
+  int64_t x = blockIdx.x * static_cast<int64_t>(kTile) + threadIdx.x;
+  int64_t y = blockIdx.y * static_cast<int64_t>(kTile) + threadIdx.y;
+  for (int j = 0; j < kTile; j += kBlockRows)
+    if (x < cols && y + j < rows)
+      tile[threadIdx.y + j][threadIdx.x] =
+          static_cast<float>(src[(y + j) * cols + x]) * scales[x];
+  __syncthreads();
+  x = blockIdx.y * static_cast<int64_t>(kTile) + threadIdx.x;
+  y = blockIdx.x * static_cast<int64_t>(kTile) + threadIdx.y;
+  for (int j = 0; j < kTile; j += kBlockRows)
+    if (x < rows && y + j < cols)
+      dst[(y + j) * rows + x] = tile[threadIdx.x][threadIdx.y + j];
+}
+
 __global__ void scatterRandomKernel(const float *src, const int64_t *idx,
                                     float *dst, int64_t count) {
   int64_t i = blockIdx.x * static_cast<int64_t>(blockDim.x) + threadIdx.x;
@@ -267,14 +287,34 @@ void unpackS4S8(const uint8_t *dSrc, int8_t *dDst, int64_t pairs,
                      asStream(stream)>>>(dSrc, dDst, pairs);
 }
 
-void dequantRelocateS8F32(const BoundPlan &bound, const int8_t *dSrc,
-                          float *dDst, const float *dScales, void *stream) {
+void dequantRelocateNaiveS8F32(const BoundPlan &bound, const int8_t *dSrc,
+                               float *dDst, const float *dScales,
+                               void *stream) {
   assert(bound.extents.size() >= 2 &&
          "per-channel scale needs a distinct outer axis");
   Axes a = packAxes(bound);
   int64_t total = totalElements(bound);
   dequantRelocateKernel<<<static_cast<unsigned>(gridFor(total)), kThreads, 0,
                           asStream(stream)>>>(dSrc, dDst, a, dScales, total);
+}
+
+void dequantRelocateS8F32(const BoundPlan &bound, const int8_t *dSrc,
+                          float *dDst, const float *dScales, void *stream) {
+  // Keep the generic fused kernel for every other stride/rank and for shapes
+  // exceeding CUDA's 2-D launch limits. Offsets are handled by the caller.
+  if (!isTranspose2D(bound) || !bound.padRegions.empty() ||
+      bound.elementSize != 4 || bound.extents[0] <= 0 ||
+      bound.extents[1] <= 0 || (bound.extents[0] - 1) / kTile >= 2147483647 ||
+      (bound.extents[1] - 1) / kTile >= 65535) {
+    dequantRelocateNaiveS8F32(bound, dSrc, dDst, dScales, stream);
+    return;
+  }
+  const int64_t rows = bound.extents[1], cols = bound.extents[0];
+  dim3 block(kTile, kBlockRows);
+  dim3 grid(static_cast<unsigned>((cols + kTile - 1) / kTile),
+            static_cast<unsigned>((rows + kTile - 1) / kTile));
+  dequantTransposeTiledKernel<<<grid, block, 0, asStream(stream)>>>(
+      dSrc, dDst, dScales, rows, cols);
 }
 
 void scatterRandomF32(const float *dSrc, const int64_t *dIdx, float *dDst,

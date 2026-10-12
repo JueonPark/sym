@@ -6,6 +6,11 @@ pageable default when no threshold is supplied. #200 introduced the policy;
 qualifies mode changes and ownership. The proposed adaptive model is documented
 in [pinning-cost-model.md](pinning-cost-model.md) and tracked separately in #208.
 
+These are historical #189 results. See [the #229 qualification](../bench/issue229/README.md)
+for current-main typed/indexed pipelines, per-policy lifecycle measurements,
+model-inclusive comparisons and targeted GPU kernel evidence. The adaptive
+predictor remains unimplemented; neither report establishes a universal gate.
+
 [Standalone visual report (download HTML)](https://raw.githubusercontent.com/JueonPark/sym/72f9d89fcc06090bddb0f4620ec59b805d574b97/bench/results/issue-189-qualification/report.html)
 · [Raw calls, plots, traces and validation](https://github.com/JueonPark/sym/tree/72f9d89fcc06090bddb0f4620ec59b805d574b97/bench/results/issue-189-qualification)
 

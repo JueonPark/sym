@@ -81,9 +81,16 @@ void unpackS4S8(const uint8_t *dSrc, int8_t *dDst, int64_t pairs,
 /// -> fp32 in the plan's DST layout, scaled per coalesced outer channel
 /// (dScales: device array of extents[0] floats). Preconditions (asserted
 /// host-side): elementSize == 4, no pads, 2 <= rank <= 8.
+/// Dense 2-D transposes use a coalesced 32x32 shared tile within CUDA's
+/// 2-D grid limits; other layouts retain the generic fused kernel.
 void dequantRelocateS8F32(const BoundPlan &bound, const int8_t *dSrc,
                           float *dDst, const float *dScales,
                           void *stream = nullptr);
+
+/// Generic fused control for dequantRelocateS8F32; same preconditions.
+void dequantRelocateNaiveS8F32(const BoundPlan &bound, const int8_t *dSrc,
+                               float *dDst, const float *dScales,
+                               void *stream = nullptr);
 
 /// `scatter_random_f32` (EXP-4's pathological data-dependent case):
 /// dDst[dIdx[i]] = dSrc[i]. dIdx: device array of `count` int64 indices;
