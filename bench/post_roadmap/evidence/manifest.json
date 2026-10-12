@@ -1,0 +1,82 @@
+{
+  "source_revision": "446bc9f95ea1a31809c73384639c74c06ddf9227",
+  "harness_sha256": {
+    "bench/issue219/summarize.py": "c340cbf9567a832cf52a671f500275a5ef893cbf6f0fd286e36fe60ef3b1f782",
+    "bench/issue219/analyze_trace.py": "1066341996a5b3ad426b737ef6cc0565267b073b192d748f7710ee1788d43bf0",
+    "bench/issue219/request_overhead.py": "70c70e81038a6d9635646862e05aa713ee5e5372a786207ebe9b3bb917c6c063",
+    "bench/issue221/analyze_trace.py": "65d121dc97e8887d9151a0523e7c4634d17d244bbd26d7c922222ab00536f076",
+    "bench/issue221/compact_evidence.py": "744d5f7e9d6d4553af46e9f7eb7ac2bfff87548d606f3b9c6387b0616aef7369",
+    "bench/issue221/typed_pipeline.py": "6b6206ed7730ac7aed1820c03f08ee7fe4dec20afabe49f11e4bca36d607a519",
+    "bench/issue221/torch_memory.py": "9f38782b4f49182542f4f96c15ed7614040fa1a26923374f7ef841e15c3e31b3",
+    "bench/issue223/analyze_trace.py": "b1ad8ea5b3f2770db6f213cbffc9a96dd212624c39864afda7617a3e5b854a46",
+    "bench/issue223/model_prefetch.py": "84db3c16bfb020a82ba35c8cacfb056a70fde2e180ac02a60af8390b1929da3b",
+    "bench/issue223/compact_evidence.py": "228294eb467e256a4ebb1dff0055502186e5a69242459393c5e27b656e75013e",
+    "bench/issue224/prepared_wire.py": "05bd81ebe0d6a9f2bf3d7c417ec67d859c30e1b61e8ccce19372ff548fae422c",
+    "bench/issue224/compact_evidence.py": "ab5c02582b31048a08c5a72b22fa94364e735ff893808e6ac510eb5d7a557133",
+    "bench/issue225/models.py": "dba399eaf82ab8892fb2f805113269e17088c719f2817ea7f79af5171d93fa69",
+    "bench/issue225/compare.py": "a6656b2513fe0b1c30b00de47b06fdefdbdf0740c1cce51ae53e070492e4e092",
+    "bench/issue225/compact_evidence.py": "3e0a7b67e5760c24ab3c19f4e6ffe28e1455cacbca95d09f52a0ef327e301eb9",
+    "bench/issue227/run.py": "5e9f5c63da08abd5ce9e7f890a85e98ac6851d5ea40b1819ade8a3cc8138434c",
+    "bench/issue227/placement.py": "16ba3e3af88010c7019b1de6394d521365282985859eb2191ebf3a639aeb4156",
+    "bench/issue227/compact.py": "4c53e3fe2969e4950ed6d937e4f4b4cbe9b923e5a79af6b303ce187045f05801",
+    "bench/issue227/decode.py": "ce031ed7845137859a9db5804d53b511698c8255c678644b5124f02d458583b5",
+    "bench/issue227/context.py": "27528b323d83494fd39c658470e4dfa25c70f7b8ca458abd02c5014c2cbdfa8e",
+    "bench/issue229/run.py": "d72eb30c05f048ffaf0fe37570b738cd0c11534c6f522d58b1134a05da04b3af",
+    "bench/issue229/models.py": "ee454b19df43a1a773eb8c045c37c5b0d943a08835bdd32b71a33880dc76b317",
+    "bench/issue229/compact.py": "20e32748d36e8c475a893303a0ec62fe5e4b6b5bc8073f9abdbff34a979a1497",
+    "bench/issue229/analyze.py": "a3b22b961323e8771fbf2e9d0bd5684f340dfe691f2e95786687f99c97299680",
+    "bench/issue229/transfers.py": "eaf74b0a3458e5e0381d41b9ac36f52a2821c979b1a6b8865e0be250f64471ff",
+    "bench/post_roadmap/run.py": "823eb2406ad7d85c7c484e7e0201009fd2b74d91e1ac72ee1140e5efbc3fd30b",
+    "bench/post_roadmap/compare.py": "3c33e49a17367ad4c19aafe87826a3df1e3174bc0662716921bb47a62ef9578b"
+  },
+  "analysis_sha256": "a0e28082a172bfd645fed71f81f4b2127d43252c2a1c97c3a23fca4780d25866",
+  "criterion": "At least 5% lower p50 than both Torch controls in all three rounds",
+  "qualifying_wins": [],
+  "files": {
+    "workloads-r1.json": {
+      "bytes": 143232,
+      "gzip_bytes": 20052,
+      "sha256": "3e87719fc1d7a6724502997299e62863dedc295eb03970117a7b8d07bb3330a7"
+    },
+    "calibration-r1.json": {
+      "bytes": 255201,
+      "gzip_bytes": 84828,
+      "sha256": "923397d491d39fe2cbb84a33685977dd9d32d6d91c4e26e7c213621b82512ef5"
+    },
+    "calibration-r1.profile.json": {
+      "bytes": 151515,
+      "gzip_bytes": 5140,
+      "sha256": "85f4c4f8badfa6a60ebca6fe6ee7ebcba9a706a4a7d3aa011d74112765c855f8"
+    },
+    "workloads-r2.json": {
+      "bytes": 143428,
+      "gzip_bytes": 20017,
+      "sha256": "04800cc3c688e498b2712aa89aabad5a583c001519d96b0816d6bd33b81e8ffc"
+    },
+    "calibration-r2.json": {
+      "bytes": 255142,
+      "gzip_bytes": 84750,
+      "sha256": "4ce5ea239b9cb559b939daa7017c49262c28db97ff1294e0eafeff94ef2429b1"
+    },
+    "calibration-r2.profile.json": {
+      "bytes": 151436,
+      "gzip_bytes": 5114,
+      "sha256": "77310eea388b4b1a8235627330b68bf083584cf68499e79438ba302d8c069163"
+    },
+    "workloads-r3.json": {
+      "bytes": 143431,
+      "gzip_bytes": 20070,
+      "sha256": "8120aea5f466bb390ead76d3ad421373c80cf8f8442a6ce2352dfc237b07bcef"
+    },
+    "calibration-r3.json": {
+      "bytes": 255159,
+      "gzip_bytes": 84559,
+      "sha256": "c2ab790c926681a39b2195d633b45f75351f6c49a89ef04c4eff773d38f9cc96"
+    },
+    "calibration-r3.profile.json": {
+      "bytes": 151562,
+      "gzip_bytes": 5117,
+      "sha256": "ee3f7ac09af371b60aafa4becb69445955277bc2f217a81f4afc2661bb4423ff"
+    }
+  }
+}
