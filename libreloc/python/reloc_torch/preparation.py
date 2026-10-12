@@ -80,9 +80,9 @@ class PreparedTransfers:
         Already-initialized processes measure only this call's work. Process
         import and CUDA driver startup must be measured by the deployment caller.
         """
+        self._check_process()
         import torch
 
-        self._check_process()
         with self._lock:
             self._check_open()
             device = torch.device(device)
@@ -137,9 +137,9 @@ class PreparedTransfers:
         creation, real CPU/GPU work and completion. It is not allocation-only.
         No candidate is selected by timing this operation.
         """
+        self._check_process()
         import torch
 
-        self._check_process()
         with self._lock:
             self._check_open()
             destination = torch.device(device)

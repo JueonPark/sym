@@ -46,11 +46,11 @@ def main(args):
         output.write_text(json.dumps(result, separators=(',', ':')) + '\n')
         print(name, 'first_ms', round(result.get('samples_ms', [0])[0], 3), flush=True)
         assert not observed, 'contaminated run'
-    for round in range(1, 4):
-        paths = PATHS[round:] + PATHS[:round]
+    for round_index in range(1, 4):
+        paths = PATHS[round_index:] + PATHS[:round_index]
         for case in ['small', 'dlrm', 'kv']:
             for initialized in [False, True]:
-                prefix = f'r{round}-{case}-'+('initialized' if initialized else 'cold')
+                prefix = f'r{round_index}-{case}-'+('initialized' if initialized else 'cold')
                 cache = args.output / (prefix + '-artifact-cache')
                 run(prefix+'-prime', 'sym_cached', case, cache, initialized, prime=True)
                 for path in paths:
