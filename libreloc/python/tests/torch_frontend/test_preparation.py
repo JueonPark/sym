@@ -46,6 +46,7 @@ def test_preparation_live_inputs_outputs_and_no_example_ownership(compiler, cuda
                                 transfer_options={"pinning": "pageable", "gather_threads": 2})
     session.warm("test", source, cuda_device, **args)
     before = session.stats()
+    assert before["resources"]["requests"] + before["resources"]["typed"]["requests"] == 1
     source.add_(1)
     index[0] = 2
     scale.mul_(2)
@@ -60,6 +61,7 @@ def test_preparation_live_inputs_outputs_and_no_example_ownership(compiler, cuda
     assert first.data_ptr() != second.data_ptr()
     assert not torch.equal(first, second)
     after = session.stats()
+    assert after["resources"]["requests"] + after["resources"]["typed"]["requests"] == 3
     assert after["resources"]["typed"]["context_creations"] == before["resources"]["typed"]["context_creations"]
     assert after["serving_calls"] == 2 and after["warm_calls"] == 1
     assert after["first_execution_ms"] > 0 and after["subsequent_execution_ms"] > 0

@@ -1,7 +1,6 @@
 """Persistent compiler cache admission, invalidation and process sharing."""
 import json
 import os
-from pathlib import Path
 import shutil
 import subprocess
 import sys
@@ -111,7 +110,9 @@ from reloc_torch.artifact import CompiledRecipe
 assert 'torch' not in sys.modules
 recipe = CompiledRecipe.load(sys.argv[1]).recipe
 c = CompilerClient(sys.argv[2], cache_dir=sys.argv[3])
-c.compile(recipe)
+with PreparedTransfers({'recipe': recipe}, compiler=c) as prepared:
+    assert prepared.stats()['resources']['contexts'] == 0
+    assert 'torch' not in sys.modules
 print(c.cache_stats()['misses'])
 '''
     artifact = tmp_path / "input.json"
