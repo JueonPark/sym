@@ -525,3 +525,10 @@ The benchmark includes matched Torch and Inductor transfer-conversion prefetch,
 identical model compute, startup/drain diagnostics and cases with little or no
 lookahead. Measurements and trace evidence are in
 [`bench/issue223/README.md`](../bench/issue223/README.md).
+
+## Cold-start preparation
+
+Use [`PreparedTransfers` and the opt-in compiler artifact cache](transfer-preparation.md)
+to compile expected recipes and explicitly warm representative shapes before
+serving. Live inputs remain validated on every call; resource capacities are
+bounded and setup/retirement are reported separately from serving latency.

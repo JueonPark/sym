@@ -1,0 +1,29 @@
+{
+  "measured_frontend_revision": "fe50c569c59440ee2085a393dc5139f008295229",
+  "baseline_revision": "14cd89f284973ed5852c3b3ecd0edd70a4d6e27b",
+  "native_build": "/tmp/sym-229-build",
+  "python_package": "/tmp/sym-230-python",
+  "build": "Release -O3, CUDA enabled, NVTX disabled, CUDA architectures 75;89",
+  "cpu": "Architecture:                            x86_64\nCPU op-mode(s):                          32-bit, 64-bit\nAddress sizes:                           43 bits physical, 48 bits virtual\nByte Order:                              Little Endian\nCPU(s):                                  32\nOn-line CPU(s) list:                     0-31\nVendor ID:                               AuthenticAMD\nModel name:                              AMD EPYC 7351 16-Core Processor\nCPU family:                              23\nModel:                                   1\nThread(s) per core:                      2\nCore(s) per socket:                      16\nSocket(s):                               1\nStepping:                                2\nFrequency boost:                         enabled\nCPU max MHz:                             2400.0000\nCPU min MHz:                             1200.0000\nBogoMIPS:                                4790.96\nFlags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good nopl nonstop_tsc cpuid extd_apicid amd_dcm aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpb hw_pstate ssbd ibpb vmmcall fsgsbase bmi1 avx2 smep bmi2 rdseed adx smap clflushopt sha_ni xsaveopt xsavec xgetbv1 xsaves clzero xsaveerptr arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif overflow_recov succor smca sev sev_es ibpb_exit_to_user\nVirtualization:                          AMD-V\nL1d cache:                               512 KiB (16 instances)\nL1i cache:                               1 MiB (16 instances)\nL2 cache:                                8 MiB (16 instances)\nL3 cache:                                64 MiB (8 instances)\nNUMA node(s):                            4\nNUMA node0 CPU(s):                       0-3,16-19\nNUMA node1 CPU(s):                       4-7,20-23\nNUMA node2 CPU(s):                       8-11,24-27\nNUMA node3 CPU(s):                       12-15,28-31\nVulnerability Gather data sampling:      Not affected\nVulnerability Indirect target selection: Not affected\nVulnerability Itlb multihit:             Not affected\nVulnerability L1tf:                      Not affected\nVulnerability Mds:                       Not affected\nVulnerability Meltdown:                  Not affected\nVulnerability Mmio stale data:           Not affected\nVulnerability Reg file data sampling:    Not affected\nVulnerability Retbleed:                  Mitigation; untrained return thunk; SMT vulnerable\nVulnerability Spec rstack overflow:      Mitigation; Safe RET\nVulnerability Spec store bypass:         Mitigation; Speculative Store Bypass disabled via prctl\nVulnerability Spectre v1:                Mitigation; usercopy/swapgs barriers and __user pointer sanitization\nVulnerability Spectre v2:                Mitigation; Retpolines; IBPB conditional; STIBP disabled; RSB filling; PBRSB-eIBRS Not affected; BHI Not affected\nVulnerability Srbds:                     Not affected\nVulnerability Tsa:                       Not affected\nVulnerability Tsx async abort:           Not affected\nVulnerability Vmscape:                   Mitigation; IBPB before exit to userspace\n",
+  "gpu": "NVIDIA GeForce RTX 2080 Ti, 595.71.05, 00000000:21:00.0\nNVIDIA GeForce RTX 2080 Ti, 595.71.05, 00000000:22:00.0\nNVIDIA GeForce RTX 2080 Ti, 595.71.05, 00000000:41:00.0\nNVIDIA GeForce RTX 2080 Ti, 595.71.05, 00000000:61:00.0\n",
+  "scripts": {
+    "bench/issue230/compiler_cache.py": "2f00b555134da81d3b9df29b381c513b06fcecc76695babecf4b4847d70cbc4f",
+    "bench/issue230/run.py": "6f9b3036d29b919023ada864616adc22eccbf77c0f60ed51993cc626dc04f0b5",
+    "bench/issue230/startup.py": "7ba880f916d9a25e744ecdad9e0d4a1960984adb9f1910c42d49e172e692fdb3",
+    "bench/issue230/summarize.py": "d8571bae3872a320b31a798e17634b80cf1ef70540e7c5d26f0485b1b813f927"
+  },
+  "toolchain": {
+    "nvcc": "12.5",
+    "gcc": "11.4.0",
+    "python": "3.14.7",
+    "torch": "2.14.0+cu126"
+  },
+  "thread_environment": {
+    "OMP_NUM_THREADS": "8",
+    "MKL_NUM_THREADS": "8",
+    "OMP_WAIT_POLICY": "PASSIVE",
+    "GOMP_SPINCOUNT": "0",
+    "TORCHINDUCTOR_COMPILE_THREADS": "1"
+  },
+  "note": "Runtime/exporter binary and per-file frontend digests are repeated in the raw samples; no native source changes."
+}
