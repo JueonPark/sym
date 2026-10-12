@@ -30,6 +30,7 @@ __all__ = (
     "eager_transfers",
     "prepare_weights",
     "PreparedWeights",
+    "PreparedTransfers",
     "PreparedWireWeights",
     "TransferResources",
     "AUTO",
@@ -43,6 +44,10 @@ __all__ = (
 
 
 def __getattr__(name):
+    if name == "PreparedTransfers":
+        from .preparation import PreparedTransfers
+        globals()[name] = PreparedTransfers
+        return PreparedTransfers
     if name in {"PlacementPolicy", "PlacementProfile"}:
         from .placement import PlacementPolicy, PlacementProfile
         globals().update(PlacementPolicy=PlacementPolicy, PlacementProfile=PlacementProfile)

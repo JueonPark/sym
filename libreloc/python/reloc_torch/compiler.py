@@ -1,4 +1,5 @@
 """Subprocess bridge for the supported R1/C3 relocation-plan exporter."""
+import hashlib
 import os
 from pathlib import Path
 import subprocess
@@ -17,12 +18,20 @@ from .mlir_emit import emit_mlir
 class CompilerClient:
     """Invoke the supported exporter and admit only associated artifacts."""
 
-    def __init__(self, executable):
+    def __init__(self, executable, *, cache_dir=None, cache_max_bytes=64 << 20,
+                 cache_max_entries=128, cache_namespace="default"):
         self.executable = Path(executable)
         self._identity = None
+        self._binary_signature = self._binary_digest = None
+        self._store = None
+        if cache_dir is not None:
+            from .artifact_store import ArtifactStore
+            self._store = ArtifactStore(cache_dir, max_bytes=cache_max_bytes,
+                                        max_entries=cache_max_entries,
+                                        namespace=cache_namespace)
 
     @classmethod
-    def from_environment(cls, environ=None):
+    def from_environment(cls, environ=None, **options):
         """Resolve explicit overrides first, then this installation's exporter."""
         environ = os.environ if environ is None else environ
         configured = environ.get("SYM_RELOC_EXPORT")
@@ -39,7 +48,7 @@ class CompilerClient:
                         "no bundled compiler is installed"
                     ) from error
                 configured = native_tool("sym-reloc-export")
-        client = cls(configured)
+        client = cls(configured, **options)
         if not client.executable.is_file() or not os.access(client.executable, os.X_OK):
             raise RuntimeError(f"configured R1 exporter is absent or not executable: {client.executable}")
         return client
@@ -56,9 +65,42 @@ class CompilerClient:
             status = os.stat(self.executable)
         except OSError:
             return self._identity
-        return f"{self._identity}#{status.st_size}-{status.st_mtime_ns}"
+        return f"{self._identity}#{status.st_size}-{status.st_mtime_ns}-{status.st_ctime_ns}"
+
+    def cache_stats(self):
+        """Disk cache counters, or None when caching is disabled (the default)."""
+        return None if self._store is None else self._store.stats()
+
+    def _content_identity(self):
+        status = self.executable.stat()
+        signature = (str(self.executable.resolve()), status.st_dev, status.st_ino,
+                     status.st_size, status.st_mtime_ns, status.st_ctime_ns)
+        if signature != self._binary_signature:
+            with self.executable.open("rb") as stream:
+                hasher = hashlib.sha256()
+                for block in iter(lambda: stream.read(1 << 20), b""):
+                    hasher.update(block)
+                digest = hasher.hexdigest()
+            self._binary_signature, self._binary_digest = signature, digest
+        return self._binary_digest
 
     def compile(self, recipe):
+        if self._store is None:
+            return self._compile(recipe)
+        identity = self._content_identity()
+
+        def compile_stable():
+            result = self._compile(recipe)
+            if identity != self._content_identity():
+                raise RuntimeError("compiler changed during compilation; retry preparation")
+            return result
+
+        result = self._store.get_or_compile(recipe, identity, compile_stable)
+        if identity != self._content_identity():
+            raise RuntimeError("compiler changed during cache lookup; retry preparation")
+        return result
+
+    def _compile(self, recipe):
         mlir = emit_mlir(recipe).encode("utf-8")
         with tempfile.TemporaryDirectory(prefix="reloc-compile-") as directory:
             root = Path(directory)
