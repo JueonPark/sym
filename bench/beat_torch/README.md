@@ -18,14 +18,14 @@ Torch controls.
 
 | Regime | Eager Torch | Inductor | Sym + Inductor (previous arm) | `sym_fast` | vs best control |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| DLRM, batch 512 | 3.705 [3.660–3.761] | 3.852 [3.791–3.887] | 4.463 [4.451–4.570] | **2.350** [2.314–2.357] | −36.6% (every round) |
-| DLRM, batch 2048 | 8.063 [7.876–8.204] | 8.203 [7.972–8.302] | 8.997 [8.767–9.107] | **5.287** [4.822–5.462] | −34.4% (every round) |
-| GraphSAGE, 256 seeds | **1.018** [1.001–1.030] | 1.339 [1.335–1.354] | 1.909 [1.892–1.941] | 1.307 [1.305–1.343] | +28.4% (−2.4% vs Inductor) |
-| GraphSAGE, 1024 seeds | 4.095 [4.091–4.124] | 2.976 [2.968–2.976] | 3.427 [3.423–3.460] | **2.739** [2.646–2.743] | −8.0% (every round) |
-| GPT, four decode steps | 27.067 [26.213–27.117] | 30.176 [30.084–30.550] | 43.663 [43.656–43.683] | **20.378** [20.373–20.825] | −24.7% (every round) |
-| GPT, 256-token prefill | 6.931 [6.930–6.963] | 6.476 [6.453–6.497] | 6.420 [6.409–6.453] | **5.968** [5.967–5.993] | −7.8% (every round) |
-| MoE, one token | 3.132 [3.113–3.134] | 4.439 [4.413–4.466] | 4.653 [4.648–4.756] | **3.060** [3.047–3.103] | −2.3% |
-| MoE, 512 tokens | 10.483 [10.438–10.491] | 16.440 [16.283–16.451] | 17.391 [17.321–17.665] | **10.131** [10.118–10.219] | −3.4% |
+| DLRM, batch 512 | 3.744 [3.612–3.765] | 3.816 [3.695–3.870] | 4.527 [4.518–4.529] | **2.246 [2.237–2.254]** | -40.0% (every round) |
+| DLRM, batch 2048 | 7.892 [7.889–7.979] | 7.994 [7.974–8.096] | 8.659 [8.566–8.781] | **5.283 [5.278–5.709]** | -33.1% (every round) |
+| GraphSAGE, 256 seeds | **1.011 [1.007–1.230]** | 1.333 [1.323–1.338] | 1.904 [1.902–1.929] | 1.279 [1.238–1.282] | +26.5% (-4.1% vs Inductor) |
+| GraphSAGE, 1024 seeds | 4.080 [4.078–4.124] | 2.982 [2.975–2.983] | 3.411 [3.392–3.413] | **2.798 [2.710–2.799]** | -6.2% (every round) |
+| GPT, four decode steps | 26.205 [26.191–27.076] | 30.163 [29.934–30.547] | 43.448 [42.986–43.657] | **20.418 [20.327–20.607]** | -22.1% (every round) |
+| GPT, 256-token prefill | 6.943 [6.938–6.959] | 6.463 [6.453–6.470] | 6.446 [6.443–6.453] | **5.980 [5.971–5.986]** | -7.5% (every round) |
+| MoE, one token | 3.127 [3.115–3.129] | 4.423 [4.399–4.431] | 4.650 [4.628–4.671] | **3.042 [3.029–3.055]** | -2.7% |
+| MoE, 512 tokens | 10.454 [10.449–10.474] | 16.376 [16.320–16.404] | 17.378 [17.189–17.470] | **10.117 [10.016–10.138]** | -3.2% |
 
 Every timed `sym_fast` output equals eager Torch's bit for bit (maximum
 absolute difference 0 in all 720 samples); the Inductor arms differ by the
@@ -36,20 +36,20 @@ Tail latency, median of the three per-round p95s:
 
 | Regime | Eager Torch | Inductor | `sym_fast` |
 | --- | ---: | ---: | ---: |
-| DLRM 512 | 4.038 | 4.232 | 2.914 |
-| DLRM 2048 | 8.851 | 9.235 | 5.360 |
-| GraphSAGE 256 | 1.631 | 1.681 | 1.833 |
-| GraphSAGE 1024 | 4.475 | 3.271 | 3.248 |
-| GPT decode | 27.164 | 31.374 | 21.083 |
-| GPT prefill | 7.030 | 6.538 | 6.070 |
-| MoE sparse | 3.181 | 4.502 | 3.125 |
-| MoE dense | 10.631 | 16.519 | 10.197 |
+| DLRM batch | 4.146 | 4.612 | 2.906 |
+| DLRM batch | 8.135 | 8.404 | 5.828 |
+| GraphSAGE 256 | 1.639 | 1.660 | 1.827 |
+| GraphSAGE 1024 | 4.462 | 3.273 | 3.277 |
+| GPT | 26.558 | 30.736 | 20.808 |
+| GPT | 7.264 | 6.539 | 6.215 |
+| MoE | 3.166 | 4.479 | 3.094 |
+| MoE | 10.583 | 16.459 | 10.202 |
 
 ### Transparency control: the whole-request window alone is not the win
 
 `torch_whole` is the eager Torch control given `sym_fast`'s whole-request
-weight prefetch window. It measures 25.936 ms for decode (Torch 27.067,
-`sym_fast` 20.378), 6.912 ms for prefill (Torch 6.931) and is within 1% of
+weight prefetch window. It measures 25.897 ms for decode (Torch 26.205,
+`sym_fast` 20.418), 6.929 ms for prefill (Torch 6.943) and is within 1% of
 Torch elsewhere. The decode win therefore comes from the runtime (grouped KV
 moves, the native prefetch submission and the fused/vectorized dequantize),
 not from the scheduling opportunity by itself.
@@ -177,17 +177,9 @@ this toolkit (unrelated `atomicAdd` overload) and is not part of the gates.
   exact and its compute is the control's).
 - Evidence: `evidence/workloads-r{1,2,3}.json.gz` (every sample, counters,
   resource reports, hashes), `evidence/summary.csv`, `evidence/manifest.json`.
-- Provenance: the three rounds ran on the working tree that became commit
-  `9edea4e` with two later differences that do not change the measured
-  paths' work: clang-format whitespace, and `whole()` staging in a deferred
-  group now passing the group report so a sub-4 MiB one-shot member no
-  longer host-waits (only DLRM 512's producer is that small; it can only
-  get faster). A re-measurement on the committed revision was interrupted by
-  a foreign 32-way compile on the host; its completed first round (same
-  protocol) reproduced the table within round-to-round noise (DLRM 512
-  −40%, DLRM 2048 −33%, GraphSAGE 256 +15%, GraphSAGE 1024 −10%, decode
-  −24.5%, prefill −7.8%, MoE −1.9%/−3.5%) before being discarded as
-  contaminated by the audit.
+- Provenance: the three rounds ran on the committed revision `32c04f4`
+  (`evidence/manifest.json`), on an idle host (isolation audit clean).
+
 
 ```sh
 export BUILD=build/perf   # Release, RELOC_ENABLE_CUDA=ON, RELOC_ENABLE_TORCH_EXT=ON
