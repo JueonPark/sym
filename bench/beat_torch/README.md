@@ -82,19 +82,25 @@ differs:
   prefetching and all eight workers fed per chunk.
 
 Known limitation: GraphSAGE 256 (9k random rows of a 256 MiB table) trails
-eager Torch in the harness median although Sym's transfer is not slower in
-matched conditions. Measured on an idle host with the harness's own inputs,
-Sym's fused gather/cast/H2D completes in 0.62 ms against Torch's 0.72 ms
-back to back, 0.86 vs 1.07 ms after an unrelated 8 MiB cache polluter,
-1.16 vs 1.17 ms after 16 MiB, and 1.25 vs 1.21 ms fully cold (after the
-harness's `source.neg_()`). The loss is an ordering interaction of the
-protocol: the three paths run back to back on the same inputs each sample,
-Torch's `index_select` materializes a 4.6 MiB temporary plus a 2.3 MiB wire
-that evict the selected rows from the 8 MiB L3, so the path that follows
-Torch (Sym in one rotation out of three) pays a cold-cache gather, whereas
-Sym's 2.3 MiB footprint leaves Torch's rows warm. Prefetch distance (0–128
-rows) and worker count (4/8) do not change this; the cold gather itself is
-DRAM/TLB-latency bound in both paths.
+eager Torch under the #225 protocol although Sym's transfer is not slower
+in matched conditions. With the harness's own inputs on an idle host, Sym's
+fused gather/cast/H2D takes 0.63 ms against Torch's 0.72 ms back to back and
+1.16 vs 1.21 ms fully cold, and `compare.py --cache-state warm` (each path
+run once untimed right before its timed run) gives 1.01 ms for `sym_fast`
+against 1.19 ms for Torch (−15%). The protocol's rotated median lands on a
+different sample for each path: the three paths run back to back on the same
+inputs, Torch's `index_select` materializes a 4.6 MiB temporary plus a
+2.3 MiB wire that evict the selected rows from the 8 MiB L3, so the path
+that follows Torch (Sym or Inductor, one rotation in three) pays a cold
+gather, whereas Sym's 2.3 MiB footprint leaves Torch's rows warm. Under
+`--cache-state cold` (caches swept before every path) `sym_fast` is 1.81 ms
+against Torch's 1.64 (+10%): a standalone microbenchmark of the same random
+row gather shows both runtimes within ~0.4 ms of the machine's cold floor
+(0.6–0.8 ms for 9k rows after an eight-thread cache sweep), and prefetch
+distance (0–128 rows), worker count (4/8), transparent huge pages, pinned
+or write-combined staging and an asynchronous submission did not move the
+rotated or cold medians. The 1024-seed regime, where the gather is large
+enough to overlap its DMA, wins in every cache state.
 
 ## Where the time goes (Nsight Systems)
 
@@ -184,6 +190,10 @@ this toolkit (unrelated `atomicAdd` overload) and is not part of the gates.
 - Controls are unchanged from #225/#246: pinned staging, prepacked INT8
   images, `TorchQueue` two-slot prefetch per step, eager KV moves; Inductor
   compiles the matched compute regions and host transforms.
+- `--cache-state {rotated,cold,warm}` selects the #225 rotation (default), a
+  cache sweep before every path (an involutive mutation keeps the values), or
+  an untimed run of each path right before its timed run. The committed
+  evidence is `rotated`; the other two are reported only for GraphSAGE 256.
 - Correctness: tokens and expert routes exact; outputs compared against
   eager Torch with `rtol=2e-4, atol=2e-5` (the `sym_fast` transfers are byte
   exact and its compute is the control's).

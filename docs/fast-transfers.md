@@ -93,7 +93,12 @@ type registry.
   last rows enqueues that chunk's copy, so small transfers overlap their CPU
   work with DMA without a per-chunk barrier or slot wait.
 - The indexed gather prefetches 32 rows ahead (`RELOC_INDEXED_PREFETCH`
-  overrides the distance for experiments).
+  overrides the distance for experiments); with the libtorch helper one call
+  (`index_select_request`) binds the live indices, prepares the program and
+  selects the row straight from the tensors.
+- `GatherPool` schedules sub-range *p* on worker *p* (range 0 on the caller),
+  so repeated dispatches with the same partition find a worker's rows in its
+  own L2, like an OpenMP static schedule.
 - `bindIndexed` over a caller-owned span (`bind_indexed_from_pointer`).
 - A vectorized per-channel dequantize kernel (`char4` → `float4`, one scale
   per quad) with bit-identical results.

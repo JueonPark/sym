@@ -297,11 +297,60 @@ class IndexedProgram:
 
     def execute(self, source, index, *, out=None, gather_threads=None):
         """Blocking fused row gather/cast/H2D; the index tensor is read in place."""
+        owner = self.owner
+        if _native_views is not None and out is None:
+            # One native call binds the live indices, prepares the program over
+            # the source and selects the row; validation is the same as below.
+            owner._check_open()
+            _check_plain(source, "source")
+            _check_plain(index, "index")
+            key = (_signature(source), index.shape[0], index.dtype)
+            cached = self._specs.get(key)
+            if cached is None:
+                self._prepare(source, index, None)
+                cached = self._specs[key]
+            bindings, destination, _, out_dtype = cached
+            import torch
+            out = torch.empty_strided(destination.shape, destination.strides, dtype=out_dtype, device=owner.device)
+            try:
+                native = _native_views.index_select_request(self.compiled.decoded_plan, bindings, source, index, out,
+                                                            owner.gather_threads)
+            except pyreloc.BindError as error:
+                raise UnsupportedRecipe("index_out_of_range" if "index_out_of_range" in str(error) else "bind_error",
+                                        str(error)) from error
+            except pyreloc.TransferError as error:
+                raise RuntimeError(f"index_select dispatch rejected: {error}") from error
+            return owner._execute_request(native, source, out, (index,), gather_threads)
         program, src_view, out = self._prepare(source, index, out)
         return self.owner._execute_program(program, src_view, source, out, (index,), gather_threads)
 
     def submit(self, source, index, *, out=None, gather_threads=None):
         """Asynchronous fused gather; wait_stream() on the completion yields the output."""
+        owner = self.owner
+        if _native_views is not None and out is None:
+            owner._check_open()
+            _check_plain(source, "source")
+            _check_plain(index, "index")
+            key = (_signature(source), index.shape[0], index.dtype)
+            cached = self._specs.get(key)
+            if cached is None:
+                self._prepare(source, index, None)
+                cached = self._specs[key]
+            bindings, destination, _, out_dtype = cached
+            import torch
+            with torch.cuda.stream(owner._stream):
+                out = torch.empty_strided(destination.shape, destination.strides, dtype=out_dtype,
+                                          device=owner.device)
+            try:
+                native = _native_views.index_select_group(self.compiled.decoded_plan, bindings, source, index, out,
+                                                          owner.gather_threads)
+            except pyreloc.BindError as error:
+                raise UnsupportedRecipe("index_out_of_range" if "index_out_of_range" in str(error) else "bind_error",
+                                        str(error)) from error
+            except pyreloc.TransferError as error:
+                raise RuntimeError(f"index_select dispatch rejected: {error}") from error
+            return owner._submit_native(native, (source,), (out,), (index,), gather_threads, host=False,
+                                        chunked_members=True)
         program, src_view, out = self._prepare(source, index, out)
         return self.owner._submit_program(program, src_view, source, out, (index,), gather_threads,
                                           compat.dtype_name(source.dtype))
@@ -575,6 +624,19 @@ class FastTransfers:
         return PooledProgram(self, tables, dtype=dtype)
 
     # -- one-shot producers (indexed / pooled programs) -------------------
+    def _execute_request(self, native, source, out, extra, gather_threads):
+        try:
+            report = pyreloc.execute_dispatch(
+                native, caller_stream=compat.cuda_stream_handle(self.device),
+                n_buffers=self.n_buffers, n_streams=1,
+                gather_threads=self.gather_threads if gather_threads is None else gather_threads,
+                pinning=self.pinning, direct_dense_upload=True, pipeline=True,
+                chunk_size=self.chunk_size, resources=self.native, owners=((source,) + tuple(extra), out))
+        except pyreloc.TransferError as error:
+            raise RuntimeError(f"producer dispatch failed: {error}") from error
+        self._record(report)
+        return out
+
     def _execute_program(self, program, src_view, source, out, extra, gather_threads):
         """Blocking single dispatch of a freshly prepared producer program."""
         try:
@@ -599,6 +661,24 @@ class FastTransfers:
         member = _OneShot(template, src_view, None, dtype)
         return self.submit([(member, source)], outputs=[out], gather_threads=gather_threads, extra_owners=extra,
                            chunked_members=True)
+
+    def _submit_native(self, native, sources, outs, extra, gather_threads, *, host, chunked_members=False,
+                       device_layout=False):
+        """Submit an already prepared native group (outputs allocated on the private stream)."""
+        import torch
+        self._retire()
+        if host:
+            self._stream.wait_stream(torch.cuda.current_stream(self.device))
+        try:
+            completion = pyreloc.submit_dispatch_group(
+                native, caller_stream=self._stream.cuda_stream,
+                gather_threads=self.gather_threads if gather_threads is None else gather_threads,
+                pinning=self.pinning, max_scratch_bytes=self.max_scratch_bytes,
+                resources=self.native, owners=(tuple(sources), tuple(outs), tuple(extra)),
+                device_layout=device_layout, n_buffers=self.n_buffers, chunked_members=chunked_members)
+        except pyreloc.TransferError as error:
+            raise RuntimeError(f"transfer group failed: {error}") from error
+        return FastCompletion(self, completion, list(outs), native, host)
 
     # -- groups ----------------------------------------------------------
     def submit(self, items, *, outputs=None, device_layout=False, gather_threads=None, pin_outputs=True,

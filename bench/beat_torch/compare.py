@@ -156,6 +156,8 @@ def recommendation(case, states, lifetime):
                 program = state.fast.indexed(recipe)
                 threads = FAST_THREADS['gnn']
                 def tx(program=program, threads=threads):
+                    if os.environ.get('BEAT_TORCH_GNN_ASYNC', '0') == '1':
+                        return program.submit(source, selected, gather_threads=threads).wait_stream()[0]
                     return program.execute(source, selected, gather_threads=threads)
                 paths[name] = lambda tx=tx: (None, model.forward(tx(), layer1, layer2))
                 transfer[name] = tx
@@ -388,6 +390,10 @@ def main():
     p.add_argument('--warmup', type=int, default=5)
     p.add_argument('--dynamic', action='store_true', help='force symbolic compute shapes instead of fixed-regime specialization')
     p.add_argument('--trace', action='store_true', help='NVTX ranges around timed calls (run under nsys)')
+    p.add_argument('--cache-state', choices=('rotated', 'cold', 'warm'), default='rotated',
+                   help='rotated: #225 protocol (mutate once per sample, paths back to back); '
+                        'cold: sweep the caches (mutate twice, an involution for the GraphSAGE source) before every '
+                        'path; warm: run each path once untimed right before its timed run')
     args = p.parse_args()
     torch.set_num_threads(8)
     torch.set_num_interop_threads(1)
@@ -435,7 +441,11 @@ def main():
                     order = list(paths)
                     order = order[i%len(order):]+order[:i%len(order)]
                     outputs = {}
-                    for n in order:
+                    for position, n in enumerate(order):
+                        if args.cache_state == 'cold' and position:
+                            mutate(); mutate()     # an involutive mutation: same values, caches swept twice
+                        elif args.cache_state == 'warm':
+                            completed(paths[n])    # the same path once untimed: its inputs are cache-hot
                         if args.trace:
                             torch.cuda.nvtx.range_push(f'beat_torch/{case}/{n}/{i}')
                         outputs[n], elapsed = completed(paths[n])
