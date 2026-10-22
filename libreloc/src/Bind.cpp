@@ -701,6 +701,19 @@ TypedBindResult bindTyped(const TypedRelocationPlan &plan,
 IndexedBindResult bindIndexed(const IndexedRelocationPlan &plan,
                               const SymbolMap &symbolMap,
                               const ParameterValue &indices) {
+  return bindIndexed(plan, symbolMap, indices.elementType, indices.extents,
+                     indices.bytes.data(), indices.bytes.size());
+}
+
+IndexedBindResult bindIndexed(const IndexedRelocationPlan &plan,
+                              const SymbolMap &symbolMap,
+                              ElementType indexType,
+                              const std::vector<int64_t> &indexOperandExtents,
+                              const void *indexData, size_t indexDataBytes) {
+  struct {
+    ElementType elementType;
+    const std::vector<int64_t> &extents;
+  } indices{indexType, indexOperandExtents};
   if (auto error = validateIndexedPlan(plan))
     return BindError{*error};
   IndexedBoundPlan bound;
@@ -728,7 +741,7 @@ IndexedBindResult bindIndexed(const IndexedRelocationPlan &plan,
   int64_t indexBytes;
   const uint32_t indexWidth = typed::byteWidth(indices.elementType);
   if (!mulOk(indexExtents[0], indexWidth, indexBytes) ||
-      static_cast<uint64_t>(indexBytes) != indices.bytes.size())
+      static_cast<uint64_t>(indexBytes) != indexDataBytes)
     return BindError{"index operand byte size mismatch or overflow"};
   bound.rowElements = 1;
   for (size_t i = 1; i < bound.sourceExtents.size(); ++i)
@@ -744,17 +757,40 @@ IndexedBindResult bindIndexed(const IndexedRelocationPlan &plan,
       !mulOk(elements, typed::byteWidth(out.sourceType), out.sourceBytes) ||
       !mulOk(elements, typed::byteWidth(out.resultType), out.destinationBytes))
     return BindError{"indexed tensor size overflow"};
-  bound.indices.reserve(static_cast<size_t>(indexExtents[0]));
-  for (int64_t i = 0; i < indexExtents[0]; ++i) {
-    uint64_t bits = 0;
-    for (uint32_t b = 0; b < indexWidth; ++b)
-      bits |= uint64_t(indices.bytes[i * indexWidth + b]) << (8 * b);
-    int64_t value = signExtendValue(bits, indices.elementType.bitwidth);
-    if (value < 0 || value >= bound.sourceExtents[0])
-      return BindError{
-          "index_out_of_range: index_select row is outside the source"};
-    bound.indices.push_back(value);
+  const int64_t rowCount = indexExtents[0];
+  const int64_t sourceRows = bound.sourceExtents[0];
+  const auto *raw = static_cast<const uint8_t *>(indexData);
+  bound.indices.resize(static_cast<size_t>(rowCount));
+  bool inRange = true;
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+  // Native little-endian widths decode with one copy; the range check stays
+  // a branch-free reduction so the compiler can vectorize it.
+  if (indexWidth == 8 && indices.elementType.bitwidth == 64) {
+    std::memcpy(bound.indices.data(), raw, static_cast<size_t>(indexBytes));
+    for (int64_t value : bound.indices)
+      inRange &= value >= 0 && value < sourceRows;
+  } else if (indexWidth == 4 && indices.elementType.bitwidth == 32) {
+    for (int64_t i = 0; i < rowCount; ++i) {
+      int32_t value;
+      std::memcpy(&value, raw + i * 4, 4);
+      bound.indices[static_cast<size_t>(i)] = value;
+      inRange &= value >= 0 && value < sourceRows;
+    }
+  } else
+#endif
+  {
+    for (int64_t i = 0; i < rowCount; ++i) {
+      uint64_t bits = 0;
+      for (uint32_t b = 0; b < indexWidth; ++b)
+        bits |= uint64_t(raw[i * indexWidth + b]) << (8 * b);
+      int64_t value = signExtendValue(bits, indices.elementType.bitwidth);
+      bound.indices[static_cast<size_t>(i)] = value;
+      inRange &= value >= 0 && value < sourceRows;
+    }
   }
+  if (!inRange)
+    return BindError{
+        "index_out_of_range: index_select row is outside the source"};
   out.sourceExtents = selectedShape;
   out.parameterBytes = indexBytes;
   // Preserve selected-row boundaries for the typed staging scheduler. A

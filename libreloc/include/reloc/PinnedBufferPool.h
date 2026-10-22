@@ -60,6 +60,12 @@ public:
   /// Wait for every still-pending event to complete.
   void drain();
 
+  /// Hand the ring's buffers to the backend's owner without waiting: the
+  /// destructor then neither waits nor frees them. Only for backends whose
+  /// staging allocations stay reserved until an explicit completion (the
+  /// retained typed scratch of dispatch::Resources); a raw backend would leak.
+  void detach();
+
 private:
   CopyBackend &backend_;
   std::vector<void *> buffers_;
@@ -68,6 +74,7 @@ private:
   int next_ = -1;
   bool pending_ = false;
   bool missingEvent_ = false;
+  bool detached_ = false;
 };
 
 } // namespace reloc

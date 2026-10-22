@@ -141,6 +141,17 @@ struct TransferOptions {
   // Additional per-call scratch cap for owned typed/group dispatch (0 means
   // no additional cap). The owner's configured live limit also applies.
   size_t maxScratchBytes = 0;
+  // Grouped layout-only f32 items (no pads, rank <= 8) relocate on the
+  // device: H2D uploads the dense source span and permutes it there, D2H
+  // permutes on the device and downloads the result layout (directly into a
+  // pinned destination, else through staging plus a host copy at
+  // completion). Other items keep the host gather.
+  bool deviceLayout = false;
+  // Asynchronous groups: upload CPU-producing members through the chunk ring
+  // (CPU transform overlapping its own copies) instead of whole-member
+  // staging. Slot reuse waits for an earlier chunk's copy, so only groups
+  // whose copies are not ordered behind foreign GPU work should enable it.
+  bool chunkedGroupMembers = false;
 };
 
 inline StagingDecision selectStaging(const TransferOptions &options,

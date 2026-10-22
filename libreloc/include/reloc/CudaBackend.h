@@ -93,6 +93,11 @@ private:
 /// prove a declared device ordinal instead of trusting raw addresses.
 bool cudaPointerDevice(const void *pointer, int &device, std::string &error);
 
+/// True iff `pointer` is page-locked host memory the CUDA driver knows about
+/// (cudaHostAlloc / cudaHostRegister), i.e. an asynchronous copy may target
+/// it directly. False for pageable, device and unknown memory.
+bool cudaPointerIsPinnedHost(const void *pointer);
+
 } // namespace reloc
 
 #endif // RELOC_ENABLE_CUDA

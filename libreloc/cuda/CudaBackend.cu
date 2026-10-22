@@ -268,6 +268,16 @@ bool cudaPointerDevice(const void *pointer, int &device, std::string &error) {
   return true;
 }
 
+bool cudaPointerIsPinnedHost(const void *pointer) {
+  cudaPointerAttributes attributes{};
+  cudaError_t status = cudaPointerGetAttributes(&attributes, pointer);
+  if (status != cudaSuccess) {
+    (void)cudaGetLastError();
+    return false;
+  }
+  return attributes.type == cudaMemoryTypeHost;
+}
+
 } // namespace reloc
 
 #endif // RELOC_ENABLE_CUDA

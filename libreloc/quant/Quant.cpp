@@ -217,7 +217,11 @@ void quantizePackF32S8(const float *src, int8_t *dst, int64_t channels,
 }
 
 void convertF32F16(const float *src, uint16_t *dst, int64_t count, Variant v) {
-  const Variant r = resolveFor(Kernel::ConvertF32F16, v);
+  // Resolve the host's best variant once: this runs per inner run.
+  static const Variant automatic =
+      resolveFor(Kernel::ConvertF32F16, Variant::Auto);
+  const Variant r =
+      v == Variant::Auto ? automatic : resolveFor(Kernel::ConvertF32F16, v);
   switch (r) {
 #if defined(RELOC_QUANT_HAVE_X86_SIMD)
   case Variant::AVX512:

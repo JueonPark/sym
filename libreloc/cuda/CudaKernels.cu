@@ -90,6 +90,30 @@ __global__ void relocateNaiveKernel(const float *src, float *dst, Axes a,
   dst[dstOff] = src[srcOff];
 }
 
+constexpr int kBatchMax = 32;
+
+struct BatchPointers {
+  const float *src[kBatchMax];
+  float *dst[kBatchMax];
+};
+
+// relocateNaiveKernel over blockIdx.y's pair.
+__global__ void relocateBatchKernel(BatchPointers p, Axes a, int64_t total) {
+  const float *src = p.src[blockIdx.y];
+  float *dst = p.dst[blockIdx.y];
+  int64_t i = blockIdx.x * static_cast<int64_t>(blockDim.x) + threadIdx.x;
+  if (i >= total)
+    return;
+  int64_t rem = i, srcOff = 0, dstOff = 0;
+  for (int k = a.rank - 1; k >= 0; --k) {
+    int64_t c = rem % a.ext[k];
+    rem /= a.ext[k];
+    srcOff += c * a.srcStride[k];
+    dstOff += c * a.dstStride[k];
+  }
+  dst[dstOff] = src[srcOff];
+}
+
 constexpr int kTile = 32;
 constexpr int kBlockRows = 8;
 
@@ -139,6 +163,20 @@ __global__ void dequantS8F32Kernel(const int8_t *src, float *dst,
   if (i >= total)
     return;
   dst[i] = static_cast<float>(src[i]) * scales[i / channelSize];
+}
+
+// dequantS8F32Kernel over char4/float4 quads; channelQuads = channelSize / 4.
+__global__ void dequantS8F32Quad(const char4 *src, float4 *dst,
+                                 unsigned channelQuads, const float *scales,
+                                 unsigned quads) {
+  const unsigned stride = gridDim.x * blockDim.x;
+  for (unsigned i = blockIdx.x * blockDim.x + threadIdx.x; i < quads;
+       i += stride) {
+    const char4 q = src[i];
+    const float s = scales[i / channelQuads];
+    dst[i] = make_float4(static_cast<float>(q.x) * s, static_cast<float>(q.y) * s,
+                         static_cast<float>(q.z) * s, static_cast<float>(q.w) * s);
+  }
 }
 
 __global__ void convertF16F32Kernel(const __half *src, float *dst,
@@ -234,6 +272,22 @@ void relocateNaiveF32(const BoundPlan &bound, const float *dSrc, float *dDst,
                         asStream(stream)>>>(dSrc, dDst, a, total);
 }
 
+void relocateBatchF32(const BoundPlan &bound, const float *const *dSrcs,
+                      float *const *dDsts, int count, void *stream) {
+  Axes a = packAxes(bound);
+  const int64_t total = totalElements(bound);
+  for (int first = 0; first < count; first += kBatchMax) {
+    BatchPointers p{};
+    const int n = std::min(kBatchMax, count - first);
+    for (int i = 0; i < n; ++i) {
+      p.src[i] = dSrcs[first + i];
+      p.dst[i] = dDsts[first + i];
+    }
+    dim3 grid(static_cast<unsigned>(gridFor(total)), static_cast<unsigned>(n));
+    relocateBatchKernel<<<grid, kThreads, 0, asStream(stream)>>>(p, a, total);
+  }
+}
+
 void relocateF32(const BoundPlan &bound, const float *dSrc, float *dDst,
                  void *stream) {
   if (!isTranspose2D(bound)) {
@@ -262,6 +316,21 @@ void quantizeF32S8(const float *dSrc, int8_t *dDst, int64_t channels,
 void dequantS8F32(const int8_t *dSrc, float *dDst, int64_t channels,
                   int64_t channelSize, const float *dScales, void *stream) {
   int64_t total = channels * channelSize;
+  // Four elements per thread with 16-byte stores and one scale lookup per
+  // quad: the scalar kernel is issue-bound at a third of the link bandwidth.
+  // Same float multiply per element, so results stay bit-identical.
+  if (total % 4 == 0 && channelSize % 4 == 0 && total / 4 < (int64_t(1) << 31) &&
+      reinterpret_cast<uintptr_t>(dSrc) % 4 == 0 &&
+      reinterpret_cast<uintptr_t>(dDst) % 16 == 0) {
+    const int64_t quads = total / 4;
+    int64_t blocks = std::min<int64_t>(gridFor(quads), 65535 * 16);
+    dequantS8F32Quad<<<static_cast<unsigned>(blocks), kThreads, 0,
+                       asStream(stream)>>>(
+        reinterpret_cast<const char4 *>(dSrc), reinterpret_cast<float4 *>(dDst),
+        static_cast<unsigned>(channelSize / 4), dScales,
+        static_cast<unsigned>(quads));
+    return;
+  }
   dequantS8F32Kernel<<<static_cast<unsigned>(gridFor(total)), kThreads, 0,
                        asStream(stream)>>>(dSrc, dDst, channelSize, dScales,
                                            total);

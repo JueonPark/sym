@@ -25,5 +25,12 @@ void transpose(const Program &, uint32_t from, uint32_t to, const uint8_t *src,
                uint8_t *dst, int64_t first, int64_t last, int64_t origin,
                int64_t outerLo, int64_t innerLo);
 
+/// Rank-3 pad-free layout with unit inner strides: run the stages over one
+/// contiguous inner run per (outer, middle) coordinate for outer rows
+/// [first, last). `origin` is the destination element offset of `dst`.
+/// `narrowCast` selects the direct f32 -> f16 conversion for a single cast.
+void stridedRuns(const Program &p, uint32_t from, uint32_t to,
+                 const uint8_t *src, uint8_t *dst, int64_t first, int64_t last,
+                 int64_t origin, bool narrowCast);
 } // namespace reloc::typed::detail
 #endif
