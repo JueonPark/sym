@@ -177,6 +177,17 @@ this toolkit (unrelated `atomicAdd` overload) and is not part of the gates.
   exact and its compute is the control's).
 - Evidence: `evidence/workloads-r{1,2,3}.json.gz` (every sample, counters,
   resource reports, hashes), `evidence/summary.csv`, `evidence/manifest.json`.
+- Provenance: the three rounds ran on the working tree that became commit
+  `9edea4e` with two later differences that do not change the measured
+  paths' work: clang-format whitespace, and `whole()` staging in a deferred
+  group now passing the group report so a sub-4 MiB one-shot member no
+  longer host-waits (only DLRM 512's producer is that small; it can only
+  get faster). A re-measurement on the committed revision was interrupted by
+  a foreign 32-way compile on the host; its completed first round (same
+  protocol) reproduced the table within round-to-round noise (DLRM 512
+  −40%, DLRM 2048 −33%, GraphSAGE 256 +15%, GraphSAGE 1024 −10%, decode
+  −24.5%, prefill −7.8%, MoE −1.9%/−3.5%) before being discarded as
+  contaminated by the audit.
 
 ```sh
 export BUILD=build/perf   # Release, RELOC_ENABLE_CUDA=ON, RELOC_ENABLE_TORCH_EXT=ON
