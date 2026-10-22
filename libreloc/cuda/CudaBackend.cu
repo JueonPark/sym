@@ -43,9 +43,12 @@ struct DeviceScope {
 bool CudaBackend::check(int status, const char *what) {
   if (status == static_cast<int>(cudaSuccess))
     return true;
-  if (error_.empty())
+  std::lock_guard<std::mutex> lock(errorMutex_);
+  if (!hasError_.load(std::memory_order_relaxed)) {
     error_ = std::string(what) + ": " +
              cudaGetErrorString(static_cast<cudaError_t>(status));
+    hasError_.store(true, std::memory_order_release);
+  }
   return false;
 }
 
@@ -266,6 +269,16 @@ bool cudaPointerDevice(const void *pointer, int &device, std::string &error) {
   }
   device = attributes.device;
   return true;
+}
+
+bool cudaPointerIsPinnedHost(const void *pointer) {
+  cudaPointerAttributes attributes{};
+  cudaError_t status = cudaPointerGetAttributes(&attributes, pointer);
+  if (status != cudaSuccess) {
+    (void)cudaGetLastError();
+    return false;
+  }
+  return attributes.type == cudaMemoryTypeHost;
 }
 
 } // namespace reloc

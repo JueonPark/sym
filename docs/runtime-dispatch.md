@@ -30,6 +30,9 @@ For related weights or KV tensors, the [grouped transfer API](grouped-transfers.
 accepts fresh typed/layout preparations and completes them with one barrier,
 independent output storage, shared compatible parameter uploads and bounded
 scratch. Callers choose the group at their consumer's completion boundary.
+For repeated transfers of one shape from eager code, the
+[fast transfer programs](fast-transfers.md) bind a recipe once and execute
+each call (or group) through a single native entry point.
 
 The optional Torch frontend [completed-cost placement policy](completed-placement.md)
 ranks native Torch, CPU-transform and GPU-transform calls using compatible

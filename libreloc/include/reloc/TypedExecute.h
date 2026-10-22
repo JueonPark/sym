@@ -76,6 +76,21 @@ struct Program {
   int64_t indexedSourceRows = 0;
   int64_t indexedRowElements = 0;
   std::vector<int64_t> rowIndices;
+  // Fused embedding-bag producer: result row b holds, per table t, the
+  // float32 sum of that table's rows in bag b (indices[offsets[b] ..
+  // offsets[b+1])), followed by the program's stages (an f16 cast or none).
+  // Tables, indices and offsets are caller-owned for the request's lifetime;
+  // the kernel range-checks every index. Empty unless the program is pooled.
+  struct PooledTable {
+    const uint8_t *rows = nullptr; // dense float32 [rowCount, pooledDim]
+    int64_t rowCount = 0;
+    const int64_t *indices = nullptr;
+    int64_t indexCount = 0;
+    const int64_t *offsets = nullptr; // pooledBags entries, nondecreasing
+  };
+  std::vector<PooledTable> pooledTables;
+  int64_t pooledBags = 0;
+  int64_t pooledDim = 0;
 };
 
 /// Check every stage against the implemented C1 tables and materialize its
@@ -116,7 +131,12 @@ enum class HostKernel {
   ContiguousCast,
   ContiguousStages,
   TiledTranspose,
-  IndexedRows
+  IndexedRows,
+  PooledBags,
+  /// Rank-3 pad-free layouts whose innermost axis is contiguous on both
+  /// sides: every (outer, middle) pair is one SIMD run, iterated so that the
+  /// source side streams sequentially (the strided side is the write side).
+  StridedRuns
 };
 /// Pure plan/range qualification. Complex channel expressions retain the
 /// generic checked walker. No code generation or shape cache is involved.

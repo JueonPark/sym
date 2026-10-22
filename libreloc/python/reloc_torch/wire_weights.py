@@ -225,6 +225,15 @@ class PreparedWireWeights:
                     entry.capability, entry.selection, template=native))
             return prepare_transfer_group(requests)
 
+    def fast_entries(self, names):
+        """(native dispatch template, owned packed INT8 [out,in] source) per
+        name, for reloc_torch.fast.FastWeights. Templates and sources are the
+        immutable revision at call time; a later prepare() does not change them."""
+        self._check()
+        with self._lock:
+            self._open()
+            return [(self._entries[name].template, self._entries[name].source) for name in names]
+
     def submit(self, names):
         """Submit one named group; return a completion owning that revision."""
         self._check()

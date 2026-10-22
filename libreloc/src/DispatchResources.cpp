@@ -7,6 +7,7 @@
 #include "reloc/CudaBackend.h"
 #endif
 #include <algorithm>
+#include <atomic>
 #include <cstdlib>
 #include <limits>
 #include <mutex>
@@ -158,7 +159,9 @@ class ScratchBackend : public CudaBackend {
 
 public:
   uint64_t deviceAllocations = 0, hostAllocations = 0, frees = 0;
-  uint64_t copyCalls = 0, eventRecords = 0, eventWaits = 0, callerWaits = 0;
+  // Streaming uploads enqueue copies from worker threads.
+  std::atomic<uint64_t> copyCalls{0}, eventRecords{0}, eventWaits{0},
+      callerWaits{0};
   size_t peakLiveBytes = 0;
   ScratchBackend(int streams, int device, size_t retained, size_t live,
                  std::shared_ptr<ScratchGauge> gauge)

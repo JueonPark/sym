@@ -31,7 +31,16 @@ PinnedBufferPool::PinnedBufferPool(CopyBackend &backend, int nBuffers,
   }
 }
 
+void PinnedBufferPool::detach() {
+  for (auto &event : events_)
+    event = 0;
+  pending_ = missingEvent_ = false;
+  detached_ = true;
+}
+
 PinnedBufferPool::~PinnedBufferPool() {
+  if (detached_)
+    return; // the owner recycles the buffers at completion
   // Normally drain() already proved completion. On an exceptional raw-pipeline
   // exit do not free bytes that may still be read by DMA. Owned transfer APIs
   // retain the entire pool/backend/owners instead of reaching this fallback.

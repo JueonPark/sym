@@ -197,4 +197,36 @@ void transpose(const Program &p, uint32_t from, uint32_t to, const uint8_t *src,
     }
   }
 }
+void stridedRuns(const Program &p, uint32_t from, uint32_t to,
+                 const uint8_t *src, uint8_t *dst, int64_t first, int64_t last,
+                 int64_t origin, bool narrowCast) {
+  const auto &l = p.plan.layout;
+  const int64_t middle = l.extents[1], run = l.extents[2];
+  const int64_t ss0 = l.srcStrides[0], ss1 = l.srcStrides[1];
+  const int64_t ds0 = l.dstStrides[0], ds1 = l.dstStrides[1];
+  const uint32_t inWidth = widthAt(p, from), outWidth = widthAt(p, to);
+  auto one = [&](int64_t i, int64_t j) {
+    const uint8_t *s = src + (i * ss0 + j * ss1) * inWidth;
+    const int64_t offset = i * ds0 + j * ds1;
+    uint8_t *d = dst + (offset - origin) * outWidth;
+    if (narrowCast && reinterpret_cast<uintptr_t>(s) % alignof(float) == 0 &&
+        reinterpret_cast<uintptr_t>(d) % alignof(uint16_t) == 0) {
+      quant::convertF32F16(reinterpret_cast<const float *>(s),
+                           reinterpret_cast<uint16_t *>(d), run);
+      return;
+    }
+    stages(p, from, to, s, d, run, offset);
+  };
+  if (ss1 <= ss0) {
+    // Source rows are contiguous along the middle axis (or identity).
+    for (int64_t i = first; i < last; ++i)
+      for (int64_t j = 0; j < middle; ++j)
+        one(i, j);
+  } else {
+    // Source is contiguous along the outer axis: stream it, scatter writes.
+    for (int64_t j = 0; j < middle; ++j)
+      for (int64_t i = first; i < last; ++i)
+        one(i, j);
+  }
+}
 } // namespace reloc::typed::detail

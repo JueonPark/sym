@@ -825,6 +825,8 @@ PYBIND11_MODULE(_pyreloc, m) {
       .def_property_readonly("metadata", &indexedMetadata);
   py::class_<reloc::IndexedBoundPlan>(m, "IndexedBoundPlan")
       .def_readonly("source_extents", &reloc::IndexedBoundPlan::sourceExtents)
+      .def_readonly("indices", &reloc::IndexedBoundPlan::indices,
+                    "The bound, range-checked row indices (a copy).")
       .def_property_readonly("result_extents",
                              [](const reloc::IndexedBoundPlan &p) {
                                return p.selected.resultExtents;
@@ -860,6 +862,32 @@ PYBIND11_MODULE(_pyreloc, m) {
         return std::get<reloc::IndexedBoundPlan>(std::move(bound));
       },
       py::arg("plan"), py::arg("symbols"), py::arg("indices"));
+  m.def(
+      "bind_indexed_from_pointer",
+      [](const reloc::IndexedRelocationPlan &plan,
+         const reloc::SymbolMap &symbols, const std::string &dtype,
+         const std::vector<int64_t> &extents, uintptr_t pointer,
+         size_t nbytes) {
+        if (pointer == 0 && nbytes != 0)
+          throw py::value_error("index pointer must not be null");
+        std::variant<reloc::IndexedBoundPlan, reloc::BindError> bound;
+        {
+          // The caller keeps the index buffer alive and unmodified for the
+          // duration of this call; indices are copied before returning.
+          py::gil_scoped_release release;
+          bound = reloc::bindIndexed(plan, symbols, parseDtype(dtype), extents,
+                                     reinterpret_cast<const void *>(pointer),
+                                     nbytes);
+        }
+        if (auto *error = std::get_if<reloc::BindError>(&bound))
+          throw BindException(error->message);
+        return std::get<reloc::IndexedBoundPlan>(std::move(bound));
+      },
+      py::arg("plan"), py::arg("symbols"), py::arg("dtype"), py::arg("extents"),
+      py::arg("pointer"), py::arg("nbytes"),
+      "bind_indexed over a caller-owned little-endian index buffer (no "
+      "intermediate bytes object); the buffer must stay valid and unchanged "
+      "until this returns.");
 
   m.def("load_typed_plan", &loadTypedPlan, py::arg("data"),
         "Decode a wire-format-v1 typed plan blob. Raises DecodeError with "
