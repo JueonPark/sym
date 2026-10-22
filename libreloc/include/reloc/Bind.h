@@ -223,8 +223,7 @@ IndexedBindResult bindIndexed(const IndexedRelocationPlan &plan,
 /// given extents. Indices are copied and checked here; nothing about the
 /// caller's buffer survives binding.
 IndexedBindResult bindIndexed(const IndexedRelocationPlan &plan,
-                              const SymbolMap &symbols,
-                              ElementType elementType,
+                              const SymbolMap &symbols, ElementType elementType,
                               const std::vector<int64_t> &extents,
                               const void *data, size_t bytes);
 

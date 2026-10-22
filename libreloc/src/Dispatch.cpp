@@ -603,9 +603,10 @@ bool deviceLayoutEligible(const BoundPlan &bound) {
 /// Layout items of one group that share a plan (and direction) execute as
 /// one batched kernel; adjacent host buffers (views of one allocation, in
 /// order) share one copy. Returns the items it consumed through `packed`.
-std::optional<TransferError>
-executePackedLayouts(GroupRequest &group, CudaBackend &backend,
-                     GroupExecution &execution, std::vector<bool> &packed) {
+std::optional<TransferError> executePackedLayouts(GroupRequest &group,
+                                                  CudaBackend &backend,
+                                                  GroupExecution &execution,
+                                                  std::vector<bool> &packed) {
   std::vector<std::vector<size_t>> clusters;
   for (size_t i = 0; i < group.items.size(); ++i) {
     auto *layout = std::get_if<TransferRequest>(&group.items[i]);
@@ -741,10 +742,11 @@ executePackedLayouts(GroupRequest &group, CudaBackend &backend,
 /// runs as a kernel on queue 0, so a tiny transfer costs one copy and one
 /// launch instead of a host gather/scatter. D2H into pageable memory keeps a
 /// pinned staging copy whose host memcpy runs at completion.
-std::optional<TransferError>
-executeDeviceLayout(TransferRequest &request, CudaBackend &backend,
-                    GroupExecution &execution, Report &report,
-                    GroupReport &groupReport) {
+std::optional<TransferError> executeDeviceLayout(TransferRequest &request,
+                                                 CudaBackend &backend,
+                                                 GroupExecution &execution,
+                                                 Report &report,
+                                                 GroupReport &groupReport) {
   const BoundPlan &bound = request.bound;
   const auto *src = reinterpret_cast<const uint8_t *>(request.source.base) +
                     request.source.offsetBytes;
@@ -1143,8 +1145,9 @@ preparePooledBags(const std::vector<BufferView> &tables,
     return fail("invalid_parameter",
                 "pooled producer needs one index/offset operand per table");
   if (bags <= 0 || dim <= 0 || dim > 1024)
-    return fail("invalid_parameter",
-                "pooled producer needs positive bags and a dim of at most 1024");
+    return fail(
+        "invalid_parameter",
+        "pooled producer needs positive bags and a dim of at most 1024");
   Program program;
   program.pooledBags = bags;
   program.pooledDim = dim;
@@ -1180,7 +1183,8 @@ preparePooledBags(const std::vector<BufferView> &tables,
       previous = value;
     }
     Program::PooledTable table;
-    table.rows = reinterpret_cast<const uint8_t *>(view.base) + view.offsetBytes;
+    table.rows =
+        reinterpret_cast<const uint8_t *>(view.base) + view.offsetBytes;
     table.rowCount = view.extents[0];
     table.indices = index.values;
     table.indexCount = index.count;
@@ -1212,7 +1216,8 @@ preparePooledBags(const std::vector<BufferView> &tables,
     stage.output.type = plan.resultType;
     stage.shape = plan.sourceExtents;
     plan.stages.push_back(stage);
-    plan.cuts.push_back({1, plan.resultType, totalElements, plan.destinationBytes});
+    plan.cuts.push_back(
+        {1, plan.resultType, totalElements, plan.destinationBytes});
     typed::StageArithmetic arithmetic;
     arithmetic.transform = ValueTransformKind::Cast;
     arithmetic.policy = NumericPolicyKind::IeeeRne;

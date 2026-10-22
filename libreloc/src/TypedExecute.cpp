@@ -594,7 +594,8 @@ executePooledBags(const Program &program, void *dst, GatherPool *pool,
         chunk->validEnd > bags || chunk->paddedBegin != chunk->validBegin ||
         chunk->paddedEnd != chunk->validEnd ||
         chunk->byteOffset != chunk->validBegin * rowBytes ||
-        chunk->bytes != size_t((chunk->validEnd - chunk->validBegin) * rowBytes))
+        chunk->bytes !=
+            size_t((chunk->validEnd - chunk->validBegin) * rowBytes))
       return fail("invalid_chunk", "pooled chunk must contain complete bags");
     first = chunk->validBegin;
     last = chunk->validEnd;
@@ -633,11 +634,13 @@ executePooledBags(const Program &program, void *dst, GatherPool *pool,
           }
         }
       };
-      for (int64_t k = table.offsets[begin]; k < table.offsets[begin] + kAhead; ++k)
+      for (int64_t k = table.offsets[begin]; k < table.offsets[begin] + kAhead;
+           ++k)
         touch(k);
       for (int64_t b = begin; b < end; ++b) {
         const int64_t lo = table.offsets[b];
-        const int64_t hi = b + 1 < bags ? table.offsets[b + 1] : table.indexCount;
+        const int64_t hi =
+            b + 1 < bags ? table.offsets[b + 1] : table.indexCount;
         for (int64_t k = lo; k < hi; ++k)
           touch(k + kAhead);
         bool ok;

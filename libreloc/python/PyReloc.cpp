@@ -883,8 +883,8 @@ PYBIND11_MODULE(_pyreloc, m) {
           throw BindException(error->message);
         return std::get<reloc::IndexedBoundPlan>(std::move(bound));
       },
-      py::arg("plan"), py::arg("symbols"), py::arg("dtype"),
-      py::arg("extents"), py::arg("pointer"), py::arg("nbytes"),
+      py::arg("plan"), py::arg("symbols"), py::arg("dtype"), py::arg("extents"),
+      py::arg("pointer"), py::arg("nbytes"),
       "bind_indexed over a caller-owned little-endian index buffer (no "
       "intermediate bytes object); the buffer must stay valid and unchanged "
       "until this returns.");

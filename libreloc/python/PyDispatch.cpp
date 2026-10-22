@@ -478,7 +478,8 @@ void registerDispatchBindings(py::module_ &m) {
         else if (outputDtype == "float32")
           narrow = false;
         else
-          throw py::value_error("pooled output dtype must be float16 or float32");
+          throw py::value_error(
+              "pooled output dtype must be float16 or float32");
         auto operand = [](const std::vector<std::pair<uintptr_t, int64_t>> &v) {
           std::vector<reloc::dispatch::PooledOperand> out;
           out.reserve(v.size());
@@ -496,8 +497,8 @@ void registerDispatchBindings(py::module_ &m) {
           raise(*error);
         return std::get<reloc::typed::Program>(std::move(prepared));
       },
-      py::arg("tables"), py::arg("indices"), py::arg("offsets"), py::arg("bags"),
-      py::arg("dim"), py::arg("output_dtype"),
+      py::arg("tables"), py::arg("indices"), py::arg("offsets"),
+      py::arg("bags"), py::arg("dim"), py::arg("output_dtype"),
       "Fused embedding-bag sum producer over host tables: indices/offsets are "
       "(int64 pointer, count) pairs the caller keeps alive until completion.");
   using Template = reloc::dispatch::DispatchTemplate;

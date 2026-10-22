@@ -706,8 +706,7 @@ IndexedBindResult bindIndexed(const IndexedRelocationPlan &plan,
 }
 
 IndexedBindResult bindIndexed(const IndexedRelocationPlan &plan,
-                              const SymbolMap &symbolMap,
-                              ElementType indexType,
+                              const SymbolMap &symbolMap, ElementType indexType,
                               const std::vector<int64_t> &indexOperandExtents,
                               const void *indexData, size_t indexDataBytes) {
   struct {

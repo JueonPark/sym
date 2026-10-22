@@ -174,8 +174,9 @@ __global__ void dequantS8F32Quad(const char4 *src, float4 *dst,
        i += stride) {
     const char4 q = src[i];
     const float s = scales[i / channelQuads];
-    dst[i] = make_float4(static_cast<float>(q.x) * s, static_cast<float>(q.y) * s,
-                         static_cast<float>(q.z) * s, static_cast<float>(q.w) * s);
+    dst[i] =
+        make_float4(static_cast<float>(q.x) * s, static_cast<float>(q.y) * s,
+                    static_cast<float>(q.z) * s, static_cast<float>(q.w) * s);
   }
 }
 
@@ -319,7 +320,8 @@ void dequantS8F32(const int8_t *dSrc, float *dDst, int64_t channels,
   // Four elements per thread with 16-byte stores and one scale lookup per
   // quad: the scalar kernel is issue-bound at a third of the link bandwidth.
   // Same float multiply per element, so results stay bit-identical.
-  if (total % 4 == 0 && channelSize % 4 == 0 && total / 4 < (int64_t(1) << 31) &&
+  if (total % 4 == 0 && channelSize % 4 == 0 &&
+      total / 4 < (int64_t(1) << 31) &&
       reinterpret_cast<uintptr_t>(dSrc) % 4 == 0 &&
       reinterpret_cast<uintptr_t>(dDst) % 16 == 0) {
     const int64_t quads = total / 4;
