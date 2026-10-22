@@ -5,11 +5,11 @@
 With the explicit fast-lane API (`reloc_torch.fast`, [docs](../../docs/fast-transfers.md))
 and the native changes behind it, the `sym_fast` arm has lower completed
 model latency than **both** eager Torch and Inductor in seven of the eight
-#225 regimes, and lower than Inductor in the eighth. Five regimes meet the
+#225 regimes, and lower than Inductor in the eighth. 4 regimes meet the
 project's stricter criterion (at least 5% below both controls in every
-independent round): DLRM 512 and 2048, GraphSAGE 1024, GPT decode and GPT
-prefill. The two MoE regimes beat both controls by 2–3%, and GraphSAGE 256
-beats Inductor by 2% but trails eager Torch by 28%.
+independent round): DLRM 512, DLRM 2048, GPT decode, GPT prefill. GraphSAGE 1024 and
+the two MoE regimes beat both controls by 2–3%, and GraphSAGE 256 beats
+Inductor by 9% but trails eager Torch by 19%.
 
 Milliseconds, **median of three independent round medians [min–max round
 median]**, 30 samples per round after 5 warmups, rotated path order. Lower
@@ -18,14 +18,14 @@ Torch controls.
 
 | Regime | Eager Torch | Inductor | Sym + Inductor (previous arm) | `sym_fast` | vs best control |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| DLRM, batch 512 | 3.744 [3.612–3.765] | 3.816 [3.695–3.870] | 4.527 [4.518–4.529] | **2.246 [2.237–2.254]** | -40.0% (every round) |
-| DLRM, batch 2048 | 7.892 [7.889–7.979] | 7.994 [7.974–8.096] | 8.659 [8.566–8.781] | **5.283 [5.278–5.709]** | -33.1% (every round) |
-| GraphSAGE, 256 seeds | **1.011 [1.007–1.230]** | 1.333 [1.323–1.338] | 1.904 [1.902–1.929] | 1.279 [1.238–1.282] | +26.5% (-4.1% vs Inductor) |
-| GraphSAGE, 1024 seeds | 4.080 [4.078–4.124] | 2.982 [2.975–2.983] | 3.411 [3.392–3.413] | **2.798 [2.710–2.799]** | -6.2% (every round) |
-| GPT, four decode steps | 26.205 [26.191–27.076] | 30.163 [29.934–30.547] | 43.448 [42.986–43.657] | **20.418 [20.327–20.607]** | -22.1% (every round) |
-| GPT, 256-token prefill | 6.943 [6.938–6.959] | 6.463 [6.453–6.470] | 6.446 [6.443–6.453] | **5.980 [5.971–5.986]** | -7.5% (every round) |
-| MoE, one token | 3.127 [3.115–3.129] | 4.423 [4.399–4.431] | 4.650 [4.628–4.671] | **3.042 [3.029–3.055]** | -2.7% |
-| MoE, 512 tokens | 10.454 [10.449–10.474] | 16.376 [16.320–16.404] | 17.378 [17.189–17.470] | **10.117 [10.016–10.138]** | -3.2% |
+| DLRM, batch 512 | 3.761 [3.708–3.784] | 3.737 [3.680–3.883] | 4.530 [4.427–4.547] | **2.250 [2.230–2.633]** | -39.8% (every round) |
+| DLRM, batch 2048 | 7.880 [7.878–7.960] | 8.057 [7.996–8.081] | 8.559 [8.548–8.804] | **4.738 [4.735–4.762]** | -39.9% (every round) |
+| GraphSAGE, 256 seeds | **1.018 [1.011–1.023]** | 1.335 [1.330–1.340] | 1.905 [1.884–1.937] | 1.210 [1.204–1.285] | +18.9% (-9.3% vs Inductor) |
+| GraphSAGE, 1024 seeds | 4.120 [4.116–4.134] | 2.955 [2.953–2.964] | 3.652 [3.403–3.811] | **2.896 [2.758–2.980]** | -2.0% |
+| GPT, four decode steps | 26.211 [26.197–27.090] | 30.069 [30.044–30.389] | 43.312 [43.078–43.669] | **20.485 [20.434–20.641]** | -21.8% (every round) |
+| GPT, 256-token prefill | 6.949 [6.946–6.966] | 6.450 [6.442–6.472] | 6.450 [6.438–6.464] | **5.993 [5.981–6.004]** | -7.1% (every round) |
+| MoE, one token | 3.120 [3.109–3.131] | 4.409 [4.405–4.428] | 4.648 [4.641–4.663] | **3.055 [3.043–3.066]** | -2.1% |
+| MoE, 512 tokens | 10.470 [10.447–10.513] | 16.394 [16.359–16.462] | 17.422 [17.398–17.477] | **10.162 [10.100–10.198]** | -2.9% |
 
 Every timed `sym_fast` output equals eager Torch's bit for bit (maximum
 absolute difference 0 in all 720 samples); the Inductor arms differ by the
@@ -36,20 +36,20 @@ Tail latency, median of the three per-round p95s:
 
 | Regime | Eager Torch | Inductor | `sym_fast` |
 | --- | ---: | ---: | ---: |
-| DLRM batch | 4.146 | 4.612 | 2.906 |
-| DLRM batch | 8.135 | 8.404 | 5.828 |
-| GraphSAGE 256 | 1.639 | 1.660 | 1.827 |
-| GraphSAGE 1024 | 4.462 | 3.273 | 3.277 |
-| GPT | 26.558 | 30.736 | 20.808 |
-| GPT | 7.264 | 6.539 | 6.215 |
-| MoE | 3.166 | 4.479 | 3.094 |
-| MoE | 10.583 | 16.459 | 10.202 |
+| DLRM 512 | 4.223 | 4.231 | 2.876 |
+| DLRM 2048 | 8.017 | 8.687 | 5.091 |
+| GraphSAGE 256 | 1.615 | 1.647 | 1.769 |
+| GraphSAGE 1024 | 4.474 | 3.263 | 3.395 |
+| GPT decode | 26.430 | 30.972 | 21.015 |
+| GPT prefill | 7.072 | 6.574 | 6.062 |
+| MoE sparse | 3.166 | 4.454 | 3.096 |
+| MoE dense | 10.626 | 16.472 | 10.269 |
 
 ### Transparency control: the whole-request window alone is not the win
 
 `torch_whole` is the eager Torch control given `sym_fast`'s whole-request
-weight prefetch window. It measures 25.897 ms for decode (Torch 26.205,
-`sym_fast` 20.418), 6.929 ms for prefill (Torch 6.943) and is within 1% of
+weight prefetch window. It measures 25.933 ms for decode (Torch 26.211,
+`sym_fast` 20.485), 6.925 ms for prefill (Torch 6.949) and is within 1% of
 Torch elsewhere. The decode win therefore comes from the runtime (grouped KV
 moves, the native prefetch submission and the fused/vectorized dequantize),
 not from the scheduling opportunity by itself.
@@ -199,8 +199,12 @@ this toolkit (unrelated `atomicAdd` overload) and is not part of the gates.
   exact and its compute is the control's).
 - Evidence: `evidence/workloads-r{1,2,3}.json.gz` (every sample, counters,
   resource reports, hashes), `evidence/summary.csv`, `evidence/manifest.json`.
-- Provenance: the three rounds ran on the committed revision `32c04f4`
-  (`evidence/manifest.json`), on an idle host (isolation audit clean).
+- Provenance: the three rounds ran on the committed revision `e85f076`
+  (`evidence/manifest.json`) on an idle host (isolation audit clean). The
+  Nsight captures below were taken on the same tree two commits earlier
+  (before the static gather schedule and one-call indexed request), whose
+  measured paths are otherwise unchanged.
+
 
 
 ```sh
