@@ -16,10 +16,12 @@
 #endif
 
 #include <algorithm>
+#include <atomic>
 #include <cstring>
 #include <functional>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <unordered_map>
 #include <utility>
 
@@ -337,6 +339,108 @@ std::optional<TransferError> hostProgram(const Program &program, uint32_t from,
   return std::nullopt;
 }
 
+constexpr size_t kStreamingWireBytes = size_t(4) << 20;
+constexpr int64_t kStreamingRowFloorBytes = 64 * 1024;
+
+/// One dispatch over all rows of a small wire; see transformToDevice. Returns
+/// nullopt when the schedule is not partitionable (the caller falls back).
+std::optional<std::optional<TransferError>>
+streamToDevice(const Program &program, uint32_t boundary, const void *src,
+               void *dst, CopyBackend &backend, const TransferOptions &options,
+               Report &report, bool drain, GroupReport *group,
+               GatherPool &workers, const BoundPlan &wire, size_t bytes) {
+  // About eight chunks per wire, at least 128 KiB each, so the first copy
+  // starts early and the drain waits for a short tail.
+  const size_t target =
+      std::clamp<size_t>(bytes / 8, size_t(128) << 10, size_t(1) << 20);
+  const auto schedule = planChunks(wire, 1, target);
+  if (schedule.serialized || schedule.outerLo != 0 ||
+      schedule.chunks.size() < 2 ||
+      size_t(schedule.chunks.back().byteOffset) +
+              schedule.chunks.back().bytes !=
+          bytes)
+    return std::nullopt;
+  for (const auto &chunk : schedule.chunks)
+    if (chunk.paddedBegin != chunk.validBegin ||
+        chunk.paddedEnd != chunk.validEnd)
+      return std::nullopt;
+  if (backend.numQueues() < 1)
+    return std::optional<TransferError>(
+        backendFailure(backend, "backend has no copy queue"));
+  report.hostPipeline = "streamed";
+  report.hostChunks = schedule.chunks.size();
+  report.hostChunkBytes = schedule.maxChunkBytes;
+  report.hostBuffers = 1;
+  StagingGuard staging{backend, backend.allocStaging(bytes)};
+  if (!staging.buffer)
+    return std::optional<TransferError>(
+        backendFailure(backend, "host scratch allocation failed"));
+  auto *base = static_cast<uint8_t *>(staging.buffer);
+  auto *device = static_cast<uint8_t *>(dst);
+  const auto &chunks = schedule.chunks;
+  std::vector<std::atomic<int64_t>> remaining(chunks.size());
+  for (size_t k = 0; k < chunks.size(); ++k)
+    remaining[k].store(chunks[k].validEnd - chunks[k].validBegin);
+  std::atomic<bool> failed{false};
+  std::atomic<uint64_t> copies{0};
+  std::mutex errorMutex;
+  std::optional<TransferError> error;
+  auto work = [&](int64_t first, int64_t last) {
+    for (size_t k = 0; k < chunks.size(); ++k) {
+      if (failed.load(std::memory_order_relaxed))
+        return;
+      const auto &chunk = chunks[k];
+      const int64_t begin = std::max(first, chunk.validBegin);
+      const int64_t end = std::min(last, chunk.validEnd);
+      if (begin >= end)
+        continue;
+      Chunk window = chunk;
+      window.validBegin = window.paddedBegin = begin;
+      window.validEnd = window.paddedEnd = end;
+      window.byteOffset = begin * schedule.rowBytes;
+      window.bytes = static_cast<size_t>((end - begin) * schedule.rowBytes);
+      if (auto failure = typed::executeHostChunk(program, 0, boundary, src,
+                                                 base + window.byteOffset,
+                                                 window, nullptr, 1, k)) {
+        std::lock_guard<std::mutex> lock(errorMutex);
+        if (!error)
+          error = fromExecution(*failure);
+        failed.store(true);
+        return;
+      }
+      if (remaining[k].fetch_sub(end - begin) == end - begin) {
+        // Every row of this chunk is staged: enqueue its copy from here.
+        detail::TraceRange submit("reloc.typed.h2d.submit", k);
+        backend.copyAsync(0, device + chunk.byteOffset, base + chunk.byteOffset,
+                          chunk.bytes, CopyDir::HostToDevice);
+        copies.fetch_add(1);
+      }
+    }
+  };
+  const int64_t rows = chunks.back().validEnd;
+  const int64_t grain = std::max<int64_t>(
+      1, kStreamingRowFloorBytes / std::max<int64_t>(1, schedule.rowBytes));
+  workers.parallelFor(0, rows, grain, work);
+  if (group)
+    group->payloadCopyCalls += copies.load();
+  if (failed.load() || backend.failed()) {
+    // Copies already enqueued still read the staging: establish completion
+    // before the guard may release it.
+    backend.waitEvent(backend.recordEvent(0));
+    if (error)
+      return error;
+    return std::optional<TransferError>(
+        backendFailure(backend, "streamed chunk copy failed"));
+  }
+  if (!drain)
+    return std::optional<TransferError>(); // the group's event covers it
+  backend.waitEvent(backend.recordEvent(0));
+  if (backend.failed())
+    return std::optional<TransferError>(
+        backendFailure(backend, "streamed completion failed"));
+  return std::optional<TransferError>();
+}
+
 // Transform directly into ring slots. Completion of a slot's previous copy
 // gates its reuse; the worker barrier completes before that slot is submitted.
 // Pool cleanup independently drains on failure, while Resources retains or
@@ -368,6 +472,29 @@ transformToDevice(const Program &program, uint32_t boundary, const void *src,
     report.hostPipeline = "whole_disabled";
     return whole();
   }
+  // Raw callers without an owned/borrowed pool still create workers once per
+  // transfer, never once per chunk. Resources normally supplies its pool.
+  std::unique_ptr<GatherPool> owned;
+  GatherPool *workers = options.gather;
+  if (!workers && options.gatherThreads != 1) {
+    owned = std::make_unique<GatherPool>(options.gatherThreads);
+    workers = owned.get();
+  }
+  // Small pad-free wires stream through one worker dispatch: the whole wire
+  // is staged at once (the footprint whole-buffer staging has anyway), rows
+  // are partitioned once, and the worker that completes a chunk's last rows
+  // enqueues its copy, so there is neither a per-chunk barrier nor a slot
+  // wait. Larger wires keep the bounded ring below.
+  const bool streaming =
+      workers != nullptr && workers->threadCount() > 1 &&
+      !options.chunkSizeOverride && bytes <= kStreamingWireBytes &&
+      (!options.maxScratchBytes || bytes <= options.maxScratchBytes) &&
+      program.plan.layout.padRegions.empty();
+  if (streaming)
+    if (auto outcome =
+            streamToDevice(program, boundary, src, dst, backend, options,
+                           report, drain, group, *workers, wire, bytes))
+      return *outcome;
   // Keep small transfers whole. Larger typed transfers target 32 chunks with
   // a 1 MiB floor: measured conversion/DMA schedules favor smaller slots than
   // the layout gather default (see docs/typed-h2d-pipeline.md). Physical rows
@@ -398,14 +525,6 @@ transformToDevice(const Program &program, uint32_t boundary, const void *src,
   PinnedBufferPool ring(backend, slots, schedule.maxChunkBytes);
   if (!ring.valid() || backend.failed())
     return backendFailure(backend, "typed staging ring allocation failed");
-  // Raw callers without an owned/borrowed pool still create workers once per
-  // transfer, never once per chunk. Resources normally supplies its pool.
-  std::unique_ptr<GatherPool> owned;
-  GatherPool *workers = options.gather;
-  if (!workers && options.gatherThreads != 1) {
-    owned = std::make_unique<GatherPool>(options.gatherThreads);
-    workers = owned.get();
-  }
   for (size_t k = 0; k < schedule.chunks.size(); ++k) {
     const auto &chunk = schedule.chunks[k];
     const int slot = ring.acquire();

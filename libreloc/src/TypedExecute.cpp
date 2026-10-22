@@ -18,6 +18,7 @@
 #include <atomic>
 #include <cassert>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <mutex>
 #include <utility>
@@ -528,7 +529,15 @@ constexpr int64_t kMinTypedBytesPerWorker = 64 * 1024;
 
 // Rows of an indexed gather are independent random reads; issuing the next
 // rows' cache lines early keeps several misses in flight per worker.
-constexpr int64_t kIndexedPrefetchRows = 8;
+// RELOC_INDEXED_PREFETCH overrides the distance (0 disables) for experiments.
+int64_t indexedPrefetchRows() {
+  static const int64_t value = [] {
+    if (const char *env = std::getenv("RELOC_INDEXED_PREFETCH"))
+      return std::max<int64_t>(0, std::atoll(env));
+    return int64_t(32);
+  }();
+  return value;
+}
 
 // Sum one bag of `dim` floats per table into `acc`, in index order (matching
 // an unweighted EmbeddingBag sum). Returns false on an index out of range.
@@ -719,13 +728,13 @@ executeHostWindow(const Program &program, uint32_t from, uint32_t to,
     auto rows = [&](int64_t begin, int64_t end) {
       reloc::detail::TraceRange trace("reloc.typed.transform.work", chunkIndex);
       const int64_t rowInputBytes = columns * inputWidth;
+      const int64_t ahead = indexedPrefetchRows();
       for (int64_t row = begin; row < end; ++row) {
-        if (row + kIndexedPrefetchRows < end) {
-          const auto *ahead =
-              static_cast<const uint8_t *>(src) +
-              program.rowIndices[row + kIndexedPrefetchRows] * rowInputBytes;
+        if (ahead > 0 && row + ahead < end) {
+          const auto *next = static_cast<const uint8_t *>(src) +
+                             program.rowIndices[row + ahead] * rowInputBytes;
           for (int64_t b = 0; b < rowInputBytes; b += 64)
-            __builtin_prefetch(ahead + b, 0, 1);
+            __builtin_prefetch(next + b, 0, 1);
         }
         const auto *input = static_cast<const uint8_t *>(src) +
                             program.rowIndices[row] * columns * inputWidth;

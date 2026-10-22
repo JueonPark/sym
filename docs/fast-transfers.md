@@ -84,8 +84,16 @@ type registry.
 - `dispatch::preparePooledBags`: the fused embedding-bag producer (AVX2
   sums in index order, range-checked indices, f16 cast), executed through the
   ordinary chunked `cpu_reference` upload.
-- Asynchronous groups upload CPU-stage members through the chunk ring without
-  draining it; the group's completion event covers every chunk.
+- Asynchronous groups can upload CPU-stage members through the chunk ring
+  without draining it (`chunked_members`); the group's completion event
+  covers every chunk.
+- Pad-free wires of at most 4 MiB stream through one worker dispatch
+  (`host_pipeline = "streamed"`): the whole wire is staged at once, rows are
+  partitioned once across the pool, and the worker that finishes a chunk's
+  last rows enqueues that chunk's copy, so small transfers overlap their CPU
+  work with DMA without a per-chunk barrier or slot wait.
+- The indexed gather prefetches 32 rows ahead (`RELOC_INDEXED_PREFETCH`
+  overrides the distance for experiments).
 - `bindIndexed` over a caller-owned span (`bind_indexed_from_pointer`).
 - A vectorized per-channel dequantize kernel (`char4` → `float4`, one scale
   per quad) with bit-identical results.

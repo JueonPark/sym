@@ -186,7 +186,7 @@ def test_asynchronous_producers_match_blocking_results(fast, cuda_device):
     assert completion.report is None
     out, = completion.wait_stream()
     assert torch.equal(out, source.index_select(0, index).to(cuda_device, dtype=torch.float16))
-    assert completion.done() and completion.report['items'][0]['host_pipeline'] in ('chunked', 'whole_single_chunk')
+    assert completion.done() and completion.report['items'][0]['host_pipeline'] in ('streamed', 'chunked', 'whole_single_chunk')
     tables = [torch.randn(300, 32, generator=generator) for _ in range(3)]
     offsets = [torch.arange(0, 2 * 50, 2) for _ in tables]
     indices = [torch.randint(0, 300, (100,), generator=generator) for _ in tables]

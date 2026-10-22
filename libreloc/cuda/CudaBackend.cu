@@ -43,9 +43,12 @@ struct DeviceScope {
 bool CudaBackend::check(int status, const char *what) {
   if (status == static_cast<int>(cudaSuccess))
     return true;
-  if (error_.empty())
+  std::lock_guard<std::mutex> lock(errorMutex_);
+  if (!hasError_.load(std::memory_order_relaxed)) {
     error_ = std::string(what) + ": " +
              cudaGetErrorString(static_cast<cudaError_t>(status));
+    hasError_.store(true, std::memory_order_release);
+  }
   return false;
 }
 

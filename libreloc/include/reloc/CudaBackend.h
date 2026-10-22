@@ -17,7 +17,9 @@
 
 #include "reloc/Backend.h"
 
+#include <atomic>
 #include <cstdint>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -46,7 +48,9 @@ public:
   bool waitStream(const void *externalStream) override;
   /// Enqueue an external consumer's wait for an existing owned event.
   bool waitExternal(EventHandle event, const void *externalStream);
-  bool failed() const override { return !error_.empty(); }
+  bool failed() const override {
+    return hasError_.load(std::memory_order_acquire);
+  }
   const std::string &error() const override { return error_; }
   int device() const override { return device_; }
 
@@ -84,7 +88,9 @@ private:
   std::unordered_map<EventHandle, void *> events_; // handle -> cudaEvent_t
   uint64_t nextEvent_ = 1;
   int device_ = -1;
-  std::string error_;
+  std::string error_; // written once, under errorMutex_, before hasError_
+  std::atomic<bool> hasError_{false};
+  mutable std::mutex errorMutex_;
   bool pinnedStaging_ = true;
 };
 
