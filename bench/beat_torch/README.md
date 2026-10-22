@@ -81,10 +81,20 @@ differs:
   (`IndexedProgram`) with the index bound from the tensor's memory, row
   prefetching and all eight workers fed per chunk.
 
-Known limitation: GraphSAGE 256 (9k random rows out of a 256 MiB table,
-read cache-cold after the harness mutates the source) is bound by the same
-DRAM/TLB-latency gather in both paths (~1.2 ms for the gather alone), and
-Sym's fixed per-call cost (~0.3 ms) is not recovered by the small overlap.
+Known limitation: GraphSAGE 256 (9k random rows of a 256 MiB table) trails
+eager Torch in the harness median although Sym's transfer is not slower in
+matched conditions. Measured on an idle host with the harness's own inputs,
+Sym's fused gather/cast/H2D completes in 0.62 ms against Torch's 0.72 ms
+back to back, 0.86 vs 1.07 ms after an unrelated 8 MiB cache polluter,
+1.16 vs 1.17 ms after 16 MiB, and 1.25 vs 1.21 ms fully cold (after the
+harness's `source.neg_()`). The loss is an ordering interaction of the
+protocol: the three paths run back to back on the same inputs each sample,
+Torch's `index_select` materializes a 4.6 MiB temporary plus a 2.3 MiB wire
+that evict the selected rows from the 8 MiB L3, so the path that follows
+Torch (Sym in one rotation out of three) pays a cold-cache gather, whereas
+Sym's 2.3 MiB footprint leaves Torch's rows warm. Prefetch distance (0–128
+rows) and worker count (4/8) do not change this; the cold gather itself is
+DRAM/TLB-latency bound in both paths.
 
 ## Where the time goes (Nsight Systems)
 
@@ -138,10 +148,12 @@ Reading the rows (ms per timed request, traced):
   time (fused dequantize) but shows longer maximum DMA gaps (1.25 vs 0.68 ms
   dense), i.e. its remaining cost is CPU-side submission latency between
   expert groups around the routing synchronizations that both paths pay.
-- **GraphSAGE 256.** The only regime where eager Torch stays ahead: the
-  traced GPU work is identical and tiny (0.18 ms DMA, 0.12 ms kernels); the
-  ~0.3 ms difference is CPU time around a gather that is DRAM/TLB-latency
-  bound for both paths.
+- **GraphSAGE 256.** The only regime where eager Torch stays ahead in the
+  median: the traced GPU work is identical and tiny (0.18 ms DMA, 0.12 ms
+  kernels); the difference is CPU time in a gather that is DRAM/TLB-latency
+  bound for both paths, and that Sym runs with a colder cache because it
+  follows Torch's larger footprint in one rotation out of three (see the
+  limitation above).
 
 
 ## First requests
