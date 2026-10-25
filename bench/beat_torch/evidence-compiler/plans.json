@@ -1,0 +1,140 @@
+{
+  "canonical": {
+    "gpt_weight_3072x1024": {
+      "wire": 1,
+      "stages": 1,
+      "exported_axes": 1,
+      "axes": 1,
+      "no_copy": false,
+      "export_ms": 5.18929,
+      "prepare_ms": 4.90595,
+      "row": "cpu_stages_cuda_stages@0",
+      "per_call_us": 443.971
+    },
+    "kv_evict_16x12x64_x8": {
+      "wire": 0,
+      "stages": 0,
+      "exported_axes": 3,
+      "axes": 3,
+      "no_copy": false,
+      "export_ms": 4.460922,
+      "prepare_ms": 8.026718,
+      "row": "layout_cuda (group_device_layout)",
+      "per_call_us": 327.193
+    },
+    "kv_restore_12x16x64_x8": {
+      "wire": 0,
+      "stages": 0,
+      "exported_axes": 3,
+      "axes": 3,
+      "no_copy": false,
+      "export_ms": 4.459129,
+      "prepare_ms": 5.488019,
+      "row": "layout_cuda (group_device_layout)",
+      "per_call_us": 305.788
+    },
+    "gnn_gather_9000x128": {
+      "wire": 2,
+      "stages": 1,
+      "exported_axes": null,
+      "axes": null,
+      "no_copy": null,
+      "note": "indexed plans are not canonicalized",
+      "export_ms": 4.80096,
+      "prepare_ms": 4.242225,
+      "row": "cpu_reference (indexed rows)",
+      "per_call_us": 668.995
+    },
+    "dlrm_layout_cast_26x512x64": {
+      "wire": 1,
+      "stages": 1,
+      "exported_axes": 3,
+      "axes": 3,
+      "no_copy": false,
+      "export_ms": 5.898131,
+      "prepare_ms": 0.24129,
+      "row": "cpu_reference",
+      "per_call_us": 314.329
+    },
+    "identity_view_2048x128": {
+      "wire": 0,
+      "stages": 0,
+      "exported_axes": 1,
+      "axes": null,
+      "no_copy": true,
+      "export_ms": 5.217694,
+      "prepare_ms": 0.0,
+      "row": "none (pure view, nothing to transfer)",
+      "per_call_us": 0.0
+    }
+  },
+  "raw": {
+    "gpt_weight_3072x1024": {
+      "wire": 1,
+      "stages": 1,
+      "exported_axes": 2,
+      "axes": 1,
+      "no_copy": false,
+      "export_ms": 4.811821,
+      "prepare_ms": 5.872913,
+      "row": "cpu_stages_cuda_stages@0",
+      "per_call_us": 459.44100000000003
+    },
+    "kv_evict_16x12x64_x8": {
+      "wire": 0,
+      "stages": 0,
+      "exported_axes": 3,
+      "axes": 3,
+      "no_copy": false,
+      "export_ms": 4.820938,
+      "prepare_ms": 5.006081,
+      "row": "layout_cuda (group_device_layout)",
+      "per_call_us": 312.901
+    },
+    "kv_restore_12x16x64_x8": {
+      "wire": 0,
+      "stages": 0,
+      "exported_axes": 3,
+      "axes": 3,
+      "no_copy": false,
+      "export_ms": 4.264448,
+      "prepare_ms": 5.374302,
+      "row": "layout_cuda (group_device_layout)",
+      "per_call_us": 304.6705
+    },
+    "gnn_gather_9000x128": {
+      "wire": 2,
+      "stages": 1,
+      "exported_axes": null,
+      "axes": null,
+      "no_copy": null,
+      "note": "indexed plans are not canonicalized",
+      "export_ms": 4.422418,
+      "prepare_ms": 4.191789,
+      "row": "cpu_reference (indexed rows)",
+      "per_call_us": 609.071
+    },
+    "dlrm_layout_cast_26x512x64": {
+      "wire": 1,
+      "stages": 1,
+      "exported_axes": 3,
+      "axes": 3,
+      "no_copy": false,
+      "export_ms": 5.329728,
+      "prepare_ms": 0.197927,
+      "row": "cpu_reference",
+      "per_call_us": 311.8745
+    },
+    "identity_view_2048x128": {
+      "wire": 0,
+      "stages": 0,
+      "exported_axes": 2,
+      "axes": 1,
+      "no_copy": false,
+      "export_ms": 5.003907,
+      "prepare_ms": 4.775542,
+      "row": "layout (group)",
+      "per_call_us": 275.655
+    }
+  }
+}

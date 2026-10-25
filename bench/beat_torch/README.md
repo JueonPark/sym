@@ -274,20 +274,54 @@ DLRM pooled producer, which carries the largest win, never does: it is
 synthesized natively (`prepare_pooled_program`) because no recipe expresses
 an `EmbeddingBag` sum.
 
-PLANS_TABLE
+`plans.py` (one process, idle host; `evidence-compiler/plans.json`): what the compiler wrote for each recipe with the canonicalizer on (c) and off (r, `--no-canonicalize`), what the runtime bound from it, the one-time costs (a fresh exporter process; decode + bind + native template) and the completed per-call latency of the same transfer in both modes:
+
+| Recipe (workload shape) | wire | stages | exported axes (canonical / raw) | bound axes (c / r) | no_copy (c / r) | export ms (c / r) | prepare ms (c / r) | row | per call µs (c / r) |
+| --- | ---: | ---: | ---: | ---: | --- | ---: | ---: | --- | ---: |
+| `gpt_weight_3072x1024` | v1 | 1 | 1 / 2 | 1 / 1 | False / False | 5.2 / 4.8 | 4.91 / 5.87 | cpu_stages_cuda_stages@0 | 444 / 459 |
+| `kv_evict_16x12x64_x8` | v0 | 0 | 3 / 3 | 3 / 3 | False / False | 4.5 / 4.8 | 8.03 / 5.01 | layout_cuda (group_device_layout) | 327 / 313 |
+| `kv_restore_12x16x64_x8` | v0 | 0 | 3 / 3 | 3 / 3 | False / False | 4.5 / 4.3 | 5.49 / 5.37 | layout_cuda (group_device_layout) | 306 / 305 |
+| `gnn_gather_9000x128` | v2 | 1 | n/a | n/a | n/a | 4.8 / 4.4 | 4.24 / 4.19 | cpu_reference (indexed rows) | 669 / 609 |
+| `dlrm_layout_cast_26x512x64` | v1 | 1 | 3 / 3 | 3 / 3 | False / False | 5.9 / 5.3 | 0.24 / 0.20 | cpu_reference | 314 / 312 |
+| `identity_view_2048x128` | v0 | 0 | 1 / 2 | - / 1 | True / False | 5.2 / 5.0 | 0.00 / 4.78 | none (pure view, nothing to transfer) | 0 / 276 |
+
+The canonicalizer touches two of the six plans: it coalesces the weight dequantize layout from two axes to one, which the runtime's own bind-time coalescing does anyway (bound axes 1 / 1), and it proves the identity permutation a pure view (`no_copy`), which turns a 276 µs copy into no transfer at all. The K/V permutations, the typed DLRM layout and the indexed gather are exported identically in both modes (indexed plans are not canonicalized). Per-call latencies agree within noise.
 
 **Whether the compiler's optimizations change the runtime.** `sym_fast_o0`
 runs every arm's plans exported with `--no-canonicalize` (the raw fold
 output: unmerged axes, no `no_copy` recomputation, no expression
 simplification), through the same runtime:
 
-O0_TABLE
+Three independent rounds on revision `fa83b67` (`evidence-compiler/`), milliseconds, median of three round medians [min–max round median]; both Sym arms bit-exact against eager Torch, isolation audit clean:
+
+| Regime | `torch` | `sym_fast` | `sym_fast_o0` | `sym_fast_o0 − sym_fast` |
+| --- | ---: | ---: | ---: | ---: |
+| DLRM 512 | 3.632 | 2.344 [2.326–2.347] | 2.184 [2.183–2.193] | -0.161 (-6.9%) |
+| DLRM 2048 | 7.821 | 6.450 [4.757–6.538] | 4.775 [4.586–5.850] | -1.675 (-26.0%) |
+| GraphSAGE 256 | 1.172 | 1.416 [1.404–1.450] | 1.183 [1.125–1.243] | -0.233 (-16.5%) |
+| GraphSAGE 1024 | 4.062 | 2.807 [2.743–2.932] | 2.902 [2.861–3.002] | +0.094 (+3.4%) |
+| GPT decode | 26.193 | 19.911 [19.891–19.917] | 19.914 [19.879–19.994] | +0.004 (+0.0%) |
+| GPT prefill | 6.920 | 5.883 [5.538–5.887] | 5.513 [5.511–5.860] | -0.370 (-6.3%) |
+| MoE sparse | 3.102 | 2.986 [2.971–2.991] | 2.968 [2.960–2.970] | -0.018 (-0.6%) |
+| MoE dense | 10.482 | 9.589 [9.576–9.616] | 9.578 [9.546–9.612] | -0.011 (-0.1%) |
+
+Reading the arm: GPT decode, prefill (equal minimum round medians), both
+MoE regimes and GraphSAGE 1024 agree within noise. The DLRM 2048 and
+GraphSAGE 256 medians differ by more than that, in the direction of the arm
+that was *not* compiled differently: the DLRM producer passes through no
+compiled plan at all, and the gather plan is exported identically in both
+modes, so those gaps are the host's run-to-run bimodality (two of three
+`sym_fast` rounds landed in the slow mode for DLRM 2048; the minimum round
+medians, 4.757 vs 4.586 ms, agree) and the rotation effect documented for
+GraphSAGE 256, not the canonicalizer. The attribution reads as zero: no
+regime moved in the direction the plans changed.
 
 **What the compiler is for, then.** In these regimes the compiler's share of
-the speed is zero within noise: its canonicalizer changes one plan (the
-weight dequantize layout coalesces from rank 2 to rank 1, and the runtime
-selects the same row either way), the folded typed plan is executed as one
-fused device kernel that `torch_kernels` reproduces by hand, and the plan's
+the speed is zero within noise: its canonicalizer changes two of six plans
+(the weight dequantize layout coalesces from rank 2 to rank 1, which the
+runtime redoes at bind time, and the identity view's `no_copy` proof, which
+no workload exercises), the folded typed plan is executed as one fused
+device kernel that `torch_kernels` reproduces by hand, and the plan's
 per-call cost is the native validation of the declared views (a few
 microseconds inside the `execute` numbers above). What the compiler
 contributes is the contract: the bit-exact fold semantics every stage obeys,
