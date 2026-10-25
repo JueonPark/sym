@@ -17,13 +17,29 @@ import pyreloc
 
 CORPUS = pathlib.Path(__file__).resolve().parents[3] / "test" / "corpus" / "typed"
 FIXTURES = sorted(p.stem for p in CORPUS.glob("*.json"))
-_BITS = {"float32": np.uint32, "float16": np.uint16, "int8": np.uint8, "int32": np.uint32}
-_DTYPES = {"float32": np.float32, "float16": np.float16, "int8": np.int8, "int32": np.int32}
+_BITS = {"float32": np.uint32, "float16": np.uint16, "int8": np.uint8, "int32": np.uint32,
+         "uint16": np.uint16, "bfloat16": np.uint16}
+# bfloat16 fixtures store their arrays as uint16 bit patterns (NumPy has no bf16).
+_DTYPES = {"float32": np.float32, "float16": np.float16, "int8": np.int8, "int32": np.int32,
+           "uint16": np.uint16, "bfloat16": np.uint16}
 
 
 def array(block):
     raw = np.asarray([int(b, 16) for b in block["bits"]], dtype=np.uint64).astype(_BITS[block["dtype"]])
     return raw.view(_DTYPES[block["dtype"]]).reshape(tuple(block["shape"]))
+
+
+def tensor_of(block):
+    """The fixture array as a Torch tensor; bf16 bit arrays become bfloat16 tensors."""
+    tensor = torch.from_numpy(array(block).copy())
+    return tensor.view(torch.bfloat16) if block["dtype"] in ("uint16", "bfloat16") else tensor
+
+
+def bytes_of(tensor):
+    tensor = tensor.cpu()
+    if tensor.dtype == torch.bfloat16:
+        tensor = tensor.view(torch.int16)  # NumPy has no bf16; the bytes are what matter
+    return tensor.numpy().tobytes()
 
 
 def rows(bound, direction):
@@ -40,10 +56,10 @@ def test_every_qualified_cuda_row_reproduces_the_fixture(name):
     meta = json.loads((CORPUS / f"{name}.json").read_text())
     compiled = CompiledRecipe.load(CORPUS / f"{name}.reloc")  # the portable artifact, reloaded
     assert compiled.typed and compiled.plan_bytes == (CORPUS / f"{name}.bin").read_bytes()
-    parameters = {n: torch.from_numpy(array(b).copy()) for n, b in meta["parameters"].items()}
+    parameters = {n: tensor_of(b) for n, b in meta["parameters"].items()}
     executed = 0
     for binding in meta["bindings"]:
-        source = torch.from_numpy(array(binding["source"]).copy())
+        source = tensor_of(binding["source"])
         expected = array(binding["expected"])
         bound = pyreloc.bind_typed(
             pyreloc.load_typed_plan(compiled.plan_bytes),
@@ -55,7 +71,7 @@ def test_every_qualified_cuda_row_reproduces_the_fixture(name):
             request = dispatch.prepare_typed_transfer(compiled, source, "cuda", parameters=parameters, implementation=row)
             result = dispatch.execute_typed_transfer(request)
             assert result.tensor.device.type == "cuda"
-            assert result.tensor.cpu().numpy().tobytes() == expected.tobytes(), (name, row, "h2d")
+            assert bytes_of(result.tensor) == expected.tobytes(), (name, row, "h2d")
             assert result.report["implementation"] == row and result.report["executed"]
             executed += 1
         # Device to host: the same program from a device source, forward only.
@@ -64,7 +80,7 @@ def test_every_qualified_cuda_row_reproduces_the_fixture(name):
             request = dispatch.prepare_typed_transfer(d2h, source.cuda(), "cpu", parameters=parameters, implementation=row)
             result = dispatch.execute_typed_transfer(request)
             assert result.tensor.device.type == "cpu"
-            assert result.tensor.numpy().tobytes() == expected.tobytes(), (name, row, "d2h")
+            assert bytes_of(result.tensor) == expected.tobytes(), (name, row, "d2h")
             executed += 1
     assert executed >= 2 * len(meta["bindings"])
 

@@ -346,7 +346,35 @@ pair in Sym), the oracle is the f16 reference model, tokens and routes stay
 exact, logits compare at `rtol = atol = 2e-2`. The DLRM/GraphSAGE regimes
 already wire f16 features and are unchanged.
 
-EVIDENCE_F16
+Three independent rounds on revision `908ec9c` (`run.py --compute-dtype
+float16`, evidence in `evidence-f16/`), milliseconds, median of three round
+medians [min–max round median]; tokens and routes exact in every sample,
+`sym_fast` logits bit-exact against the f16 Torch control, the Inductor arms
+within 4e-3, isolation audit clean, no graph breaks:
+
+| Regime (f16 compute) | Eager Torch | Inductor | `sym_fast` | `sym_fast_inductor` | `sym_fast` | `sym_fast_inductor` |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| GPT, four decode steps | 28.194 [28.183–28.958] | 29.796 [29.688–30.224] | 20.611 [20.261–21.011] | **18.754 [18.593–18.754]** | -26.9% (every round) | -33.5% (every round) |
+| GPT, 256-token prefill | 6.745 [6.743–6.751] | 5.607 [5.580–5.647] | 4.999 [4.996–5.009] | **4.857 [4.855–4.860]** | -10.8% (every round) | -13.4% (every round) |
+| MoE, one token | 3.362 [3.347–3.366] | 4.368 [4.353–4.391] | **3.030 [2.991–3.044]** | 3.803 [3.776–3.806] | -9.8% (every round) | +13.1% |
+| MoE, 512 tokens | 11.223 [11.203–11.223] | 16.113 [16.097–16.245] | **10.027 [9.941–10.038]** | 13.713 [13.702–13.804] | -10.7% (every round) | +22.2% |
+
+Transfer-only medians (weight groups, ms): decode 24.6 (Torch) vs 16.2
+(`sym_fast`), prefill 6.18 vs 4.31, MoE sparse 2.29 vs 1.77, MoE dense 8.94
+vs 5.94. Tail latency (median p95): decode 28.6 / 21.8 / 18.9 (Torch /
+`sym_fast` / `sym_fast_inductor`), prefill 6.95 / 5.12 / 4.94, MoE sparse
+3.41 / 3.06 / 3.87, MoE dense 11.26 / 10.09 / 13.82.
+
+Reading the table: in half precision the GEMMs run on tensor cores and the
+dequantized weights are half the bytes, so the model's compute shrinks and
+the weight stream becomes a larger share of the request; the fused s8 → f16
+pair writes half of what the f32 dequantize wrote. The eager-compute arm now
+beats both controls in all four offload regimes in every round (−10% to
+−27%), and with Inductor's compute the GPT regimes reach −33.5% and −13.4%.
+MoE under Inductor keeps the control's own compute regression (the Inductor
+control is 30–44% slower than eager Torch there). These are the precision
+conditions the review asked for; the models are still the #225 toy sizes,
+and the hardware is still one PCIe 3 box.
 
 ## Where the time goes (Nsight Systems)
 

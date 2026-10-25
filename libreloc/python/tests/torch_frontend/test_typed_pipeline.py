@@ -25,16 +25,16 @@ def spec(shape, dtype):
 @pytest.mark.parametrize('buffers', [1, 2, 4])
 def test_chunked_corpus_matches_exact_oracle_bytes(buffers, cuda_device):
     from reloc_torch import CompiledRecipe
-    from test_typed_conformance_gpu import CORPUS, FIXTURES, array
+    from test_typed_conformance_gpu import CORPUS, FIXTURES, array, bytes_of, tensor_of
 
     chunked = 0
     with TransferResources() as owner:
         for name in FIXTURES:
             meta = json.loads((CORPUS / f'{name}.json').read_text())
             compiled = CompiledRecipe.load(CORPUS / f'{name}.reloc')
-            params = {n: torch.from_numpy(array(p).copy()) for n, p in meta['parameters'].items()}
+            params = {n: tensor_of(p) for n, p in meta['parameters'].items()}
             for binding in meta['bindings']:
-                source = torch.from_numpy(array(binding['source']).copy())
+                source = tensor_of(binding['source'])
                 expected = array(binding['expected']).tobytes()
                 probe = dispatch.prepare_typed_transfer(compiled, source, cuda_device, parameters=params)
                 for row in probe.capability['eligible']:
@@ -45,7 +45,7 @@ def test_chunked_corpus_matches_exact_oracle_bytes(buffers, cuda_device):
                         parameters=params, implementation=label)
                     out = dispatch.execute_typed_transfer(request, resources=owner,
                         n_buffers=buffers, chunk_size=1, pinning='pinned')
-                    assert out.tensor.cpu().numpy().tobytes() == expected, (name, label, buffers)
+                    assert bytes_of(out.tensor) == expected, (name, label, buffers)
                     chunked += out.report['host_pipeline'] == 'chunked'
                     assert out.report['host_buffers'] <= buffers
     assert chunked > 0
