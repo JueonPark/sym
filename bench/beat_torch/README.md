@@ -331,6 +331,23 @@ manually fused implementation. The goal is to reach that implementation's
 performance automatically across chains. The current canonicalization switch
 cannot serve as the folding-off arm of that experiment.
 
+## Half-precision compute
+
+Reviewer question on #254: the offload regimes computed in float32 with TF32
+off, whereas real inference runs f16/bf16, where the dequantized weight is
+half the bytes and the GEMMs run on tensor cores; Sym had no s8 → f16 stage.
+This tree adds the C1 chain dequantize (`affine`) then cast (`ieee_rne`) as
+one fused device kernel (`cuda::dequantS8F16`, no f32 intermediate), the
+bf16 casts, 16-bit K/V swaps, and `compare.py --compute-dtype float16`: the
+GPT/MoE models run in f16 end to end (f16 activations, embeddings, routers
+and KV caches; weights dequantized to f16 by every arm with the same two
+roundings, `(q.float() * scale).half()` in the Torch controls, the fused
+pair in Sym), the oracle is the f16 reference model, tokens and routes stay
+exact, logits compare at `rtol = atol = 2e-2`. The DLRM/GraphSAGE regimes
+already wire f16 features and are unchanged.
+
+EVIDENCE_F16
+
 ## Where the time goes (Nsight Systems)
 
 `profile.sh` captures `torch` and `sym_fast` in one process under NVTX

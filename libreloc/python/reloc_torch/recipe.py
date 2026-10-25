@@ -13,7 +13,7 @@ index operand descriptor. Index values are supplied at binding, never cached.
 from dataclasses import dataclass
 from .symbolic import Expr
 
-_TENSOR_DTYPES = {'float32': 32, 'float16': 16, 'int8': 8}
+_TENSOR_DTYPES = {'float32': 32, 'float16': 16, 'bfloat16': 16, 'int8': 8}
 _PARAM_DTYPES = {**_TENSOR_DTYPES, 'int32': 32}
 _CAST_POLICIES = ('ieee_rne', 'exact')
 _QUANT_POLICIES = ('symmetric_rne', 'affine')

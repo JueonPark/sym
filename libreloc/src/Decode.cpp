@@ -477,6 +477,9 @@ bool isFloatWidth(ElementType type, uint32_t width) {
 bool isInt8(ElementType type) {
   return type.kind == ElementTypeKind::Integer && type.bitwidth == 8;
 }
+bool isBFloat16(ElementType type) {
+  return type.kind == ElementTypeKind::BFloat && type.bitwidth == 16;
+}
 
 bool parseStageType(ByteReader &reader, StageType &out) {
   if (!parseElementType(reader, out.type))
@@ -641,6 +644,8 @@ int64_t signExtendBits(uint64_t bits, uint32_t bitwidth) {
 }
 
 bool isNaNBits(uint64_t bits, ElementType type) {
+  if (type.kind == ElementTypeKind::BFloat && type.bitwidth == 16)
+    return ((bits >> 7) & 0xffu) == 0xffu && (bits & 0x7fu) != 0;
   if (type.kind != ElementTypeKind::Float)
     return false;
   if (type.bitwidth == 32)
@@ -692,15 +697,17 @@ bool validateTyped(ByteReader &reader, const TypedRelocationPlan &plan,
                             stage.output.signedness == Signedness::Signless;
     switch (stage.transform) {
     case ValueTransformKind::Cast: {
-      const bool narrow = isFloatWidth(stage.input.type, 32) &&
-                          isFloatWidth(stage.output.type, 16) &&
+      const bool half16 =
+          isFloatWidth(stage.output.type, 16) || isBFloat16(stage.output.type);
+      const bool from16 =
+          isFloatWidth(stage.input.type, 16) || isBFloat16(stage.input.type);
+      const bool narrow = isFloatWidth(stage.input.type, 32) && half16 &&
                           stage.policy == NumericPolicyKind::IeeeRne;
-      const bool widen = isFloatWidth(stage.input.type, 16) &&
-                         isFloatWidth(stage.output.type, 32) &&
+      const bool widen = from16 && isFloatWidth(stage.output.type, 32) &&
                          stage.policy == NumericPolicyKind::Exact;
       if (!(narrow || widen) || !signlessIO)
-        return reader.fail(at, "invalid cast signature (f32 -> f16 ieee_rne "
-                               "or f16 -> f32 exact, signless)");
+        return reader.fail(at, "invalid cast signature (f32 -> f16/bf16 "
+                               "ieee_rne or f16/bf16 -> f32 exact, signless)");
       if (stage.scale.kind != ParamKind::None ||
           stage.zeroPoint.kind != ParamKind::None || stage.axis != -1 ||
           stage.hasChannel)

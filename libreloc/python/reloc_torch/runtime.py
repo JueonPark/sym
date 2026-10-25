@@ -188,7 +188,7 @@ def source_reason(src):
             (device.type == "cpu" and device.index is not None) or
             (device.type == "cuda" and (device.index is None or device.index < 0))):
         return "unsupported_device"
-    if src.dtype not in (torch.float32, torch.float16, torch.int8):
+    if src.dtype not in (torch.float32, torch.float16, torch.bfloat16, torch.int8):
         return "unsupported_dtype"
     if src.layout != torch.strided:
         return "unsupported_layout"

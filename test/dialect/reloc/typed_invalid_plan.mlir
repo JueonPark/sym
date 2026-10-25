@@ -11,7 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 func.func @stage_unsupported_cast_pair() {
-  // expected-error @below {{cast from 'f32' to 'f32' is not a supported typed conversion (f32 -> f16, f16 -> f32)}}
+  // expected-error @below {{cast from 'f32' to 'f32' is not a supported typed conversion (f32 -> f16, f16 -> f32, f32 -> bf16, bf16 -> f32)}}
   "test.use_attr"() {stage = #reloc.stage<cast ieee_rne : f32 -> f32, shape = [4]>} : () -> ()
   return
 }

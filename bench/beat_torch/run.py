@@ -41,6 +41,8 @@ def main(args):
                    '--paths', *order]
         if args.cases:
             command += ['--cases', *args.cases]
+        if args.compute_dtype:
+            command += ['--compute-dtype', args.compute_dtype]
         started = time.time()
         observed = []
         with open(args.output / f'{name}.log', 'w') as log:
@@ -71,4 +73,5 @@ if __name__ == '__main__':
     p.add_argument('--warmup', type=int, default=5)
     p.add_argument('--paths', nargs='*')
     p.add_argument('--cases', nargs='*')
+    p.add_argument('--compute-dtype')
     main(p.parse_args())

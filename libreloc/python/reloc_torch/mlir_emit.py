@@ -4,10 +4,10 @@ from .recipe import (TYPED_OPERATIONS, BindingParam, Cast, Dequantize, IndexSele
 from .symbolic import (Add, Const, FloorDiv, Mod, Mul, Symbol,
                        UnsupportedSymbolicExpr, dense_strides, expression, operation_shape)
 
-_DTYPES = {'float32': 'f32', 'float16': 'f16', 'int8': 'i8'}
+_DTYPES = {'float32': 'f32', 'float16': 'f16', 'bfloat16': 'bf16', 'int8': 'i8'}
 # Stage parameters may also be i32 (zero points); tensors may not.
 _PARAM_DTYPES = {**_DTYPES, 'int32': 'i32'}
-_WIDTHS = {'f32': 32, 'f16': 16, 'i8': 8, 'i32': 32}
+_WIDTHS = {'f32': 32, 'f16': 16, 'bf16': 16, 'i8': 8, 'i32': 32}
 
 
 def _expr(value, *, quoted=False):

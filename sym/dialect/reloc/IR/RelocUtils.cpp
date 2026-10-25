@@ -190,11 +190,17 @@ LogicalResult mlir::reloc::verifyValueTransformSignature(
     } else if (from.isF16() && to.isF32()) {
       required = NumericPolicy::Exact;
       pair = "f16 -> f32";
+    } else if (from.isF32() && to.isBF16()) {
+      required = NumericPolicy::IeeeRne;
+      pair = "f32 -> bf16";
+    } else if (from.isBF16() && to.isF32()) {
+      required = NumericPolicy::Exact;
+      pair = "bf16 -> f32";
     }
     if (!required)
       return emitError() << "cast from " << from << " to " << to
                          << " is not a supported typed conversion (f32 -> "
-                            "f16, f16 -> f32)";
+                            "f16, f16 -> f32, f32 -> bf16, bf16 -> f32)";
     if (policy != *required)
       return emitError() << "policy '" << stringifyNumericPolicy(policy)
                          << "' is not defined for the " << pair

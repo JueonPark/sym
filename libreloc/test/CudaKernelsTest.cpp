@@ -543,6 +543,96 @@ TEST(CudaTypedSemantics, ExactWideningWitnessBits) {
   EXPECT_TRUE(std::isnan(got[6]));
 }
 
+TEST(CudaConvertBF16, NarrowingAndWideningMatchTheHostBits) {
+  std::vector<float> src = {0.0f,
+                            -0.0f,
+                            1.0f,
+                            1.0f + 0x1p-8f,
+                            1.0f + 3 * 0x1p-9f,
+                            0x1p-133f,
+                            0x1p-134f,
+                            1.5f * 0x1p-134f,
+                            0x1p-126f,
+                            3.3895313892515355e38f,
+                            3.3961775292304193e38f,
+                            3.4e38f,
+                            HUGE_VALF,
+                            -HUGE_VALF};
+  std::mt19937 rng(229);
+  for (int i = 0; i < 65539; ++i) {
+    uint32_t bits = rng();
+    float value;
+    std::memcpy(&value, &bits, sizeof(value));
+    src.push_back(value);
+  }
+  std::vector<uint16_t> want(src.size());
+  for (size_t i = 0; i < src.size(); ++i)
+    want[i] = reloc::quant::narrowF32BF16(src[i]);
+  DeviceBuffer dSrc(src.size() * 4), dDst(src.size() * 2),
+      dWide(src.size() * 4);
+  ASSERT_TRUE(dSrc.valid() && dDst.valid() && dWide.valid());
+  upload(dSrc, src);
+  reloc::cuda::convertF32BF16(dSrc.as<float>(), dDst.as<uint16_t>(),
+                              src.size());
+  ASSERT_EQ(cudaSuccess, cudaDeviceSynchronize());
+  auto got = download<uint16_t>(dDst, src.size());
+  for (size_t i = 0; i < src.size(); ++i) {
+    if (std::isnan(src[i])) {
+      EXPECT_EQ(got[i] & 0x7F80, 0x7F80);
+      EXPECT_NE(got[i] & 0x007F, 0);
+    } else {
+      EXPECT_EQ(got[i], want[i]) << "i=" << i;
+    }
+  }
+  // Widening of the produced bits is exact and matches the host.
+  reloc::cuda::convertBF16F32(dDst.as<uint16_t>(), dWide.as<float>(),
+                              src.size());
+  ASSERT_EQ(cudaSuccess, cudaDeviceSynchronize());
+  auto wide = download<float>(dWide, src.size());
+  for (size_t i = 0; i < src.size(); ++i) {
+    const float host = reloc::quant::widenBF16F32(got[i]);
+    if (std::isnan(host))
+      EXPECT_TRUE(std::isnan(wide[i]));
+    else
+      EXPECT_EQ(0, std::memcmp(&host, &wide[i], 4)) << "i=" << i;
+  }
+}
+
+TEST(CudaDequantF16, FusedPairMatchesTheTwoKernelChainBitForBit) {
+  for (const auto [channels, chSize] : {std::pair<int64_t, int64_t>{6, 1024},
+                                        std::pair<int64_t, int64_t>{7, 517}}) {
+    std::mt19937 rng(53);
+    std::vector<int8_t> src(static_cast<size_t>(channels * chSize));
+    for (int8_t &v : src)
+      v = static_cast<int8_t>(rng());
+    std::vector<float> scales(channels);
+    for (int64_t c = 0; c < channels; ++c)
+      scales[c] = 0.3f / static_cast<float>(c + 1);
+    DeviceBuffer dSrc(src.size()), dScales(scales.size() * 4),
+        dF32(src.size() * 4), dChain(src.size() * 2), dFused(src.size() * 2);
+    ASSERT_TRUE(dSrc.valid() && dScales.valid() && dF32.valid() &&
+                dChain.valid() && dFused.valid());
+    upload(dSrc, src);
+    upload(dScales, scales);
+    reloc::cuda::dequantS8F32(dSrc.as<int8_t>(), dF32.as<float>(), channels,
+                              chSize, dScales.as<float>());
+    reloc::cuda::convertF32F16(dF32.as<float>(), dChain.as<uint16_t>(),
+                               src.size());
+    for (bool scalar : {false, true}) {
+      reloc::ablation::set(reloc::ablation::Knob::ScalarDequant, scalar);
+      ASSERT_EQ(cudaSuccess, cudaMemset(dFused.p, 0xff, src.size() * 2));
+      reloc::cuda::dequantS8F16(dSrc.as<int8_t>(), dFused.as<uint16_t>(),
+                                channels, chSize, dScales.as<float>());
+      ASSERT_EQ(cudaSuccess, cudaDeviceSynchronize());
+      auto chain = download<uint16_t>(dChain, src.size());
+      auto fused = download<uint16_t>(dFused, src.size());
+      EXPECT_EQ(chain, fused)
+          << "channels=" << channels << " scalar=" << scalar;
+    }
+    reloc::ablation::set(reloc::ablation::Knob::ScalarDequant, false);
+  }
+}
+
 TEST(CudaTypedSemantics, NarrowingRneWitnessesAndRandomBits) {
   std::vector<float> src = {
       0.0f,      -0.0f,      0x1p-24f,        0x1p-25f,           0x1.8p-25f,

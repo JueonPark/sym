@@ -66,7 +66,8 @@ class ImportReport:
 
 
 # C1 §3.1 / §3.2: the only casts with a numerical contract.
-_CASTS = {('float32', 'float16'): Cast('float16', 'ieee_rne'), ('float16', 'float32'): Cast('float32', 'exact')}
+_CASTS = {('float32', 'float16'): Cast('float16', 'ieee_rne'), ('float16', 'float32'): Cast('float32', 'exact'),
+          ('float32', 'bfloat16'): Cast('bfloat16', 'ieee_rne'), ('bfloat16', 'float32'): Cast('float32', 'exact')}
 
 
 def normalize_graph(gm, example_inputs=None):
@@ -318,7 +319,7 @@ def _recipe(root, members):
     context = compat.SymbolicContext.from_tensor(source)
     src = context.tensor_spec(source, require_dense=False)
     _require(src.offset == Const(0) and src.strides == dense_strides(src.shape), 'source_layout')
-    _require(src.dtype in {'float32', 'float16', 'int8'}, 'unsupported_dtype')
+    _require(src.dtype in {'float32', 'float16', 'bfloat16', 'int8'}, 'unsupported_dtype')
     operations, shape, direction = [], src.shape, None
     strides, offset = src.strides, src.offset
     current_dtype = src.dtype

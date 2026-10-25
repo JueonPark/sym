@@ -72,7 +72,7 @@ class PreparedWireWeights:
     def __init__(self, device='cuda:0', *, compiler=None, pin_memory=True,
                  max_prepared_bytes=1 << 30, max_pinned_bytes=1 << 30,
                  max_entries=4096, max_in_flight=2, max_output_bytes=128 << 20,
-                 max_scratch_bytes=64 << 20, gather_threads=8):
+                 max_scratch_bytes=64 << 20, gather_threads=8, dtype='float32'):
         import torch
         from .compiler import CompilerClient
         from .recipe import BindingParam, Dequantize, Recipe, TensorSpec
@@ -98,9 +98,16 @@ class PreparedWireWeights:
         rows, cols = Symbol('out'), Symbol('in')
         def spec(dtype):
             return TensorSpec((rows, cols), dense_strides((rows, cols)), Const(0), dtype)
-        recipe = Recipe(spec('int8'), (Dequantize('float32',
-            BindingParam('scale', 'float32', (rows,)), None, 0, 'affine'),),
-            spec('float32'), 'h2d')
+        from .recipe import Cast
+        if dtype not in ('float32', 'float16'):
+            raise ValueError("output dtype must be float32 or float16")
+        # float16 outputs are the C1 chain dequantize (affine) then cast
+        # (ieee_rne): two roundings, executed as one fused device kernel.
+        stages = (Dequantize('float32', BindingParam('scale', 'float32', (rows,)), None, 0, 'affine'),)
+        if dtype == 'float16':
+            stages += (Cast('float16', 'ieee_rne'),)
+        self.output_dtype = dtype
+        recipe = Recipe(spec('int8'), stages, spec(dtype), 'h2d')
         self._compiled = (compiler or CompilerClient.from_environment()).compile(recipe)
 
     def _check(self):
@@ -156,10 +163,11 @@ class PreparedWireWeights:
                 finalizer = weakref.finalize(packed, self._budget.release, size, pinned, template)
                 packed.copy_(q.t())
                 revision = self._revision + 1
+                width = 2 if self.output_dtype == 'float16' else 4
                 info = MappingProxyType(dict(name=name, revision=revision,
-                    shape=tuple(packed.shape), wire_dtype='int8', output_dtype='float32',
+                    shape=tuple(packed.shape), wire_dtype='int8', output_dtype=self.output_dtype,
                     channel_axis=0, zero_point=0, wire_bytes=wire, parameter_bytes=parameter,
-                    payload_bytes=wire + parameter, output_bytes=wire * 4,
+                    payload_bytes=wire + parameter, output_bytes=wire * width,
                     prepared_bytes=size, pinned_bytes=pinned))
                 self._entries[name] = _Entry(packed, template, bindings,
                     template.capability, template.selection, info)
@@ -215,7 +223,8 @@ class PreparedWireWeights:
             requests = []
             for entry in entries:
                 source, native = entry.source, entry.template
-                destination = ConcreteDescriptor(tuple(source.shape), tuple(source.stride()), 'float32', device)
+                destination = ConcreteDescriptor(tuple(source.shape), tuple(source.stride()), self.output_dtype,
+                                                 device)
                 # Strong ownership replaces value freshness checks ONLY here:
                 # neither packed source nor bound parameters escape this owner.
                 # Ordinary prepare_typed_transfer retains its full recheck.

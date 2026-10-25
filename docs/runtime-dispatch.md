@@ -127,6 +127,8 @@ contract; cast NaN payload/sign is outside C1 bit-exact conformance):
 | --- | --- | --- |
 | cast f16 → f32 exact | `cuda::convertF16F32` | none |
 | cast f32 → f16 ieee_rne | `cuda::convertF32F16` | none; non-NaN values bit exact, NaN-ness preserved |
+| cast f32 → bf16 ieee_rne / bf16 → f32 exact | `cuda::convertF32BF16` / `cuda::convertBF16F32` | none; non-NaN values bit exact, NaN-ness preserved |
+| dequantize affine followed by cast f32 → f16 | `cuda::dequantS8F16` (one launch, no f32 intermediate; `RELOC_ABLATE=unfused_dequant_f16` restores the two-kernel chain) | as dequantize affine |
 | quantize symmetric_rne | `cuda::quantizeF32S8` | per tensor; per channel only when the channel map is the outermost axis of the buffer the kernel runs over (result axis 0 for H2D; for D2H, source axis 0 mapped one-to-one to a result axis) — `channel_not_outer_result_axis` / `channel_not_source_outer_axis` otherwise |
 | dequantize affine | `cuda::dequantS8F32` | zero point 0 only (`no_cuda_kernel:nonzero_zero_point`); channel rule as above |
 

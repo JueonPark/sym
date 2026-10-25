@@ -13,7 +13,8 @@ namespace ablation {
 namespace {
 
 constexpr size_t kCount = static_cast<size_t>(Knob::Count);
-constexpr std::array<const char *, kCount> kNames = {"scalar_dequant"};
+constexpr std::array<const char *, kCount> kNames = {"scalar_dequant",
+                                                     "unfused_dequant_f16"};
 
 std::array<std::atomic<bool>, kCount> &flags() {
   static std::array<std::atomic<bool>, kCount> values{};

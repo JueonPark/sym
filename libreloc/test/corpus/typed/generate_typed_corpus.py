@@ -83,6 +83,12 @@ S0 = Symbol("s0")
 HALF_BOUNDARIES = [2.0 ** -24, 2.0 ** -25, 1.5 * 2.0 ** -25, 2.0 ** -14, 65504.0, 65519.99, 65520.0,
                    1e5, 1 + 2.0 ** -11, 1 + 3 * 2.0 ** -12, -0.0, float("inf"), -float("inf")]
 HALF_WITNESS_BITS = [0x0001, 0x0400, 0x7BFF, 0x7C00, 0xFC00, 0x8000, 0x3C00, 0x3C01]
+# C1 §3.5 / §3.6 (bfloat16): subnormal boundary 2^-133, the tie below it,
+# the largest finite value, the overflow threshold, ties at 1 + 2^-8.
+BF16_BOUNDARIES = [2.0 ** -133, 2.0 ** -134, 1.5 * 2.0 ** -134, 2.0 ** -126, 3.3895313892515355e38,
+                   3.3961775292304193e38, 3.4e38, 1 + 2.0 ** -8, 1 + 3 * 2.0 ** -9, -0.0, float("inf"),
+                   -float("inf")]
+BF16_WITNESS_BITS = [0x0001, 0x0080, 0x7F7F, 0x7F80, 0xFF80, 0x8000, 0x3F80, 0x3F81]
 QUANT_TIES = [-2.5, -1.5, -0.5, 0.5, 1.5, 2.5]
 QUANT_LIMITS = [-129.0, -128.0, -127.0, 126.0, 127.0, 128.0]
 SPECIALS = [float("nan"), float("inf"), -float("inf"), -0.0]
@@ -116,6 +122,16 @@ def fill_f16_bits(rng, shape, head=()):
     return ref.from_bits("float16", bits, tuple(shape))
 
 
+def fill_bf16_bits(rng, shape, head=()):
+    count = int(np.prod(shape))
+    bits = list(head)[:count]
+    while len(bits) < count:
+        b = int(rng.integers(0, 0x10000))
+        if (b & 0x7F80) != 0x7F80:  # finite only
+            bits.append(b)
+    return ref.from_bits("bfloat16", bits, tuple(shape))
+
+
 # A fixture: recipe, description, parameter arrays, bindings (symbol values)
 # and a deterministic source builder (symbols, rng) -> array.
 FIXTURES = []
@@ -137,6 +153,29 @@ fixture(
     "cast + layout: f16 [2, 12] widened exactly then reshaped to [6, 4], C1's binary16 -> binary32 witness bits first",
     Recipe(spec((2, 12), "float16"), (Cast("float32", "exact"), Reshape((Const(6), Const(4)))), spec((6, 4), "float32"), "h2d"),
     lambda symbols, rng: fill_f16_bits(rng, (2, 12), HALF_WITNESS_BITS),
+)
+fixture(
+    "cast_transpose_bf16",
+    "layout + cast: f32 [4, 6] transposed then rounded to bfloat16 (ieee_rne) with C1's bf16 boundary vectors",
+    Recipe(spec((4, 6), "float32"), (Transpose((1, 0)), Cast("bfloat16", "ieee_rne")), spec((6, 4), "bfloat16"), "h2d"),
+    lambda symbols, rng: fill_f32(rng, (4, 6), BF16_BOUNDARIES, -3e38, 3e38),
+)
+fixture(
+    "widen_bf16_reshape",
+    "cast + layout: bf16 [2, 12] widened exactly then reshaped to [6, 4], C1's bf16 witness bits first",
+    Recipe(spec((2, 12), "bfloat16"), (Cast("float32", "exact"), Reshape((Const(6), Const(4)))), spec((6, 4), "float32"), "h2d"),
+    lambda symbols, rng: fill_bf16_bits(rng, (2, 12), BF16_WITNESS_BITS),
+)
+fixture(
+    "dequant_then_f16",
+    "dequantize per channel (runtime scale over 3 channels) then ieee_rne to f16, transposed to [3, s0]: the device's fused pair; two bindings",
+    Recipe(spec((S0, 3), "int8"),
+           (Dequantize("float32", BindingParam("s", "float32", (Const(3),)), None, 1, "affine"),
+            Cast("float16", "ieee_rne"), Transpose((1, 0))),
+           spec((3, S0), "float16"), "h2d"),
+    lambda symbols, rng: fill_i8(rng, (symbols["s0"], 3), [-128, -1, 0, 1, 127, 64, -64, 3]),
+    bindings=({"s0": 5}, {"s0": 8}),
+    parameters={"s": np.array([0.3, 1.0 / 1024, 65.0], dtype=np.float32)},
 )
 fixture(
     "quantize_channel_transpose_sym",

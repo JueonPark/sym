@@ -24,6 +24,22 @@ func.func @cast_widen_symbolic(%t: !sym.tensor<["N", 64], f16>) -> !sym.tensor<[
   return %0 : !sym.tensor<["N", 64], f32>
 }
 
+// bfloat16 is the second narrow float (C1 §3.5 / §3.6): the same two policy
+// names, the same shape rule.
+// CHECK-LABEL: func.func @cast_narrow_bf16
+func.func @cast_narrow_bf16(%t: !sym.tensor<[4, 6], f32>) -> !sym.tensor<[4, 6], bf16> {
+  // CHECK: reloc.cast %{{.*}} policy ieee_rne : !sym.tensor<[4, 6], f32> -> !sym.tensor<[4, 6], bf16>
+  %0 = reloc.cast %t policy ieee_rne : !sym.tensor<[4, 6], f32> -> !sym.tensor<[4, 6], bf16>
+  return %0 : !sym.tensor<[4, 6], bf16>
+}
+
+// CHECK-LABEL: func.func @cast_widen_bf16
+func.func @cast_widen_bf16(%t: !sym.tensor<["N", 64], bf16>) -> !sym.tensor<["N", 64], f32> {
+  // CHECK: reloc.cast %{{.*}} policy exact : !sym.tensor<["N", 64], bf16> -> !sym.tensor<["N", 64], f32>
+  %0 = reloc.cast %t policy exact : !sym.tensor<["N", 64], bf16> -> !sym.tensor<["N", 64], f32>
+  return %0 : !sym.tensor<["N", 64], f32>
+}
+
 // Generic syntax spells the policy as a #reloc.policy attribute and prints
 // back in the custom form.
 // CHECK-LABEL: func.func @cast_generic

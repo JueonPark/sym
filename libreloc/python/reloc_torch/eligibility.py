@@ -14,11 +14,12 @@ _VIEW_OPERATORS = frozenset(
     }
 )
 _SUPPORTED_DEVICES = frozenset({"cpu", "cuda"})
-_SUPPORTED_DTYPES = frozenset({"float32", "float16", "int8"})
+_SUPPORTED_DTYPES = frozenset({"float32", "float16", "bfloat16", "int8"})
 # C4: a transfer that also casts is a typed candidate when C1 defines the
-# pair (f32 -> f16 `ieee_rne`, f16 -> f32 `exact`); every other dtype change
-# stays `typed_transform_unavailable`.
-_C1_CASTS = frozenset({("float32", "float16"), ("float16", "float32")})
+# pair (f32 -> f16 / bf16 `ieee_rne`, f16 / bf16 -> f32 `exact`); every other
+# dtype change stays `typed_transform_unavailable`.
+_C1_CASTS = frozenset({("float32", "float16"), ("float16", "float32"),
+                       ("float32", "bfloat16"), ("bfloat16", "float32")})
 
 
 def _category(record: TransferRecord) -> str:

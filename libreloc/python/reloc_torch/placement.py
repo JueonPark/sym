@@ -60,7 +60,7 @@ def gpu_implementation(recipe):
 
 
 def wire_bytes(recipe, shape, path):
-    widths = {'float32': 4, 'float16': 2, 'int8': 1}
+    widths = {'float32': 4, 'float16': 2, 'bfloat16': 2, 'int8': 1}
     if path == 'native':
         # The saved Torch graph is intentionally opaque to this policy. For
         # casts, qualify its wire accounting with the explicit CPU replay.

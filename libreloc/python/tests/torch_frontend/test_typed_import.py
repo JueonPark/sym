@@ -72,8 +72,22 @@ def test_cast_riding_the_transfer_becomes_a_typed_recipe():
     assert candidate.recipe.source.dtype == "float16" and candidate.recipe.destination.dtype == "float32"
 
 
+def test_bfloat16_casts_are_typed_candidates():
+    from reloc_torch.recipe import Cast, Transpose
+
+    gm = capture(lambda x: transfer(x.t().contiguous(), dtype=torch.bfloat16), torch.ones(4, 6))
+    candidate, = importer().import_graph(gm).candidates
+    assert candidate.recipe.operations == (Transpose((1, 0)), Cast("bfloat16", "ieee_rne"))
+    assert candidate.recipe.destination.dtype == "bfloat16" and candidate.recipe.typed
+    gm = capture(lambda b: transfer(b.t().contiguous(), dtype=torch.float32),
+                 torch.ones(2, 12, dtype=torch.bfloat16))
+    candidate, = importer().import_graph(gm).candidates
+    assert candidate.recipe.operations == (Transpose((1, 0)), Cast("float32", "exact"))
+    assert candidate.recipe.source.dtype == "bfloat16"
+
+
 @pytest.mark.parametrize(("fn", "reason"), [
-    (lambda x: transfer(x, dtype=torch.bfloat16), "typed_transform_unavailable"),
+    (lambda x: transfer(x, dtype=torch.float64), "typed_transform_unavailable"),
     (lambda x: transfer(x, dtype=torch.int8), "typed_transform_unavailable"),
     (lambda x: transfer(x.to(torch.float16).to(torch.float32)), None),  # two C1 casts, both kept
     (lambda x: x.to(torch.float16), "same_device_transfer"),  # no relocation at all
