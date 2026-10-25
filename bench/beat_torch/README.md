@@ -110,6 +110,22 @@ or write-combined staging and an asynchronous submission did not move the
 rotated or cold medians. The 1024-seed regime, where the gather is large
 enough to overlap its DMA, wins in every cache state.
 
+## Inside `torch.compile`: the `sym_fast_inductor` arm
+
+The fast lane's prepared programs are also `torch.compile` primitives
+(`program.op`, [docs](../../docs/fast-transfers.md#inside-torchcompile)):
+functional custom ops with fake kernels that return the program's destination
+metadata, so Dynamo captures them whole and Inductor schedules the compute
+around them. `sym_fast_inductor` is `sym_fast` with the `inductor` control's
+compute: the DLRM pooled producer and the GraphSAGE gather are ops inside the
+compiled model regions; the GPT/MoE weight windows and the KV swaps stay
+between regions, exactly where the Inductor control keeps its `TorchQueue`.
+Per-call overhead of the op entry points: `op_overhead.py` (table in the
+docs: +70 µs over the direct call in eager mode, +170 µs inside a compiled
+region, against +360–460 µs for the previous generic custom-op route).
+
+EVIDENCE_COMPILE_OP
+
 ## Where the time goes (Nsight Systems)
 
 `profile.sh` captures `torch` and `sym_fast` in one process under NVTX

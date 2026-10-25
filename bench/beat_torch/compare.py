@@ -5,9 +5,13 @@
 ``torch`` control's compute) and moves only the transfers through
 ``reloc_torch.fast``: prepared programs for the DLRM layout/cast and the GNN
 row gather, ``FastWeights`` prefetch windows for offloaded weights, and
-``KVCacheSwap`` groups for the decode cache. The Torch/Inductor controls are
-unchanged from bench/issue225. Run each round in a fresh process with an empty
-Inductor cache and rotated path order.
+``KVCacheSwap`` groups for the decode cache. ``sym_fast_inductor`` is the
+same fast lane with the ``inductor`` arm's compute: the DLRM pooled producer
+and the GNN gather run as custom ops inside the compiled regions
+(``program.op``), the weight windows and KV swaps sit between regions exactly
+where the Inductor control keeps its ``TorchQueue``. The Torch/Inductor
+controls are unchanged from bench/issue225. Run each round in a fresh process
+with an empty Inductor cache and rotated path order.
 """
 import argparse
 from contextlib import ExitStack
@@ -36,7 +40,7 @@ from reloc_torch.recipe import Cast, IndexSelect, Recipe, TensorSpec, Transpose
 from reloc_torch.symbolic import Const, Symbol, dense_strides
 import models
 
-PATHS = ('torch', 'inductor', 'sym', 'sym_inductor', 'sym_fast', 'torch_whole')
+PATHS = ('torch', 'inductor', 'sym', 'sym_inductor', 'sym_fast', 'sym_fast_inductor', 'torch_whole')
 # torch_whole: the eager Torch control with sym_fast's whole-request weight prefetch
 # window (a transparency arm; identical to 'torch' outside the offload regimes).
 FAST_THREADS = {'dlrm': 8, 'gnn': 8}
@@ -50,7 +54,7 @@ class PathState:
         self.dynamic = dynamic
         self.backend = None
         self.fast = None
-        if name == 'sym_fast':
+        if name.startswith('sym_fast'):
             self.fast = FastTransfers('cuda:0', gather_threads=8, pinning='pinned')
             lifetime.callback(self.fast.close)
         elif name == 'torch_whole':
@@ -103,14 +107,19 @@ def recommendation(case, states, lifetime):
             return model.predict(dense, region(x))
         for state in states:
             name = state.name
-            if name == 'sym_fast':
+            if name.startswith('sym_fast'):
                 # The producer itself is fused: bag sums -> f16 -> [B, T, 64] -> H2D in
                 # one pipelined native call; the compute launches overlap the DMA tail.
                 program = state.fast.pooled([bag.weight for bag in model.tables], dtype='float16')
                 threads = FAST_THREADS['dlrm']
                 def tx(program=program, threads=threads):
                     return program.submit(indices, offsets, gather_threads=threads).wait_stream()[0]
-                paths[name] = lambda tx=tx: (None, model.predict(dense, tx()))
+                if name == 'sym_fast_inductor':
+                    # The producer is a custom op inside the compiled region.
+                    fn = state.compile(lambda i, o, d, program=program: model.predict(d, program.op(i, o)))
+                    paths[name] = lambda fn=fn: (None, fn(indices, offsets, dense))
+                else:
+                    paths[name] = lambda tx=tx: (None, model.predict(dense, tx()))
                 transfer[name] = tx
             elif name.startswith('sym'):
                 fn, tx = state.compile(whole), state.compile(region)
@@ -146,7 +155,7 @@ def recommendation(case, states, lifetime):
             return model.forward(region(x, i), layer1, layer2)
         for state in states:
             name = state.name
-            if name == 'sym_fast':
+            if name.startswith('sym_fast'):
                 n_sym, k_sym = Symbol('s0'), Symbol('k')
                 recipe = Recipe(TensorSpec((n_sym, Const(128)), dense_strides((n_sym, Const(128))), Const(0), 'float32'),
                                 (IndexSelect(TensorSpec((k_sym,), (Const(1),), Const(0), 'int64')),
@@ -159,7 +168,11 @@ def recommendation(case, states, lifetime):
                     if os.environ.get('BEAT_TORCH_GNN_ASYNC', '0') == '1':
                         return program.submit(source, selected, gather_threads=threads).wait_stream()[0]
                     return program.execute(source, selected, gather_threads=threads)
-                paths[name] = lambda tx=tx: (None, model.forward(tx(), layer1, layer2))
+                if name == 'sym_fast_inductor':
+                    fn = state.compile(lambda x, i, program=program: model.forward(program.op(x, i), layer1, layer2))
+                    paths[name] = lambda fn=fn: (None, fn(source, selected))
+                else:
+                    paths[name] = lambda tx=tx: (None, model.forward(tx(), layer1, layer2))
                 transfer[name] = tx
             elif name.startswith('sym'):
                 fn, tx = state.compile(whole), state.compile(region)
@@ -203,7 +216,7 @@ def offload(case, states, lifetime):
     for state in states:
         name = state.name
         start = time.perf_counter_ns()
-        if name == 'sym_fast':
+        if name.startswith('sym_fast'):
             owner = lifetime.enter_context(PreparedWireWeights())
             setup = (time.perf_counter_ns()-start)/1e6
             _, prep = completed(lambda: [owner.prepare(names[id(q)], q, s) for q, s in pairs])
@@ -231,9 +244,9 @@ def offload(case, states, lifetime):
             delivery = Delivery(queue, lambda g,d,images=images: [images[id(q)] for q,s in g], True)
             extra['resources'][name] = queue.stats
         extra['preparation'][name] = dict(artifact_and_owner_ms=setup, snapshot_ms=prep)
-        if case.startswith('llm') and name in ('sym_fast', 'torch_whole'):
-            layer, embed, finish = models.decoder_layer, models.embed, models.logits
-            if name == 'sym_fast':
+        if case.startswith('llm') and name in ('sym_fast', 'sym_fast_inductor', 'torch_whole'):
+            layer, embed, finish = (state.compile(fn) for fn in (models.decoder_layer, models.embed, models.logits))
+            if name.startswith('sym_fast'):
                 swap = KVCacheSwap(state.fast, 16, 64)
                 lifetime.callback(swap.drain)
                 def evict_all(pairs_, swap=swap):
@@ -317,8 +330,8 @@ def offload(case, states, lifetime):
                         for weights in loaded:
                             pass
                 return weights
-        elif name in ('sym_fast', 'torch_whole'):
-            route, expert, combine = models.route, models.expert, models.combine
+        elif name in ('sym_fast', 'sym_fast_inductor', 'torch_whole'):
+            route, expert, combine = (state.compile(fn) for fn in (models.route, models.expert, models.combine))
             def run(delivery=delivery, route=route, expert=expert, combine=combine):
                 h0, routes = x, []
                 for router, experts in zip(model.routers, model.experts):

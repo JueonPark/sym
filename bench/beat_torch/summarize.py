@@ -49,20 +49,24 @@ def main(rounds_dir, evidence_dir):
                     files={p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(evidence_dir.glob('*')) if p.name != 'manifest.json'})
     (evidence_dir / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
     by = {(r['case'], r['path']): r for r in rows}
-    print('| Regime | ' + ' | '.join(paths) + ' | sym_fast vs best control |')
-    print('| --- | ' + ' | '.join('---:' for _ in paths) + ' | ---: |')
+    arms = [p for p in paths if p.startswith('sym_fast')]
+    print('| Regime | ' + ' | '.join(paths) + ' | ' + ' | '.join(f'{a} vs best control' for a in arms) + ' |')
+    print('| --- | ' + ' | '.join('---:' for _ in paths) + ' | ' + ' | '.join('---:' for _ in arms) + ' |')
     for case in cases:
         cells = [f"{by[(case, p)]['p50_ms']:.3f} [{by[(case, p)]['p50_min']:.3f}–{by[(case, p)]['p50_max']:.3f}]" for p in paths]
-        controls = [by[(case, p)]['p50_ms'] for p in ('torch', 'inductor') if (case, p) in by]
-        fast = by.get((case, 'sym_fast'))
-        verdict = ''
-        if fast and controls:
-            best = min(controls)
+        controls = [p for p in ('torch', 'inductor') if (case, p) in by]
+        verdicts = []
+        for arm in arms:
+            fast = by.get((case, arm))
+            if not fast or not controls:
+                verdicts.append('')
+                continue
+            best = min(by[(case, p)]['p50_ms'] for p in controls)
             every_round = all(
-                r['cases'][case]['paths']['sym_fast']['p50_ms'] < 0.95 * min(r['cases'][case]['paths'][p]['p50_ms'] for p in ('torch', 'inductor'))
+                r['cases'][case]['paths'][arm]['p50_ms'] < 0.95 * min(r['cases'][case]['paths'][p]['p50_ms'] for p in controls)
                 for r in rounds)
-            verdict = f"{(fast['p50_ms'] / best - 1) * 100:+.1f}%" + (' (win in every round)' if every_round else '')
-        print(f"| {case} | " + ' | '.join(cells) + f" | {verdict} |")
+            verdicts.append(f"{(fast['p50_ms'] / best - 1) * 100:+.1f}%" + (' (win in every round)' if every_round else ''))
+        print(f"| {case} | " + ' | '.join(cells) + ' | ' + ' | '.join(verdicts) + ' |')
 
 
 if __name__ == '__main__':
