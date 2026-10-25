@@ -191,7 +191,69 @@ Sym, `sym_fast_scalar − sym_fast` (vectorization alone); **plan/runtime** =
 and `torch − sym_fast_scalar`; **chunk overlap** = `sym_fast_nopipe −
 sym_fast`; **KV grouping** = `sym_fast_kvsplit − sym_fast`.
 
-EVIDENCE_ABLATION
+Three independent rounds on revision `d77984f` (evidence in
+`evidence-ablation/`, attribution in `evidence-ablation/attribution.csv`),
+milliseconds, median of three round medians; every arm bit-exact against
+eager Torch, isolation audit clean:
+
+| Regime | `torch` | `torch_kernels` | `sym_fast_scalar` | `sym_fast_nopipe` | `sym_fast_kvsplit` | `sym_fast` |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| DLRM 512 | 3.607 | **1.796** | 2.227 | 2.134 | 2.156 | 2.156 |
+| DLRM 2048 | 7.881 | **4.353** | 4.737 | 4.664 | 4.711 | 4.598 |
+| GraphSAGE 256 | 1.170 | **0.947** | 1.244 | 1.144 | 1.099 | 1.065 |
+| GraphSAGE 1024 | 4.001 | 2.773 | 2.986 | 3.039 | **2.664** | 2.806 |
+| GPT decode | 26.145 | 22.563 | **19.735** | 19.833 | 26.181 | 19.783 |
+| GPT prefill | 6.940 | 5.922 | 5.988 | 5.887 | 5.887 | **5.878** |
+| MoE sparse | 3.090 | **2.859** | 2.990 | 2.954 | 2.951 | 2.947 |
+| MoE dense | 10.450 | 9.979 | 9.554 | 9.554 | 9.552 | **9.544** |
+
+Shares (ms saved by the component; the first column is the whole win):
+
+| Regime | `torch − sym_fast` | kernels A | kernels B (quad vs scalar) | runtime A | runtime B | chunk overlap | KV grouping |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| DLRM 512 | +1.45 | **+1.81** | +0.07 | −0.36 | +1.38 | −0.02 | 0.00 |
+| DLRM 2048 | +3.28 | **+3.53** | +0.14 | −0.25 | +3.15 | +0.07 | +0.11 |
+| GraphSAGE 256 | +0.11 | **+0.22** | +0.18 | −0.12 | −0.07 | +0.08 | +0.03 |
+| GraphSAGE 1024 | +1.20 | **+1.23** | +0.18 | −0.03 | +1.02 | +0.23 | −0.14 |
+| GPT decode | +6.36 | +3.58 | −0.05 | **+2.78** | +6.41 | +0.05 | **+6.40** |
+| GPT prefill | +1.06 | **+1.02** | +0.11 | +0.04 | +0.95 | +0.01 | +0.01 |
+| MoE sparse | +0.14 | **+0.23** | +0.04 | −0.09 | +0.10 | +0.01 | 0.00 |
+| MoE dense | +0.91 | +0.47 | +0.01 | **+0.44** | +0.90 | +0.01 | +0.01 |
+
+What the ablation says, stated plainly:
+
+- **The kernels are most of the win.** In six of the eight regimes the
+  fused kernels alone (`torch_kernels`: eager Torch moving the bytes with the
+  fast lane's producers and dequantize kernel) account for the entire
+  advantage over eager Torch, and `torch_kernels` is the fastest arm in
+  five regimes. The plan/runtime adds nothing there; it costs 0.03–0.36 ms
+  per request (dispatch preparation, validation, completion bookkeeping),
+  which is also the whole GraphSAGE 256 story: with the kernel alone Torch
+  is 19% faster than its own `index_select`, with the runtime around it the
+  margin shrinks to the protocol-dependent few percent documented above.
+- **The runtime's distinct contribution is grouping.** GPT decode is the
+  regime where the plan/runtime adds 2.8 ms on top of the 3.6 ms the fused
+  dequantize saves: the sixteen K/V caches of a step move as two groups
+  (one batched permute, one copy, one completion each). Moving them one
+  tensor per group (`sym_fast_kvsplit`) gives all 6.4 ms back and lands on
+  eager Torch's time. Dense MoE shows the same effect at a smaller scale
+  (+0.44 ms from the grouped expert submissions).
+- **Vectorizing the dequantize kernel does not move wall time.** `kernels B`
+  (quad versus scalar kernel inside Sym) is within noise everywhere: the
+  kernel overlaps the DMA that follows, so its lower SM time (Nsight above)
+  is off the critical path. What matters in `kernels A` is fusion, one pass
+  instead of Torch's two elementwise passes.
+- **Chunk overlap is worth 0.2 ms on GraphSAGE 1024 and nothing elsewhere**
+  at these sizes; the DLRM pipeline's first-byte advantage in the Nsight
+  table does not translate into completed latency because the producer is
+  faster than the copy it overlaps.
+
+The honest claim is therefore: `sym_fast` beats the Torch controls mainly
+through kernel engineering a Torch user could adopt directly, plus grouped
+submission where many small transfers belong together (decode KV, expert
+groups). A direct kernel-only path (producer into pinned memory, one copy,
+no dispatch machinery) would beat today's fast lane in the small-transfer
+regimes; that is a follow-up, not something this report claims.
 
 ## Where the time goes (Nsight Systems)
 

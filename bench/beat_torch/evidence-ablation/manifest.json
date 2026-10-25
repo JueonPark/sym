@@ -1,0 +1,12 @@
+{
+  "source_revision": "d77984fd793a0455d73c5ccd5f4c112e47962ac0",
+  "rounds": 3,
+  "samples": 30,
+  "warmup": 5,
+  "files": {
+    "summary.csv": "05d14a15792fdc5aa16eab00f367cd45f1d273b19d56b4b5bd2c20fcaae99bf8",
+    "workloads-r1.json.gz": "7c12d20ed721589d5e72ebc5ea8614451f985cc18492272173837c930c3a9eb9",
+    "workloads-r2.json.gz": "b103ee424cb205ce818d92aeb8c89a4e537825db7b039bb0604c3c8e455a8a7e",
+    "workloads-r3.json.gz": "ee80b697f99918af1cbdcb430bbb81a2f95060e071333d4e73b046fe71360e41"
+  }
+}
