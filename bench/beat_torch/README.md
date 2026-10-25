@@ -164,6 +164,35 @@ Reading the arm:
   the Inductor rounding band (≤ 2.5e-6), `sym_fast` bit-exact; the isolation
   audit saw no foreign process in any round.
 
+## Ablation: kernels versus plan/runtime
+
+Reviewer question on #254: how much of the `sym_fast` win is kernel
+engineering a Torch user could adopt directly (the vectorized per-channel
+dequantize, the fused pooled/gather CPU producers), and how much is the
+plan/runtime (chunked CPU/DMA overlap, grouped submissions, the prefetch
+window)? Six arms answer it, two independent estimates per component
+(`ablation.py`):
+
+| Arm | What it keeps |
+| --- | --- |
+| `torch` | the eager control (unchanged) |
+| `torch_kernels` | the eager control given the fast lane's **kernels alone**: the fused pooled-sum / row-gather CPU producers write the pinned wire and Torch issues the copy (DLRM, GraphSAGE); the fused per-channel dequantize kernel replaces `q.float() * scale` in the `TorchQueue` (GPT, MoE). No plan, no chunk pipeline, no group. |
+| `sym_fast_scalar` | `sym_fast` with the quad dequantize kernel replaced by the one-element-per-thread kernel (`pyreloc.set_ablation("scalar_dequant")`); identical to `sym_fast` outside GPT/MoE |
+| `sym_fast_nopipe` | `sym_fast` with the DLRM/GraphSAGE producers executed whole-wire-then-copy (`pipeline=False`, no chunk overlap); identical elsewhere |
+| `sym_fast_kvsplit` | `sym_fast` moving each decode K/V cache as its own group (sixteen per step instead of two); identical outside decode |
+| `sym_fast` | everything |
+
+Every arm's output equals eager Torch's bit for bit (the kernels are the
+reference's arithmetic). Shares, in milliseconds saved: **kernels** =
+`torch − torch_kernels` (fused kernel versus Torch's own ops; for the
+dequantize this is one fused pass against two elementwise passes) and, within
+Sym, `sym_fast_scalar − sym_fast` (vectorization alone); **plan/runtime** =
+`torch_kernels − sym_fast` (what the pipeline adds on top of the kernels)
+and `torch − sym_fast_scalar`; **chunk overlap** = `sym_fast_nopipe −
+sym_fast`; **KV grouping** = `sym_fast_kvsplit − sym_fast`.
+
+EVIDENCE_ABLATION
+
 ## Where the time goes (Nsight Systems)
 
 `profile.sh` captures `torch` and `sym_fast` in one process under NVTX

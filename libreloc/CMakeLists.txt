@@ -14,6 +14,7 @@ endif()
 
 add_library(reloc_runtime SHARED
   src/Version.cpp
+  src/Ablation.cpp
   src/Decode.cpp
   src/TypedValue.cpp
   src/TypedExecute.cpp

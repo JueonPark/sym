@@ -59,6 +59,9 @@ if(RELOC_ENABLE_TORCH_EXT)
     "${RELOC_TORCH_ROOT}/include" "${RELOC_TORCH_ROOT}/include/torch/csrc/api/include")
   target_link_directories(pyreloc_torch_ext PRIVATE "${RELOC_TORCH_ROOT}/lib")
   target_link_libraries(pyreloc_torch_ext PRIVATE reloc_runtime torch torch_cpu c10 torch_python)
+  if(RELOC_ENABLE_CUDA)
+    target_link_libraries(pyreloc_torch_ext PRIVATE CUDA::cudart)
+  endif()
   target_compile_definitions(pyreloc_torch_ext PRIVATE _GLIBCXX_USE_CXX11_ABI=${RELOC_TORCH_CXX11_ABI})
   target_compile_features(pyreloc_torch_ext PRIVATE cxx_std_20) # ATen headers require C++20
   set_target_properties(pyreloc_torch_ext PROPERTIES

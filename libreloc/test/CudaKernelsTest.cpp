@@ -10,6 +10,7 @@
 #ifdef RELOC_ENABLE_CUDA
 
 #include "reloc/CudaKernels.h"
+#include "reloc/Ablation.h"
 #include "reloc/Bind.h"
 #include "reloc/Execute.h"
 #include "reloc/Quant.h"
@@ -236,6 +237,43 @@ TEST(CudaDequant, ExactVsHostReference) {
   ASSERT_EQ(cudaSuccess, cudaDeviceSynchronize());
   std::vector<float> got = download<float>(dDst, want.size());
   ASSERT_EQ(0, std::memcmp(want.data(), got.data(), want.size() * 4));
+}
+
+TEST(CudaDequant, ScalarKnobTakesTheScalarKernelWithIdenticalBits) {
+  // A quad-eligible shape: every element goes through the char4/float4
+  // kernel by default and through the scalar kernel under the knob.
+  const int64_t channels = 6, chSize = 1024;
+  std::mt19937 rng(41);
+  std::vector<int8_t> src(static_cast<size_t>(channels * chSize));
+  for (int8_t &v : src)
+    v = static_cast<int8_t>(rng());
+  std::vector<float> scales(channels);
+  for (int64_t c = 0; c < channels; ++c)
+    scales[c] = 0.3f / static_cast<float>(c + 1);
+  std::vector<float> want(src.size());
+  for (size_t i = 0; i < src.size(); ++i)
+    want[i] =
+        static_cast<float>(src[i]) * scales[static_cast<int64_t>(i) / chSize];
+  DeviceBuffer dSrc(src.size()), dScales(scales.size() * 4),
+      dDst(want.size() * 4);
+  ASSERT_TRUE(dSrc.valid() && dScales.valid() && dDst.valid());
+  upload(dSrc, src);
+  upload(dScales, scales);
+  ASSERT_FALSE(reloc::ablation::enabled(reloc::ablation::Knob::ScalarDequant));
+  ASSERT_EQ(reloc::ablation::parse("scalar_dequant"),
+            reloc::ablation::Knob::ScalarDequant);
+  ASSERT_FALSE(reloc::ablation::parse("no_such_knob").has_value());
+  for (bool knob : {false, true}) {
+    reloc::ablation::set(reloc::ablation::Knob::ScalarDequant, knob);
+    ASSERT_EQ(cudaSuccess, cudaMemset(dDst.p, 0xff, want.size() * 4));
+    reloc::cuda::dequantS8F32(dSrc.as<int8_t>(), dDst.as<float>(), channels,
+                              chSize, dScales.as<float>());
+    ASSERT_EQ(cudaSuccess, cudaDeviceSynchronize());
+    std::vector<float> got = download<float>(dDst, want.size());
+    EXPECT_EQ(0, std::memcmp(want.data(), got.data(), want.size() * 4))
+        << "knob=" << knob;
+  }
+  reloc::ablation::set(reloc::ablation::Knob::ScalarDequant, false);
 }
 
 TEST(CudaConvertF16F32, ExactWideningOfCpuConvertOutput) {
