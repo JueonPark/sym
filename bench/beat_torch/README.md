@@ -258,6 +258,45 @@ groups). The kernel control's lower latency in several regimes motivates
 measuring a simpler direct path; it does not establish how much a future
 Sym implementation will save after its own validation and lifetime costs.
 
+## What the compiler contributes
+
+Reviewer question on #254: the fast lane is an explicit, hand-written API,
+so what does the compiler contribute to the numbers? Three answers, all
+measured on this tree (`plans.py`, the `sym_fast_o0` arm, and the ablation
+above).
+
+**Which transfers pass through the compiler at all.** Of the four
+`sym_fast` transfer kinds, three execute a `sym-reloc-export` plan: the
+GPT/MoE weight dequantize (wire v1, one per-channel stage over an `[out, in]`
+identity layout), the decode K/V evict/restore (wire v0, a rank-3
+permutation) and the GraphSAGE gather (wire v2, row selection plus cast). The
+DLRM pooled producer, which carries the largest win, never does: it is
+synthesized natively (`prepare_pooled_program`) because no recipe expresses
+an `EmbeddingBag` sum.
+
+PLANS_TABLE
+
+**Whether the compiler's optimizations change the runtime.** `sym_fast_o0`
+runs every arm's plans exported with `--no-canonicalize` (the raw fold
+output: unmerged axes, no `no_copy` recomputation, no expression
+simplification), through the same runtime:
+
+O0_TABLE
+
+**What the compiler is for, then.** In these regimes the compiler's share of
+the speed is zero within noise: its canonicalizer changes one plan (the
+weight dequantize layout coalesces from rank 2 to rank 1, and the runtime
+selects the same row either way), the folded typed plan is executed as one
+fused device kernel that `torch_kernels` reproduces by hand, and the plan's
+per-call cost is the native validation of the declared views (a few
+microseconds inside the `execute` numbers above). What the compiler
+contributes is the contract: the bit-exact fold semantics every stage obeys,
+the guards that reject a mismatched binding before anything launches, the
+versioned portable artifact, and the single plan format all three transfer
+kinds share. The README's earlier wording ("the compiler plus the runtime")
+overstated the former; the honest statement is that the win is runtime and
+kernel engineering executed under a compiler-defined contract.
+
 ## Where the time goes (Nsight Systems)
 
 `profile.sh` captures `torch` and `sym_fast` in one process under NVTX

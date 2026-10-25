@@ -54,6 +54,14 @@ llvm::cl::opt<bool>
     indexedPlans("indexed",
                  llvm::cl::desc("Admit dimension-0 index selection with "
                                 "optional cast (wire v2, schema 3)."));
+// Attribution mode (bench/beat_torch): export the raw fold output without
+// plan canonicalization. Same transfer, same wire format and manifest; the
+// manifest does not record the mode, so consumers that must tell the two
+// apart (the frontend's artifact cache) key on the flag themselves.
+llvm::cl::opt<bool> noCanonicalize(
+    "no-canonicalize",
+    llvm::cl::desc("Skip plan canonicalization after folding (measurement "
+                   "mode; never the default)."));
 
 // Output paths are exclusively created, never truncated. Only files owned by
 // this invocation are cleaned up, including when writing the second file fails.
@@ -519,7 +527,9 @@ int main(int argc, char **argv) {
   auto logicalSource = descriptor(source);
   auto logicalDestination = descriptor(destination);
   PassManager passes(&context);
-  passes.addPass(reloc::createRelocFoldPass());
+  reloc::RelocFoldPassOptions foldOptions;
+  foldOptions.canonicalize = !noCanonicalize;
+  passes.addPass(reloc::createRelocFoldPass(foldOptions));
   if (failed(passes.run(*module)) || failed(verify(*module)))
     return 1;
   reloc::PlanResultOp result;

@@ -21,6 +21,9 @@ the bytes; ``sym_fast_scalar`` is ``sym_fast`` with the quad dequantize kernel
 replaced by the scalar one (``pyreloc.set_ablation``); ``sym_fast_nopipe``
 executes the DLRM/GraphSAGE producers without chunk overlap; ``sym_fast_kvsplit``
 moves the decode KV caches one tensor per group instead of eight per group.
+``sym_fast_o0`` is ``sym_fast`` with every plan exported without the
+compiler's canonicalizer (``CompilerClient(canonicalize=False)``): the
+compiler-attribution arm.
 """
 import argparse
 from contextlib import ExitStack
@@ -43,7 +46,7 @@ from moe_experts import OffloadedMoE
 from model_prefetch import TorchQueue, Delivery, completed
 from prepared_wire import host_pack, packed
 from typed_pipeline import distribution, metadata
-from reloc_torch import PreparedWireWeights, RelocBackend, compat
+from reloc_torch import CompilerClient, PreparedWireWeights, RelocBackend, compat
 from reloc_torch.fast import FastTransfers, FastWeights, KVCacheSwap, _load_native_views
 from reloc_torch.recipe import Cast, IndexSelect, Recipe, TensorSpec, Transpose
 from reloc_torch.symbolic import Const, Symbol, dense_strides
@@ -52,7 +55,7 @@ import pyreloc
 
 NATIVE = _load_native_views()   # the libtorch helper (kernel-only entry points for torch_kernels)
 EAGER_PATHS = ('torch', 'torch_whole', 'torch_kernels', 'sym_fast', 'sym_fast_scalar', 'sym_fast_nopipe',
-               'sym_fast_kvsplit')
+               'sym_fast_kvsplit', 'sym_fast_o0')
 
 
 def ablated(fn, knob):
@@ -66,7 +69,7 @@ def ablated(fn, knob):
     return call
 
 PATHS = ('torch', 'inductor', 'sym', 'sym_inductor', 'sym_fast', 'sym_fast_inductor', 'torch_whole',
-         'torch_kernels', 'sym_fast_scalar', 'sym_fast_nopipe', 'sym_fast_kvsplit')
+         'torch_kernels', 'sym_fast_scalar', 'sym_fast_nopipe', 'sym_fast_kvsplit', 'sym_fast_o0')
 # torch_whole: the eager Torch control with sym_fast's whole-request weight prefetch
 # window (a transparency arm; identical to 'torch' outside the offload regimes).
 FAST_THREADS = {'dlrm': 8, 'gnn': 8}
@@ -81,7 +84,8 @@ class PathState:
         self.backend = None
         self.fast = None
         if name.startswith('sym_fast'):
-            self.fast = FastTransfers('cuda:0', gather_threads=8, pinning='pinned')
+            compiler = CompilerClient.from_environment(canonicalize=name != 'sym_fast_o0')
+            self.fast = FastTransfers('cuda:0', compiler=compiler, gather_threads=8, pinning='pinned')
             lifetime.callback(self.fast.close)
         elif name in ('torch_whole', 'torch_kernels'):
             if name == 'torch_kernels' and NATIVE is None:
@@ -278,7 +282,7 @@ def offload(case, states, lifetime):
         name = state.name
         start = time.perf_counter_ns()
         if name.startswith('sym_fast'):
-            owner = lifetime.enter_context(PreparedWireWeights())
+            owner = lifetime.enter_context(PreparedWireWeights(compiler=state.fast._compiler))
             setup = (time.perf_counter_ns()-start)/1e6
             _, prep = completed(lambda: [owner.prepare(names[id(q)], q, s) for q, s in pairs])
             fast_weights = FastWeights(state.fast, owner)

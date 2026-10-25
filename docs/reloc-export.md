@@ -11,7 +11,20 @@ sym-reloc-export recipe.mlir --output plan.bin --manifest manifest.json
 sym-reloc-export recipe.mlir --output plan.bin --manifest manifest.json --typed
 # Row selection with optional cast: wire v2, manifest schema 3.
 sym-reloc-export recipe.mlir --output plan.bin --manifest manifest.json --indexed --typed
+# Attribution mode: the raw fold output without plan canonicalization.
+sym-reloc-export recipe.mlir --output plan.bin --manifest manifest.json --no-canonicalize
 ```
+
+`--no-canonicalize` skips the canonicalizer (`canonicalizePlan` /
+`canonicalizeTypedPlan`: axis merging, expression re-simplification,
+`no_copy` recomputation, stage and fill normalization) after the fold. The
+plan describes the same transfer under the same wire format, schema and
+manifest fields; only the plan bytes (and their digest) differ, and the
+manifest does **not** record the mode, so a consumer that must tell the two
+apart keys on the flag itself (the frontend's `CompilerClient(canonicalize=False)`
+does, for its artifact cache and identities). It exists to measure the
+canonicalizer's contribution ([bench/beat_torch](../bench/beat_torch/README.md#what-the-compiler-contributes))
+and is never the default.
 
 This compiler-only executable links MLIR/LLVM and has no Torch dependency.
 `libreloc` remains MLIR/LLVM/Torch-free. `plan.bin` is exactly `encodePlan`
