@@ -99,7 +99,7 @@
         {
           "form": "grouped",
           "intercept": "overhead.group_ms",
-          "member_intercept": "overhead.group_member_ms",
+          "member_intercept": "overhead.group_member.stages_ms",
           "name": "grouped",
           "terms": [
             [

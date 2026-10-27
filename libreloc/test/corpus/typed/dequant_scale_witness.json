@@ -75,6 +75,7 @@
         {
           "form": "serial",
           "intercept": "overhead.direct.dequant_ms",
+          "member_intercept": "overhead.direct.dequant_member_ms",
           "name": "direct",
           "terms": [
             [
@@ -108,7 +109,7 @@
         {
           "form": "grouped",
           "intercept": "overhead.group_ms",
-          "member_intercept": "overhead.group_member_ms",
+          "member_intercept": "overhead.group_member.dequant_ms",
           "name": "grouped",
           "terms": [
             [

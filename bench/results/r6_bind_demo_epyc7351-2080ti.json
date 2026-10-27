@@ -495,7 +495,7 @@
  ],
  "generated_by": "bench/rtrack/r6_bind_demo.py",
  "inputs": {
-  "calibration/epyc7351-2080ti.cal": "d8614162850d2187c5d6ca7b8ee634cb0ef556d71e0c269a01746d1d33a905ab",
+  "calibration/epyc7351-2080ti.cal": "5891b221eb31aef10724cc69a034c3386e67745dac27b40846a5267e3861b9ba",
   "libreloc/test/corpus/blocked_transpose_sym.bin": "ca69b39a5d72bbaf48e62365174319e7c979aaef259ba33b1042a110404ed25c"
  },
  "issue": "#87 (R6): cross-box no-recompile bind demo",
