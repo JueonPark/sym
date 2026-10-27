@@ -7,9 +7,10 @@ direct path")."""
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 import re
 
-from .symbolic import Add, Expr, FloorDiv, Mod, Mul, Symbol
+from .symbolic import Add, Const, Expr, FloorDiv, Mod, Mul, Symbol
 
 PATTERNS = ("contiguous", "blocked", "single_element", "tiled", "indexed_rows", "symbolic")
 PRODUCER_KINDS = ("none", "layout", "stages", "indexed_rows", "pooled")
@@ -20,6 +21,7 @@ FORMS = {"direct": "serial", "pipelined": "overlapped", "grouped": "grouped"}
 RATES = ("producer", "link", "device")
 QUANTITIES = ("source_bytes", "result_bytes", "wire")
 _KEY = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$")
+BLOCKED_RUN_FLOOR = 64  # elements; CostModel.h kBlockedRunFloor
 
 
 @dataclass(frozen=True)
@@ -154,3 +156,186 @@ def parse_advice(value, symbols, where="advice"):
         _fail(where, "paths must be unique and in direct, pipelined, grouped order")
     return Advice(1, pattern, exprs["run_elements"], exprs["total_elements"], exprs["source_bytes"],
                   exprs["result_bytes"], kind, kernel, receive_kernel, tuple(paths))
+
+
+# -- resolution ---------------------------------------------------------------
+
+def classify(run_elements, total_elements):
+    """costmodel::classify: L >= total -> contiguous, L <= 1 -> single_element,
+    L >= 64 -> blocked, otherwise tiled."""
+    if run_elements >= total_elements > 0:
+        return "contiguous"
+    if run_elements <= 1:
+        return "single_element"
+    return "blocked" if run_elements >= BLOCKED_RUN_FLOOR else "tiled"
+
+
+def load_calibration(value):
+    """A pyreloc.Calibration from a path, an already loaded calibration, or
+    None (then $RELOC_CALIBRATION when set, else no calibration)."""
+    import pyreloc
+    if value is None:
+        value = os.environ.get("RELOC_CALIBRATION") or None
+        if value is None:
+            return None
+    if isinstance(value, pyreloc.Calibration):
+        return value
+    return pyreloc.load_calibration(os.fspath(value))
+
+
+def pooled_advice():
+    """The fused EmbeddingBag producer never passes the compiler (its program
+    is synthesized natively per call); its advice has the compiler's shape and
+    is written here. Symbols: bags, tables, dim (result [bags, tables, dim]
+    float16). The producer is priced on the wire: its source volume changes
+    with every call's bag lengths, so its rate is calibrated wire-normalized
+    (cpu.t<threads>.contiguous.pooled_sum_f16_gbps)."""
+    bags, tables, dim = Symbol("bags"), Symbol("tables"), Symbol("dim")
+    elements = Mul(Mul(bags, tables), dim)
+    result = Mul(elements, Const(2))
+    terms = (("producer", "result_bytes"), ("link", "wire"), ("device", "wire"))
+    return Advice(1, "contiguous", elements, elements, result, result, "pooled", "pooled_sum_f16", None, (
+        Path("direct", "serial", "result", "overhead.direct.pooled_ms", terms),
+        Path("pipelined", "overlapped", "result", "overhead.dispatch.pooled_ms", terms,
+             chunks="pipeline.chunks_per_buffer"),
+        Path("grouped", "grouped", "result", "overhead.group_ms", terms,
+             member_intercept="overhead.group_member_ms")))
+
+
+def _producer_key(advice, pattern, threads):
+    kernel = advice.producer_kernel
+    if kernel == "read":
+        kernel = "contig_read" if pattern == "contiguous" else "gather_f32"
+    elif kernel == "quantize":
+        kernel = "quantize_pack" if pattern == "contiguous" else "gather_quantize"
+    elif kernel is None:
+        kernel = "unmeasured"  # no rate family: priced as a missing key
+    return f"cpu.t{threads}.{pattern}.{kernel}_gbps"
+
+
+@dataclass(frozen=True)
+class Resolved:
+    """Advice under concrete bindings and a thread count: what
+    pyreloc.price_advice takes, one dict per admissible path."""
+    pattern: str
+    source_bytes: int
+    result_bytes: int
+    direct: bool
+    paths: tuple
+
+    def path(self, name):
+        for path in self.paths:
+            if path["name"] == name:
+                return path
+        return None
+
+
+def resolve(advice, bindings, threads):
+    """Evaluate the advice's expressions under `bindings` and name every
+    calibration key for `threads`. Raises RuntimeError('advice_invalid: ...')
+    on an unbound symbol or a negative quantity, never a KeyError."""
+    from .symbolic import GuardError
+    try:
+        run, total, source, result = (
+            expr.evaluate(bindings, checked=True)
+            for expr in (advice.run_elements, advice.total_elements, advice.source_bytes, advice.result_bytes))
+    except KeyError as error:
+        raise RuntimeError(f"advice_invalid: unbound symbol {error}") from error
+    except GuardError as error:
+        raise RuntimeError(f"advice_invalid: {error.reason}") from error
+    if min(run, total, source, result) < 0:
+        raise RuntimeError("advice_invalid: negative quantity")
+    pattern = classify(run, total) if advice.pattern == "symbolic" else advice.pattern
+    producer = _producer_key(advice, pattern, threads)
+    multiplier = f"recv.m.{advice.receive_kernel}" if advice.receive_kernel else f"hbm.m.{pattern}"
+    paths = []
+    for path in advice.paths:
+        quantities = dict(source_bytes=source, result_bytes=result, wire=source if path.wire == "source" else result)
+        terms = []
+        for rate, quantity in path.terms:
+            if rate == "producer":
+                terms.append([quantities[quantity], producer, None])
+            elif rate == "link":
+                terms.append([quantities[quantity], "pcie.h2d_gbps", None])
+            else:
+                terms.append([quantities[quantity], "hbm.bw_gbps", multiplier])
+        paths.append(dict(name=path.name, form=path.form, intercept=path.intercept,
+                          member_intercept=path.member_intercept, chunks=path.chunks, terms=terms))
+    return Resolved(pattern, source, result, advice.path("direct") is not None, tuple(paths))
+
+
+# -- selection ----------------------------------------------------------------
+
+@dataclass(frozen=True)
+class Decision:
+    """The executed path, the placement reason and every priced path (ms, or
+    None when the calibration lacks a key)."""
+    path: str
+    reason: str
+    predicted: dict
+
+
+def _price(calibration, paths, members):
+    import pyreloc
+    try:
+        return pyreloc.price_advice(calibration, list(paths), members)
+    except ValueError as error:
+        raise RuntimeError(str(error)) from error
+
+
+def select(calibration, resolved, *, direct_available, advice_enabled=True):
+    """Single-call context: the direct path (when admitted and executable)
+    against the dispatcher's pipelined row."""
+    if not advice_enabled:
+        return Decision("pipelined", "advice_disabled", {})
+    if resolved is None:
+        return Decision("pipelined", "advice_absent", {})
+    if calibration is None:
+        return Decision("pipelined", "no_calibration", {})
+    predicted = {c["name"]: c["ms"] for c in _price(calibration, resolved.paths, 1)}
+    candidates = [name for name in ("direct", "pipelined") if name in predicted]
+    if any(predicted[name] is None for name in candidates):
+        return Decision("pipelined", "advice_missing_keys", predicted)
+    best = min(candidates, key=lambda name: predicted[name])
+    if best == "direct" and not direct_available:
+        return Decision("pipelined", "advice_no_native_helper", predicted)
+    return Decision(best, f"advice_prefers_{best}", predicted)
+
+
+def select_group(calibration, members, *, direct_available, advice_enabled=True):
+    """Group context: one grouped submission, against every member taken
+    direct, or every member through its own pipelined dispatch (split). The
+    runtime never splits a group the caller submitted: when split prices
+    cheapest the group still runs and the reason (advice_prefers_split) is
+    advisory."""
+    if not advice_enabled:
+        return Decision("grouped", "advice_disabled", {})
+    if not members or any(member is None for member in members):
+        return Decision("grouped", "advice_absent", {})
+    if calibration is None:
+        return Decision("grouped", "no_calibration", {})
+    grouped = [member.path("grouped") for member in members]
+    if any(path is None for path in grouped):
+        return Decision("grouped", "advice_absent", {})
+    # One submission: the group intercepts once, every member's terms summed.
+    whole = dict(grouped[0], terms=[term for path in grouped for term in path["terms"]])
+    predicted = {"grouped": _price(calibration, [whole], len(members))[0]["ms"], "direct": 0.0, "pipelined": 0.0}
+    for member in members:
+        costs = {c["name"]: c["ms"] for c in _price(calibration, member.paths, 1)}
+        for name in ("direct", "pipelined"):
+            value = costs.get(name)  # None: no such path, or a missing key
+            if predicted[name] is not None:
+                predicted[name] = None if value is None else predicted[name] + value
+    if predicted["grouped"] is None or predicted["pipelined"] is None:
+        return Decision("grouped", "advice_missing_keys", predicted)
+    ranked = sorted((name for name in predicted if predicted[name] is not None), key=lambda name: predicted[name])
+    best = ranked[0]
+    if best == "direct":
+        if direct_available:
+            return Decision("direct", "advice_prefers_direct", predicted)
+        best = ranked[1]
+        if best == "grouped":
+            return Decision("grouped", "advice_no_native_helper", predicted)
+    if best == "pipelined":
+        return Decision("grouped", "advice_prefers_split", predicted)
+    return Decision("grouped", "advice_prefers_grouped", predicted)

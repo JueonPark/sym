@@ -99,3 +99,160 @@ def test_price_advice_binding_and_calibration_accessors(tmp_path):
     with pytest.raises(ValueError, match='advice_invalid'):
         pyreloc.price_advice(cal, [dict(name='x', form='serial', intercept='overhead.dispatch.layout_ms',
                                         member_intercept=None, chunks=None, terms=[[-1, 'pcie.h2d_gbps', None]])])
+
+
+SYNTH = """# costmodel calibration v0
+pcie.h2d_gbps 10
+hbm.bw_gbps 100
+hbm.m.contiguous 1
+hbm.m.blocked 2
+hbm.m.indexed_rows 1
+recv.m.dequant_s8_f16 1.5
+recv.m.dequant_s8_f32 1.2
+cpu.t8.contiguous.contig_read_gbps 20
+cpu.t8.blocked.gather_f32_gbps 5
+cpu.t8.blocked.convert_f32_f16_gbps 20
+cpu.t8.contiguous.pooled_sum_f16_gbps 20
+cpu.t8.indexed_rows.gather_f16_gbps 8
+pipeline.chunks_per_buffer 4
+overhead.direct.pooled_ms 0.05
+overhead.dispatch.pooled_ms 0.3
+overhead.direct.indexed_rows_ms 0.05
+overhead.dispatch.indexed_rows_ms 0.3
+overhead.direct.dequant_ms 0.02
+overhead.dispatch.dequant_ms 0.25
+overhead.dispatch.layout_ms 0.2
+overhead.dispatch.stages_ms 0.2
+overhead.group_ms 0.2
+overhead.group_member_ms 0.01
+"""
+
+
+@pytest.fixture
+def calibration(tmp_path):
+    import pyreloc
+    path = tmp_path / 'synth.cal'
+    path.write_text(SYNTH)
+    return pyreloc.load_calibration(str(path))
+
+
+def test_classify_matches_the_runtime_rule():
+    from reloc_torch.advice import classify
+    assert classify(1024, 1024) == 'contiguous'
+    assert classify(1, 1024) == 'single_element'
+    assert classify(64, 1024) == 'blocked'
+    assert classify(63, 1024) == 'tiled'
+
+
+def test_resolve_prices_and_selects_for_a_single_call(compiler, calibration):
+    from reloc_torch.advice import Decision, resolve, select
+    compiled = compiler.compile(gather_recipe())
+    resolved = resolve(compiled.advice, {'s0': 5000, 'k': 1000}, 8)
+    assert resolved.pattern == 'indexed_rows' and resolved.result_bytes == 1000 * 128 * 2
+    assert resolved.source_bytes == 1000 * 128 * 4 and resolved.direct
+    assert [p['name'] for p in resolved.paths] == ['direct', 'pipelined', 'grouped']
+    assert resolved.path('direct')['terms'] == [[1000 * 128 * 4, 'cpu.t8.indexed_rows.gather_f16_gbps', None],
+                                                [1000 * 128 * 2, 'pcie.h2d_gbps', None],
+                                                [1000 * 128 * 2, 'hbm.bw_gbps', 'hbm.m.indexed_rows']]
+    decision = select(calibration, resolved, direct_available=True)
+    assert isinstance(decision, Decision)
+    # Small transfer: the dispatch intercept dwarfs what chunk overlap saves.
+    assert decision.path == 'direct' and decision.reason == 'advice_prefers_direct'
+    assert set(decision.predicted) == {'direct', 'pipelined', 'grouped'}
+    assert decision.predicted['direct'] < decision.predicted['pipelined']
+    # Without the native helper the cheapest path cannot run.
+    fallback = select(calibration, resolved, direct_available=False)
+    assert fallback.path == 'pipelined' and fallback.reason == 'advice_no_native_helper'
+    # A large transfer: chunk overlap pays for the dispatcher.
+    big = resolve(compiled.advice, {'s0': 5000, 'k': 4_000_000}, 8)
+    assert select(calibration, big, direct_available=True).reason == 'advice_prefers_pipelined'
+
+
+def test_resolve_classifies_symbolic_patterns_at_bind(compiler):
+    from reloc_torch.advice import resolve
+    weights = compiler.compile(weight_recipe('float16'))
+    assert weights.advice.pattern == 'symbolic'
+    resolved = resolve(weights.advice, {'out': 3, 'in': 5}, 8)
+    assert resolved.pattern == 'contiguous' and resolved.source_bytes == 15 and resolved.result_bytes == 30
+    assert resolved.path('direct')['terms'] == [[15, 'pcie.h2d_gbps', None], [15, 'hbm.bw_gbps', 'recv.m.dequant_s8_f16']]
+    kv = resolve(compiler.compile(kv_recipe()).advice, {'s0': 12}, 8)
+    assert kv.pattern == 'blocked' and kv.path('pipelined')['terms'][0][1] == 'cpu.t8.blocked.gather_f32_gbps'
+    with pytest.raises(RuntimeError, match='advice_invalid'):
+        resolve(weights.advice, {'out': 3}, 8)
+
+
+def test_select_reports_absent_disabled_and_missing(compiler, calibration):
+    from reloc_torch.advice import resolve, select
+    compiled = compiler.compile(gather_recipe())
+    resolved = resolve(compiled.advice, {'s0': 50, 'k': 10}, 8)
+    assert select(None, resolved, direct_available=True).reason == 'no_calibration'
+    assert select(calibration, None, direct_available=True).reason == 'advice_absent'
+    assert select(calibration, resolved, direct_available=True, advice_enabled=False).reason == 'advice_disabled'
+    four = resolve(compiled.advice, {'s0': 50, 'k': 10}, 4)
+    missing = select(calibration, four, direct_available=True)
+    assert missing.path == 'pipelined' and missing.reason == 'advice_missing_keys'
+    assert missing.predicted['direct'] is None
+
+
+def test_select_group_keeps_the_callers_group(compiler, calibration, tmp_path):
+    import pyreloc
+    from reloc_torch.advice import resolve, select_group
+    kv = compiler.compile(kv_recipe())
+    members = [resolve(kv.advice, {'s0': 12}, 8) for _ in range(16)]
+    assert all(not m.direct for m in members)
+    decision = select_group(calibration, members, direct_available=True)
+    assert decision.path == 'grouped' and decision.reason == 'advice_prefers_grouped'
+    assert decision.predicted['direct'] is None and decision.predicted['grouped'] < decision.predicted['pipelined']
+    # An absurd per-member intercept: split is priced cheaper, the group is
+    # still what runs, and the reason says so.
+    path = tmp_path / 'split.cal'
+    path.write_text(SYNTH.replace('overhead.group_member_ms 0.01', 'overhead.group_member_ms 5'))
+    split = select_group(pyreloc.load_calibration(str(path)), members, direct_available=True)
+    assert split.path == 'grouped' and split.reason == 'advice_prefers_split'
+    # Four weights: every member admits the direct kernels, which beat the
+    # group's intercept at this size.
+    weights = compiler.compile(weight_recipe('float16'))
+    four = [resolve(weights.advice, {'out': 3072, 'in': 1024}, 8) for _ in range(4)]
+    direct = select_group(calibration, four, direct_available=True)
+    assert direct.path == 'direct' and direct.reason == 'advice_prefers_direct'
+    helperless = select_group(calibration, four, direct_available=False)
+    assert helperless.path == 'grouped' and helperless.reason == 'advice_no_native_helper'
+    # A mixed group (weights and a layout member) prices but never goes direct.
+    mixed = select_group(calibration, four + [members[0]], direct_available=True)
+    assert mixed.predicted['direct'] is None and mixed.path == 'grouped'
+
+
+def test_price_rejects_nonpositive_rate(compiler, tmp_path):
+    import pyreloc
+    from reloc_torch.advice import resolve, select
+    path = tmp_path / 'zero.cal'
+    path.write_text(SYNTH.replace('cpu.t8.indexed_rows.gather_f16_gbps 8', 'cpu.t8.indexed_rows.gather_f16_gbps 0'))
+    zero = pyreloc.load_calibration(str(path))
+    resolved = resolve(compiler.compile(gather_recipe()).advice, {'s0': 50, 'k': 10}, 8)
+    with pytest.raises(RuntimeError, match='advice_invalid'):
+        select(zero, resolved, direct_available=True)
+
+
+def test_pooled_advice_is_the_pooled_programs_structure():
+    from reloc_torch.advice import pooled_advice, resolve
+    advice = pooled_advice()
+    assert advice.producer_kind == 'pooled' and advice.producer_kernel == 'pooled_sum_f16'
+    assert [p.name for p in advice.paths] == ['direct', 'pipelined', 'grouped']
+    resolved = resolve(advice, {'bags': 512, 'tables': 26, 'dim': 64}, 8)
+    assert resolved.pattern == 'contiguous' and resolved.result_bytes == 512 * 26 * 64 * 2
+    direct = resolved.path('direct')
+    assert direct['intercept'] == 'overhead.direct.pooled_ms'
+    # The producer is priced on the wire: the pooled rate is wire-normalized.
+    assert direct['terms'][0] == [512 * 26 * 64 * 2, 'cpu.t8.contiguous.pooled_sum_f16_gbps', None]
+
+
+def test_load_calibration_resolves_paths_objects_and_the_environment(calibration, tmp_path, monkeypatch):
+    from reloc_torch.advice import load_calibration
+    assert load_calibration(calibration) is calibration
+    path = tmp_path / 'env.cal'
+    path.write_text(SYNTH)
+    assert load_calibration(path).has('overhead.group_ms')
+    monkeypatch.setenv('RELOC_CALIBRATION', str(path))
+    assert load_calibration(None).has('overhead.group_ms')
+    monkeypatch.delenv('RELOC_CALIBRATION')
+    assert load_calibration(None) is None
