@@ -328,7 +328,8 @@ RunInfo runInfo(reloc::PlanAttr layout) {
 }
 
 json::Value pathJson(StringRef name, StringRef form, StringRef wire,
-                     const std::string &intercept, bool producer) {
+                     const std::string &intercept,
+                     const std::string &memberIntercept, bool producer) {
   json::Array terms;
   if (producer)
     terms.push_back(json::Array{"producer", "source_bytes"});
@@ -341,8 +342,8 @@ json::Value pathJson(StringRef name, StringRef form, StringRef wire,
                    {"terms", std::move(terms)}};
   if (form == "overlapped")
     out["chunks"] = "pipeline.chunks_per_buffer";
-  if (form == "grouped")
-    out["member_intercept"] = "overhead.group_member_ms";
+  if (!memberIntercept.empty())
+    out["member_intercept"] = memberIntercept;
   return json::Value(std::move(out));
 }
 
@@ -352,7 +353,11 @@ json::Value optionalString(const char *value) {
 
 // kind names the intercept keys: "layout" (wire v0), "stages" (typed, host
 // producer), "dequant" (typed dequantize-first pure view: raw copy + receive
-// kernel) or "indexed_rows" (wire v2). `direct` admits the direct path.
+// kernel) or "indexed_rows" (wire v2). `direct` admits the direct path. A
+// submission's fixed cost has a per-submission part (`intercept`) and, for
+// the paths that carry several members, a per-member part of the member's
+// own kind (`member_intercept`): a weight group pays a kernel launch and a
+// parameter upload per member, a batched layout group almost nothing.
 json::Object adviceJson(const RunInfo &run, json::Value sourceBytes,
                         json::Value resultBytes, StringRef producerKind,
                         const char *producerKernel, const char *receiveKernel,
@@ -360,12 +365,13 @@ json::Object adviceJson(const RunInfo &run, json::Value sourceBytes,
   const bool producer = producerKind != "none";
   json::Array paths;
   if (direct)
-    paths.push_back(pathJson("direct", "serial", wire,
-                             "overhead.direct." + kind + "_ms", producer));
+    paths.push_back(
+        pathJson("direct", "serial", wire, "overhead.direct." + kind + "_ms",
+                 "overhead.direct." + kind + "_member_ms", producer));
   paths.push_back(pathJson("pipelined", "overlapped", wire,
-                           "overhead.dispatch." + kind + "_ms", producer));
-  paths.push_back(
-      pathJson("grouped", "grouped", wire, "overhead.group_ms", producer));
+                           "overhead.dispatch." + kind + "_ms", "", producer));
+  paths.push_back(pathJson("grouped", "grouped", wire, "overhead.group_ms",
+                           "overhead.group_member." + kind + "_ms", producer));
   return json::Object{
       {"version", 1},
       {"pattern", run.pattern},

@@ -645,6 +645,21 @@ TEST(CostModelAdvice, RejectsNonPositiveRates) {
   EXPECT_THROW(priceAdvice(zero, unknownForm, 1), std::invalid_argument);
 }
 
+TEST(CostModelAdvice, MemberInterceptsAreOptionalOnEveryForm) {
+  // A member intercept, when named, is charged once per member on any form
+  // (the direct path's per-member cost in a weight group); unnamed, nothing.
+  CostModel m = mustParse(kAdviceCal + "overhead.direct.pooled_member_ms 0.5\n");
+  auto paths = pooledPaths(1e8);
+  paths[0].memberInterceptKey = "overhead.direct.pooled_member_ms";
+  paths[2].memberInterceptKey = "";
+  auto costs = priceAdvice(m, paths, 3);
+  EXPECT_NEAR(costs[0].ms, 0.05 + 3 * 0.5 + 22, 1e-9);
+  EXPECT_NEAR(costs[2].ms, 0.2 + 22, 1e-9);
+  paths[0].memberInterceptKey = "overhead.direct.absent_member_ms";
+  EXPECT_EQ(priceAdvice(m, paths, 1)[0].missingKey,
+            "overhead.direct.absent_member_ms");
+}
+
 TEST(CostModelAdvice, OverlappedPathsPreferTheInPipelineRate) {
   // Issue #110 (CM2) precedent: inside a chunked pipeline a host kernel runs
   // at its measured in-pipeline rate (cpu_pipe.*), not its isolated

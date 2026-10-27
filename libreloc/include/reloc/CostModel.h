@@ -90,7 +90,9 @@ decide(const CostModel &m, Pattern p, int64_t srcBytes, double r,
 /// this function prices the concrete terms:
 ///   serial      T = I + sum t_i
 ///   overlapped  T = I + max t_i + (sum t_i - max t_i) / n   [n = cal[chunks]]
-///   grouped     T = I_group + members * I_member + sum t_i
+///   grouped     T = I + sum t_i
+/// plus members * I_member on any form whose path names a member intercept
+/// (the per-member cost of a group submission, direct or native).
 /// with t_i = bytes_i * mult_i / rate_i (ms; GB/s = 1e9 B/s). An overlapped
 /// path prices a cpu.t<k>.* rate with its cpu_pipe.t<k>.* twin (the
 /// in-pipeline rate, issue #110) when the calibration carries one. A missing
@@ -103,6 +105,7 @@ struct AdviceTerm {
   std::string multiplierKey; // empty: multiplier 1
 };
 struct PathAdvice {
+  // memberInterceptKey is optional on every form (empty: none).
   std::string name, form, interceptKey, memberInterceptKey, chunksKey;
   std::vector<AdviceTerm> terms;
 };

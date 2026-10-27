@@ -91,13 +91,14 @@ with tempfile.TemporaryDirectory() as tmp:
                          "intercept": "overhead.dispatch.layout_ms", "chunks": "pipeline.chunks_per_buffer",
                          "terms": TERMS}, pipelined
     assert grouped == {"name": "grouped", "form": "grouped", "wire": "result", "intercept": "overhead.group_ms",
-                       "member_intercept": "overhead.group_member_ms", "terms": TERMS}, grouped
+                       "member_intercept": "overhead.group_member.layout_ms", "terms": TERMS}, grouped
     # Typed host stages: convert producer, f16 result wire, no direct path.
     _, st = run(root / "stages", STAGES, "--typed")
     a = st["advice"]
     assert a["pattern"] == "blocked" and a["producer"] == {"kind": "stages", "kernel": "convert_f32_f16"}, a
     assert a["receive"]["kernel"] is None and names(a) == ["pipelined", "grouped"]
     assert a["paths"][0]["intercept"] == "overhead.dispatch.stages_ms" and a["paths"][0]["wire"] == "result"
+    assert a["paths"][1]["member_intercept"] == "overhead.group_member.stages_ms"
     assert ev(a["result_bytes"], {"B": 7}) == 26 * 7 * 64 * 2
     assert ev(a["source_bytes"], {"B": 7}) == 26 * 7 * 64 * 4
     # Dequantize-first identity layout: raw int8 copy + the fused receive kernel.
@@ -107,8 +108,11 @@ with tempfile.TemporaryDirectory() as tmp:
     assert a["receive"] == {"kernel": "dequant_s8_f16"}
     assert names(a) == ["direct", "pipelined", "grouped"]
     direct = a["paths"][0]
+    # The direct path's fixed cost splits into one submission plus one per member.
     assert direct == {"name": "direct", "form": "serial", "wire": "source", "intercept": "overhead.direct.dequant_ms",
+                      "member_intercept": "overhead.direct.dequant_member_ms",
                       "terms": [["link", "wire"], ["device", "wire"]]}, direct
+    assert a["paths"][2]["member_intercept"] == "overhead.group_member.dequant_ms"
     assert a["paths"][1]["intercept"] == "overhead.dispatch.dequant_ms" and a["paths"][1]["wire"] == "source"
     assert ev(a["run_elements"], {"out": 3, "in": 5}) == ev(a["total_elements"], {"out": 3, "in": 5}) == 15
     assert ev(a["source_bytes"], {"out": 3, "in": 5}) == 15 and ev(a["result_bytes"], {"out": 3, "in": 5}) == 30
@@ -120,6 +124,8 @@ with tempfile.TemporaryDirectory() as tmp:
     assert a["pattern"] == "indexed_rows" and a["producer"] == {"kind": "indexed_rows", "kernel": "gather_f16"}, a
     assert names(a) == ["direct", "pipelined", "grouped"]
     assert a["paths"][0]["intercept"] == "overhead.direct.indexed_rows_ms" and a["paths"][0]["wire"] == "result"
+    assert a["paths"][0]["member_intercept"] == "overhead.direct.indexed_rows_member_ms"
+    assert a["paths"][2]["member_intercept"] == "overhead.group_member.indexed_rows_ms"
     assert a["paths"][1]["intercept"] == "overhead.dispatch.indexed_rows_ms"
     assert ev(a["result_bytes"], {"M": 9, "N": 50}) == 9 * 128 * 2
     assert ev(a["source_bytes"], {"M": 9, "N": 50}) == 9 * 128 * 4  # the selected rows at f32

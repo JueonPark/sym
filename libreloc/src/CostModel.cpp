@@ -388,7 +388,7 @@ std::vector<PathCost> priceAdvice(const CostModel &m,
     PathCost cost;
     cost.name = path.name;
     std::vector<std::string> intercepts{path.interceptKey};
-    if (path.form == "grouped")
+    if (!path.memberInterceptKey.empty())
       intercepts.push_back(path.memberInterceptKey);
     for (const std::string &key : intercepts)
       if (cost.missingKey.empty() && !m.has(key))
@@ -424,7 +424,7 @@ std::vector<PathCost> priceAdvice(const CostModel &m,
       continue;
     }
     double total = m.at(path.interceptKey);
-    if (path.form == "grouped")
+    if (!path.memberInterceptKey.empty())
       total += members * m.at(path.memberInterceptKey);
     if (path.form == "overlapped") {
       const double chunks =

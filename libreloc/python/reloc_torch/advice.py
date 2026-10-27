@@ -130,7 +130,7 @@ def parse_advice(value, symbols, where="advice"):
         expected = ["name", "form", "wire", "intercept", "terms"]
         if name == "pipelined":
             expected.append("chunks")
-        if name == "grouped":
+        else:
             expected.append("member_intercept")
         _exact_keys(entry, tuple(expected), pwhere)
         if entry["form"] != FORMS[name]:
@@ -150,7 +150,7 @@ def parse_advice(value, symbols, where="advice"):
         paths.append(Path(
             name, FORMS[name], wire, _key(entry["intercept"], pwhere), tuple(parsed_terms),
             _key(entry["chunks"], pwhere) if name == "pipelined" else None,
-            _key(entry["member_intercept"], pwhere) if name == "grouped" else None))
+            None if name == "pipelined" else _key(entry["member_intercept"], pwhere)))
     names = [p.name for p in paths]
     if names != [n for n in PATH_NAMES if n in names]:
         _fail(where, "paths must be unique and in direct, pipelined, grouped order")
@@ -195,11 +195,12 @@ def pooled_advice():
     result = Mul(elements, Const(2))
     terms = (("producer", "result_bytes"), ("link", "wire"), ("device", "wire"))
     return Advice(1, "contiguous", elements, elements, result, result, "pooled", "pooled_sum_f16", None, (
-        Path("direct", "serial", "result", "overhead.direct.pooled_ms", terms),
+        Path("direct", "serial", "result", "overhead.direct.pooled_ms", terms,
+             member_intercept="overhead.direct.pooled_member_ms"),
         Path("pipelined", "overlapped", "result", "overhead.dispatch.pooled_ms", terms,
              chunks="pipeline.chunks_per_buffer"),
         Path("grouped", "grouped", "result", "overhead.group_ms", terms,
-             member_intercept="overhead.group_member_ms")))
+             member_intercept="overhead.group_member.pooled_ms")))
 
 
 def _producer_key(advice, pattern, threads):
@@ -310,6 +311,24 @@ def select(calibration, resolved, *, direct_available, advice_enabled=True):
     return Decision(best, f"advice_prefers_{best}", predicted)
 
 
+def _one_submission(calibration, paths):
+    """One submission carrying every member: the path's intercept once, each
+    member's own member intercept, every member's terms. None when a key is
+    missing or the members disagree on the submission (different direct
+    executors cannot share one)."""
+    first = paths[0]
+    if any(path["intercept"] != first["intercept"] or path["form"] != first["form"] for path in paths):
+        return None
+    whole = dict(first, member_intercept=None, terms=[term for path in paths for term in path["terms"]])
+    cost = _price(calibration, [whole], 1)[0]["ms"]
+    for path in paths:
+        key = path["member_intercept"]
+        if cost is None or not key:
+            continue
+        cost = cost + calibration.value(key) if calibration.has(key) else None
+    return cost
+
+
 def select_group(calibration, members, *, direct_available, advice_enabled=True):
     """Group context: one grouped submission, against every member taken
     direct, or every member through its own pipelined dispatch (split). The
@@ -325,15 +344,14 @@ def select_group(calibration, members, *, direct_available, advice_enabled=True)
     grouped = [member.path("grouped") for member in members]
     if any(path is None for path in grouped):
         return Decision("grouped", "advice_absent", {})
-    # One submission: the group intercepts once, every member's terms summed.
-    whole = dict(grouped[0], terms=[term for path in grouped for term in path["terms"]])
-    predicted = {"grouped": _price(calibration, [whole], len(members))[0]["ms"], "direct": 0.0, "pipelined": 0.0}
+    direct = [member.path("direct") for member in members]
+    predicted = {"grouped": _one_submission(calibration, grouped),
+                 "direct": None if any(path is None for path in direct) else _one_submission(calibration, direct),
+                 "pipelined": 0.0}
     for member in members:
-        costs = {c["name"]: c["ms"] for c in _price(calibration, member.paths, 1)}
-        for name in ("direct", "pipelined"):
-            value = costs.get(name)  # None: no such path, or a missing key
-            if predicted[name] is not None:
-                predicted[name] = None if value is None else predicted[name] + value
+        # Split: every member as a submission of its own.
+        value = {c["name"]: c["ms"] for c in _price(calibration, [member.path("pipelined")], 1)}["pipelined"]
+        predicted["pipelined"] = None if value is None or predicted["pipelined"] is None else predicted["pipelined"] + value
     if predicted["grouped"] is None or predicted["pipelined"] is None:
         return Decision("grouped", "advice_missing_keys", predicted)
     ranked = sorted((name for name in predicted if predicted[name] is not None), key=lambda name: predicted[name])

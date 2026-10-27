@@ -123,8 +123,15 @@ overhead.direct.dequant_ms 0.02
 overhead.dispatch.dequant_ms 0.25
 overhead.dispatch.layout_ms 0.2
 overhead.dispatch.stages_ms 0.2
+overhead.direct.pooled_member_ms 0
+overhead.direct.indexed_rows_member_ms 0
+overhead.direct.dequant_member_ms 0
 overhead.group_ms 0.2
-overhead.group_member_ms 0.01
+overhead.group_member.layout_ms 0.01
+overhead.group_member.stages_ms 0.01
+overhead.group_member.dequant_ms 0.01
+overhead.group_member.indexed_rows_ms 0.01
+overhead.group_member.pooled_ms 0.01
 """
 
 
@@ -206,7 +213,7 @@ def test_select_group_keeps_the_callers_group(compiler, calibration, tmp_path):
     # An absurd per-member intercept: split is priced cheaper, the group is
     # still what runs, and the reason says so.
     path = tmp_path / 'split.cal'
-    path.write_text(SYNTH.replace('overhead.group_member_ms 0.01', 'overhead.group_member_ms 5'))
+    path.write_text(SYNTH.replace('overhead.group_member.layout_ms 0.01', 'overhead.group_member.layout_ms 5'))
     split = select_group(pyreloc.load_calibration(str(path)), members, direct_available=True)
     assert split.path == 'grouped' and split.reason == 'advice_prefers_split'
     # Four weights: every member admits the direct kernels, which beat the
@@ -242,6 +249,8 @@ def test_pooled_advice_is_the_pooled_programs_structure():
     assert resolved.pattern == 'contiguous' and resolved.result_bytes == 512 * 26 * 64 * 2
     direct = resolved.path('direct')
     assert direct['intercept'] == 'overhead.direct.pooled_ms'
+    assert direct['member_intercept'] == 'overhead.direct.pooled_member_ms'
+    assert resolved.path('grouped')['member_intercept'] == 'overhead.group_member.pooled_ms'
     # The producer is priced on the wire: the pooled rate is wire-normalized.
     assert direct['terms'][0] == [512 * 26 * 64 * 2, 'cpu.t8.contiguous.pooled_sum_f16_gbps', None]
 
@@ -482,7 +491,7 @@ def test_kv_groups_stay_grouped_with_an_advisory_reason(advised, cuda_device, tm
     # A calibration pricing the per-member intercept absurdly high: separate
     # calls are cheaper on paper, the group still runs, the reason says so.
     path = tmp_path / 'split.cal'
-    path.write_text(SYNTH.replace('overhead.group_member_ms 0.01', 'overhead.group_member_ms 50'))
+    path.write_text(SYNTH.replace('overhead.group_member.layout_ms 0.01', 'overhead.group_member.layout_ms 50'))
     advised.calibration = pyreloc.load_calibration(str(path))
     swap.restore(swap.evict(caches))
     swap.drain()
@@ -514,3 +523,26 @@ def test_mixed_group_stays_grouped(advised, cuda_device):
         assert completion.report['predicted_ms']['direct'] is None
         dispatches = advised.stats()['dispatches']
         assert 'direct' not in dispatches and dispatches.get('cpu_stages_cuda_stages@0') == 1
+
+
+def test_group_prices_charge_each_members_own_intercept_once_per_submission(compiler, tmp_path):
+    """A direct weight group pays one submission plus a per-member cost, and a
+    native group charges every member its own kind's member intercept."""
+    import pyreloc
+    from reloc_torch.advice import resolve, select_group
+    path = tmp_path / 'members.cal'
+    path.write_text(SYNTH.replace('overhead.direct.dequant_member_ms 0', 'overhead.direct.dequant_member_ms 0.05')
+                    .replace('overhead.group_member.dequant_ms 0.01', 'overhead.group_member.dequant_ms 0.1'))
+    cal = pyreloc.load_calibration(str(path))
+    weights = compiler.compile(weight_recipe('float32'))
+    member = resolve(weights.advice, {'out': 1024, 'in': 1024}, 8)
+    terms = pyreloc.price_advice(cal, [dict(member.path('direct'), intercept='overhead.direct.dequant_ms',
+                                            member_intercept=None)])[0]['ms'] - 0.02
+    four = select_group(cal, [member] * 4, direct_available=True)
+    assert four.predicted['direct'] == pytest.approx(0.02 + 4 * 0.05 + 4 * terms)
+    assert four.predicted['grouped'] == pytest.approx(0.2 + 4 * 0.1 + 4 * terms)
+    kv = resolve(compiler.compile(kv_recipe()).advice, {'s0': 12}, 8)
+    mixed = select_group(cal, [member, kv], direct_available=True)
+    kv_terms = pyreloc.price_advice(cal, [dict(kv.path('grouped'), member_intercept=None)])[0]['ms'] - 0.2
+    assert mixed.predicted['grouped'] == pytest.approx(0.2 + 0.1 + 0.01 + terms + kv_terms)
+    assert mixed.predicted['direct'] is None

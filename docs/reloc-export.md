@@ -168,11 +168,12 @@ the cheapest admissible path ([fast-transfers.md](fast-transfers.md#cost-advice-
  "receive": {"kernel": "dequant_s8_f32" | "dequant_s8_f16" | null},
  "paths": [
    {"name": "direct", "form": "serial", "wire": "source" | "result",
-    "intercept": "overhead.direct.<kind>_ms", "terms": [[rate, quantity], ...]},
+    "intercept": "overhead.direct.<kind>_ms", "member_intercept": "overhead.direct.<kind>_member_ms",
+    "terms": [[rate, quantity], ...]},
    {"name": "pipelined", "form": "overlapped", "wire": ..., "intercept": "overhead.dispatch.<kind>_ms",
     "chunks": "pipeline.chunks_per_buffer", "terms": [...]},
    {"name": "grouped", "form": "grouped", "wire": ..., "intercept": "overhead.group_ms",
-    "member_intercept": "overhead.group_member_ms", "terms": [...]}]}
+    "member_intercept": "overhead.group_member.<kind>_ms", "terms": [...]}]}
 ```
 
 - `pattern` is the host access pattern of the runtime's cost model
@@ -195,8 +196,14 @@ the cheapest admissible path ([fast-transfers.md](fast-transfers.md#cost-advice-
   `none` has no producer term; a `null` kernel has no measured rate, which
   the runtime reports as a missing calibration key.
 - Forms: `serial` is `I + Σ t`, `overlapped` is `I + max t + (Σ t − max t) / n`
-  with `n` the calibration's chunk count, `grouped` is
-  `I_group + members × I_member + Σ t`.
+  with `n` the calibration's chunk count, `grouped` is `I + Σ t`; a path
+  that names a `member_intercept` adds it once per member. The direct and
+  grouped paths can carry several members in one submission, so their fixed
+  cost is split into the submission (`intercept`) and the member's own kind
+  (`member_intercept`): a weight member pays a kernel launch and a parameter
+  upload, a batched layout member almost nothing. A group is priced as one
+  submission: its intercept once, every member's own member intercept, every
+  member's terms.
 
 Admissible paths per plan kind (`<kind>` in the intercept keys):
 
