@@ -1,8 +1,12 @@
 # Registered bars for the cost-advice evidence
 
-Committed before any evidence round of this directory was measured. The code
-under test is this commit's parent chain on `feat/cost-advice`; the bars are
-not re-tuned after data, and a failure is reported as a failure.
+Committed before any evidence round of this directory was measured; the bars
+below are not re-tuned after data, and a failure is reported as a failure.
+The code under test is the revision every round records (`source_revision`,
+`manifest.json`), a descendant of this registration: after it and before
+any evidence round, the calibration gained fitted in-pipeline rates and the
+advice per-kind member intercepts (model fixes from calibration
+measurements; the bars did not change).
 
 Arms (`compare.py`, default `float32` compute): `torch`, `torch_kernels`,
 `sym_fast` (the fast lane pricing the compiler's advice with
