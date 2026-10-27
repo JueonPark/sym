@@ -30,7 +30,7 @@ def main(args):
                OMP_NUM_THREADS='8', MKL_NUM_THREADS='8', OMP_WAIT_POLICY='PASSIVE', GOMP_SPINCOUNT='0',
                TORCHINDUCTOR_COMPILE_THREADS='1')
     paths = args.paths or PATHS
-    for r in range(1, args.rounds + 1):
+    for r in range(args.first_round, args.first_round + args.rounds):
         name = f'workloads-r{r}'
         output, cache = args.output / f'{name}.json', args.output / f'{name}-cache'
         assert not output.exists() and not cache.exists(), name
@@ -71,6 +71,9 @@ if __name__ == '__main__':
     p.add_argument('--python', default='/tmp/sym-210-venv/bin/python')
     p.add_argument('--affinity', default='4-7,20-23')
     p.add_argument('--rounds', type=int, default=3)
+    p.add_argument('--first-round', type=int, default=1,
+                   help='number (and path rotation) of the first round; a contaminated round is rerun alone with '
+                        '--first-round N --rounds 1 after its files are set aside')
     p.add_argument('--samples', type=int, default=30)
     p.add_argument('--warmup', type=int, default=5)
     p.add_argument('--paths', nargs='*')
