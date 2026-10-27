@@ -648,7 +648,8 @@ TEST(CostModelAdvice, RejectsNonPositiveRates) {
 TEST(CostModelAdvice, MemberInterceptsAreOptionalOnEveryForm) {
   // A member intercept, when named, is charged once per member on any form
   // (the direct path's per-member cost in a weight group); unnamed, nothing.
-  CostModel m = mustParse(kAdviceCal + "overhead.direct.pooled_member_ms 0.5\n");
+  CostModel m =
+      mustParse(kAdviceCal + "overhead.direct.pooled_member_ms 0.5\n");
   auto paths = pooledPaths(1e8);
   paths[0].memberInterceptKey = "overhead.direct.pooled_member_ms";
   paths[2].memberInterceptKey = "";
