@@ -68,6 +68,91 @@
   "description": "C1's dequantize bits with zero point 127: q = -128 gives (-255) * 0.3 = 0xC2990000",
   "generator_seed": 20260923,
   "manifest": {
+    "advice": {
+      "paths": [
+        {
+          "chunks": "pipeline.chunks_per_buffer",
+          "form": "overlapped",
+          "intercept": "overhead.dispatch.stages_ms",
+          "name": "pipelined",
+          "terms": [
+            [
+              "producer",
+              "source_bytes"
+            ],
+            [
+              "link",
+              "wire"
+            ],
+            [
+              "device",
+              "wire"
+            ]
+          ],
+          "wire": "result"
+        },
+        {
+          "form": "grouped",
+          "intercept": "overhead.group_ms",
+          "member_intercept": "overhead.group_member_ms",
+          "name": "grouped",
+          "terms": [
+            [
+              "producer",
+              "source_bytes"
+            ],
+            [
+              "link",
+              "wire"
+            ],
+            [
+              "device",
+              "wire"
+            ]
+          ],
+          "wire": "result"
+        }
+      ],
+      "pattern": "contiguous",
+      "producer": {
+        "kernel": null,
+        "kind": "stages"
+      },
+      "receive": {
+        "kernel": null
+      },
+      "result_bytes": [
+        "mul",
+        [
+          "const",
+          5
+        ],
+        [
+          "const",
+          4
+        ]
+      ],
+      "run_elements": [
+        "const",
+        5
+      ],
+      "source_bytes": [
+        "mul",
+        [
+          "const",
+          5
+        ],
+        [
+          "const",
+          1
+        ]
+      ],
+      "total_elements": [
+        "const",
+        5
+      ],
+      "version": 1
+    },
     "constraints": {
       "divisibility": []
     },

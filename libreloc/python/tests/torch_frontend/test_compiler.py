@@ -570,3 +570,24 @@ def test_no_canonicalize_exports_the_raw_fold_output_under_its_own_identity(comp
     assert cached.compile(recipe).plan_bytes == canonical.plan_bytes
     assert cached_raw.compile(recipe).plan_bytes == raw.plan_bytes
     assert len(list(tmp_path.glob("*.artifact"))) == 2
+
+
+def test_no_advice_exports_a_null_block_under_its_own_identity(compiler, tmp_path):
+    """CompilerClient(advice=False): same plan, `advice: null`, separate cache entries."""
+    from reloc_torch import CompilerClient
+    from test_fast import dlrm_recipe
+
+    plain = CompilerClient(compiler.executable, advice=False)
+    assert "+no-advice" in plain.identity and plain.identity != compiler.identity
+    advised, unadvised = compiler.compile(dlrm_recipe()), plain.compile(dlrm_recipe())
+    assert advised.plan_bytes == unadvised.plan_bytes
+    assert advised.advice is not None and unadvised.advice is None
+    assert {k: v for k, v in advised.manifest.items() if k != "advice"} == \
+        {k: v for k, v in unadvised.manifest.items() if k != "advice"}
+    both = CompilerClient(compiler.executable, advice=False, canonicalize=False)
+    assert both.identity.count("+no-") == 2
+    cached = CompilerClient(compiler.executable, cache_dir=tmp_path)
+    cached_plain = CompilerClient(compiler.executable, cache_dir=tmp_path, advice=False)
+    assert cached.compile(dlrm_recipe()).advice is not None
+    assert cached_plain.compile(dlrm_recipe()).advice is None
+    assert len(list(tmp_path.glob("*.artifact"))) == 2

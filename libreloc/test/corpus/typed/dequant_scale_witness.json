@@ -70,6 +70,99 @@
   "description": "C1's dequantize bits: q in [-128, -1, 0, 1, 127], scale 0.3, zero point 0",
   "generator_seed": 20260923,
   "manifest": {
+    "advice": {
+      "paths": [
+        {
+          "form": "serial",
+          "intercept": "overhead.direct.dequant_ms",
+          "name": "direct",
+          "terms": [
+            [
+              "link",
+              "wire"
+            ],
+            [
+              "device",
+              "wire"
+            ]
+          ],
+          "wire": "source"
+        },
+        {
+          "chunks": "pipeline.chunks_per_buffer",
+          "form": "overlapped",
+          "intercept": "overhead.dispatch.dequant_ms",
+          "name": "pipelined",
+          "terms": [
+            [
+              "link",
+              "wire"
+            ],
+            [
+              "device",
+              "wire"
+            ]
+          ],
+          "wire": "source"
+        },
+        {
+          "form": "grouped",
+          "intercept": "overhead.group_ms",
+          "member_intercept": "overhead.group_member_ms",
+          "name": "grouped",
+          "terms": [
+            [
+              "link",
+              "wire"
+            ],
+            [
+              "device",
+              "wire"
+            ]
+          ],
+          "wire": "source"
+        }
+      ],
+      "pattern": "contiguous",
+      "producer": {
+        "kernel": null,
+        "kind": "none"
+      },
+      "receive": {
+        "kernel": "dequant_s8_f32"
+      },
+      "result_bytes": [
+        "mul",
+        [
+          "const",
+          5
+        ],
+        [
+          "const",
+          4
+        ]
+      ],
+      "run_elements": [
+        "const",
+        5
+      ],
+      "source_bytes": [
+        "mul",
+        [
+          "const",
+          5
+        ],
+        [
+          "const",
+          1
+        ]
+      ],
+      "total_elements": [
+        "const",
+        5
+      ],
+      "version": 1
+    },
     "constraints": {
       "divisibility": []
     },

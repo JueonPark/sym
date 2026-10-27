@@ -102,6 +102,9 @@ class CompiledRecipe:
     logical_destination: TensorSpec
     manifest: dict
     parameters: tuple[ParameterDeclaration, ...] = ()
+    # The compiler's cost advice (reloc_torch.advice.Advice), or None when the
+    # artifact was exported with --no-advice (interface 2).
+    advice: object = None
 
     @property
     def typed(self):
@@ -308,7 +311,7 @@ def _compiler_identity(value):
         _string(value["llvm_version"], "compiler.llvm_version"),
         _string(value["build_identity"], "compiler.build_identity"),
     )
-    if identity.name != "sym-reloc-export" or identity.interface_version != 1:
+    if identity.name != "sym-reloc-export" or identity.interface_version != 2:
         raise RuntimeError("compiler manifest identifies an unsupported compiler interface")
     return identity
 
@@ -712,6 +715,7 @@ def _admit(recipe, mlir, plan, manifest):
     expected_fields = (
         "schema_version", "wire_version", "status", "compiler", "plan_count", "symbols",
         "logical_source", "logical_destination", "constraints", "plan_sha256", "input_sha256",
+        "advice",
     )
     if typed:
         expected_fields += ("stages", "fills", "parameters")
@@ -745,6 +749,8 @@ def _admit(recipe, mlir, plan, manifest):
         raise RuntimeError("compiler manifest plan digest mismatch")
     if input_digest != hashlib.sha256(mlir).hexdigest():
         raise RuntimeError("compiler manifest input digest mismatch")
+    from .advice import parse_advice
+    advice = parse_advice(manifest["advice"], symbols)
     sources = symbol_sources(recipe.source.shape)
     source_by_name = {source.name: source for source in sources}
     return CompiledRecipe(
@@ -759,6 +765,7 @@ def _admit(recipe, mlir, plan, manifest):
         destination,
         manifest,
         parameters,
+        advice,
     )
 
 

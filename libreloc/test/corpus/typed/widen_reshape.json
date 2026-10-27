@@ -110,6 +110,105 @@
   "description": "cast + layout: f16 [2, 12] widened exactly then reshaped to [6, 4], C1's binary16 -> binary32 witness bits first",
   "generator_seed": 20260923,
   "manifest": {
+    "advice": {
+      "paths": [
+        {
+          "chunks": "pipeline.chunks_per_buffer",
+          "form": "overlapped",
+          "intercept": "overhead.dispatch.stages_ms",
+          "name": "pipelined",
+          "terms": [
+            [
+              "producer",
+              "source_bytes"
+            ],
+            [
+              "link",
+              "wire"
+            ],
+            [
+              "device",
+              "wire"
+            ]
+          ],
+          "wire": "result"
+        },
+        {
+          "form": "grouped",
+          "intercept": "overhead.group_ms",
+          "member_intercept": "overhead.group_member_ms",
+          "name": "grouped",
+          "terms": [
+            [
+              "producer",
+              "source_bytes"
+            ],
+            [
+              "link",
+              "wire"
+            ],
+            [
+              "device",
+              "wire"
+            ]
+          ],
+          "wire": "result"
+        }
+      ],
+      "pattern": "contiguous",
+      "producer": {
+        "kernel": null,
+        "kind": "stages"
+      },
+      "receive": {
+        "kernel": null
+      },
+      "result_bytes": [
+        "mul",
+        [
+          "mul",
+          [
+            "const",
+            6
+          ],
+          [
+            "const",
+            4
+          ]
+        ],
+        [
+          "const",
+          4
+        ]
+      ],
+      "run_elements": [
+        "const",
+        24
+      ],
+      "source_bytes": [
+        "mul",
+        [
+          "mul",
+          [
+            "const",
+            2
+          ],
+          [
+            "const",
+            12
+          ]
+        ],
+        [
+          "const",
+          2
+        ]
+      ],
+      "total_elements": [
+        "const",
+        24
+      ],
+      "version": 1
+    },
     "constraints": {
       "divisibility": []
     },

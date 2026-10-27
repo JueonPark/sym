@@ -110,6 +110,133 @@
   "description": "dequantize + layout: s8 [2, 3, 4] per-channel runtime scales and zero points on axis 1, then transposed to [3, 2, 4]",
   "generator_seed": 20260923,
   "manifest": {
+    "advice": {
+      "paths": [
+        {
+          "chunks": "pipeline.chunks_per_buffer",
+          "form": "overlapped",
+          "intercept": "overhead.dispatch.stages_ms",
+          "name": "pipelined",
+          "terms": [
+            [
+              "producer",
+              "source_bytes"
+            ],
+            [
+              "link",
+              "wire"
+            ],
+            [
+              "device",
+              "wire"
+            ]
+          ],
+          "wire": "result"
+        },
+        {
+          "form": "grouped",
+          "intercept": "overhead.group_ms",
+          "member_intercept": "overhead.group_member_ms",
+          "name": "grouped",
+          "terms": [
+            [
+              "producer",
+              "source_bytes"
+            ],
+            [
+              "link",
+              "wire"
+            ],
+            [
+              "device",
+              "wire"
+            ]
+          ],
+          "wire": "result"
+        }
+      ],
+      "pattern": "tiled",
+      "producer": {
+        "kernel": null,
+        "kind": "stages"
+      },
+      "receive": {
+        "kernel": null
+      },
+      "result_bytes": [
+        "mul",
+        [
+          "mul",
+          [
+            "mul",
+            [
+              "const",
+              3
+            ],
+            [
+              "const",
+              2
+            ]
+          ],
+          [
+            "const",
+            4
+          ]
+        ],
+        [
+          "const",
+          4
+        ]
+      ],
+      "run_elements": [
+        "const",
+        4
+      ],
+      "source_bytes": [
+        "mul",
+        [
+          "mul",
+          [
+            "mul",
+            [
+              "const",
+              2
+            ],
+            [
+              "const",
+              3
+            ]
+          ],
+          [
+            "const",
+            4
+          ]
+        ],
+        [
+          "const",
+          1
+        ]
+      ],
+      "total_elements": [
+        "mul",
+        [
+          "mul",
+          [
+            "const",
+            3
+          ],
+          [
+            "const",
+            2
+          ]
+        ],
+        [
+          "const",
+          4
+        ]
+      ],
+      "version": 1
+    },
     "constraints": {
       "divisibility": []
     },

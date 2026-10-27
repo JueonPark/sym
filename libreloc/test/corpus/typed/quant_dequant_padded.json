@@ -164,6 +164,98 @@
   "description": "f32 -> s8 -> f32 with a padded destination: distinct source, wire and destination footprints; two bindings",
   "generator_seed": 20260923,
   "manifest": {
+    "advice": {
+      "paths": [
+        {
+          "chunks": "pipeline.chunks_per_buffer",
+          "form": "overlapped",
+          "intercept": "overhead.dispatch.stages_ms",
+          "name": "pipelined",
+          "terms": [
+            [
+              "producer",
+              "source_bytes"
+            ],
+            [
+              "link",
+              "wire"
+            ],
+            [
+              "device",
+              "wire"
+            ]
+          ],
+          "wire": "result"
+        },
+        {
+          "form": "grouped",
+          "intercept": "overhead.group_ms",
+          "member_intercept": "overhead.group_member_ms",
+          "name": "grouped",
+          "terms": [
+            [
+              "producer",
+              "source_bytes"
+            ],
+            [
+              "link",
+              "wire"
+            ],
+            [
+              "device",
+              "wire"
+            ]
+          ],
+          "wire": "result"
+        }
+      ],
+      "pattern": "symbolic",
+      "producer": {
+        "kernel": "quantize",
+        "kind": "stages"
+      },
+      "receive": {
+        "kernel": null
+      },
+      "result_bytes": [
+        "mul",
+        [
+          "add",
+          [
+            "const",
+            3
+          ],
+          [
+            "symbol",
+            "s0"
+          ]
+        ],
+        [
+          "const",
+          4
+        ]
+      ],
+      "run_elements": [
+        "symbol",
+        "s0"
+      ],
+      "source_bytes": [
+        "mul",
+        [
+          "symbol",
+          "s0"
+        ],
+        [
+          "const",
+          4
+        ]
+      ],
+      "total_elements": [
+        "symbol",
+        "s0"
+      ],
+      "version": 1
+    },
     "constraints": {
       "divisibility": []
     },

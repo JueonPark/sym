@@ -93,6 +93,91 @@
   "description": "symmetric_rne edge cases at scale 0.5: ties, signed-i8 limits, NaN/inf, signed zero, a subnormal and a non-multiple",
   "generator_seed": 20260923,
   "manifest": {
+    "advice": {
+      "paths": [
+        {
+          "chunks": "pipeline.chunks_per_buffer",
+          "form": "overlapped",
+          "intercept": "overhead.dispatch.stages_ms",
+          "name": "pipelined",
+          "terms": [
+            [
+              "producer",
+              "source_bytes"
+            ],
+            [
+              "link",
+              "wire"
+            ],
+            [
+              "device",
+              "wire"
+            ]
+          ],
+          "wire": "result"
+        },
+        {
+          "form": "grouped",
+          "intercept": "overhead.group_ms",
+          "member_intercept": "overhead.group_member_ms",
+          "name": "grouped",
+          "terms": [
+            [
+              "producer",
+              "source_bytes"
+            ],
+            [
+              "link",
+              "wire"
+            ],
+            [
+              "device",
+              "wire"
+            ]
+          ],
+          "wire": "result"
+        }
+      ],
+      "pattern": "contiguous",
+      "producer": {
+        "kernel": "quantize",
+        "kind": "stages"
+      },
+      "receive": {
+        "kernel": null
+      },
+      "result_bytes": [
+        "mul",
+        [
+          "const",
+          16
+        ],
+        [
+          "const",
+          1
+        ]
+      ],
+      "run_elements": [
+        "const",
+        16
+      ],
+      "source_bytes": [
+        "mul",
+        [
+          "const",
+          16
+        ],
+        [
+          "const",
+          4
+        ]
+      ],
+      "total_elements": [
+        "const",
+        16
+      ],
+      "version": 1
+    },
     "constraints": {
       "divisibility": []
     },

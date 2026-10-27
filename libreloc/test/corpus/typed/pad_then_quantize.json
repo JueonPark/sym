@@ -74,6 +74,91 @@
   "description": "pad order witness: pad f32 1.0 first, then quantize at scale 0.5 (the fill becomes code 2)",
   "generator_seed": 20260923,
   "manifest": {
+    "advice": {
+      "paths": [
+        {
+          "chunks": "pipeline.chunks_per_buffer",
+          "form": "overlapped",
+          "intercept": "overhead.dispatch.stages_ms",
+          "name": "pipelined",
+          "terms": [
+            [
+              "producer",
+              "source_bytes"
+            ],
+            [
+              "link",
+              "wire"
+            ],
+            [
+              "device",
+              "wire"
+            ]
+          ],
+          "wire": "result"
+        },
+        {
+          "form": "grouped",
+          "intercept": "overhead.group_ms",
+          "member_intercept": "overhead.group_member_ms",
+          "name": "grouped",
+          "terms": [
+            [
+              "producer",
+              "source_bytes"
+            ],
+            [
+              "link",
+              "wire"
+            ],
+            [
+              "device",
+              "wire"
+            ]
+          ],
+          "wire": "result"
+        }
+      ],
+      "pattern": "contiguous",
+      "producer": {
+        "kernel": "quantize",
+        "kind": "stages"
+      },
+      "receive": {
+        "kernel": null
+      },
+      "result_bytes": [
+        "mul",
+        [
+          "const",
+          8
+        ],
+        [
+          "const",
+          1
+        ]
+      ],
+      "run_elements": [
+        "const",
+        6
+      ],
+      "source_bytes": [
+        "mul",
+        [
+          "const",
+          6
+        ],
+        [
+          "const",
+          4
+        ]
+      ],
+      "total_elements": [
+        "const",
+        6
+      ],
+      "version": 1
+    },
     "constraints": {
       "divisibility": []
     },

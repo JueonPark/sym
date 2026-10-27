@@ -45,7 +45,7 @@ def admit(recipe, mlir, plan, manifest):
 
     _exact_keys(manifest, ('schema_version', 'wire_version', 'status', 'compiler', 'plan_count',
         'symbols', 'logical_source', 'logical_destination', 'constraints', 'index_select',
-        'plan_sha256', 'input_sha256'), 'indexed manifest')
+        'plan_sha256', 'input_sha256', 'advice'), 'indexed manifest')
     compiler = _validate_base(manifest, (3, 2))
     if manifest['status'] != 'ok' or _integer(manifest['plan_count'], 'plan_count') != 1:
         raise RuntimeError('indexed manifest must describe exactly one plan')
@@ -88,5 +88,7 @@ def admit(recipe, mlir, plan, manifest):
         if not _same_descriptor(descriptor, expected):
             raise RuntimeError(f'indexed wire {key} descriptor mismatch')
     by_name = {s.name: s for s in sources}
+    from .advice import parse_advice
     return CompiledRecipe(recipe, plan, compiler, 2, tuple(symbols),
-        tuple(by_name[s] for s in symbols), (), declared[0], declared[2], manifest)
+        tuple(by_name[s] for s in symbols), (), declared[0], declared[2], manifest,
+        advice=parse_advice(manifest['advice'], tuple(symbols)))

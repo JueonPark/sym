@@ -19,13 +19,15 @@ class CompilerClient:
     """Invoke the supported exporter and admit only associated artifacts."""
 
     def __init__(self, executable, *, cache_dir=None, cache_max_bytes=64 << 20,
-                 cache_max_entries=128, cache_namespace="default", canonicalize=True):
+                 cache_max_entries=128, cache_namespace="default", canonicalize=True, advice=True):
         self.executable = Path(executable)
         # canonicalize=False exports the raw fold output (sym-reloc-export
-        # --no-canonicalize): a measurement mode for compiler attribution,
-        # never the default. The manifest does not record it, so every
-        # identity this client derives carries the mode itself.
+        # --no-canonicalize) and advice=False publishes `advice: null`
+        # (--no-advice): measurement modes for compiler attribution, never
+        # the default. Every identity this client derives carries the modes,
+        # so artifacts of different modes never share a cache entry.
         self.canonicalize = bool(canonicalize)
+        self.advice = bool(advice)
         self._identity = None
         self._binary_signature = self._binary_digest = None
         self._store = None
@@ -66,8 +68,7 @@ class CompilerClient:
         previous binary. Never an object id."""
         if self._identity is None:
             self._identity = f"sym-reloc-export@{self.executable.resolve()}"
-            if not self.canonicalize:
-                self._identity += "+no-canonicalize"
+            self._identity += self._mode_suffix()
         try:
             status = os.stat(self.executable)
         except OSError:
@@ -89,7 +90,10 @@ class CompilerClient:
                     hasher.update(block)
                 digest = hasher.hexdigest()
             self._binary_signature, self._binary_digest = signature, digest
-        return self._binary_digest if self.canonicalize else self._binary_digest + "+no-canonicalize"
+        return self._binary_digest + self._mode_suffix()
+
+    def _mode_suffix(self):
+        return ("" if self.canonicalize else "+no-canonicalize") + ("" if self.advice else "+no-advice")
 
     def compile(self, recipe):
         if self._store is None:
@@ -130,6 +134,8 @@ class CompilerClient:
                 arguments.append('--indexed')
             if not self.canonicalize:
                 arguments.append('--no-canonicalize')
+            if not self.advice:
+                arguments.append('--no-advice')
             try:
                 result = subprocess.run(arguments, check=False, capture_output=True)
             except OSError as error:
