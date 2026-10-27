@@ -643,6 +643,16 @@ class PooledProgram:
                                      "float32", decision=decision)
 
 
+def _group_advice(program):
+    """A group member's advice; only prepared weight snapshots have a direct
+    group executor, so every other member prices without the direct path."""
+    if isinstance(program, _WireEntry):
+        return program.resolved
+    if isinstance(program, TypedProgram):
+        return program._single_call()
+    return getattr(program, "resolved", None)
+
+
 def _decided(report, decision):
     """A dispatcher report with the advice decision that routed the call; the
     dispatcher's own row reason stays under row_reason."""
@@ -759,6 +769,7 @@ class _DirectCompletion:
         self._done = True
         if "items" in self._report:
             self._owner._record_group(self._report)
+            self._owner._count_reason(self._report)
         else:
             self._owner._record(self._report)
         self._keep = ()
@@ -968,6 +979,48 @@ class FastTransfers:
         self._decisions[key] = (self.calibration, resolved, decision)
         return decision
 
+    def _advise_group(self, members):
+        """The decision of one group submission over the members' advice,
+        memoized per (calibration, advice flag, member advice)."""
+        key = (id(self.calibration), self.advice, "group") + tuple(id(m) for m in members)
+        hit = self._decisions.get(key)
+        if hit is not None and hit[0] is self.calibration and all(a is b for a, b in zip(hit[1], members)):
+            return hit[2]
+        decision = _advice.select_group(self.calibration, members, direct_available=_native_views is not None,
+                                        advice_enabled=self.advice)
+        if len(self._decisions) >= 4096:
+            self._decisions.clear()
+        self._decisions[key] = (self.calibration, tuple(members), decision)
+        return decision
+
+    def _submit_direct_weights(self, items, outputs, decision):
+        """Every member is a prepared int8 [out, in] snapshot: copy the raw
+        wire into a transient device buffer on the private stream and run the
+        fused dequantize (f32, or f16 in the same kernel) into the output; one
+        event completes the group. Bit-identical to the group row
+        (cpu_stages_cuda_stages@0 runs the same kernels)."""
+        import torch
+        self._retire()
+        outs, keep, items_report = [], [], []
+        with torch.cuda.stream(self._stream):
+            for position, (entry, source) in enumerate(items):
+                out = entry.allocate() if outputs is None else outputs[position]
+                q = torch.empty(tuple(source.shape), dtype=torch.int8, device=self.device)
+                q.copy_(source, non_blocking=True)
+                kernel = (_native_views.dequant_s8_f16 if out.dtype == torch.float16
+                          else _native_views.dequant_s8_f32)
+                kernel(q, entry.scale_device(), out, self._stream.cuda_stream)
+                outs.append(out)
+                keep += (q, source)
+                items_report.append(dict(implementation="direct", payload_bytes_transferred=int(source.numel())))
+            event = torch.cuda.Event()
+            event.record(self._stream)
+        payload = sum(item["payload_bytes_transferred"] for item in items_report)
+        report = dict(implementation="direct", placement_reason=decision.reason, predicted_ms=decision.predicted,
+                      wire_bytes=payload, payload_bytes_transferred=payload, logical_transfers=len(items),
+                      items=items_report)
+        return _DirectCompletion(self, outs, event, report, keep=keep)
+
     def _record_group(self, report):
         self._totals["groups"] += 1
         self._totals["logical_transfers"] += int(report["logical_transfers"])
@@ -1072,6 +1125,10 @@ class FastTransfers:
         items = list(items)
         if not 1 <= len(items) <= 256:
             raise ValueError("a group holds between 1 and 256 transfers")
+        if decision is None:
+            decision = self._advise_group([_group_advice(program) for program, _ in items])
+            if decision.path == "direct":
+                return self._submit_direct_weights(items, outputs, decision)
         sources, outs, entries = [], [], []
         host = False
         native_views = _native_views is not None
@@ -1271,12 +1328,14 @@ class FastWeights:
 
     def _items(self, names):
         items = []
-        for name, (template, source) in zip(names, self.weights.fast_entries(names)):
+        advice = getattr(self.weights, "advice", None)
+        for name, (template, source, scale) in zip(names, self.weights.fast_entries(names)):
             entry = self._entries.get(name)
             if entry is None or entry[1] is not source:
                 # A re-prepared snapshot is a new source object; rebuild its member.
-                entry = self._entries[name] = (_WireEntry(self.owner, template, source,
-                                                          getattr(self.weights, 'output_dtype', 'float32')),
+                entry = self._entries[name] = (_WireEntry(self.owner, template, source, scale,
+                                                          getattr(self.weights, "output_dtype", "float32"),
+                                                          advice=advice),
                                                source)
             items.append(entry)
         return items
@@ -1293,11 +1352,12 @@ class FastWeights:
 
 
 class _WireEntry(TypedProgram):
-    """A prepared INT8 [out,in] snapshot with its native template (no rebinding)."""
+    """A prepared INT8 [out,in] snapshot with its native template (no rebinding),
+    its owned CPU scale and the dequantize recipe's advice at its shape."""
 
-    __slots__ = ()
+    __slots__ = ("scale", "_scale_device")
 
-    def __init__(self, owner, template, source, dtype="float32"):  # noqa: D401 - adapter
+    def __init__(self, owner, template, source, scale, dtype="float32", *, advice=None):  # noqa: D401 - adapter
         import torch
         self.owner, self.compiled, self.bindings = owner, None, None
         self.signature = _signature(source)
@@ -1310,8 +1370,18 @@ class _WireEntry(TypedProgram):
         self.destination = ConcreteDescriptor(tuple(source.shape), tuple(source.stride()), dtype, owner.device)
         self._out_dtype, self._out_device = getattr(torch, dtype), owner.device
         self.handle = self._registration = self._op_args = None
-        self.resolved = self._single = None
+        self.scale, self._scale_device = scale, None
+        # The packed source is [out, in]: the recipe's symbols, bound.
+        self.resolved = None if advice is None else _advice.resolve(
+            advice, {"out": int(source.shape[0]), "in": int(source.shape[1])}, owner.gather_threads)
+        self._single = None
         self._register_op()
+
+    def scale_device(self):
+        """The scale on the owner's device, uploaded once per entry."""
+        if self._scale_device is None:
+            self._scale_device = self.scale.to(self.owner.device)
+        return self._scale_device
 
 
 __all__ = ("FastTransfers", "FastCompletion", "FastPrefetch", "TypedProgram", "LayoutProgram",

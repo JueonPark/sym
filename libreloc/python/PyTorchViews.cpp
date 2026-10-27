@@ -352,10 +352,12 @@ py::object gatherRows(const reloc::IndexedRelocationPlan &plan,
 
 #ifdef RELOC_ENABLE_CUDA
 /// out = float(q) * scale[channel] on the device (the per-channel
-/// dequantize kernel the fast lane launches), on `stream` (a cudaStream_t
-/// handle, e.g. torch.cuda.current_stream().cuda_stream). Returns out.
-py::object dequantS8F32(const py::object &q, const py::object &scale,
-                        const py::object &out, uintptr_t stream) {
+/// dequantize kernels the fast lane launches; `half` narrows the product to
+/// float16 with round-to-nearest-even in the same kernel, two roundings), on
+/// `stream` (a cudaStream_t handle, e.g.
+/// torch.cuda.current_stream().cuda_stream). Returns out.
+py::object dequantS8(const py::object &q, const py::object &scale,
+                     const py::object &out, uintptr_t stream, bool half) {
   const at::Tensor &src = unpack(q, "q");
   const at::Tensor &s = unpack(scale, "scale");
   const at::Tensor &dst = unpack(out, "out");
@@ -365,25 +367,42 @@ py::object dequantS8F32(const py::object &q, const py::object &scale,
   if (!s.is_cuda() || s.scalar_type() != at::kFloat || s.dim() != 1 ||
       !s.is_contiguous() || s.size(0) != src.size(0))
     throw py::value_error("scale must be a contiguous CUDA float32 [channels]");
-  if (!dst.is_cuda() || dst.scalar_type() != at::kFloat ||
+  if (!dst.is_cuda() || dst.scalar_type() != (half ? at::kHalf : at::kFloat) ||
       !dst.is_contiguous() || dst.sizes() != src.sizes() ||
       dst.get_device() != src.get_device() ||
       s.get_device() != src.get_device())
-    throw py::value_error("out must be a contiguous CUDA float32 of q's shape "
-                          "on q's device");
+    throw py::value_error(half ? "out must be a contiguous CUDA float16 of q's "
+                                 "shape on q's device"
+                               : "out must be a contiguous CUDA float32 of q's "
+                                 "shape on q's device");
   {
     py::gil_scoped_release release;
     cudaSetDevice(src.get_device());
-    reloc::cuda::dequantS8F32(static_cast<const int8_t *>(src.data_ptr()),
-                              static_cast<float *>(dst.data_ptr()), src.size(0),
-                              src.size(1),
-                              static_cast<const float *>(s.data_ptr()),
-                              reinterpret_cast<void *>(stream));
+    const auto *input = static_cast<const int8_t *>(src.data_ptr());
+    const auto *scales = static_cast<const float *>(s.data_ptr());
+    if (half)
+      reloc::cuda::dequantS8F16(input, static_cast<uint16_t *>(dst.data_ptr()),
+                                src.size(0), src.size(1), scales,
+                                reinterpret_cast<void *>(stream));
+    else
+      reloc::cuda::dequantS8F32(input, static_cast<float *>(dst.data_ptr()),
+                                src.size(0), src.size(1), scales,
+                                reinterpret_cast<void *>(stream));
     if (cudaError_t status = cudaGetLastError(); status != cudaSuccess)
-      throw std::runtime_error(std::string("dequantS8F32 launch failed: ") +
+      throw std::runtime_error(std::string("dequantS8 launch failed: ") +
                                cudaGetErrorString(status));
   }
   return out;
+}
+
+py::object dequantS8F32(const py::object &q, const py::object &scale,
+                        const py::object &out, uintptr_t stream) {
+  return dequantS8(q, scale, out, stream, false);
+}
+
+py::object dequantS8F16(const py::object &q, const py::object &scale,
+                        const py::object &out, uintptr_t stream) {
+  return dequantS8(q, scale, out, stream, true);
 }
 #endif
 
@@ -448,5 +467,9 @@ PYBIND11_MODULE(_pyreloc_torch, m) {
         py::arg("out"), py::arg("stream") = 0,
         "Per-channel int8 -> float32 dequantize on the device (the fast "
         "lane's kernel alone), on the given cudaStream_t handle.");
+  m.def("dequant_s8_f16", &dequantS8F16, py::arg("q"), py::arg("scale"),
+        py::arg("out"), py::arg("stream") = 0,
+        "Per-channel int8 -> float32 -> float16 dequantize on the device in "
+        "one kernel (both roundings kept), on the given cudaStream_t handle.");
 #endif
 }

@@ -39,6 +39,12 @@ def test_preparation_owns_only_snapshot_and_no_public_tensor_alias(compiler):
         gc.collect()
         assert qr() is None and sr() is None
         assert weights.describe('w') is info
+        # The fast lane's view: the template, the packed [out, in] wire and an
+        # owned CPU copy of the scale (never the caller's tensor).
+        template, packed, scale_copy = weights.fast_entries(['w'])[0]
+        assert packed.shape == (29, 71) and scale_copy.dtype == torch.float32 and scale_copy.device.type == 'cpu'
+        assert torch.equal(scale_copy, torch.linspace(.001, .25, 29))
+        del template, packed, scale_copy  # the snapshot is released only when unreferenced
         weights.invalidate('w')
         assert weights.stats()['prepared_bytes'] == 0
         with pytest.raises(KeyError):

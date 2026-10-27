@@ -427,3 +427,90 @@ def test_ops_take_the_direct_path_and_stay_traceable(advised, cuda_device):
     torch.library.opcheck(fast_ops.INDEXED_OP, (source, index, program._op_args[1], (64, 128), (128, 1),
                                                   cuda_device, torch.float16))
     assert advised.stats()['dispatches'] == {'direct': advised.stats()['calls']}
+
+
+@pytest.mark.gpu
+@pytest.mark.parametrize('dtype', ['float32', 'float16'])
+def test_weights_direct_group_is_bit_exact(advised, cuda_device, dtype):
+    from reloc_torch import PreparedWireWeights
+    from reloc_torch.fast import FastWeights
+    gen = torch.Generator().manual_seed(7)
+    pairs = []
+    for rows, cols in ((256, 384), (384, 256), (33, 65), (1024, 3072)):
+        q = torch.randint(-127, 128, (rows, cols), dtype=torch.int8, generator=gen)
+        pairs.append((q, torch.rand(cols, generator=gen) * 0.05 + 1e-3))
+    torch_dtype = getattr(torch, dtype)
+
+    def reference(q, s):
+        return (q.to(cuda_device).float() * s.to(cuda_device)).t().contiguous().to(torch_dtype)
+
+    with PreparedWireWeights(cuda_device, compiler=advised._compiler, dtype=dtype) as weights:
+        assert weights.advice is not None
+        assert weights.advice.receive_kernel == {'float32': 'dequant_s8_f32', 'float16': 'dequant_s8_f16'}[dtype]
+        for i, (q, s) in enumerate(pairs):
+            weights.prepare(str(i), q, s)
+        loader = FastWeights(advised, weights)
+        outputs = loader.load_many(['0', '1', '2', '3'])
+        torch.cuda.synchronize()
+        for (q, s), out in zip(pairs, outputs):
+            assert out.dtype == torch_dtype and torch.equal(bits(out), bits(reference(q, s)))
+        seen = []
+        with loader.prefetch([['0', '1'], ['2'], ['3', '0']], slots=2) as window:
+            for group in window:
+                seen.append([t.clone() for t in group])
+        torch.cuda.synchronize()
+        assert [len(group) for group in seen] == [2, 1, 2]
+        assert torch.equal(bits(seen[2][0]), bits(reference(*pairs[3])))
+        assert torch.equal(bits(seen[2][1]), bits(reference(*pairs[0])))
+    stats = advised.stats()
+    assert stats['advice'] == {'advice_prefers_direct': 4} and stats['dispatches'] == {'direct': 9}
+
+
+@pytest.mark.gpu
+def test_kv_groups_stay_grouped_with_an_advisory_reason(advised, cuda_device, tmp_path):
+    import pyreloc
+    from reloc_torch.fast import KVCacheSwap
+    swap = KVCacheSwap(advised, 16, 64)
+    caches = [torch.randn(16, 12, 64, device=cuda_device) for _ in range(8)]
+    restored = swap.restore(swap.evict(caches))
+    torch.cuda.synchronize()
+    for cache, back in zip(caches, restored):
+        assert torch.equal(back.view(torch.int32), cache.view(torch.int32))
+    swap.drain()
+    assert advised.stats()['advice'] == {'advice_prefers_grouped': 2}
+    assert advised.stats()['dispatches'] == {'layout_cuda': 16}
+    # A calibration pricing the per-member intercept absurdly high: separate
+    # calls are cheaper on paper, the group still runs, the reason says so.
+    path = tmp_path / 'split.cal'
+    path.write_text(SYNTH.replace('overhead.group_member_ms 0.01', 'overhead.group_member_ms 50'))
+    advised.calibration = pyreloc.load_calibration(str(path))
+    swap.restore(swap.evict(caches))
+    swap.drain()
+    assert advised.stats()['advice'] == {'advice_prefers_grouped': 2, 'advice_prefers_split': 2}
+    assert advised.stats()['dispatches'] == {'layout_cuda': 32}
+
+
+@pytest.mark.gpu
+def test_mixed_group_stays_grouped(advised, cuda_device):
+    """A direct-capable weight and a layout member in one submit: the runtime
+    never splits the caller's group; the native group runs with an advisory reason."""
+    from reloc_torch import PreparedWireWeights
+    from reloc_torch.fast import KVCacheSwap, _WireEntry
+    q = torch.randint(-127, 128, (64, 96), dtype=torch.int8)
+    scale = torch.rand(96) * 0.05 + 1e-3
+    cache = torch.randn(12, 16, 64).pin_memory()
+    swap = KVCacheSwap(advised, 16, 64)
+    layout = swap._program(swap._restore_recipe, cache)
+    with PreparedWireWeights(cuda_device, compiler=advised._compiler) as weights:
+        weights.prepare('w', q, scale)
+        template, source, s = weights.fast_entries(['w'])[0]
+        entry = _WireEntry(advised, template, source, s, 'float32', advice=weights.advice)
+        assert entry.resolved is not None and entry.resolved.direct
+        completion = advised.submit([(entry, source), (layout, cache)])
+        w, k = completion.wait()
+        assert torch.equal(w, (q.to(cuda_device).float() * scale.to(cuda_device)).t().contiguous())
+        assert torch.equal(k, cache.transpose(0, 1).contiguous().to(cuda_device))
+        assert completion.report['placement_reason'] in ('advice_prefers_grouped', 'advice_prefers_split')
+        assert completion.report['predicted_ms']['direct'] is None
+        dispatches = advised.stats()['dispatches']
+        assert 'direct' not in dispatches and dispatches.get('cpu_stages_cuda_stages@0') == 1

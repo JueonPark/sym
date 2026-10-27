@@ -50,6 +50,7 @@ class _Entry:
     capability: dict
     selection: dict
     info: object
+    scale: object  # owned CPU float32 [out] copy, for the fast lane's direct path
 
 
 class PreparedWireWeights:
@@ -170,7 +171,7 @@ class PreparedWireWeights:
                     payload_bytes=wire + parameter, output_bytes=wire * width,
                     prepared_bytes=size, pinned_bytes=pinned))
                 self._entries[name] = _Entry(packed, template, bindings,
-                    template.capability, template.selection, info)
+                    template.capability, template.selection, info, scale.detach().clone())
                 self._revision = revision
                 return info
             except BaseException:
@@ -234,14 +235,22 @@ class PreparedWireWeights:
                     entry.capability, entry.selection, template=native))
             return prepare_transfer_group(requests)
 
+    @property
+    def advice(self):
+        """The compiled dequantize recipe's cost advice (None when the compiler
+        client exports without advice)."""
+        return self._compiled.advice
+
     def fast_entries(self, names):
-        """(native dispatch template, owned packed INT8 [out,in] source) per
-        name, for reloc_torch.fast.FastWeights. Templates and sources are the
-        immutable revision at call time; a later prepare() does not change them."""
+        """(native dispatch template, owned packed INT8 [out,in] source, owned
+        CPU float32 [out] scale) per name, for reloc_torch.fast.FastWeights.
+        All three are the immutable revision at call time; a later prepare()
+        does not change them."""
         self._check()
         with self._lock:
             self._open()
-            return [(self._entries[name].template, self._entries[name].source) for name in names]
+            return [(self._entries[name].template, self._entries[name].source, self._entries[name].scale)
+                    for name in names]
 
     def submit(self, names):
         """Submit one named group; return a completion owning that revision."""

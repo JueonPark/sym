@@ -188,8 +188,10 @@ bytes itself: `pooled_bags(tables, indices, offsets, out, threads)` (the fused
 EmbeddingBag-sum producer into a host tensor), `gather_rows(plan, symbols,
 source, index, out, threads)` (the fused row gather + cast of an
 `index_select` recipe into a host tensor) and `dequant_s8_f32(q, scale, out,
-stream)` (the per-channel dequantize kernel on a CUDA stream handle). They
-exist for attribution measurements, not as a public transfer API.
+stream)` / `dequant_s8_f16(q, scale, out, stream)` (the per-channel
+dequantize kernels on a CUDA stream handle; the f16 one keeps both roundings
+in one kernel). They exist for attribution measurements and for the fast
+lane's direct path, not as a public transfer API.
 
 ## Build options
 
