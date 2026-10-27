@@ -24,6 +24,14 @@ moves the decode KV caches one tensor per group instead of eight per group.
 ``sym_fast_o0`` is ``sym_fast`` with every plan exported without the
 compiler's canonicalizer (``CompilerClient(canonicalize=False)``): the
 compiler-attribution arm.
+
+Cost advice (bench/beat_torch README "When the runtime pays"): every
+``sym_fast*`` arm prices the compiler's advice with the machine calibration
+(``--calibration``; default ``$RELOC_CALIBRATION``, else this repository's
+calibration of the 2080 Ti box when that GPU is present) and takes the
+cheapest admissible path. ``sym_fast_noadvice`` is the fast lane without it
+(``CompilerClient(advice=False)``, ``FastTransfers(advice=False)``): the
+compiler-advice attribution arm, equal to the fast lane before the advice.
 """
 import argparse
 from contextlib import ExitStack
@@ -55,7 +63,8 @@ import pyreloc
 
 NATIVE = _load_native_views()   # the libtorch helper (kernel-only entry points for torch_kernels)
 EAGER_PATHS = ('torch', 'torch_whole', 'torch_kernels', 'sym_fast', 'sym_fast_scalar', 'sym_fast_nopipe',
-               'sym_fast_kvsplit', 'sym_fast_o0')
+               'sym_fast_kvsplit', 'sym_fast_o0', 'sym_fast_noadvice')
+CALIBRATION = None  # resolved in main(); the advised sym_fast arms price the compiler's advice with it
 
 
 def ablated(fn, knob):
@@ -69,7 +78,8 @@ def ablated(fn, knob):
     return call
 
 PATHS = ('torch', 'inductor', 'sym', 'sym_inductor', 'sym_fast', 'sym_fast_inductor', 'torch_whole',
-         'torch_kernels', 'sym_fast_scalar', 'sym_fast_nopipe', 'sym_fast_kvsplit', 'sym_fast_o0')
+         'torch_kernels', 'sym_fast_scalar', 'sym_fast_nopipe', 'sym_fast_kvsplit', 'sym_fast_o0',
+         'sym_fast_noadvice')
 # torch_whole: the eager Torch control with sym_fast's whole-request weight prefetch
 # window (a transparency arm; identical to 'torch' outside the offload regimes).
 FAST_THREADS = {'dlrm': 8, 'gnn': 8}
@@ -84,8 +94,10 @@ class PathState:
         self.backend = None
         self.fast = None
         if name.startswith('sym_fast'):
-            compiler = CompilerClient.from_environment(canonicalize=name != 'sym_fast_o0')
-            self.fast = FastTransfers('cuda:0', compiler=compiler, gather_threads=8, pinning='pinned')
+            advised = name != 'sym_fast_noadvice'
+            compiler = CompilerClient.from_environment(canonicalize=name != 'sym_fast_o0', advice=advised)
+            self.fast = FastTransfers('cuda:0', compiler=compiler, gather_threads=8, pinning='pinned',
+                                      calibration=CALIBRATION if advised else None, advice=advised)
             lifetime.callback(self.fast.close)
         elif name in ('torch_whole', 'torch_kernels'):
             if name == 'torch_kernels' and NATIVE is None:
@@ -506,12 +518,15 @@ def main():
                    help='precision of the offload regimes\' model compute and dequantized weights '
                         '(float16: s8 -> f32 -> f16, the fused device pair; the KV caches move as f16 pairs); '
                         'the DLRM/GraphSAGE regimes are unaffected')
+    p.add_argument('--calibration', default=os.environ.get('RELOC_CALIBRATION'),
+                   help='calibration the advised sym_fast arms price the compiler\'s cost advice with (default: '
+                        '$RELOC_CALIBRATION, else calibration/epyc7351-2080ti.cal on an RTX 2080 Ti)')
     p.add_argument('--cache-state', choices=('rotated', 'cold', 'warm'), default='rotated',
                    help='rotated: #225 protocol (mutate once per sample, paths back to back); '
                         'cold: sweep the caches (mutate twice, an involution for the GraphSAGE source) before every '
                         'path; warm: run each path once untimed right before its timed run')
     args = p.parse_args()
-    global COMPUTE_DTYPE
+    global COMPUTE_DTYPE, CALIBRATION
     COMPUTE_DTYPE = args.compute_dtype
     torch.set_num_threads(8)
     torch.set_num_interop_threads(1)
@@ -520,7 +535,11 @@ def main():
     torch.backends.cudnn.allow_tf32 = False
     torch._dynamo.config.recompile_limit = 64
     torch.cuda.init()
-    result = dict(metadata=metadata(), configuration=vars(args)|{'output':str(args.output)}, cases={})
+    CALIBRATION = args.calibration
+    if CALIBRATION is None and '2080 Ti' in torch.cuda.get_device_name(0):
+        CALIBRATION = str(ROOT / 'calibration/epyc7351-2080ti.cal')
+    result = dict(metadata=metadata(), configuration=vars(args)|{'output':str(args.output), 'calibration':CALIBRATION},
+                  cases={})
     result['metadata']['thread_environment'] = {k:os.environ.get(k) for k in
         ('OMP_NUM_THREADS','MKL_NUM_THREADS','OMP_WAIT_POLICY','GOMP_SPINCOUNT',
          'TORCHINDUCTOR_COMPILE_THREADS','TORCHINDUCTOR_CACHE_DIR')}

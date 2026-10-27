@@ -4,8 +4,8 @@
     python bench/beat_torch/ablation.py <rounds-or-evidence-dir> [--csv out.csv]
 
 Reads workloads-r*.json(.gz) produced by run.py with the arms ``torch``,
-``torch_kernels``, ``sym_fast_scalar``, ``sym_fast_nopipe``, ``sym_fast_kvsplit``
-and ``sym_fast`` (any subset) and prints, per regime, the median of the
+``torch_kernels``, ``sym_fast_scalar``, ``sym_fast_nopipe``, ``sym_fast_kvsplit``,
+``sym_fast_noadvice`` and ``sym_fast`` (any subset) and prints, per regime, the median of the
 round medians for every arm and related contrasts (not independent shares):
 
 - ``torch - torch_kernels`` includes fused producer/dequantize changes;
@@ -16,7 +16,9 @@ round medians for every arm and related contrasts (not independent shares):
   windows in decode;
 - ``torch - sym_fast_scalar`` includes fusion and is NOT a runtime-only estimate;
 - ``sym_fast_nopipe - sym_fast`` tests producer overlap in DLRM/GraphSAGE;
-  ``sym_fast_kvsplit - sym_fast`` tests KV grouping in decode.
+  ``sym_fast_kvsplit - sym_fast`` tests KV grouping in decode;
+- ``sym_fast_noadvice - sym_fast`` tests the path-selection policy, not
+  whether its structural information must originate in a compiler.
 
 Positive values mean the second arm is faster. These interacting contrasts
 must not be added as independent causal contributions. Legacy CSV field names
@@ -29,7 +31,8 @@ import json
 from pathlib import Path
 import statistics
 
-ARMS = ('torch', 'torch_kernels', 'sym_fast_scalar', 'sym_fast_nopipe', 'sym_fast_kvsplit', 'sym_fast')
+ARMS = ('torch', 'torch_kernels', 'sym_fast_scalar', 'sym_fast_nopipe', 'sym_fast_kvsplit', 'sym_fast_noadvice',
+        'sym_fast')
 
 
 def load(directory):
@@ -63,6 +66,7 @@ def shares(row):
         'runtime_b': diff('torch', 'sym_fast_scalar'),
         'overlap': diff('sym_fast_nopipe', 'sym_fast'),
         'kv_grouping': diff('sym_fast_kvsplit', 'sym_fast'),
+        'advice': diff('sym_fast_noadvice', 'sym_fast'),
         'total': diff('torch', 'sym_fast'),
     }
 
@@ -87,7 +91,8 @@ def main():
     columns = [('total', 'torch − sym_fast'), ('kernel_a', 'kernels A: torch − torch_kernels'),
                ('kernel_b', 'kernels B: scalar − sym_fast'), ('runtime_a', 'runtime A: torch_kernels − sym_fast'),
                ('runtime_b', 'total vs scalar (includes fusion): torch − scalar'), ('overlap', 'chunk overlap: nopipe − sym_fast'),
-               ('kv_grouping', 'KV grouping: kvsplit − sym_fast')]
+               ('kv_grouping', 'KV grouping: kvsplit − sym_fast'),
+               ('advice', 'policy contrast: noadvice − sym_fast')]
     print('| Regime | ' + ' | '.join(label for _, label in columns) + ' |')
     print('| --- | ' + ' | '.join('---:' for _ in columns) + ' |')
     rows = []
