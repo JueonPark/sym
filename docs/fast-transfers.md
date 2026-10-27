@@ -177,6 +177,21 @@ attribution calls through the dispatcher. A typed program executed on its own
 has no direct executor and never selects the direct path; dequantize-first
 weights take it as `FastWeights` groups.
 
+The advice prices one call's completed latency in isolation. The evidence
+([bench/beat_torch](../bench/beat_torch/README.md#when-the-runtime-pays-cost-advice))
+shows three limits, none fixed yet:
+
+- **Weight groups streamed through a prefetch window.** GPT decode streams
+  them this way, and there the dispatcher is faster than the direct path
+  the model chose (1.02 vs 1.13 ms per group). Its intercept hides behind
+  work already in flight, and its two streams overlap copies with
+  dequantizes. The direct path runs both on one stream.
+- **The pooled direct path's Python floor.** It is about 260 µs per call
+  for 26 tables, mostly per-operand validation. That is well above the
+  30–50 µs of a single-operand gather.
+- **`advice_prefers_split`.** The group runs grouped even when the model
+  priced direct below grouped.
+
 ## Attribution knobs and kernel-only entry points
 
 For the ablation in [bench/beat_torch](../bench/beat_torch/README.md#ablation-kernels-versus-planruntime)

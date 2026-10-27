@@ -1,0 +1,16 @@
+{
+  "source_revision": "4461fd07af7783ad0aeac05810aeb71136cf24f3",
+  "rounds": 3,
+  "samples": 30,
+  "warmup": 5,
+  "files": {
+    "REGISTERED.md": "c2733692a8f54bfd59ce5a3051438aa052da47d038310a29dc52f48c1721173e",
+    "attribution.csv": "04b3e9744548c38cce14a470d887394b5858a49ca4703c9d8053af6842a7de6d",
+    "never_lose.txt": "ea0658e7dbceff8b7e04f60876ee909f6f8cd1ccd308087e46a32f75cca1d686",
+    "summary.csv": "b3f8361f85670b740775a3bf28dc61c28dc4f19ca8ab9fedd16dc3374edce2ad",
+    "sweep.json": "356e4b02b48c79a6588fdfde4d966e7d778a0f07efeaa43e788520fa3e225fe0",
+    "workloads-r1.json.gz": "16de297508e098c347694fa360077f20b58a36ee8565b560e4c3e4a58d7b7cf9",
+    "workloads-r2.json.gz": "78169bd65e49a8555d0cbc2da0686a6160f53d517090a6b12695c89357eaba5b",
+    "workloads-r3.json.gz": "9d58f94c2c5a59e31e7f5d93b235c5997e5dd85e1c26d66291744e9f91c1e619"
+  }
+}

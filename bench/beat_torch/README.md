@@ -331,6 +331,180 @@ manually fused implementation. The goal is to reach that implementation's
 performance automatically across chains. The current canonicalization switch
 cannot serve as the folding-off arm of that experiment.
 
+## When the runtime pays: cost advice
+
+#256's ablation (above) found that the plan/runtime layer costs 0.03–0.36 ms
+against the kernel-only control in five regimes, and the previous section
+put the compiler's share at zero. This tree gives the compiler a decision
+whose effect can be measured. `sym-reloc-export` now writes a machine-independent
+`advice` block into every plan ([reloc-export.md](../../docs/reloc-export.md#cost-advice-advice-interface-2)).
+The block lists the execution paths the plan admits and their cost terms
+over the plan's free symbols, naming calibration keys rather than numbers.
+The fast lane prices it with `calibration/epyc7351-2080ti.cal` and runs the
+cheapest path ([fast-transfers.md](../../docs/fast-transfers.md#cost-advice-and-the-direct-path)).
+The paths are:
+
+- **direct** (new): the producer kernel writes a pinned wire, followed by
+  one copy. For weights this is a raw int8 copy plus the dequantize kernel.
+- **pipelined**: the dispatcher, today's path.
+- **grouped**: one native group submission.
+
+The goal registered before any round was measured
+([evidence-advice/REGISTERED.md](evidence-advice/REGISTERED.md)) was
+*never lose*. `sym_fast` should be no slower than the faster of
+`torch_kernels` and the unadvised fast lane in every regime (NL1), and it
+should keep the decode grouping win (NL2). The sweep bars were MISCLASS
+≤ 0.15 and REGRET p90 ≤ 0.20.
+
+**The goal was not met.** NL1 fails in three regimes, NL2 fails, and the
+sweep's MISCLASS fails. The causes, measured below, are two limits of what
+was built and one selection-rule defect, not noise. The advice did narrow
+#256's runtime losses in all five regimes where they occurred. Against
+`torch_kernels` the losses are now DLRM −0.17 and −0.20 ms (they were
+−0.36 and −0.25), GraphSAGE −0.01 and −0.05 ms (they were −0.12 and −0.03),
+and MoE sparse +0.17 ms (it was −0.09).
+
+The rounds were three independent runs on revision `4461fd0`
+(`evidence-advice/`). The table gives milliseconds as the median of three
+round medians [min–max round median]. Every output was bit-exact against
+eager Torch, there were no warm compilation callbacks, and the isolation
+audit was clean, including the CI runner's CPU-bound jobs (`isolation.py`).
+
+| Regime | `torch` | `torch_kernels` | `sym_fast_noadvice` | `sym_fast` | advice share | kernel share | path the advice chose |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| DLRM 512 | 3.568 | 1.796 [1.785–1.803] | 2.307 [2.256–2.371] | 1.967 [1.967–1.988] | +0.340 | +1.771 | direct |
+| DLRM 2048 | 7.883 | 4.314 [4.314–4.334] | 4.851 [4.829–4.856] | 4.515 [4.514–4.533] | +0.335 | +3.569 | direct |
+| GraphSAGE 256 | 1.155 | 0.914 [0.907–0.968] | 1.198 [1.154–1.223] | 0.924 [0.917–0.924] | +0.274 | +0.241 | direct |
+| GraphSAGE 1024 | 4.010 | 2.749 [2.748–2.769] | 2.811 [2.669–3.160] | 2.795 [2.792–2.827] | +0.016 | +1.261 | direct |
+| GPT decode | 26.999 | 22.603 [22.545–23.222] | 19.986 [19.954–20.146] | 20.767 [20.230–20.786] | **−0.781** | +4.396 | weights direct, K/V grouped |
+| GPT prefill | 6.920 | 5.913 [5.907–5.915] | 5.897 [5.887–5.903] | 5.739 [5.734–5.742] | +0.158 | +1.007 | weights direct |
+| MoE sparse | 3.078 | 2.832 [2.828–2.845] | 2.919 [2.907–2.925] | 2.658 [2.654–2.664] | +0.261 | +0.246 | weights direct |
+| MoE dense | 10.376 | 9.937 [9.914–9.949] | 9.614 [9.566–9.690] | 8.690 [8.623–8.701] | +0.923 | +0.439 | weights direct |
+
+The advice share is `sym_fast_noadvice − sym_fast`. The kernel share is
+`torch − torch_kernels`, as in the ablation. Both are from these rounds,
+from `ablation.py`, in `attribution.csv`. Positive values are milliseconds
+saved.
+
+The registered verdicts come from `never_lose.py`, in `never_lose.txt`. The
+band is max(2%, the faster control's round spread).
+
+| Regime | faster control | band | `sym_fast` vs control | NL1 | NL2 |
+| --- | --- | ---: | ---: | --- | --- |
+| DLRM 512 | `torch_kernels` | 2.0% | +9.5% | **FAIL** | |
+| DLRM 2048 | `torch_kernels` | 2.0% | +4.7% | **FAIL** | |
+| GraphSAGE 256 | `torch_kernels` | 6.8% | +1.1% | PASS | |
+| GraphSAGE 1024 | `torch_kernels` | 2.0% | +1.7% | PASS | |
+| GPT decode | `sym_fast_noadvice` | 2.0% | +3.9% | **FAIL** | **FAIL** |
+| GPT prefill | `sym_fast_noadvice` | 2.0% | −2.7% | PASS | |
+| MoE sparse | `torch_kernels` | 2.0% | −6.1% | PASS | |
+| MoE dense | `sym_fast_noadvice` | 2.0% | −9.6% | PASS | |
+
+**DLRM: the right choice, at too high a price.** Among Sym's own paths the
+advice chose correctly. The direct path is 0.34 ms faster than the
+dispatcher in both DLRM regimes, because it skips the dispatcher's
+per-call setup. It still trails `torch_kernels`, which
+calls the same `pooled_bags` kernel and the same `.to()` from a pinned
+wire. Transfer alone takes 0.805 ms in `torch_kernels` and 1.073 ms in
+`sym_fast` (median of round medians, `transfer` in the rounds). The gap
+is a fixed Python cost of about 260 µs per call, independent of batch.
+A one-process microbenchmark after the rounds (diagnosis, not evidence)
+broke it down:
+
+- `PooledProgram._operands` validates the 52 index and offset tensors one
+  at a time, at about 2.3 µs each, for 118 µs in total.
+- The rest is the wire ring, the copy's event and the completion
+  accounting.
+
+Before the rounds, the registration stated a direct-path floor of
+30–50 µs. That figure was measured on single-operand gathers and does not
+hold for the pooled producer's 26 tables.
+
+**GPT decode: priced as one call, run as a stream.** The advice sent all
+576 weight groups (four matrices each) to the direct path, and kept the
+216 K/V groups grouped (`advice_prefers_grouped`), so grouping itself
+survived. For a single isolated group the calibration is right: in the
+calibration measurements the four matrices complete in 1.26 ms direct and
+1.40 ms as a native group. Decode, however,
+streams 16 groups per call through a prefetch window, and there the order
+reverses. Transfer alone takes 18.10 ms advised and 16.33 ms unadvised,
+which is 1.13 against 1.02 ms per group. In a stream, the dispatcher's
+intercept hides behind the groups already in flight, and its two streams
+overlap one member's copy with another's dequantize. The direct path
+cannot do either, because it runs copy and dequantize on one private
+stream. The model prices an isolated call's completed latency, so it
+cannot see this. Prefill and MoE dense show the same reversal in transfer
+alone (4.65 vs 4.31 ms and 6.42 vs 6.21 ms). End to end, though, the advice
+wins there (−0.16 and −0.92 ms). These rounds do not establish why
+interleaving with compute favours the direct path in those two regimes but
+not in decode.
+
+**The sweep** is `advice_sweep.py`, in `sweep.json`: 20 cells, 40 samples
+each, every admissible path measured through the fast lane. MISCLASS is
+0.20 (4/20, bar 0.15): **FAIL**. REGRET p90 is 0.028 (bar 0.20): PASS. The
+misclassified cells are:
+
+- **GraphSAGE gathers of 18,000 and 36,000 rows** (regret +15% and +29%).
+  The direct gather's time grows faster than linearly beyond about 9k rows
+  (0.40, 1.09 and 2.38 ms for 9k, 18k and 36k), while the model is linear.
+  This is the same completed-latency limit as GraphSAGE 1024 (35,180
+  rows), where end to end the two paths tie (above).
+- **GPT weights of 23,170 and 46,341 input columns** (+2.8% and +1.4%).
+  This is a selection-rule defect, not a pricing error. The model priced a
+  split cheapest (2.001 ms, against 2.017 direct and 2.101 grouped at
+  23,170 columns). The runtime never splits a caller's group, so
+  `select_group` falls back to grouped. It should fall back to the cheaper
+  executable path, direct, which the model itself priced 0.08 ms below
+  grouped and which measured 0.06 ms faster.
+
+Three of the four are intercept cells, as registered. The criterion is
+loose, though: it flags 15 of the 20 cells, so it does not separate model
+limits from mispredictions as well as intended. The 36,000-row gather is
+not an intercept cell. It is a plain misprediction. Without the rule defect,
+the sweep would have had 2 misclassified cells of 20. That is a reading,
+not a measurement.
+
+**Stated plainly:**
+
+- The registration expected the advice to turn losses into ties at best.
+  Instead it lowered latency by 0.16–0.92 ms in six regimes (DLRM ×2,
+  GraphSAGE 256, prefill, MoE ×2), raised it by 0.78 ms in decode, and
+  tied in GraphSAGE 1024.
+- The DLRM advice is synthesized in Python (`reloc_torch.advice.pooled_advice`),
+  because the pooled producer never passes the compiler. The other advice
+  comes from the exporter.
+- Only the EPYC 7351 + 2080 Ti box is calibrated for the advice paths. On
+  the 7800X3D the calibration lacks the path keys, so every call falls back
+  to the dispatcher with `advice_missing_keys`, which is today's behaviour.
+- The bars were committed before the model took its final form (in-pipeline
+  rates, per-kind member intercepts). They were not changed after the data.
+
+None of the three is fixed on this tree. Fixing them takes new evidence
+under a new registration:
+
+- **The pooled operand floor:** validate once per tensor identity and
+  version, or validate in the native binding.
+- **The streaming reversal:** price groups submitted into a window that
+  already holds in-flight work in a throughput form (intercept hidden,
+  overlapped terms), or give the direct weight path a second stream.
+- **The split fallback:** when a split is priced cheapest, run the cheapest
+  path that can execute.
+
+Validation on `4461fd0` passed on every suite:
+
+| Suite | Result |
+| --- | --- |
+| CUDA `torch_frontend` | 1,008 passed, 3 skipped (including `test_advice.py`) |
+| Core Python | 319 passed |
+| Workload tests | 58 passed |
+| Compiler lit | 43/43 |
+| CTest | 12/12 |
+
+`test_advice.py` covers advice parsing, admission, pricing, selection,
+groups, the direct ring and the bit-exact direct paths. The pre-existing
+`bench-dma-engine` target still does not compile; it is not part of these
+gates.
+
 ## Half-precision compute
 
 This extends supported precision and uses runtime recognition of a

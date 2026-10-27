@@ -1,0 +1,533 @@
+{
+  "source_revision": "4461fd07af7783ad0aeac05810aeb71136cf24f3",
+  "samples": 40,
+  "calibration": "/home/jueonpark/sym/calibration/epyc7351-2080ti.cal",
+  "verdict": {
+    "cells": 20,
+    "misclass": 0.2,
+    "regret_p90": 0.02764756105604927,
+    "misclass_pass": false,
+    "regret_pass": true,
+    "misclassified": [
+      [
+        "gnn_gather",
+        18000
+      ],
+      [
+        "gnn_gather",
+        36000
+      ],
+      [
+        "gpt_weight",
+        23170
+      ],
+      [
+        "gpt_weight",
+        46341
+      ]
+    ],
+    "intercept_cells": [
+      [
+        "pooled_dlrm",
+        128
+      ],
+      [
+        "pooled_dlrm",
+        256
+      ],
+      [
+        "pooled_dlrm",
+        512
+      ],
+      [
+        "pooled_dlrm",
+        1024
+      ],
+      [
+        "gnn_gather",
+        2250
+      ],
+      [
+        "gnn_gather",
+        4500
+      ],
+      [
+        "gnn_gather",
+        9000
+      ],
+      [
+        "gnn_gather",
+        18000
+      ],
+      [
+        "gpt_weight",
+        2896
+      ],
+      [
+        "gpt_weight",
+        5793
+      ],
+      [
+        "gpt_weight",
+        11585
+      ],
+      [
+        "gpt_weight",
+        23170
+      ],
+      [
+        "gpt_weight",
+        46341
+      ],
+      [
+        "kv_restore_group",
+        1
+      ],
+      [
+        "kv_restore_group",
+        2
+      ]
+    ],
+    "bars": {
+      "misclass": 0.15,
+      "regret_p90": 0.2
+    }
+  },
+  "cells": [
+    {
+      "recipe": "pooled_dlrm",
+      "size": 128,
+      "predicted": {
+        "direct": 0.48914926467134734,
+        "pipelined": 0.7374314270914737,
+        "grouped": null
+      },
+      "measured": {
+        "direct": 0.3643185,
+        "pipelined": 0.6111885
+      },
+      "spread": {
+        "direct": 0.0027726445249560026,
+        "pipelined": 0.002049790684049275
+      },
+      "selected": "direct",
+      "best": "direct",
+      "misclassified": false,
+      "regret": 0.0,
+      "intercept_cell": true
+    },
+    {
+      "recipe": "pooled_dlrm",
+      "size": 256,
+      "predicted": {
+        "direct": 0.7885985293426947,
+        "pipelined": 1.0420628541829475,
+        "grouped": null
+      },
+      "measured": {
+        "direct": 0.5130465,
+        "pipelined": 0.7366325
+      },
+      "spread": {
+        "direct": 0.007823315127332595,
+        "pipelined": 0.003478805721035049
+      },
+      "selected": "direct",
+      "best": "direct",
+      "misclassified": false,
+      "regret": 0.0,
+      "intercept_cell": true
+    },
+    {
+      "recipe": "pooled_dlrm",
+      "size": 512,
+      "predicted": {
+        "direct": 1.3874970586853894,
+        "pipelined": 1.651325708365895,
+        "grouped": null
+      },
+      "measured": {
+        "direct": 0.9877855,
+        "pipelined": 1.2681995000000001
+      },
+      "spread": {
+        "direct": 0.0035639770411683585,
+        "pipelined": 0.008090180849111011
+      },
+      "selected": "direct",
+      "best": "direct",
+      "misclassified": false,
+      "regret": 0.0,
+      "intercept_cell": true
+    },
+    {
+      "recipe": "pooled_dlrm",
+      "size": 1024,
+      "predicted": {
+        "direct": 2.585294117370779,
+        "pipelined": 2.8698514167317897,
+        "grouped": null
+      },
+      "measured": {
+        "direct": 1.991331,
+        "pipelined": 2.336473
+      },
+      "spread": {
+        "direct": 0.01333235955565528,
+        "pipelined": 0.003636231113550302
+      },
+      "selected": "direct",
+      "best": "direct",
+      "misclassified": false,
+      "regret": 0.0,
+      "intercept_cell": true
+    },
+    {
+      "recipe": "pooled_dlrm",
+      "size": 2048,
+      "predicted": {
+        "direct": 4.980888234741558,
+        "pipelined": 5.30690283346358,
+        "grouped": null
+      },
+      "measured": {
+        "direct": 3.5972635,
+        "pipelined": 4.9190345
+      },
+      "spread": {
+        "direct": 0.002792901914103912,
+        "pipelined": 0.19671865183864282
+      },
+      "selected": "direct",
+      "best": "direct",
+      "misclassified": false,
+      "regret": 0.0,
+      "intercept_cell": false
+    },
+    {
+      "recipe": "gnn_gather",
+      "size": 2250,
+      "predicted": {
+        "direct": 0.19288212804533517,
+        "pipelined": 0.25200127556294655,
+        "grouped": null
+      },
+      "measured": {
+        "direct": 0.18403049999999999,
+        "pipelined": 0.242862
+      },
+      "spread": {
+        "direct": 0.0003533271183998181,
+        "pipelined": 0.025336958770750987
+      },
+      "selected": "direct",
+      "best": "direct",
+      "misclassified": false,
+      "regret": 0.0,
+      "intercept_cell": true
+    },
+    {
+      "recipe": "gnn_gather",
+      "size": 4500,
+      "predicted": {
+        "direct": 0.25966425609067034,
+        "pipelined": 0.33400255112589305,
+        "grouped": null
+      },
+      "measured": {
+        "direct": 0.24528699999999998,
+        "pipelined": 0.323055
+      },
+      "spread": {
+        "direct": 0.0017163567575941845,
+        "pipelined": 0.012038666921914321
+      },
+      "selected": "direct",
+      "best": "direct",
+      "misclassified": false,
+      "regret": 0.0,
+      "intercept_cell": true
+    },
+    {
+      "recipe": "gnn_gather",
+      "size": 9000,
+      "predicted": {
+        "direct": 0.3932285121813407,
+        "pipelined": 0.4980051022517862,
+        "grouped": null
+      },
+      "measured": {
+        "direct": 0.40391900000000003,
+        "pipelined": 0.4983935
+      },
+      "spread": {
+        "direct": 0.0020488704563539966,
+        "pipelined": 0.008900908523196534
+      },
+      "selected": "direct",
+      "best": "direct",
+      "misclassified": false,
+      "regret": 0.0,
+      "intercept_cell": true
+    },
+    {
+      "recipe": "gnn_gather",
+      "size": 18000,
+      "predicted": {
+        "direct": 0.6603570243626814,
+        "pipelined": 0.8260102045035723,
+        "grouped": null
+      },
+      "measured": {
+        "direct": 1.0854815,
+        "pipelined": 0.9421035
+      },
+      "spread": {
+        "direct": 0.00178762350685738,
+        "pipelined": 0.007727929099571124
+      },
+      "selected": "direct",
+      "best": "pipelined",
+      "misclassified": true,
+      "regret": 0.1521892233708929,
+      "intercept_cell": true
+    },
+    {
+      "recipe": "gnn_gather",
+      "size": 36000,
+      "predicted": {
+        "direct": 1.194614048725363,
+        "pipelined": 1.4820204090071445,
+        "grouped": null
+      },
+      "measured": {
+        "direct": 2.3819545,
+        "pipelined": 1.8430485
+      },
+      "spread": {
+        "direct": 0.004948367511796366,
+        "pipelined": 0.0014079933327852754
+      },
+      "selected": "direct",
+      "best": "pipelined",
+      "misclassified": true,
+      "regret": 0.2923992504809287,
+      "intercept_cell": false
+    },
+    {
+      "recipe": "gpt_weight",
+      "size": 2896,
+      "predicted": {
+        "grouped": 0.46407161209415365,
+        "direct": 0.37977161209415367,
+        "pipelined": 0.4100300591529772
+      },
+      "measured": {
+        "direct": 0.38143099999999996,
+        "grouped": 0.439933
+      },
+      "spread": {
+        "direct": 0.0010372246961757566,
+        "grouped": 0.004998741487959955
+      },
+      "selected": "direct",
+      "best": "direct",
+      "misclassified": false,
+      "regret": 0.0,
+      "intercept_cell": true
+    },
+    {
+      "recipe": "gpt_weight",
+      "size": 5793,
+      "predicted": {
+        "grouped": 0.6980239809604393,
+        "direct": 0.6137239809604392,
+        "pipelined": 0.6374386162545569
+      },
+      "measured": {
+        "direct": 0.653715,
+        "grouped": 0.711364
+      },
+      "spread": {
+        "direct": 0.0005900147465422573,
+        "grouped": 0.000416231041976864
+      },
+      "selected": "direct",
+      "best": "direct",
+      "misclassified": false,
+      "regret": 0.0,
+      "intercept_cell": true
+    },
+    {
+      "recipe": "gpt_weight",
+      "size": 11585,
+      "predicted": {
+        "grouped": 1.1657672051487464,
+        "direct": 1.0814672051487466,
+        "pipelined": 1.092098734560511
+      },
+      "measured": {
+        "direct": 1.1707239999999999,
+        "grouped": 1.2338840000000002
+      },
+      "spread": {
+        "direct": 0.00040277681081915583,
+        "grouped": 0.0006016439800129674
+      },
+      "selected": "direct",
+      "best": "direct",
+      "misclassified": false,
+      "regret": 0.0,
+      "intercept_cell": true
+    },
+    {
+      "recipe": "gpt_weight",
+      "size": 23170,
+      "predicted": {
+        "grouped": 2.101334410297493,
+        "direct": 2.017034410297493,
+        "pipelined": 2.001497469121022
+      },
+      "measured": {
+        "direct": 2.167967,
+        "grouped": 2.227906
+      },
+      "spread": {
+        "direct": 6.942419892323963e-05,
+        "grouped": 0.0008414026701229348
+      },
+      "selected": "grouped",
+      "best": "direct",
+      "misclassified": true,
+      "regret": 0.02764756105604927,
+      "intercept_cell": true
+    },
+    {
+      "recipe": "gpt_weight",
+      "size": 46341,
+      "predicted": {
+        "grouped": 3.9725495773671176,
+        "direct": 3.8882495773671177,
+        "pipelined": 3.820373436190647
+      },
+      "measured": {
+        "direct": 4.2120685,
+        "grouped": 4.2723535
+      },
+      "spread": {
+        "direct": 0.00020347872644158223,
+        "grouped": 0.0006651407028413032
+      },
+      "selected": "grouped",
+      "best": "direct",
+      "misclassified": true,
+      "regret": 0.014312445298551144,
+      "intercept_cell": true
+    },
+    {
+      "recipe": "kv_restore_group",
+      "size": 1,
+      "predicted": {
+        "grouped": 0.1924239482206768,
+        "split": 0.19024674053356214
+      },
+      "measured": {
+        "grouped": 0.188263,
+        "split": 0.1879475
+      },
+      "spread": {
+        "grouped": 0.009435141713328014,
+        "split": 0.001922078613547727
+      },
+      "selected": "split",
+      "best": "split",
+      "misclassified": false,
+      "regret": 0.0,
+      "intercept_cell": true
+    },
+    {
+      "recipe": "kv_restore_group",
+      "size": 2,
+      "predicted": {
+        "grouped": 0.20974789644135355,
+        "split": 0.3804934810671243
+      },
+      "measured": {
+        "grouped": 0.211668,
+        "split": 0.3558125
+      },
+      "spread": {
+        "grouped": 0.0006877075234257423,
+        "split": 0.0015375460876978176
+      },
+      "selected": "grouped",
+      "best": "grouped",
+      "misclassified": false,
+      "regret": 0.0,
+      "intercept_cell": true
+    },
+    {
+      "recipe": "kv_restore_group",
+      "size": 4,
+      "predicted": {
+        "grouped": 0.24439579288270713,
+        "split": 0.7609869621342485
+      },
+      "measured": {
+        "grouped": 0.2455025,
+        "split": 0.692298
+      },
+      "spread": {
+        "grouped": 0.0003890852422616899,
+        "split": 0.00011629292816208617
+      },
+      "selected": "grouped",
+      "best": "grouped",
+      "misclassified": false,
+      "regret": 0.0,
+      "intercept_cell": false
+    },
+    {
+      "recipe": "kv_restore_group",
+      "size": 8,
+      "predicted": {
+        "grouped": 0.3136915857654142,
+        "split": 1.521973924268497
+      },
+      "measured": {
+        "grouped": 0.31658200000000003,
+        "split": 1.358812
+      },
+      "spread": {
+        "grouped": 0.003961451361916899,
+        "split": 0.000981182285996545
+      },
+      "selected": "grouped",
+      "best": "grouped",
+      "misclassified": false,
+      "regret": 0.0,
+      "intercept_cell": false
+    },
+    {
+      "recipe": "kv_restore_group",
+      "size": 16,
+      "predicted": {
+        "grouped": 0.4522831715308284,
+        "split": 3.043947848536994
+      },
+      "measured": {
+        "grouped": 0.45536750000000004,
+        "split": 2.6928965
+      },
+      "spread": {
+        "grouped": 4.5020610655246177e-05,
+        "split": 0.0002213358061543308
+      },
+      "selected": "grouped",
+      "best": "grouped",
+      "misclassified": false,
+      "regret": 0.0,
+      "intercept_cell": false
+    }
+  ]
+}

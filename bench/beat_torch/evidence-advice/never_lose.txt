@@ -1,0 +1,11 @@
+| Regime | `sym_fast` | `torch_kernels` | `sym_fast_noadvice` | faster control | band | NL1 | NL2 |
+| --- | ---: | ---: | ---: | --- | ---: | --- | --- |
+| dlrm_512 | 1.967 | 1.796 | 2.307 | `torch_kernels` | 2.0% | FAIL |  |
+| dlrm_2048 | 4.515 | 4.314 | 4.851 | `torch_kernels` | 2.0% | FAIL |  |
+| gnn_256 | 0.924 | 0.914 | 1.198 | `torch_kernels` | 6.8% | PASS |  |
+| gnn_1024 | 2.795 | 2.749 | 2.811 | `torch_kernels` | 2.0% | PASS |  |
+| llm_decode | 20.767 | 22.603 | 19.986 | `sym_fast_noadvice` | 2.0% | FAIL | FAIL |
+| llm_prefill | 5.739 | 5.913 | 5.897 | `sym_fast_noadvice` | 2.0% | PASS |  |
+| moe_sparse | 2.658 | 2.832 | 2.919 | `torch_kernels` | 2.0% | PASS |  |
+| moe_dense | 8.690 | 9.937 | 9.614 | `sym_fast_noadvice` | 2.0% | PASS |  |
+NL1/NL2: FAIL in dlrm_512, dlrm_2048, llm_decode

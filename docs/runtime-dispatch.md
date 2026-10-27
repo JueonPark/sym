@@ -163,6 +163,14 @@ threads)` with `r` = (cheapest class-A wire) / source bytes. Missing
 calibration therefore changes placement only; it never disables the
 reference nor authorizes another precision.
 
+The fast lane (`reloc_torch.fast`, [fast-transfers.md](fast-transfers.md#cost-advice-and-the-direct-path))
+decides one level above this table. It prices the plan's exported cost
+advice (`costmodel::priceAdvice`) and then either bypasses the dispatcher
+with its direct path (`advice_prefers_direct`) or hands the request here,
+where `auto` chooses the row as above. The dispatcher's own reason is kept
+as `row_reason`. Both decisions read the same calibration file, and a key
+missing from it disables only the decision that needs that key.
+
 ## Byte accounting
 
 The report is scalar-only (no tensors, no pointers) and carries:
