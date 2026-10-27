@@ -1,0 +1,102 @@
+{
+  "fitted": {
+    "cpu.t8.contiguous.pooled_sum_f16_gbps": 2.454,
+    "cpu.t8.indexed_rows.gather_f16_gbps": 30.385,
+    "hbm.m.indexed_rows": 1.0,
+    "overhead.direct.dequant_ms": 0.1341,
+    "overhead.direct.indexed_rows_ms": 0.1376,
+    "overhead.direct.pooled_ms": 0.2299,
+    "overhead.dispatch.dequant_ms": 0.1847,
+    "overhead.dispatch.indexed_rows_ms": 0.1768,
+    "overhead.dispatch.layout_ms": 0.1858,
+    "overhead.dispatch.pooled_ms": 0.4361,
+    "overhead.group_member_ms": 0.0093,
+    "overhead.group_ms": 0.1759,
+    "recv.m.dequant_s8_f16": 0.456
+  },
+  "gpu": "NVIDIA GeForce RTX 2080 Ti",
+  "machine": "epyc7351-2080ti",
+  "measurements": {
+    "dequant_3072x1024": {
+      "direct_ms": 0.394907,
+      "pipelined_ms": 0.45561850000000004,
+      "wire_bytes": 3145728
+    },
+    "dequant_768x256": {
+      "direct_ms": 0.1503965,
+      "pipelined_ms": 0.2016045,
+      "wire_bytes": 196608
+    },
+    "indexed_256": {
+      "direct_ms": 0.1446855,
+      "pipelined_ms": 0.1856335,
+      "wire_bytes": 65536
+    },
+    "indexed_8192": {
+      "direct_ms": 0.364014,
+      "pipelined_ms": 0.4608735,
+      "wire_bytes": 2097152
+    },
+    "kv_restore_single": {
+      "s12_ms": 0.1880235,
+      "s192_ms": 0.221072
+    },
+    "kv_restore_x1": {
+      "member_bytes": 49152,
+      "members": 1,
+      "ms": 0.190824
+    },
+    "kv_restore_x16": {
+      "member_bytes": 49152,
+      "members": 16,
+      "ms": 0.45741699999999996
+    },
+    "kv_restore_x2": {
+      "member_bytes": 49152,
+      "members": 2,
+      "ms": 0.212695
+    },
+    "kv_restore_x4": {
+      "member_bytes": 49152,
+      "members": 4,
+      "ms": 0.247612
+    },
+    "kv_restore_x8": {
+      "member_bytes": 49152,
+      "members": 8,
+      "ms": 0.31798099999999996
+    },
+    "pooled_2048": {
+      "direct_ms": 3.5819115,
+      "pipelined_ms": 3.704796,
+      "wire_bytes": 6815744
+    },
+    "pooled_64": {
+      "direct_ms": 0.334683,
+      "pipelined_ms": 0.5382709999999999,
+      "wire_bytes": 212992
+    },
+    "recv_3072x1024": {
+      "copy_f32_ms": 0.0610265,
+      "dequant_s8_f16_ms": 0.027838500000000002,
+      "dequant_s8_f32_ms": 0.041184
+    }
+  },
+  "notes": {
+    "cpu.t8.contiguous.pooled_sum_f16_gbps": "wire bytes / producer ms at 2048 bags x 26 tables x 64 (wire-normalized)",
+    "cpu.t8.indexed_rows.gather_f16_gbps": "selected source bytes (f32) / producer ms at 8192 rows x 128",
+    "hbm.m.indexed_rows": "gathered rows land densely on the device: hbm.m.contiguous",
+    "overhead.direct.dequant_ms": "two-point fit of the fast lane's direct weight path, 256x768 and 1024x3072",
+    "overhead.direct.indexed_rows_ms": "two-point fit of the fast lane's direct path, 256 and 8192 rows",
+    "overhead.direct.pooled_ms": "two-point fit of the fast lane's direct path, 64 and 2048 bags",
+    "overhead.dispatch.dequant_ms": "two-point fit of the fast lane's pipelined weight path, 256x768 and 1024x3072",
+    "overhead.dispatch.indexed_rows_ms": "two-point fit of the fast lane's pipelined path, 256 and 8192 rows",
+    "overhead.dispatch.layout_ms": "two-point fit over single-member K/V restores, S=12 and S=192",
+    "overhead.dispatch.pooled_ms": "two-point fit of the fast lane's pipelined path, 64 and 2048 bags",
+    "overhead.group_member_ms": "slope of ms vs N minus the advice's own per-member terms (0.0083 ms) under this calibration",
+    "overhead.group_ms": "intercept of ms vs N, K/V restore groups of N [12,16,64] f32 members, N=1..16",
+    "recv.m.dequant_s8_f16": "dequant_s8_f16 ms / device copy_f32 ms over the same element count (3072x1024), same run"
+  },
+  "samples": 60,
+  "source_revision": "cf4916d58059a3697db1a25249a34bfd4b5d26ce"
+}

@@ -92,6 +92,16 @@ SOURCES per machine (frozen provenance -- see task-6 brief / design doc
       the full N span the original file covers (2048..16384) -- not just
       the rerun file's partial 2048/4096 span used previously.
 
+  Both machines, cost advice (docs/reloc-export.md "Cost advice"):
+    - overhead.direct.{pooled,indexed_rows,dequant}_ms,
+      overhead.dispatch.{pooled,indexed_rows,dequant,layout}_ms,
+      overhead.group_ms, overhead.group_member_ms,
+      cpu.t8.contiguous.pooled_sum_f16_gbps, cpu.t8.indexed_rows.gather_f16_gbps,
+      recv.m.dequant_s8_f16, hbm.m.indexed_rows
+                                   <- bench/results/paths_<machine>.json
+      (bench/beat_torch/calibrate_paths.py; artifact absent -> keys omitted,
+      and the fast lane reports advice_missing_keys and runs the dispatcher)
+
   NOTE on pack_s8_s4 provenance (inspected, not assumed): the only
   pack_s8_s4 measurement committed outside r2_rooflines is
   bench/results/quant_bw_n8192_t{8,1}*.json (PR #74, R0.1). Its t8 file
@@ -345,6 +355,7 @@ def build_epyc(e):
 
     # Strategy thresholds: P2 seed, no small-size sweep exists yet.
     emit_strategy_defaults(e)
+    emit_paths(e, f"{RESULTS}/paths_epyc7351-2080ti.json")
 
 
 # ------------------------------------------------------------- gen4 box ---
@@ -462,6 +473,7 @@ def build_gen4(e):
     fit_overheads(e, nsweep_path, rerun_path=nsweep_rerun_path)
 
     emit_strategy_defaults(e)
+    emit_paths(e, f"{RESULTS}/paths_7800x3d-4070tis.json")
 
 
 # --------------------------------------------------------- shared pieces --
@@ -600,6 +612,19 @@ def emit_recv_from_cm1_run(e, path, kernels):
         bw = by_n[n_ref][kern]["gb_per_s"]
         e.emit(f"recv.m.{kern}", round(copy / bw, 2), path,
                note=f"copy_f32/{kern} at N={n_ref}, same-run ceiling")
+
+
+def emit_paths(e, path):
+    """Cost-advice keys from bench/beat_torch/calibrate_paths.py's JSON: every
+    fitted key with the script's note as provenance, in key order. Artifact
+    absent -> keys omitted (loud omission, the pack_s8_s4 precedent)."""
+    doc = read_json_optional(path)
+    if doc is None:
+        return
+    if doc["machine"] != e.machine:
+        sys.exit(f"error: {path} was measured on {doc['machine']}, not {e.machine}")
+    for key in sorted(doc["fitted"]):
+        e.emit(key, doc["fitted"][key], path, note=doc["notes"].get(key))
 
 
 BUILDERS = {

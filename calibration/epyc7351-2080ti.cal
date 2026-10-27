@@ -44,3 +44,16 @@ overhead.a_ms 0.068  # bench/results/v1_gen3_nsweep_epyc_2080ti.csv -- two-point
 overhead.b_ms 0.0242  # bench/results/v1_gen3_nsweep_epyc_2080ti.csv -- two-point fit, T3 quant, best chunk, N=2048,16384
 strategy.single_thread_max_bytes 262144  # libreloc/src/Bind.cpp -- P2 default seed (no small-size sweep exists yet)
 strategy.multi_thread_max_bytes 268435456  # libreloc/src/Bind.cpp -- P2 default seed (no small-size sweep exists yet)
+cpu.t8.contiguous.pooled_sum_f16_gbps 2.454  # bench/results/paths_epyc7351-2080ti.json -- wire bytes / producer ms at 2048 bags x 26 tables x 64 (wire-normalized)
+cpu.t8.indexed_rows.gather_f16_gbps 30.385  # bench/results/paths_epyc7351-2080ti.json -- selected source bytes (f32) / producer ms at 8192 rows x 128
+hbm.m.indexed_rows 1  # bench/results/paths_epyc7351-2080ti.json -- gathered rows land densely on the device: hbm.m.contiguous
+overhead.direct.dequant_ms 0.1341  # bench/results/paths_epyc7351-2080ti.json -- two-point fit of the fast lane's direct weight path, 256x768 and 1024x3072
+overhead.direct.indexed_rows_ms 0.1376  # bench/results/paths_epyc7351-2080ti.json -- two-point fit of the fast lane's direct path, 256 and 8192 rows
+overhead.direct.pooled_ms 0.2299  # bench/results/paths_epyc7351-2080ti.json -- two-point fit of the fast lane's direct path, 64 and 2048 bags
+overhead.dispatch.dequant_ms 0.1847  # bench/results/paths_epyc7351-2080ti.json -- two-point fit of the fast lane's pipelined weight path, 256x768 and 1024x3072
+overhead.dispatch.indexed_rows_ms 0.1768  # bench/results/paths_epyc7351-2080ti.json -- two-point fit of the fast lane's pipelined path, 256 and 8192 rows
+overhead.dispatch.layout_ms 0.1858  # bench/results/paths_epyc7351-2080ti.json -- two-point fit over single-member K/V restores, S=12 and S=192
+overhead.dispatch.pooled_ms 0.4361  # bench/results/paths_epyc7351-2080ti.json -- two-point fit of the fast lane's pipelined path, 64 and 2048 bags
+overhead.group_member_ms 0.0093  # bench/results/paths_epyc7351-2080ti.json -- slope of ms vs N minus the advice's own per-member terms (0.0083 ms) under this calibration
+overhead.group_ms 0.1759  # bench/results/paths_epyc7351-2080ti.json -- intercept of ms vs N, K/V restore groups of N [12,16,64] f32 members, N=1..16
+recv.m.dequant_s8_f16 0.456  # bench/results/paths_epyc7351-2080ti.json -- dequant_s8_f16 ms / device copy_f32 ms over the same element count (3072x1024), same run
