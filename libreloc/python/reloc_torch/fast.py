@@ -403,9 +403,7 @@ class IndexedProgram:
         except BaseException:
             owner._ring.cancel(wire)
             raise
-        with torch.cuda.stream(stream):
-            out = torch.empty_strided(destination.shape, destination.strides, dtype=out_dtype, device=owner.device)
-            out.copy_(wire, non_blocking=True)
+        out = _copy_out(wire, destination.shape, destination.strides, owner.device, stream)
         event = owner._ring.release(wire, stream)
         return out, event, _direct_report(decision, wire)
 
@@ -426,8 +424,7 @@ class IndexedProgram:
         key, cached = self._cached(source, index)
         decision = self._decide(key, cached[0]) if pipeline else None
         if decision is not None and decision.path == "direct" and out is None:
-            direct = self._direct(source, index, cached, decision, torch.cuda.current_stream(owner.device),
-                                  gather_threads)
+            direct = self._direct(source, index, cached, decision, None, gather_threads)
             if direct is not None:
                 owner._record(direct[2])
                 return direct[0]
@@ -599,9 +596,7 @@ class PooledProgram:
         except BaseException:
             owner._ring.cancel(wire)
             raise
-        with torch.cuda.stream(stream):
-            out = torch.empty(tuple(wire.shape), dtype=self._out_dtype, device=owner.device)
-            out.copy_(wire, non_blocking=True)
+        out = _copy_out(wire, tuple(wire.shape), None, owner.device, stream)
         event = owner._ring.release(wire, stream)
         return out, event, _direct_report(decision, wire)
 
@@ -617,8 +612,7 @@ class PooledProgram:
         indices, offsets, bags, _, _ = self._operands(indices, offsets, out)
         decision = self._decide(bags) if pipeline else None
         if decision is not None and decision.path == "direct" and out is None:
-            direct = self._direct(indices, offsets, bags, decision, torch.cuda.current_stream(self.owner.device),
-                                  gather_threads)
+            direct = self._direct(indices, offsets, bags, decision, None, gather_threads)
             if direct is not None:
                 self.owner._record(direct[2])
                 return direct[0]
@@ -653,6 +647,19 @@ def _group_advice(program):
     return getattr(program, "resolved", None)
 
 
+def _copy_out(wire, shape, strides, device, stream):
+    """A fresh device tensor holding `wire` (dense row-major, like the wire),
+    copied asynchronously on `stream` (None: the caller's current stream,
+    without a stream switch)."""
+    import torch
+    if stream is None:
+        if strides is None or tuple(strides) == wire.stride():
+            return wire.to(device, non_blocking=True)
+        return torch.empty_strided(shape, strides, dtype=wire.dtype, device=device).copy_(wire, non_blocking=True)
+    with torch.cuda.stream(stream):
+        return _copy_out(wire, shape, strides, device, None)
+
+
 def _decided(report, decision):
     """A dispatcher report with the advice decision that routed the call; the
     dispatcher's own row reason stays under row_reason."""
@@ -663,63 +670,60 @@ def _decided(report, decision):
 
 
 def _direct_report(decision, wire):
-    nbytes = wire.numel() * wire.element_size()
-    return dict(implementation="direct", placement_reason=decision.reason, predicted_ms=decision.predicted,
-                wire_bytes=nbytes, payload_bytes_transferred=nbytes)
-
-
-_BUSY = object()
+    nbytes = wire.nbytes
+    return {"implementation": "direct", "placement_reason": decision.reason, "predicted_ms": decision.predicted,
+            "wire_bytes": nbytes, "payload_bytes_transferred": nbytes}
 
 
 class _DirectRing:
     """Pinned wires of the direct path, per (shape, dtype). A wire is reusable
-    once the CUDA event recorded after its copy completed; at most `slots`
+    once the CUDA event recorded behind its copy completed; at most `slots`
     wires per signature and `max_bytes` in total. Exhaustion is a per-call
-    fallback to the dispatcher, never a wait or a failure."""
+    fallback to the dispatcher, never a wait or a failure. Each wire owns one
+    event, re-recorded on every use (creating an event per call costs more
+    than the copy of a small wire)."""
 
     def __init__(self, slots, max_bytes):
         self.slots, self.max_bytes, self.bytes = slots, max_bytes, 0
-        self._wires = {}
+        self._wires = {}   # (shape, dtype) -> [entry]; entry = [wire, event, busy, recorded]
+        self._entries = {}  # id(wire) -> entry
         self._lock = RLock()
 
     def acquire(self, shape, dtype):
+        """A free wire of this (tuple of ints) shape and dtype, or None."""
         import torch
-        shape = tuple(int(n) for n in shape)
         with self._lock:
             entries = self._wires.setdefault((shape, dtype), [])
             for entry in entries:
-                state = entry[1]
-                if state is None or (state is not _BUSY and state.query()):
-                    entry[1] = _BUSY
+                if not entry[2] and (not entry[3] or entry[1].query()):
+                    entry[2] = True
                     return entry[0]
             nbytes = math.prod(shape) * dtype.itemsize
             if len(entries) >= self.slots or self.bytes + nbytes > self.max_bytes:
                 return None
             wire = torch.empty(shape, dtype=dtype, pin_memory=True)
-            entries.append([wire, _BUSY])
+            entry = [wire, torch.cuda.Event(), True, False]
+            entries.append(entry)
+            self._entries[id(wire)] = entry
             self.bytes += nbytes
             return wire
 
-    def _set(self, wire, state):
-        with self._lock:
-            for entry in self._wires[(tuple(wire.shape), wire.dtype)]:
-                if entry[0] is wire:
-                    entry[1] = state
-                    return
-        raise AssertionError("the ring does not own this wire")
-
     def release(self, wire, stream):
-        """The copy out of `wire` is enqueued on `stream`: the wire is busy
-        until the returned event completes."""
-        import torch
-        event = torch.cuda.Event()
-        event.record(stream)
-        self._set(wire, event)
-        return event
+        """The copy out of `wire` is enqueued on `stream` (None: the current
+        stream): the wire is busy until the returned event completes."""
+        entry = self._entries[id(wire)]
+        if stream is None:
+            entry[1].record()
+        else:
+            entry[1].record(stream)
+        with self._lock:
+            entry[2], entry[3] = False, True
+        return entry[1]
 
     def cancel(self, wire):
         """Nothing was enqueued from `wire` (the producer failed): free it."""
-        self._set(wire, None)
+        with self._lock:
+            self._entries[id(wire)][2] = False
 
 
 class _DirectCompletion:
