@@ -7,7 +7,7 @@ import torch
 
 from reloc_torch.advice import Advice, parse_advice
 from reloc_torch.artifact import CompiledRecipe
-from reloc_torch.recipe import BindingParam, Cast, Dequantize, Recipe, TensorSpec, Transpose
+from reloc_torch.recipe import BindingParam, Cast, Dequantize, IndexSelect, Recipe, TensorSpec, Transpose
 from reloc_torch.symbolic import Const, Symbol, dense_strides
 from test_fast import dlrm_recipe, gather_recipe
 
@@ -311,6 +311,8 @@ def test_owner_resolves_calibration_from_argument_env_or_nothing(compiler, cuda_
         assert owner.stats()['advice'] == {'advice_disabled': 1}
     with pytest.raises(ValueError):
         FastTransfers(cuda_device, compiler=compiler, direct_wires=0)
+    with pytest.raises(ValueError):
+        FastTransfers(cuda_device, compiler=compiler, direct_bytes=0)
 
 
 @pytest.mark.gpu
@@ -546,3 +548,118 @@ def test_group_prices_charge_each_members_own_intercept_once_per_submission(comp
     kv_terms = pyreloc.price_advice(cal, [dict(kv.path('grouped'), member_intercept=None)])[0]['ms'] - 0.2
     assert mixed.predicted['grouped'] == pytest.approx(0.2 + 0.1 + 0.01 + terms + kv_terms)
     assert mixed.predicted['direct'] is None
+
+
+# -- review fixes ---------------------------------------------------------------
+
+def gather_recipe_of_rank(trailing):
+    n, k = Symbol('s0'), Symbol('k')
+    rest = tuple(Const(c) for c in trailing)
+    return Recipe(spec((n,) + rest, 'float32'),
+                  (IndexSelect(TensorSpec((k,), (Const(1),), Const(0), 'int64')), Cast('float16', 'ieee_rne')),
+                  spec((k,) + rest, 'float16'), 'h2d')
+
+
+@pytest.mark.gpu
+def test_direct_path_events_follow_the_owners_device(compiler, calibration):
+    """The wire's event must be recorded behind the copy on the owner's device
+    even when another device is current; otherwise a wire is reused mid-copy."""
+    from reloc_torch.fast import FastTransfers
+    if torch.cuda.device_count() < 2:
+        pytest.skip('needs two CUDA devices')
+    other = torch.device('cuda', 1)
+    gen = torch.Generator().manual_seed(9)
+    source = torch.randn(4000, 128)
+    indices = [torch.randint(4000, (3000,), generator=gen) for _ in range(3)]
+    with torch.cuda.device(0), FastTransfers(other, compiler=compiler, gather_threads=8,
+                                             calibration=calibration) as owner:
+        program = owner.indexed(gather_recipe())
+        program.execute(source, indices[0])
+        torch.cuda.synchronize(other)
+        with torch.cuda.device(other):
+            torch.cuda._sleep(300_000_000)  # the owner device's current stream stays busy
+        outputs = [program.execute(source, index) for index in indices]
+        reasons = dict(owner.stats()['advice'])
+        torch.cuda.synchronize(other)
+        for index, out in zip(indices, outputs):
+            assert out.device == other
+            assert torch.equal(bits(out), bits(source.index_select(0, index).to(other, dtype=torch.float16)))
+        assert reasons.get('direct_ring_exhausted', 0) >= 1, reasons
+
+
+@pytest.mark.gpu
+@pytest.mark.parametrize('trailing', [(), (3, 5)])
+def test_indexed_direct_path_handles_destinations_of_any_rank(advised, cuda_device, trailing):
+    program = advised.indexed(gather_recipe_of_rank(trailing))
+    source = torch.randn((50,) + trailing)
+    index = torch.randint(50, (7,))
+    expected = source.index_select(0, index).to(cuda_device, dtype=torch.float16)
+    out = program.execute(source, index)
+    out2 = program.submit(source, index).wait_stream()[0]
+    torch.cuda.synchronize()
+    for result in (out, out2):
+        assert result.shape == expected.shape and torch.equal(bits(result), bits(expected))
+    assert advised.stats()['advice'] == {'advice_prefers_direct': 2}
+
+
+@pytest.mark.gpu
+def test_ring_evicts_idle_wires_and_refuses_oversized_ones(compiler, cuda_device, calibration):
+    from reloc_torch.fast import FastTransfers
+    source = torch.randn(30_000, 128)
+    with FastTransfers(cuda_device, compiler=compiler, gather_threads=8, calibration=calibration,
+                       direct_bytes=4 << 20) as owner:
+        program = owner.indexed(gather_recipe())
+        # Five shapes of 1.5 MiB each, one after another: the budget holds two,
+        # so idle wires of earlier shapes must make room for later ones.
+        for rows in (6000, 6001, 6002, 6003, 6004):
+            index = torch.randint(30_000, (rows,))
+            out = program.execute(source, index)
+            torch.cuda.synchronize()
+            assert torch.equal(bits(out), bits(source.index_select(0, index).to(cuda_device, dtype=torch.float16)))
+        stats = owner.stats()
+        assert stats['advice'] == {'advice_prefers_direct': 5}
+        assert stats['direct_wire_bytes'] <= 4 << 20
+    assert owner._ring.bytes == 0  # close() frees the ring
+    # One wire larger than the whole budget (10k rows: 2.4 MiB against 2 MiB,
+    # a size the model still sends direct): the dispatcher, with its own reason.
+    with FastTransfers(cuda_device, compiler=compiler, gather_threads=8, calibration=calibration,
+                       direct_bytes=2 << 20) as owner:
+        index = torch.randint(30_000, (10_000,))
+        out = owner.indexed(gather_recipe()).execute(source, index)
+        assert torch.equal(bits(out), bits(source.index_select(0, index).to(cuda_device, dtype=torch.float16)))
+        assert owner.stats()['advice'] == {'direct_wire_over_budget': 1}
+
+
+@pytest.mark.gpu
+def test_a_failed_copy_returns_its_wire(advised, cuda_device, monkeypatch):
+    import reloc_torch.fast as fast
+    program = advised.indexed(gather_recipe())
+    source, index = torch.randn(500, 128), torch.randint(500, (64,))
+    real = fast._copy_out
+
+    def broken(*args, **kwargs):
+        raise RuntimeError('simulated copy failure')
+    monkeypatch.setattr(fast, '_copy_out', broken)
+    with pytest.raises(RuntimeError, match='simulated'):
+        program.execute(source, index)
+    monkeypatch.setattr(fast, '_copy_out', real)
+    for _ in range(2):
+        program.execute(source, index)
+        torch.cuda.synchronize()
+    # The failed call's wire came back: one wire serves every later call.
+    assert advised.stats()['direct_wire_bytes'] == 64 * 128 * 2
+    assert advised.stats()['advice'] == {'advice_prefers_direct': 2}
+
+
+@pytest.mark.gpu
+def test_pageable_owner_never_pins_direct_wires(compiler, cuda_device, calibration):
+    from reloc_torch.fast import FastTransfers
+    source, index = torch.randn(500, 128), torch.randint(500, (64,))
+    with FastTransfers(cuda_device, compiler=compiler, gather_threads=8, calibration=calibration,
+                       pinning='pageable') as owner:
+        out = owner.indexed(gather_recipe()).execute(source, index)
+        torch.cuda.synchronize()
+        assert torch.equal(bits(out), bits(source.index_select(0, index).to(cuda_device, dtype=torch.float16)))
+        assert owner.stats()['advice'] == {'advice_prefers_direct': 1}
+        wires = [entry[0] for entry in owner._ring._entries.values()]
+        assert wires and not any(wire.is_pinned() for wire in wires)

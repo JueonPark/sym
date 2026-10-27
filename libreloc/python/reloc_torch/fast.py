@@ -385,14 +385,16 @@ class IndexedProgram:
         return self.owner._advise(resolved)
 
     def _direct(self, source, index, cached, decision, stream, gather_threads):
-        """The row gather into a pinned wire, then one copy on `stream`.
-        Returns (out, event, report), or None when every wire is in flight."""
-        import torch
+        """The row gather into a wire, then one copy on `stream`. Returns
+        (out, event, report), or the reason the ring refused a wire."""
         owner = self.owner
         bindings, destination, _, out_dtype = cached
-        wire = owner._ring.acquire(destination.shape, out_dtype)
+        # The gather kernel writes [rows, row elements]; any destination rank
+        # is that matrix viewed to its shape.
+        rows = destination.shape[0]
+        wire, refusal = owner._ring.acquire((rows, math.prod(destination.shape) // max(rows, 1)), out_dtype)
         if wire is None:
-            return None
+            return refusal
         threads = owner.gather_threads if gather_threads is None else gather_threads
         try:
             _native_views.gather_rows(self.compiled.decoded_plan, bindings, source, index, wire, threads)
@@ -403,9 +405,7 @@ class IndexedProgram:
         except BaseException:
             owner._ring.cancel(wire)
             raise
-        out = _copy_out(wire, destination.shape, destination.strides, owner.device, stream)
-        event = owner._ring.release(wire, stream)
-        return out, event, _direct_report(decision, wire)
+        return owner._ring.ship(wire, destination.shape, destination.strides, stream, decision)
 
     def execute(self, source, index, *, out=None, gather_threads=None, pipeline=True):
         """Blocking fused row gather/cast/H2D; the index tensor is read in place.
@@ -425,10 +425,10 @@ class IndexedProgram:
         decision = self._decide(key, cached[0]) if pipeline else None
         if decision is not None and decision.path == "direct" and out is None:
             direct = self._direct(source, index, cached, decision, None, gather_threads)
-            if direct is not None:
+            if not isinstance(direct, str):
                 owner._record(direct[2])
                 return direct[0]
-            decision = _advice.Decision("pipelined", "direct_ring_exhausted", decision.predicted)
+            decision = _advice.Decision("pipelined", direct, decision.predicted)
         if _native_views is not None and out is None:
             # One native call binds the live indices, prepares the program over
             # the source and selects the row; validation is the same as below.
@@ -458,9 +458,9 @@ class IndexedProgram:
         if decision.path == "direct" and out is None:
             owner._retire()
             direct = self._direct(source, index, cached, decision, owner._stream, gather_threads)
-            if direct is not None:
+            if not isinstance(direct, str):
                 return _DirectCompletion(owner, [direct[0]], direct[1], direct[2])
-            decision = _advice.Decision("pipelined", "direct_ring_exhausted", decision.predicted)
+            decision = _advice.Decision("pipelined", direct, decision.predicted)
         if _native_views is not None and out is None:
             import torch
             bindings, destination, _, out_dtype = cached
@@ -579,14 +579,12 @@ class PooledProgram:
         return self.owner._advise(resolved)
 
     def _direct(self, indices, offsets, bags, decision, stream, gather_threads):
-        """The fused pooled producer into a pinned wire, then one copy on
-        `stream`. Returns (out, event, report), or None when every wire is in
-        flight."""
-        import torch
+        """The fused pooled producer into a wire, then one copy on `stream`.
+        Returns (out, event, report), or the reason the ring refused a wire."""
         owner = self.owner
-        wire = owner._ring.acquire((bags, len(self.tables), self.dim), self._out_dtype)
+        wire, refusal = owner._ring.acquire((bags, len(self.tables), self.dim), self._out_dtype)
         if wire is None:
-            return None
+            return refusal
         threads = owner.gather_threads if gather_threads is None else gather_threads
         try:
             _native_views.pooled_bags(self.tables, indices, offsets, wire, threads)
@@ -596,9 +594,7 @@ class PooledProgram:
         except BaseException:
             owner._ring.cancel(wire)
             raise
-        out = _copy_out(wire, tuple(wire.shape), None, owner.device, stream)
-        event = owner._ring.release(wire, stream)
-        return out, event, _direct_report(decision, wire)
+        return owner._ring.ship(wire, tuple(wire.shape), None, stream, decision)
 
     def execute(self, indices, offsets, *, out=None, gather_threads=None, pipeline=True):
         """Blocking pooled gather; returns the [bags, tables, dim] CUDA tensor.
@@ -613,10 +609,10 @@ class PooledProgram:
         decision = self._decide(bags) if pipeline else None
         if decision is not None and decision.path == "direct" and out is None:
             direct = self._direct(indices, offsets, bags, decision, None, gather_threads)
-            if direct is not None:
+            if not isinstance(direct, str):
                 self.owner._record(direct[2])
                 return direct[0]
-            decision = _advice.Decision("pipelined", "direct_ring_exhausted", decision.predicted)
+            decision = _advice.Decision("pipelined", direct, decision.predicted)
         program, out, extra = self._prepare(indices, offsets, out)
         return self.owner._execute_program(program, self._views[0], self.tables[0], out, extra, gather_threads,
                                            pipeline, decision)
@@ -629,9 +625,9 @@ class PooledProgram:
         if decision.path == "direct" and out is None:
             owner._retire()
             direct = self._direct(indices, offsets, bags, decision, owner._stream, gather_threads)
-            if direct is not None:
+            if not isinstance(direct, str):
                 return _DirectCompletion(owner, [direct[0]], direct[1], direct[2])
-            decision = _advice.Decision("pipelined", "direct_ring_exhausted", decision.predicted)
+            decision = _advice.Decision("pipelined", direct, decision.predicted)
         program, out, extra = self._prepare(indices, offsets, out)
         return owner._submit_program(program, self._views[0], self.tables[0], out, extra, gather_threads,
                                      "float32", decision=decision)
@@ -647,15 +643,25 @@ def _group_advice(program):
     return getattr(program, "resolved", None)
 
 
+def _dense_strides(shape):
+    strides, stride = [], 1
+    for extent in reversed(shape):
+        strides.append(stride)
+        stride *= extent
+    return tuple(reversed(strides))
+
+
 def _copy_out(wire, shape, strides, device, stream):
-    """A fresh device tensor holding `wire` (dense row-major, like the wire),
-    copied asynchronously on `stream` (None: the caller's current stream,
-    without a stream switch)."""
+    """A fresh device tensor of `shape` (and `strides`) holding the dense
+    `wire`, copied asynchronously on `stream` (None: the device's current
+    stream, without a stream switch)."""
     import torch
+    shape = tuple(shape)
     if stream is None:
-        if strides is None or tuple(strides) == wire.stride():
-            return wire.to(device, non_blocking=True)
-        return torch.empty_strided(shape, strides, dtype=wire.dtype, device=device).copy_(wire, non_blocking=True)
+        if strides is None or tuple(strides) == _dense_strides(shape):
+            return wire.to(device, non_blocking=True).view(shape)
+        return torch.empty_strided(shape, strides, dtype=wire.dtype, device=device).copy_(
+            wire.view(shape), non_blocking=True)
     with torch.cuda.stream(stream):
         return _copy_out(wire, shape, strides, device, None)
 
@@ -676,54 +682,103 @@ def _direct_report(decision, wire):
 
 
 class _DirectRing:
-    """Pinned wires of the direct path, per (shape, dtype). A wire is reusable
-    once the CUDA event recorded behind its copy completed; at most `slots`
-    wires per signature and `max_bytes` in total. Exhaustion is a per-call
-    fallback to the dispatcher, never a wait or a failure. Each wire owns one
-    event, re-recorded on every use (creating an event per call costs more
-    than the copy of a small wire)."""
+    """The direct path's wires, per (shape, dtype): pinned unless the owner
+    stages pageable memory. A wire is reusable once the CUDA event recorded
+    behind its copy (on the owner's device) completed; at most `slots` wires
+    per shape and `max_bytes` in total, making room by dropping idle wires of
+    other shapes least recently used first. A refusal is a per-call fallback
+    to the dispatcher with its reason, never a wait or a failure. Each wire
+    owns one event, re-recorded on every use (creating an event per call
+    costs more than the copy of a small wire)."""
 
-    def __init__(self, slots, max_bytes):
-        self.slots, self.max_bytes, self.bytes = slots, max_bytes, 0
-        self._wires = {}   # (shape, dtype) -> [entry]; entry = [wire, event, busy, recorded]
-        self._entries = {}  # id(wire) -> entry
+    def __init__(self, device, slots, max_bytes, pinned=True):
+        self.device, self.slots, self.max_bytes, self.pinned = device, slots, max_bytes, pinned
+        self.bytes = 0
+        self._wires = {}    # (shape, dtype) -> [entry]
+        self._entries = {}  # id(wire) -> entry = [wire, event, busy, recorded, last use, key, nbytes]
+        self._clock = 0
         self._lock = RLock()
 
+    @staticmethod
+    def _idle(entry):
+        return not entry[2] and (not entry[3] or entry[1].query())
+
     def acquire(self, shape, dtype):
-        """A free wire of this (tuple of ints) shape and dtype, or None."""
+        """(wire, None) for a free wire of this (tuple of ints) shape and
+        dtype, or (None, reason): direct_ring_exhausted when every wire of the
+        shape is in flight, direct_wire_over_budget when one wire exceeds the
+        whole budget."""
         import torch
+        key = (shape, dtype)
         with self._lock:
-            entries = self._wires.setdefault((shape, dtype), [])
+            self._clock += 1
+            entries = self._wires.setdefault(key, [])
             for entry in entries:
-                if not entry[2] and (not entry[3] or entry[1].query()):
-                    entry[2] = True
-                    return entry[0]
+                if self._idle(entry):
+                    entry[2], entry[4] = True, self._clock
+                    return entry[0], None
             nbytes = math.prod(shape) * dtype.itemsize
-            if len(entries) >= self.slots or self.bytes + nbytes > self.max_bytes:
-                return None
-            wire = torch.empty(shape, dtype=dtype, pin_memory=True)
-            entry = [wire, torch.cuda.Event(), True, False]
+            if nbytes > self.max_bytes:
+                return None, "direct_wire_over_budget"
+            if len(entries) >= self.slots:
+                return None, "direct_ring_exhausted"
+            if self.bytes + nbytes > self.max_bytes:
+                idle = sorted((e for e in self._entries.values() if e[5] != key and self._idle(e)),
+                              key=lambda e: e[4])
+                for entry in idle:
+                    if self.bytes + nbytes <= self.max_bytes:
+                        break
+                    self._drop(entry)
+                if self.bytes + nbytes > self.max_bytes:
+                    return None, "direct_ring_exhausted"
+            wire = torch.empty(shape, dtype=dtype, pin_memory=self.pinned)
+            entry = [wire, torch.cuda.Event(), True, False, self._clock, key, nbytes]
             entries.append(entry)
             self._entries[id(wire)] = entry
             self.bytes += nbytes
-            return wire
+            return wire, None
+
+    def _drop(self, entry):
+        self._wires[entry[5]].remove(entry)
+        if not self._wires[entry[5]]:
+            del self._wires[entry[5]]
+        del self._entries[id(entry[0])]
+        self.bytes -= entry[6]
+
+    def ship(self, wire, shape, strides, stream, decision):
+        """Copy `wire` into a fresh device tensor on `stream` (None: the
+        owner device's current stream) and release it behind the copy;
+        returns (out, event, report). The wire comes back on every exit."""
+        try:
+            out = _copy_out(wire, shape, strides, self.device, stream)
+        except BaseException:
+            self.cancel(wire)
+            raise
+        return out, self.release(wire, stream), _direct_report(decision, wire)
 
     def release(self, wire, stream):
-        """The copy out of `wire` is enqueued on `stream` (None: the current
-        stream): the wire is busy until the returned event completes."""
+        """The copy out of `wire` is enqueued on `stream` (None: the owner
+        device's current stream, whichever device is current): the wire is
+        busy until the returned event completes."""
+        import torch
         entry = self._entries[id(wire)]
-        if stream is None:
-            entry[1].record()
-        else:
-            entry[1].record(stream)
+        entry[1].record(torch.cuda.current_stream(self.device) if stream is None else stream)
         with self._lock:
             entry[2], entry[3] = False, True
         return entry[1]
 
     def cancel(self, wire):
-        """Nothing was enqueued from `wire` (the producer failed): free it."""
+        """Nothing was enqueued from `wire` (the producer or the copy failed): free it."""
         with self._lock:
             self._entries[id(wire)][2] = False
+
+    def close(self):
+        """Forget every wire; the host allocator keeps a pinned block alive
+        until copies recorded on it completed."""
+        with self._lock:
+            self._wires.clear()
+            self._entries.clear()
+            self.bytes = 0
 
 
 class _DirectCompletion:
@@ -857,7 +912,7 @@ class FastTransfers:
 
     def __init__(self, device="cuda:0", *, compiler=None, gather_threads=8, pinning="pinned",
                  max_scratch_bytes=64 << 20, n_buffers=2, chunk_size=None, contexts=2, calibration=None,
-                 advice=True, direct_wires=2):
+                 advice=True, direct_wires=2, direct_bytes=None):
         import torch
         from .compiler import CompilerClient
         if not pyreloc.cuda_enabled or not torch.cuda.is_available():
@@ -867,7 +922,8 @@ class FastTransfers:
             raise ValueError("fast transfers require a CUDA device")
         self.device = torch.device("cuda", torch.cuda.current_device() if device.index is None else device.index)
         for name, value in (("gather_threads", gather_threads), ("contexts", contexts), ("n_buffers", n_buffers),
-                            ("max_scratch_bytes", max_scratch_bytes), ("direct_wires", direct_wires)):
+                            ("max_scratch_bytes", max_scratch_bytes), ("direct_wires", direct_wires),
+                            ("direct_bytes", max_scratch_bytes if direct_bytes is None else direct_bytes)):
             if type(value) is not int or value <= 0:
                 raise ValueError(f"{name} must be a positive integer")
         if pinning not in ("pinned", "pageable"):
@@ -898,7 +954,11 @@ class FastTransfers:
         self.calibration = _advice.load_calibration(calibration)
         self.advice = bool(advice)
         self._decisions = {}
-        self._ring = _DirectRing(direct_wires, max_scratch_bytes)
+        # The direct path's wires have a budget of their own (default: the
+        # scratch budget), separate from the dispatcher's scratch.
+        self._ring = _DirectRing(self.device, direct_wires,
+                                 max_scratch_bytes if direct_bytes is None else direct_bytes,
+                                 pinned=pinning == "pinned")
 
     # -- lifecycle -------------------------------------------------------
     def _check_open(self):
@@ -938,6 +998,7 @@ class FastTransfers:
             try:
                 self._retire(block=True)
             finally:
+                self._ring.close()
                 self._resources.close()
 
     def __enter__(self):

@@ -150,17 +150,24 @@ advice names, for instance an uncalibrated machine; the dispatcher runs),
 `advice_no_native_helper` (the direct path priced cheapest but the libtorch
 helper is not built), `advice_absent` (an artifact exported with
 `--no-advice`), `advice_disabled` (`FastTransfers(advice=False)`),
-`no_calibration` and `direct_ring_exhausted` (see below). The dispatcher's
+`no_calibration`, `direct_ring_exhausted` and `direct_wire_over_budget`
+(see below). The dispatcher's
 own row reason stays under `row_reason`; every report carries the priced
 paths as `predicted_ms` (milliseconds, `None` for a path the calibration
 cannot price).
 
-The direct path writes into pinned wires owned by the `FastTransfers`
-instance: at most `direct_wires` (default 2) per wire shape, counted against
-`max_scratch_bytes` and reported as `stats()["direct_wire_bytes"]`. A wire is
-reused only after the CUDA event recorded behind its copy completed; when
-every wire of a shape is still in flight the call takes the dispatcher with
-reason `direct_ring_exhausted`, never a wait or a failure. The producer reads
+The direct path writes into wires owned by the `FastTransfers` instance,
+pinned unless the owner stages pageable memory (`pinning="pageable"`): at
+most `direct_wires` (default 2) per wire shape, within a budget of their own,
+`direct_bytes` (default: `max_scratch_bytes`, which stays the dispatcher's),
+reported as `stats()["direct_wire_bytes"]`. A wire is reused only after the
+CUDA event recorded behind its copy, on the owner's device, completed; a new
+shape makes room by dropping idle wires of other shapes, least recently used
+first. When every wire of a shape is still in flight the call takes the
+dispatcher with reason `direct_ring_exhausted`, and a single wire larger than
+the whole budget with `direct_wire_over_budget`; never a wait or a failure. A
+wire is returned on every exit, including a failed producer or copy, and
+`close()` drops the ring. The producer reads
 the source and the indices before the call returns, so callers may change
 them afterwards exactly as with the dispatcher; the output is ordered on the
 caller's current stream (`submit` on the owner's stream, handed over by
