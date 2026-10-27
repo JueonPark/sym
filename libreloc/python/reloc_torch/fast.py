@@ -29,16 +29,24 @@ Groups (``submit``) enqueue several programs as one native submission with
 one completion barrier and return a ``FastCompletion`` whose ``wait`` /
 ``wait_stream`` hand back the outputs. ``KVCacheSwap`` and ``FastWeights``
 are thin conveniences over groups for the offload workloads.
+
+With a calibration (``FastTransfers(calibration=...)`` or
+``$RELOC_CALIBRATION``) every call prices the compiler's cost advice
+(``reloc_torch.advice``) and takes the cheapest admissible path: the direct
+kernel path (the producer kernel into a pinned wire, one copy) or the
+dispatcher. Reports and ``stats()["advice"]`` record the reason.
 """
 from __future__ import annotations
 
 from collections import deque
+import math
 import os
 from threading import RLock
 from weakref import WeakSet
 
 import pyreloc
 
+from . import advice as _advice
 from . import compat
 from .artifact import UnsupportedRecipe
 from .dispatch import _parameter_snapshot
@@ -82,7 +90,7 @@ class _Program:
 
     __slots__ = ("owner", "compiled", "bindings", "signature", "signature_dtype", "direction", "destination",
                  "_view_kind", "_view_device", "_out_dtype", "_out_device", "handle", "_registration",
-                 "_op_args", "__weakref__")
+                 "_op_args", "resolved", "__weakref__")
 
     def _init_common(self, owner, compiled, source, bindings):
         import torch
@@ -108,6 +116,9 @@ class _Program:
         self._out_dtype = getattr(torch, self.destination.dtype)
         self._out_device = self.destination.device
         self.handle = self._registration = self._op_args = None
+        # The compiler's cost advice under this shape (None without advice).
+        advice = getattr(compiled, "advice", None)
+        self.resolved = None if advice is None else _advice.resolve(advice, bindings, owner.gather_threads)
 
     @property
     def closed(self):
@@ -144,7 +155,7 @@ class _Program:
 class TypedProgram(_Program):
     """A typed recipe bound to one shape and immutable parameter values."""
 
-    __slots__ = ("bound", "template", "selection", "parameter_bytes")
+    __slots__ = ("bound", "template", "selection", "parameter_bytes", "_single")
 
     def __init__(self, owner, compiled, source, *, parameters=None, implementation="", policy="auto",
                  calibration=None):
@@ -173,8 +184,17 @@ class TypedProgram(_Program):
         except pyreloc.TransferError as error:
             raise UnsupportedRecipe(_code(error), str(error)) from error
         self.selection = dict(self.template.selection)
+        self._single = None
         if self.direction == "h2d":
             self._register_op()
+
+    def _single_call(self):
+        """The advice of a single blocking call: a typed program has no
+        direct executor of its own (only weight groups do), so the direct
+        path is not admissible here."""
+        if self._single is None and self.resolved is not None:
+            self._single = _advice.without_direct(self.resolved)
+        return self._single
 
     def group_entry(self, source, out):
         return (self.template, self.source_view(source), self.output_view(out), self.direction)
@@ -194,6 +214,7 @@ class TypedProgram(_Program):
         owner = self.owner
         owner._check_open()
         self.check(source)
+        decision = owner._advise(self._single_call()) if pipeline else None
         if out is None:
             out = self.allocate()
         try:
@@ -214,7 +235,7 @@ class TypedProgram(_Program):
                 chunk_size=owner.chunk_size, resources=owner.native, owners=(source, out))
         except pyreloc.TransferError as error:
             raise RuntimeError(f"{self.direction} typed dispatch failed: {error}") from error
-        owner._record(report)
+        owner._record(_decided(report, decision))
         return out
 
 
@@ -274,7 +295,7 @@ class _OneShot:
 class IndexedProgram:
     """An IndexSelect (+ optional cast) H2D recipe; indices bind per call."""
 
-    __slots__ = ("owner", "compiled", "_specs", "handle", "_registration", "_op_args", "__weakref__")
+    __slots__ = ("owner", "compiled", "_specs", "_resolved", "handle", "_registration", "_op_args", "__weakref__")
 
     def __init__(self, owner, compiled):
         import torch
@@ -282,7 +303,7 @@ class IndexedProgram:
         if not compiled.indexed or compiled.recipe.direction != "h2d":
             raise UnsupportedRecipe("unsupported_index_select", "expected an H2D index_select recipe")
         self.owner, self.compiled = owner, compiled
-        self._specs = {}
+        self._specs, self._resolved = {}, {}
         # The op needs the output metadata without binding: rows follow the
         # index length, the remaining extents are the recipe's constants.
         destination = compiled.recipe.destination
@@ -347,25 +368,74 @@ class IndexedProgram:
             raise RuntimeError(f"index_select dispatch rejected: {error}") from error
         return program, src_view, out
 
+    def _cached(self, source, index):
+        """(bindings, destination, index dtype, out dtype) for this source
+        signature and index length, preparing (and validating) on a miss."""
+        key = (_signature(source), index.shape[0], index.dtype)
+        cached = self._specs.get(key)
+        if cached is None:
+            self._prepare(source, index, None)
+            cached = self._specs[key]
+        return key, cached
+
+    def _decide(self, key, bindings):
+        resolved = self._resolved.get(key)
+        if resolved is None and self.compiled.advice is not None:
+            resolved = self._resolved[key] = _advice.resolve(self.compiled.advice, bindings, self.owner.gather_threads)
+        return self.owner._advise(resolved)
+
+    def _direct(self, source, index, cached, decision, stream, gather_threads):
+        """The row gather into a pinned wire, then one copy on `stream`.
+        Returns (out, event, report), or None when every wire is in flight."""
+        import torch
+        owner = self.owner
+        bindings, destination, _, out_dtype = cached
+        wire = owner._ring.acquire(destination.shape, out_dtype)
+        if wire is None:
+            return None
+        threads = owner.gather_threads if gather_threads is None else gather_threads
+        try:
+            _native_views.gather_rows(self.compiled.decoded_plan, bindings, source, index, wire, threads)
+        except pyreloc.BindError as error:
+            owner._ring.cancel(wire)
+            raise UnsupportedRecipe("index_out_of_range" if "index_out_of_range" in str(error) else "bind_error",
+                                    str(error)) from error
+        except BaseException:
+            owner._ring.cancel(wire)
+            raise
+        with torch.cuda.stream(stream):
+            out = torch.empty_strided(destination.shape, destination.strides, dtype=out_dtype, device=owner.device)
+            out.copy_(wire, non_blocking=True)
+        event = owner._ring.release(wire, stream)
+        return out, event, _direct_report(decision, wire)
+
     def execute(self, source, index, *, out=None, gather_threads=None, pipeline=True):
         """Blocking fused row gather/cast/H2D; the index tensor is read in place.
 
-        ``pipeline=False`` gathers the whole wire first and copies it once
-        (no chunk overlap); it exists for attribution measurements."""
+        With advice the call may take the direct path (gather into a pinned
+        wire, one copy ordered on the current stream): the source and the
+        index are read before this returns, the output is ordered on the
+        caller's stream. ``pipeline=False`` gathers the whole wire first and
+        copies it once through the dispatcher (no chunk overlap, no advice);
+        it exists for attribution measurements."""
+        import torch
         owner = self.owner
+        owner._check_open()
+        _check_plain(source, "source")
+        _check_plain(index, "index")
+        key, cached = self._cached(source, index)
+        decision = self._decide(key, cached[0]) if pipeline else None
+        if decision is not None and decision.path == "direct" and out is None:
+            direct = self._direct(source, index, cached, decision, torch.cuda.current_stream(owner.device),
+                                  gather_threads)
+            if direct is not None:
+                owner._record(direct[2])
+                return direct[0]
+            decision = _advice.Decision("pipelined", "direct_ring_exhausted", decision.predicted)
         if _native_views is not None and out is None:
             # One native call binds the live indices, prepares the program over
             # the source and selects the row; validation is the same as below.
-            owner._check_open()
-            _check_plain(source, "source")
-            _check_plain(index, "index")
-            key = (_signature(source), index.shape[0], index.dtype)
-            cached = self._specs.get(key)
-            if cached is None:
-                self._prepare(source, index, None)
-                cached = self._specs[key]
             bindings, destination, _, out_dtype = cached
-            import torch
             out = torch.empty_strided(destination.shape, destination.strides, dtype=out_dtype, device=owner.device)
             try:
                 native = _native_views.index_select_request(self.compiled.decoded_plan, bindings, source, index, out,
@@ -375,24 +445,28 @@ class IndexedProgram:
                                         str(error)) from error
             except pyreloc.TransferError as error:
                 raise RuntimeError(f"index_select dispatch rejected: {error}") from error
-            return owner._execute_request(native, source, out, (index,), gather_threads, pipeline)
+            return owner._execute_request(native, source, out, (index,), gather_threads, pipeline, decision)
         program, src_view, out = self._prepare(source, index, out)
-        return self.owner._execute_program(program, src_view, source, out, (index,), gather_threads, pipeline)
+        return self.owner._execute_program(program, src_view, source, out, (index,), gather_threads, pipeline,
+                                           decision)
 
     def submit(self, source, index, *, out=None, gather_threads=None):
         """Asynchronous fused gather; wait_stream() on the completion yields the output."""
         owner = self.owner
+        owner._check_open()
+        _check_plain(source, "source")
+        _check_plain(index, "index")
+        key, cached = self._cached(source, index)
+        decision = self._decide(key, cached[0])
+        if decision.path == "direct" and out is None:
+            owner._retire()
+            direct = self._direct(source, index, cached, decision, owner._stream, gather_threads)
+            if direct is not None:
+                return _DirectCompletion(owner, [direct[0]], direct[1], direct[2])
+            decision = _advice.Decision("pipelined", "direct_ring_exhausted", decision.predicted)
         if _native_views is not None and out is None:
-            owner._check_open()
-            _check_plain(source, "source")
-            _check_plain(index, "index")
-            key = (_signature(source), index.shape[0], index.dtype)
-            cached = self._specs.get(key)
-            if cached is None:
-                self._prepare(source, index, None)
-                cached = self._specs[key]
-            bindings, destination, _, out_dtype = cached
             import torch
+            bindings, destination, _, out_dtype = cached
             with torch.cuda.stream(owner._stream):
                 out = torch.empty_strided(destination.shape, destination.strides, dtype=out_dtype,
                                           device=owner.device)
@@ -405,10 +479,10 @@ class IndexedProgram:
             except pyreloc.TransferError as error:
                 raise RuntimeError(f"index_select dispatch rejected: {error}") from error
             return owner._submit_native(native, (source,), (out,), (index,), gather_threads, host=False,
-                                        chunked_members=True)
+                                        chunked_members=True, decision=decision)
         program, src_view, out = self._prepare(source, index, out)
         return self.owner._submit_program(program, src_view, source, out, (index,), gather_threads,
-                                          compat.dtype_name(source.dtype))
+                                          compat.dtype_name(source.dtype), decision=decision)
 
 
 class PooledProgram:
@@ -422,7 +496,7 @@ class PooledProgram:
     float32 in index order; the cast is IEEE round-to-nearest-even.
     """
 
-    __slots__ = ("owner", "tables", "dim", "dtype", "_views", "_out_dtype", "handle", "_registration", "__weakref__")
+    __slots__ = ("owner", "tables", "dim", "dtype", "_views", "_out_dtype", "handle", "_registration", "_resolved", "__weakref__")
 
     def __init__(self, owner, tables, *, dtype="float16"):
         import torch
@@ -442,6 +516,7 @@ class PooledProgram:
         self.owner, self.tables, self.dim, self.dtype = owner, tables, dim, dtype
         self._views = [_storage_view(t, "host", -1) for t in tables]
         self._out_dtype = getattr(torch, dtype)
+        self._resolved = {}
         self.handle = self._registration = None
         from . import fast_ops
         self._registration = fast_ops.register(self)
@@ -457,10 +532,11 @@ class PooledProgram:
         shape = (offsets[0].shape[0], len(self.tables), self.dim)
         return POOLED_OP(indices, offsets, self.handle, shape, self.owner.device, self._out_dtype)
 
-    def _prepare(self, indices, offsets, out):
+    def _operands(self, indices, offsets, out):
+        """Validated operands: (indices, offsets, bags, index pointers, offset
+        pointers, out or None)."""
         import torch
-        owner = self.owner
-        owner._check_open()
+        self.owner._check_open()
         indices, offsets = list(indices), list(offsets)
         if len(indices) != len(self.tables) or len(offsets) != len(self.tables):
             raise ValueError("one index and one offset tensor per table")
@@ -480,45 +556,226 @@ class PooledProgram:
             operands_o.append((offset.data_ptr(), bags))
         if bags == 0:
             raise ValueError("at least one bag is required")
-        shape = (bags, len(self.tables), self.dim)
-        if out is None:
-            out = torch.empty(shape, dtype=self._out_dtype, device=owner.device)
-        elif tuple(out.shape) != shape or out.dtype != self._out_dtype or not out.is_contiguous():
+        if out is not None and (tuple(out.shape) != (bags, len(self.tables), self.dim)
+                                or out.dtype != self._out_dtype or not out.is_contiguous()):
             raise ValueError("out must be a contiguous tensor of the pooled shape and dtype")
+        return indices, offsets, bags, operands_i, operands_o
+
+    def _prepare(self, indices, offsets, out):
+        import torch
+        owner = self.owner
+        indices, offsets, bags, operands_i, operands_o = self._operands(indices, offsets, out)
+        if out is None:
+            out = torch.empty((bags, len(self.tables), self.dim), dtype=self._out_dtype, device=owner.device)
         try:
             program = pyreloc.prepare_pooled_program(self._views, operands_i, operands_o, bags, self.dim, self.dtype)
         except pyreloc.TransferError as error:
             raise RuntimeError(f"pooled producer rejected: {error}") from error
         return program, out, tuple(self.tables[1:]) + tuple(indices) + tuple(offsets)
 
+    def _decide(self, bags):
+        resolved = self._resolved.get(bags)
+        if resolved is None:
+            resolved = self._resolved[bags] = _advice.resolve(
+                _advice.pooled_advice(), {"bags": bags, "tables": len(self.tables), "dim": self.dim},
+                self.owner.gather_threads)
+        return self.owner._advise(resolved)
+
+    def _direct(self, indices, offsets, bags, decision, stream, gather_threads):
+        """The fused pooled producer into a pinned wire, then one copy on
+        `stream`. Returns (out, event, report), or None when every wire is in
+        flight."""
+        import torch
+        owner = self.owner
+        wire = owner._ring.acquire((bags, len(self.tables), self.dim), self._out_dtype)
+        if wire is None:
+            return None
+        threads = owner.gather_threads if gather_threads is None else gather_threads
+        try:
+            _native_views.pooled_bags(self.tables, indices, offsets, wire, threads)
+        except pyreloc.TransferError as error:
+            owner._ring.cancel(wire)
+            raise RuntimeError(f"pooled producer failed: {error}") from error
+        except BaseException:
+            owner._ring.cancel(wire)
+            raise
+        with torch.cuda.stream(stream):
+            out = torch.empty(tuple(wire.shape), dtype=self._out_dtype, device=owner.device)
+            out.copy_(wire, non_blocking=True)
+        event = owner._ring.release(wire, stream)
+        return out, event, _direct_report(decision, wire)
+
     def execute(self, indices, offsets, *, out=None, gather_threads=None, pipeline=True):
         """Blocking pooled gather; returns the [bags, tables, dim] CUDA tensor.
 
-        ``pipeline=False`` sums every bag first and copies the wire once (no
-        chunk overlap); it exists for attribution measurements."""
+        With advice the call may take the direct path (the producer into a
+        pinned wire, one copy ordered on the current stream; the operands are
+        read before this returns). ``pipeline=False`` sums every bag first and
+        copies the wire once through the dispatcher (no chunk overlap, no
+        advice); it exists for attribution measurements."""
+        import torch
+        indices, offsets, bags, _, _ = self._operands(indices, offsets, out)
+        decision = self._decide(bags) if pipeline else None
+        if decision is not None and decision.path == "direct" and out is None:
+            direct = self._direct(indices, offsets, bags, decision, torch.cuda.current_stream(self.owner.device),
+                                  gather_threads)
+            if direct is not None:
+                self.owner._record(direct[2])
+                return direct[0]
+            decision = _advice.Decision("pipelined", "direct_ring_exhausted", decision.predicted)
         program, out, extra = self._prepare(indices, offsets, out)
         return self.owner._execute_program(program, self._views[0], self.tables[0], out, extra, gather_threads,
-                                           pipeline)
+                                           pipeline, decision)
 
     def submit(self, indices, offsets, *, out=None, gather_threads=None):
         """Asynchronous pooled gather; wait_stream() on the completion yields the output."""
+        owner = self.owner
+        indices, offsets, bags, _, _ = self._operands(indices, offsets, out)
+        decision = self._decide(bags)
+        if decision.path == "direct" and out is None:
+            owner._retire()
+            direct = self._direct(indices, offsets, bags, decision, owner._stream, gather_threads)
+            if direct is not None:
+                return _DirectCompletion(owner, [direct[0]], direct[1], direct[2])
+            decision = _advice.Decision("pipelined", "direct_ring_exhausted", decision.predicted)
         program, out, extra = self._prepare(indices, offsets, out)
-        return self.owner._submit_program(program, self._views[0], self.tables[0], out, extra, gather_threads,
-                                          "float32")
+        return owner._submit_program(program, self._views[0], self.tables[0], out, extra, gather_threads,
+                                     "float32", decision=decision)
+
+
+def _decided(report, decision):
+    """A dispatcher report with the advice decision that routed the call; the
+    dispatcher's own row reason stays under row_reason."""
+    if decision is None:
+        return report
+    return dict(report, placement_reason=decision.reason, predicted_ms=decision.predicted,
+                row_reason=report.get("placement_reason"))
+
+
+def _direct_report(decision, wire):
+    nbytes = wire.numel() * wire.element_size()
+    return dict(implementation="direct", placement_reason=decision.reason, predicted_ms=decision.predicted,
+                wire_bytes=nbytes, payload_bytes_transferred=nbytes)
+
+
+_BUSY = object()
+
+
+class _DirectRing:
+    """Pinned wires of the direct path, per (shape, dtype). A wire is reusable
+    once the CUDA event recorded after its copy completed; at most `slots`
+    wires per signature and `max_bytes` in total. Exhaustion is a per-call
+    fallback to the dispatcher, never a wait or a failure."""
+
+    def __init__(self, slots, max_bytes):
+        self.slots, self.max_bytes, self.bytes = slots, max_bytes, 0
+        self._wires = {}
+        self._lock = RLock()
+
+    def acquire(self, shape, dtype):
+        import torch
+        shape = tuple(int(n) for n in shape)
+        with self._lock:
+            entries = self._wires.setdefault((shape, dtype), [])
+            for entry in entries:
+                state = entry[1]
+                if state is None or (state is not _BUSY and state.query()):
+                    entry[1] = _BUSY
+                    return entry[0]
+            nbytes = math.prod(shape) * dtype.itemsize
+            if len(entries) >= self.slots or self.bytes + nbytes > self.max_bytes:
+                return None
+            wire = torch.empty(shape, dtype=dtype, pin_memory=True)
+            entries.append([wire, _BUSY])
+            self.bytes += nbytes
+            return wire
+
+    def _set(self, wire, state):
+        with self._lock:
+            for entry in self._wires[(tuple(wire.shape), wire.dtype)]:
+                if entry[0] is wire:
+                    entry[1] = state
+                    return
+        raise AssertionError("the ring does not own this wire")
+
+    def release(self, wire, stream):
+        """The copy out of `wire` is enqueued on `stream`: the wire is busy
+        until the returned event completes."""
+        import torch
+        event = torch.cuda.Event()
+        event.record(stream)
+        self._set(wire, event)
+        return event
+
+    def cancel(self, wire):
+        """Nothing was enqueued from `wire` (the producer failed): free it."""
+        self._set(wire, None)
+
+
+class _DirectCompletion:
+    """A direct-path submission: outputs ordered after one CUDA event.
+    Interchangeable with FastCompletion for wait/wait_stream/done/report."""
+
+    __slots__ = ("_owner", "_outputs", "_event", "_report", "_keep", "_done")
+
+    def __init__(self, owner, outputs, event, report, keep=()):
+        self._owner, self._outputs, self._event, self._report = owner, list(outputs), event, report
+        self._keep, self._done = tuple(keep), False
+
+    @property
+    def report(self):
+        return dict(self._report) if self._done else None
+
+    def done(self):
+        if not self._done and self._event.query():
+            self._finish()
+        return self._done
+
+    def wait(self):
+        """Host completion; the outputs may be used on the current stream."""
+        if not self._done:
+            import torch
+            self._event.synchronize()
+            self._finish()
+            stream = torch.cuda.current_stream(self._owner.device)
+            for tensor in self._outputs:
+                tensor.record_stream(stream)
+        return self._outputs
+
+    def wait_stream(self, stream=None):
+        """GPU-side dependency only; the completion stays registered with its
+        owner until the copies finished."""
+        import torch
+        if stream is None:
+            stream = torch.cuda.current_stream(self._owner.device)
+        stream.wait_event(self._event)
+        for tensor in self._outputs:
+            tensor.record_stream(stream)
+        if not self._done:
+            self._owner._retain(self)
+        return self._outputs
+
+    def _finish(self):
+        self._done = True
+        if "items" in self._report:
+            self._owner._record_group(self._report)
+        else:
+            self._owner._record(self._report)
+        self._keep = ()
 
 
 class FastCompletion:
     """One submitted group; outputs are handed out by wait()/wait_stream()."""
 
-    __slots__ = ("_owner", "_native", "_outputs", "_group", "_host", "_done")
+    __slots__ = ("_owner", "_native", "_outputs", "_group", "_host", "_done", "_decision")
 
-    def __init__(self, owner, native, outputs, group, host):
+    def __init__(self, owner, native, outputs, group, host, decision=None):
         self._owner, self._native, self._outputs, self._group, self._host = owner, native, outputs, group, host
-        self._done = False
+        self._done, self._decision = False, decision
 
     @property
     def report(self):
-        return dict(self._group.report) if self._done else None
+        return _decided(dict(self._group.report), self._decision) if self._done else None
 
     def done(self):
         if self._done:
@@ -570,6 +827,8 @@ class FastCompletion:
     def _finish(self):
         self._done = True
         self._owner._record_group(self._group.report)
+        if self._decision is not None:
+            self._owner._count_reason(_decided({}, self._decision))
         self._native = None
 
 
@@ -582,7 +841,8 @@ class FastTransfers:
     """
 
     def __init__(self, device="cuda:0", *, compiler=None, gather_threads=8, pinning="pinned",
-                 max_scratch_bytes=64 << 20, n_buffers=2, chunk_size=None, contexts=2):
+                 max_scratch_bytes=64 << 20, n_buffers=2, chunk_size=None, contexts=2, calibration=None,
+                 advice=True, direct_wires=2):
         import torch
         from .compiler import CompilerClient
         if not pyreloc.cuda_enabled or not torch.cuda.is_available():
@@ -592,7 +852,7 @@ class FastTransfers:
             raise ValueError("fast transfers require a CUDA device")
         self.device = torch.device("cuda", torch.cuda.current_device() if device.index is None else device.index)
         for name, value in (("gather_threads", gather_threads), ("contexts", contexts), ("n_buffers", n_buffers),
-                            ("max_scratch_bytes", max_scratch_bytes)):
+                            ("max_scratch_bytes", max_scratch_bytes), ("direct_wires", direct_wires)):
             if type(value) is not int or value <= 0:
                 raise ValueError(f"{name} must be a positive integer")
         if pinning not in ("pinned", "pageable"):
@@ -612,10 +872,18 @@ class FastTransfers:
             max_typed_background_workers=max(1, gather_threads - 1) * contexts, max_typed_streams=contexts,
             max_typed_contexts=contexts, max_typed_contexts_per_device=contexts)
         self._stream = torch.cuda.Stream(device=self.device)
-        self._totals = dict(calls=0, groups=0, logical_transfers=0, payload_bytes=0, dispatches={})
+        self._totals = dict(calls=0, groups=0, logical_transfers=0, payload_bytes=0, dispatches={}, advice={})
         self.native_views = _load_native_views() is not None
         self._inflight = deque()
         self.max_inflight = 8
+        # Cost advice: the machine calibration that prices the compiler's
+        # advice (None: every call takes today's dispatcher path, reason
+        # no_calibration), whether advice is used at all, memoized decisions
+        # and the direct path's pinned wires.
+        self.calibration = _advice.load_calibration(calibration)
+        self.advice = bool(advice)
+        self._decisions = {}
+        self._ring = _DirectRing(direct_wires, max_scratch_bytes)
 
     # -- lifecycle -------------------------------------------------------
     def _check_open(self):
@@ -667,8 +935,16 @@ class FastTransfers:
 
     def stats(self):
         self._check_open()
-        return dict(self._totals, dispatches=dict(self._totals["dispatches"]),
-                    resources=self._resources.stats()["typed"])
+        self._retire()  # finished direct completions record themselves first
+        return dict(self._totals, dispatches=dict(self._totals["dispatches"]), advice=dict(self._totals["advice"]),
+                    direct_wire_bytes=self._ring.bytes, resources=self._resources.stats()["typed"])
+
+    def _count_reason(self, report):
+        # Only decided calls carry predicted_ms; undecided attribution calls
+        # (pipeline=False, explicit rows) are not advice outcomes.
+        if "predicted_ms" in report:
+            reason = report["placement_reason"]
+            self._totals["advice"][reason] = self._totals["advice"].get(reason, 0) + 1
 
     def _record(self, report):
         self._totals["calls"] += 1
@@ -676,6 +952,21 @@ class FastTransfers:
         self._totals["payload_bytes"] += int(report.get("payload_bytes_transferred", 0))
         label = report.get("implementation", "?")
         self._totals["dispatches"][label] = self._totals["dispatches"].get(label, 0) + 1
+        self._count_reason(report)
+
+    def _advise(self, resolved):
+        """The path decision of one call with `resolved` advice, memoized per
+        (calibration, advice flag, resolved advice)."""
+        key = (id(self.calibration), self.advice, id(resolved))
+        hit = self._decisions.get(key)
+        if hit is not None and hit[0] is self.calibration and hit[1] is resolved:
+            return hit[2]
+        decision = _advice.select(self.calibration, resolved, direct_available=_native_views is not None,
+                                  advice_enabled=self.advice)
+        if len(self._decisions) >= 4096:
+            self._decisions.clear()
+        self._decisions[key] = (self.calibration, resolved, decision)
+        return decision
 
     def _record_group(self, report):
         self._totals["groups"] += 1
@@ -709,7 +1000,7 @@ class FastTransfers:
         return PooledProgram(self, tables, dtype=dtype)
 
     # -- one-shot producers (indexed / pooled programs) -------------------
-    def _execute_request(self, native, source, out, extra, gather_threads, pipeline=True):
+    def _execute_request(self, native, source, out, extra, gather_threads, pipeline=True, decision=None):
         try:
             report = pyreloc.execute_dispatch(
                 native, caller_stream=compat.cuda_stream_handle(self.device),
@@ -719,10 +1010,11 @@ class FastTransfers:
                 chunk_size=self.chunk_size, resources=self.native, owners=((source,) + tuple(extra), out))
         except pyreloc.TransferError as error:
             raise RuntimeError(f"producer dispatch failed: {error}") from error
-        self._record(report)
+        self._record(_decided(report, decision))
         return out
 
-    def _execute_program(self, program, src_view, source, out, extra, gather_threads, pipeline=True):
+    def _execute_program(self, program, src_view, source, out, extra, gather_threads, pipeline=True,
+                         decision=None):
         """Blocking single dispatch of a freshly prepared producer program."""
         try:
             native = pyreloc.prepare_dispatch(program, src_view, _storage_view(out, "cuda", out.device.index),
@@ -735,20 +1027,20 @@ class FastTransfers:
                 chunk_size=self.chunk_size, resources=self.native, owners=((source,) + tuple(extra), out))
         except pyreloc.TransferError as error:
             raise RuntimeError(f"producer dispatch failed: {error}") from error
-        self._record(report)
+        self._record(_decided(report, decision))
         return out
 
-    def _submit_program(self, program, src_view, source, out, extra, gather_threads, dtype):
+    def _submit_program(self, program, src_view, source, out, extra, gather_threads, dtype, decision=None):
         try:
             template = pyreloc.prepare_dispatch_template_from_program(program, "h2d", threads=self.gather_threads)
         except pyreloc.TransferError as error:
             raise RuntimeError(f"producer dispatch rejected: {error}") from error
         member = _OneShot(template, src_view, None, dtype)
         return self.submit([(member, source)], outputs=[out], gather_threads=gather_threads, extra_owners=extra,
-                           chunked_members=True)
+                           chunked_members=True, decision=decision)
 
     def _submit_native(self, native, sources, outs, extra, gather_threads, *, host, chunked_members=False,
-                       device_layout=False):
+                       device_layout=False, decision=None):
         """Submit an already prepared native group (outputs allocated on the private stream)."""
         import torch
         self._retire()
@@ -763,11 +1055,11 @@ class FastTransfers:
                 device_layout=device_layout, n_buffers=self.n_buffers, chunked_members=chunked_members)
         except pyreloc.TransferError as error:
             raise RuntimeError(f"transfer group failed: {error}") from error
-        return FastCompletion(self, completion, list(outs), native, host)
+        return FastCompletion(self, completion, list(outs), native, host, decision)
 
     # -- groups ----------------------------------------------------------
     def submit(self, items, *, outputs=None, device_layout=False, gather_threads=None, pin_outputs=True,
-               extra_owners=(), chunked_members=False):
+               extra_owners=(), chunked_members=False, decision=None):
         """Submit [(program, source), ...] as one group; returns a FastCompletion.
 
         H2D groups order after nothing (CPU sources are ready); D2H groups
@@ -809,7 +1101,7 @@ class FastTransfers:
                 device_layout=device_layout, n_buffers=self.n_buffers, chunked_members=chunked_members)
         except pyreloc.TransferError as error:
             raise RuntimeError(f"transfer group failed: {error}") from error
-        return FastCompletion(self, completion, outs, native, host)
+        return FastCompletion(self, completion, outs, native, host, decision)
 
 
 class FastPrefetch:
@@ -1018,6 +1310,7 @@ class _WireEntry(TypedProgram):
         self.destination = ConcreteDescriptor(tuple(source.shape), tuple(source.stride()), dtype, owner.device)
         self._out_dtype, self._out_device = getattr(torch, dtype), owner.device
         self.handle = self._registration = self._op_args = None
+        self.resolved = self._single = None
         self._register_op()
 
 

@@ -264,6 +264,14 @@ def resolve(advice, bindings, threads):
     return Resolved(pattern, source, result, advice.path("direct") is not None, tuple(paths))
 
 
+def without_direct(resolved):
+    """The same advice with the direct path not admissible (an executor that
+    has no direct path of its own)."""
+    import dataclasses
+    return dataclasses.replace(resolved, direct=False,
+                               paths=tuple(p for p in resolved.paths if p["name"] != "direct"))
+
+
 # -- selection ----------------------------------------------------------------
 
 @dataclass(frozen=True)

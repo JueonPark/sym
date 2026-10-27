@@ -256,3 +256,174 @@ def test_load_calibration_resolves_paths_objects_and_the_environment(calibration
     assert load_calibration(None).has('overhead.group_ms')
     monkeypatch.delenv('RELOC_CALIBRATION')
     assert load_calibration(None) is None
+
+
+# -- the fast lane ------------------------------------------------------------
+
+@pytest.fixture
+def advised(compiler, cuda_device, calibration):
+    from reloc_torch.fast import FastTransfers
+    with FastTransfers(cuda_device, compiler=compiler, gather_threads=8, calibration=calibration) as owner:
+        yield owner
+
+
+def bits(t):
+    return t.view(torch.int16 if t.element_size() == 2 else torch.int32)
+
+
+def bag_operands(tables, bags, rows, gen):
+    indices, offsets = [], []
+    for _ in range(tables):
+        lengths = torch.randint(1, 5, (bags,), generator=gen)
+        offsets.append(torch.cat([torch.zeros(1, dtype=torch.long), lengths.cumsum(0)[:-1]]))
+        indices.append(torch.randint(0, rows, (int(lengths.sum()),), generator=gen))
+    return indices, offsets
+
+
+@pytest.mark.gpu
+def test_owner_resolves_calibration_from_argument_env_or_nothing(compiler, cuda_device, calibration, tmp_path,
+                                                                 monkeypatch):
+    from reloc_torch.fast import FastTransfers
+    with FastTransfers(cuda_device, compiler=compiler, calibration=calibration) as owner:
+        assert owner.calibration is calibration and owner.advice
+    path = tmp_path / 'env.cal'
+    path.write_text(SYNTH)
+    monkeypatch.setenv('RELOC_CALIBRATION', str(path))
+    with FastTransfers(cuda_device, compiler=compiler) as owner:
+        assert owner.calibration is not None and owner.calibration.has('overhead.group_ms')
+    monkeypatch.delenv('RELOC_CALIBRATION')
+    source, index = torch.randn(50, 128), torch.randint(50, (10,))
+    with FastTransfers(cuda_device, compiler=compiler) as owner:
+        assert owner.calibration is None
+        owner.indexed(gather_recipe()).execute(source, index)
+        assert owner.stats()['advice'] == {'no_calibration': 1}
+    with FastTransfers(cuda_device, compiler=compiler, calibration=calibration, advice=False) as owner:
+        owner.indexed(gather_recipe()).execute(source, index)
+        assert owner.stats()['advice'] == {'advice_disabled': 1}
+    with pytest.raises(ValueError):
+        FastTransfers(cuda_device, compiler=compiler, direct_wires=0)
+
+
+@pytest.mark.gpu
+@pytest.mark.parametrize('rows,count', [(50, 10), (5000, 4096)])
+def test_indexed_direct_path_is_bit_exact_and_reported(advised, cuda_device, rows, count):
+    program = advised.indexed(gather_recipe())
+    source, index = torch.randn(rows, 128), torch.randint(rows, (count,))
+    expected = source.index_select(0, index).to(cuda_device, dtype=torch.float16)
+    out = program.execute(source, index)
+    torch.cuda.synchronize()
+    assert torch.equal(bits(out), bits(expected))
+    out2 = program.submit(source, index).wait_stream()[0]
+    torch.cuda.synchronize()
+    assert torch.equal(bits(out2), bits(expected))
+    stats = advised.stats()
+    assert stats['advice'] == {'advice_prefers_direct': 2} and stats['dispatches'] == {'direct': 2}
+    assert stats['direct_wire_bytes'] == count * 128 * 2
+    index[0] = rows
+    with pytest.raises(Exception, match='index_out_of_range'):
+        program.execute(source, index)
+    index[0] = 0
+    # The failed call returned its wire: the next call is direct again.
+    assert torch.equal(bits(program.execute(source, index)),
+                       bits(source.index_select(0, index).to(cuda_device, dtype=torch.float16)))
+    assert advised.stats()['dispatches'] == {'direct': 3}
+
+
+@pytest.mark.gpu
+@pytest.mark.parametrize('bags', [1, 41, 512])
+def test_pooled_direct_path_is_bit_exact_and_reported(advised, cuda_device, bags):
+    gen = torch.Generator().manual_seed(11)
+    tables = [torch.randn(700, 64, generator=gen) for _ in range(26)]
+    indices, offsets = bag_operands(26, bags, 700, gen)
+    reference = torch.stack([torch.nn.functional.embedding_bag(i, t, o, mode='sum')
+                             for t, i, o in zip(tables, indices, offsets)]).transpose(0, 1).half().to(cuda_device)
+    program = advised.pooled(tables)
+    out = program.execute(indices, offsets)
+    out2 = program.submit(indices, offsets).wait_stream()[0]
+    torch.cuda.synchronize()
+    assert torch.equal(bits(out), bits(reference)) and torch.equal(bits(out2), bits(reference))
+    assert advised.stats()['advice'] == {'advice_prefers_direct': 2}
+    # pipeline=False stays the dispatcher (an attribution call, undecided).
+    whole = program.execute(indices, offsets, pipeline=False)
+    assert torch.equal(bits(whole), bits(reference))
+    stats = advised.stats()
+    assert stats['dispatches'] == {'direct': 2, 'cpu_reference': 1} and stats['advice'] == {'advice_prefers_direct': 2}
+    with pytest.raises(ValueError):
+        program.execute(indices[:-1], offsets[:-1])
+
+
+@pytest.mark.gpu
+def test_direct_ring_waits_for_the_event_before_reuse(advised, cuda_device):
+    program = advised.indexed(gather_recipe())
+    source = torch.randn(4000, 128)
+    gen = torch.Generator().manual_seed(5)
+    indices = [torch.randint(4000, (3000,), generator=gen) for _ in range(4)]
+    stream = torch.cuda.Stream(device=cuda_device)
+    outputs = []
+    with torch.cuda.stream(stream):
+        # Keep the stream busy: the copies of the first two calls cannot have
+        # completed when the third asks for a wire, so both wires are in flight.
+        torch.cuda._sleep(300_000_000)
+        for index in indices[:3]:
+            outputs.append(program.execute(source, index))
+        assert advised.stats()['advice'] == {'advice_prefers_direct': 2, 'direct_ring_exhausted': 1}
+        outputs.append(program.execute(source, indices[3]))
+    stream.synchronize()
+    # Distinct indices per call: a wire reused before its copy ran would
+    # corrupt an earlier output.
+    for index, out in zip(indices, outputs):
+        assert torch.equal(bits(out), bits(source.index_select(0, index).to(cuda_device, dtype=torch.float16)))
+    stats = advised.stats()
+    assert sum(stats['advice'].values()) == 4 and stats['advice']['direct_ring_exhausted'] >= 1
+    assert stats['dispatches']['direct'] + stats['dispatches']['cpu_reference'] == 4
+    assert stats['direct_wire_bytes'] == 2 * 3000 * 128 * 2
+
+
+@pytest.mark.gpu
+def test_missing_keys_fall_back_to_the_dispatcher(compiler, cuda_device, tmp_path):
+    """A calibration without the advice keys (an older .cal, an uncalibrated box)."""
+    import pyreloc
+    from reloc_torch.fast import FastTransfers
+    path = tmp_path / 'old.cal'
+    path.write_text('\n'.join(line for line in SYNTH.splitlines() if not line.startswith('overhead.')) + '\n')
+    with FastTransfers(cuda_device, compiler=compiler, gather_threads=8,
+                       calibration=pyreloc.load_calibration(str(path))) as owner:
+        program = owner.indexed(gather_recipe())
+        source, index = torch.randn(50, 128), torch.randint(50, (10,))
+        out = program.execute(source, index)
+        assert torch.equal(bits(out), bits(source.index_select(0, index).to(cuda_device, dtype=torch.float16)))
+        assert owner.stats()['advice'] == {'advice_missing_keys': 1}
+        assert owner.stats()['dispatches'] == {'cpu_reference': 1}
+
+
+@pytest.mark.gpu
+def test_typed_single_calls_never_claim_the_direct_path(advised, cuda_device):
+    q = torch.randint(-127, 128, (64, 96), dtype=torch.int8)
+    scale = torch.rand(64) * 0.05 + 1e-3
+    program = advised.typed(weight_recipe('float32'), q, parameters={'scale': scale})
+    assert program.resolved is not None and program.resolved.direct
+    out = program.execute(q)
+    assert torch.equal(out, (q.to(cuda_device).float() * scale.to(cuda_device)[:, None]))
+    reason, = advised.stats()['advice']
+    assert reason in ('advice_prefers_pipelined', 'advice_missing_keys')
+    assert 'direct' not in advised.stats()['dispatches']
+
+
+@pytest.mark.gpu
+def test_ops_take_the_direct_path_and_stay_traceable(advised, cuda_device):
+    from reloc_torch import fast_ops
+    program = advised.indexed(gather_recipe())
+    source, index = torch.randn(300, 128), torch.randint(300, (64,))
+    expected = program.execute(source, index)
+
+    def fn(x, i):
+        return program.op(x, i).float().sum(dim=1)
+
+    torch._dynamo.reset()
+    explanation = torch._dynamo.explain(fn)(source, index)
+    assert explanation.graph_break_count == 0
+    compiled = torch.compile(fn, fullgraph=True, backend='aot_eager')
+    torch.testing.assert_close(compiled(source, index), expected.float().sum(dim=1), rtol=0, atol=0)
+    torch.library.opcheck(fast_ops.INDEXED_OP, (source, index, program._op_args[1], (64, 128), (128, 1),
+                                                  cuda_device, torch.float16))
+    assert advised.stats()['dispatches'] == {'direct': advised.stats()['calls']}

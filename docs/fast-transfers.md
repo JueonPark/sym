@@ -121,6 +121,55 @@ Torch is faster than any Sym entry point; the fast lane pays off once a
 transfer is large enough for the chunked pipeline or the fused producer to
 matter (bench/beat_torch).
 
+## Cost advice and the direct path
+
+Every plan the compiler exports carries a cost advice
+([reloc-export.md](reloc-export.md#cost-advice-advice-interface-2)): the
+execution paths the plan admits and their cost structure in terms of named
+calibration quantities. `FastTransfers(calibration=...)` takes a calibration
+path or a loaded `pyreloc.Calibration`; with `calibration=None` it reads
+`$RELOC_CALIBRATION`, and without either every call takes the dispatcher
+exactly as before (reason `no_calibration`). Each call resolves the advice
+at its shape (`reloc_torch.advice.resolve`), prices it
+(`pyreloc.price_advice`, the calibrated forms of [v3-costmodel.md](v3-costmodel.md))
+and runs the cheapest admissible path. Decisions are memoized per
+(calibration, program shape), so pricing is paid once per shape.
+
+| Path | What runs | Admitted for |
+| --- | --- | --- |
+| `direct` | the producer kernel writes a pinned wire (`pooled_bags`, `gather_rows`), then one copy on the caller's stream; for weight groups a raw int8 copy and the fused dequantize kernel | pooled producers, indexed gathers, dequantize-first weight groups |
+| `pipelined` | the dispatcher's selected row with its chunked CPU/DMA pipeline (today's path) | every program |
+| `grouped` | one native group submission (today's group path) | every group |
+
+Placement reasons (in each report's `placement_reason` and counted in
+`stats()["advice"]`): `advice_prefers_direct`, `advice_prefers_pipelined`,
+`advice_prefers_grouped`, `advice_prefers_split` (a group the model priced
+cheaper as separate calls; the runtime never splits the caller's group, it
+records the advice), `advice_missing_keys` (the calibration lacks a key the
+advice names, for instance an uncalibrated machine; the dispatcher runs),
+`advice_no_native_helper` (the direct path priced cheapest but the libtorch
+helper is not built), `advice_absent` (an artifact exported with
+`--no-advice`), `advice_disabled` (`FastTransfers(advice=False)`),
+`no_calibration` and `direct_ring_exhausted` (see below). The dispatcher's
+own row reason stays under `row_reason`; every report carries the priced
+paths as `predicted_ms` (milliseconds, `None` for a path the calibration
+cannot price).
+
+The direct path writes into pinned wires owned by the `FastTransfers`
+instance: at most `direct_wires` (default 2) per wire shape, counted against
+`max_scratch_bytes` and reported as `stats()["direct_wire_bytes"]`. A wire is
+reused only after the CUDA event recorded behind its copy completed; when
+every wire of a shape is still in flight the call takes the dispatcher with
+reason `direct_ring_exhausted`, never a wait or a failure. The producer reads
+the source and the indices before the call returns, so callers may change
+them afterwards exactly as with the dispatcher; the output is ordered on the
+caller's current stream (`submit` on the owner's stream, handed over by
+`wait_stream`). Results are bit-identical to the dispatcher path (the same
+kernels). `pipeline=False` and explicit `implementation=` stay undecided
+attribution calls through the dispatcher. A typed program executed on its own
+has no direct executor and never selects the direct path; dequantize-first
+weights take it as `FastWeights` groups.
+
 ## Attribution knobs and kernel-only entry points
 
 For the ablation in [bench/beat_torch](../bench/beat_torch/README.md#ablation-kernels-versus-planruntime)
