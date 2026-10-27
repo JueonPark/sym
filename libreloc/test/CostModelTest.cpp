@@ -4,8 +4,11 @@
 
 #include "gtest/gtest.h"
 
+#include <cmath>
+#include <stdexcept>
 #include <string>
 #include <variant>
+#include <vector>
 
 namespace {
 
@@ -551,6 +554,95 @@ TEST(CostModelPathCosts, RecvComposesWithFillDrain) {
   ASSERT_TRUE(pc.has_value());
   // a = 1e-7; m_eff*h = 1.5e-8; max + min/16 = 1e-7 + 1.5e-8/16.
   EXPECT_DOUBLE_EQ(pc->bSlopeMsPerByte, 1e-7 + 1.5e-8 / 16.0);
+}
+
+//===----------------------------------------------------------------------===//
+// Cost advice pricing (docs/reloc-export.md "Cost advice").
+//===----------------------------------------------------------------------===//
+
+using reloc::costmodel::AdviceTerm;
+using reloc::costmodel::PathAdvice;
+using reloc::costmodel::priceAdvice;
+
+const char *kAdviceCalBase = R"(# costmodel calibration v0
+pcie.h2d_gbps 10
+hbm.bw_gbps 100
+hbm.m.blocked 2
+cpu.t8.contiguous.pooled_sum_f16_gbps 20
+overhead.direct.pooled_ms 0.05
+overhead.dispatch.pooled_ms 0.3
+overhead.group_ms 0.2
+overhead.group_member_ms 0.01
+)";
+const std::string kAdviceCal =
+    std::string(kAdviceCalBase) + "pipeline.chunks_per_buffer 4\n";
+
+std::vector<PathAdvice> pooledPaths(double wire) {
+  // The producer reads 2 * wire bytes at 20 GB/s, the link moves wire at
+  // 10 GB/s, the device writes wire at 100 / 2 GB/s.
+  AdviceTerm producer{2 * wire, "cpu.t8.contiguous.pooled_sum_f16_gbps", ""};
+  AdviceTerm link{wire, "pcie.h2d_gbps", ""};
+  AdviceTerm device{wire, "hbm.bw_gbps", "hbm.m.blocked"};
+  PathAdvice direct{"direct", "serial", "overhead.direct.pooled_ms",
+                    "",       "",       {producer, link, device}};
+  PathAdvice pipelined{"pipelined",
+                       "overlapped",
+                       "overhead.dispatch.pooled_ms",
+                       "",
+                       "pipeline.chunks_per_buffer",
+                       {producer, link, device}};
+  PathAdvice grouped{"grouped",
+                     "grouped",
+                     "overhead.group_ms",
+                     "overhead.group_member_ms",
+                     "",
+                     {producer, link, device}};
+  return {direct, pipelined, grouped};
+}
+
+TEST(CostModelAdvice, PricesTheThreeForms) {
+  CostModel m = mustParse(kAdviceCal);
+  // wire = 1e8 bytes: producer 2e8 / 20e9 s = 10 ms, link 10 ms, device 2 ms.
+  auto costs = priceAdvice(m, pooledPaths(1e8), 4);
+  ASSERT_EQ(costs.size(), 3u);
+  EXPECT_EQ(costs[0].name, "direct");
+  EXPECT_NEAR(costs[0].ms, 0.05 + 10 + 10 + 2, 1e-9);
+  // overlapped: I + max + (sum - max) / n = 0.3 + 10 + 12 / 4.
+  EXPECT_EQ(costs[1].name, "pipelined");
+  EXPECT_NEAR(costs[1].ms, 0.3 + 10 + 3, 1e-9);
+  // grouped with 4 members: 0.2 + 4 * 0.01 + 22.
+  EXPECT_EQ(costs[2].name, "grouped");
+  EXPECT_NEAR(costs[2].ms, 0.2 + 0.04 + 22, 1e-9);
+  for (const auto &c : costs)
+    EXPECT_TRUE(c.missingKey.empty()) << c.name;
+}
+
+TEST(CostModelAdvice, ReportsTheFirstMissingKeyInsteadOfGuessing) {
+  CostModel m = mustParse(kAdviceCal);
+  auto paths = pooledPaths(1e8);
+  paths[0].terms[0].rateKey = "cpu.t4.contiguous.pooled_sum_f16_gbps";
+  paths[2].memberInterceptKey = "overhead.group_member_absent_ms";
+  auto costs = priceAdvice(m, paths, 2);
+  EXPECT_EQ(costs[0].missingKey, "cpu.t4.contiguous.pooled_sum_f16_gbps");
+  EXPECT_TRUE(std::isnan(costs[0].ms));
+  EXPECT_TRUE(costs[1].missingKey.empty());
+  EXPECT_EQ(costs[2].missingKey, "overhead.group_member_absent_ms");
+  // No chunk count: the fill/drain term is absent (pathCosts' rule).
+  CostModel noChunks = mustParse(kAdviceCalBase);
+  auto plain = priceAdvice(noChunks, pooledPaths(1e8), 1);
+  EXPECT_NEAR(plain[1].ms, 0.3 + 10, 1e-9);
+}
+
+TEST(CostModelAdvice, RejectsNonPositiveRates) {
+  CostModel zero = mustParse(kAdviceCal + "cpu.t8.blocked.gather_f32_gbps 0\n");
+  auto paths = pooledPaths(1e8);
+  paths[0].terms[0].rateKey = "cpu.t8.blocked.gather_f32_gbps";
+  EXPECT_THROW(priceAdvice(zero, paths, 1), std::invalid_argument);
+  EXPECT_THROW(priceAdvice(zero, pooledPaths(-1), 1), std::invalid_argument);
+  EXPECT_THROW(priceAdvice(zero, pooledPaths(1e8), 0), std::invalid_argument);
+  auto unknownForm = pooledPaths(1e8);
+  unknownForm[0].form = "teleport";
+  EXPECT_THROW(priceAdvice(zero, unknownForm, 1), std::invalid_argument);
 }
 
 } // namespace

@@ -77,3 +77,25 @@ def test_advice_rejects_unknown_symbol(compiler):
     tampered = dataclasses.replace(compiled, manifest=dict(compiled.manifest, advice=bad))
     with pytest.raises(RuntimeError, match='symbol'):
         CompiledRecipe.from_bytes(tampered.to_bytes())
+
+
+def test_price_advice_binding_and_calibration_accessors(tmp_path):
+    import pyreloc
+    path = tmp_path / 'tiny.cal'
+    path.write_text('# costmodel calibration v0\npcie.h2d_gbps 10\nhbm.bw_gbps 100\nhbm.m.blocked 2\n'
+                    'overhead.dispatch.layout_ms 0.3\npipeline.chunks_per_buffer 4\n')
+    cal = pyreloc.load_calibration(str(path))
+    assert cal.has('pcie.h2d_gbps') and not cal.has('overhead.group_ms')
+    assert cal.value('hbm.m.blocked') == 2
+    with pytest.raises(KeyError):
+        cal.value('overhead.group_ms')
+    costs = pyreloc.price_advice(cal, [
+        dict(name='pipelined', form='overlapped', intercept='overhead.dispatch.layout_ms', member_intercept=None,
+             chunks='pipeline.chunks_per_buffer', terms=[[1e8, 'pcie.h2d_gbps', None], [1e8, 'hbm.bw_gbps', 'hbm.m.blocked']]),
+        dict(name='grouped', form='grouped', intercept='overhead.group_ms', member_intercept='overhead.group_member_ms',
+             chunks=None, terms=[[1e8, 'pcie.h2d_gbps', None]])], 3)
+    assert costs[0] == dict(name='pipelined', ms=pytest.approx(0.3 + 10 + 2 / 4), missing_key='')
+    assert costs[1] == dict(name='grouped', ms=None, missing_key='overhead.group_ms')
+    with pytest.raises(ValueError, match='advice_invalid'):
+        pyreloc.price_advice(cal, [dict(name='x', form='serial', intercept='overhead.dispatch.layout_ms',
+                                        member_intercept=None, chunks=None, terms=[[-1, 'pcie.h2d_gbps', None]])])

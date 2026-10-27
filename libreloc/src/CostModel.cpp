@@ -8,7 +8,9 @@
 #include <cmath>
 #include <cstdlib>
 #include <fstream>
+#include <limits>
 #include <sstream>
+#include <stdexcept>
 
 namespace reloc {
 namespace costmodel {
@@ -362,6 +364,74 @@ std::optional<MethodDecision> decide(const CostModel &m, Pattern p,
     d.thresholdBytes = sStar > 0 ? sStar : -1;
   }
   return d;
+}
+
+std::vector<PathCost> priceAdvice(const CostModel &m,
+                                  const std::vector<PathAdvice> &paths,
+                                  int members) {
+  if (members < 1)
+    throw std::invalid_argument("advice_invalid: members must be >= 1");
+  auto positive = [&](const std::string &key) -> std::optional<double> {
+    if (!m.has(key))
+      return std::nullopt;
+    const double value = m.at(key);
+    if (!(value > 0))
+      throw std::invalid_argument(
+          "advice_invalid: non-positive calibration value for " + key);
+    return value;
+  };
+  std::vector<PathCost> out;
+  for (const PathAdvice &path : paths) {
+    if (path.form != "serial" && path.form != "overlapped" &&
+        path.form != "grouped")
+      throw std::invalid_argument("advice_invalid: unknown form " + path.form);
+    PathCost cost;
+    cost.name = path.name;
+    std::vector<std::string> intercepts{path.interceptKey};
+    if (path.form == "grouped")
+      intercepts.push_back(path.memberInterceptKey);
+    for (const std::string &key : intercepts)
+      if (cost.missingKey.empty() && !m.has(key))
+        cost.missingKey = key;
+    double sum = 0, largest = 0;
+    for (const AdviceTerm &term : path.terms) {
+      if (term.bytes < 0)
+        throw std::invalid_argument("advice_invalid: negative byte count");
+      auto rate = positive(term.rateKey);
+      std::optional<double> multiplier = 1.0;
+      if (!term.multiplierKey.empty())
+        multiplier = positive(term.multiplierKey);
+      if (!rate || !multiplier) {
+        if (cost.missingKey.empty())
+          cost.missingKey = rate ? term.multiplierKey : term.rateKey;
+        continue;
+      }
+      // ms at GB/s: bytes / (rate * 1e9) s = bytes / rate * 1e-6 ms.
+      const double ms = term.bytes * *multiplier / *rate * 1e-6;
+      sum += ms;
+      largest = std::max(largest, ms);
+    }
+    if (!cost.missingKey.empty()) {
+      cost.ms = std::numeric_limits<double>::quiet_NaN();
+      out.push_back(cost);
+      continue;
+    }
+    double total = m.at(path.interceptKey);
+    if (path.form == "grouped")
+      total += members * m.at(path.memberInterceptKey);
+    if (path.form == "overlapped") {
+      const double chunks =
+          path.chunksKey.empty() ? 0.0 : m.get(path.chunksKey, 0.0);
+      if (chunks < 0)
+        throw std::invalid_argument("advice_invalid: negative chunk count");
+      total += largest + (chunks > 0 ? (sum - largest) / chunks : 0.0);
+    } else {
+      total += sum;
+    }
+    cost.ms = total;
+    out.push_back(cost);
+  }
+  return out;
 }
 
 } // namespace costmodel

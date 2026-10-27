@@ -657,7 +657,18 @@ PYBIND11_MODULE(_pyreloc, m) {
   namespace cmns = reloc::costmodel;
   py::class_<cmns::CostModel>(m, "Calibration",
                               "Parsed costmodel calibration (issue #97).")
-      .def_property_readonly("machine", &cmns::CostModel::machine);
+      .def_property_readonly("machine", &cmns::CostModel::machine)
+      .def("has", &cmns::CostModel::has, py::arg("key"),
+           "Whether the calibration carries `key`.")
+      .def(
+          "value",
+          [](const cmns::CostModel &m, const std::string &key) {
+            if (!m.has(key))
+              throw py::key_error(key);
+            return m.at(key);
+          },
+          py::arg("key"),
+          "The calibrated value of `key`; KeyError when absent.");
 
   m.def(
       "load_calibration",
@@ -727,6 +738,58 @@ PYBIND11_MODULE(_pyreloc, m) {
       py::arg("b_placement") = "overlapped",
       "Run the C++ cost model. Returns {method, t_a_ms, t_b_ms, "
       "threshold_bytes, pattern, b_placement}.");
+
+  m.def(
+      "price_advice",
+      [](const cmns::CostModel &cal, const py::list &paths, int members) {
+        auto optionalKey = [](const py::dict &d, const char *key) {
+          return d.contains(key) && !d[key].is_none()
+                     ? py::cast<std::string>(d[key])
+                     : std::string();
+        };
+        std::vector<cmns::PathAdvice> advice;
+        for (const py::handle &item : paths) {
+          py::dict d = py::cast<py::dict>(item);
+          cmns::PathAdvice p;
+          p.name = py::cast<std::string>(d["name"]);
+          p.form = py::cast<std::string>(d["form"]);
+          p.interceptKey = py::cast<std::string>(d["intercept"]);
+          p.memberInterceptKey = optionalKey(d, "member_intercept");
+          p.chunksKey = optionalKey(d, "chunks");
+          for (const py::handle &t : py::cast<py::list>(d["terms"])) {
+            py::sequence term = py::cast<py::sequence>(t);
+            cmns::AdviceTerm at;
+            at.bytes = py::cast<double>(term[0]);
+            at.rateKey = py::cast<std::string>(term[1]);
+            if (py::len(term) > 2 && !term[2].is_none())
+              at.multiplierKey = py::cast<std::string>(term[2]);
+            p.terms.push_back(std::move(at));
+          }
+          advice.push_back(std::move(p));
+        }
+        std::vector<cmns::PathCost> costs;
+        try {
+          costs = cmns::priceAdvice(cal, advice, members);
+        } catch (const std::invalid_argument &error) {
+          throw py::value_error(error.what());
+        }
+        py::list out;
+        for (const auto &c : costs) {
+          py::dict entry;
+          entry["name"] = c.name;
+          entry["ms"] = c.missingKey.empty() ? py::object(py::float_(c.ms))
+                                             : py::object(py::none());
+          entry["missing_key"] = c.missingKey;
+          out.append(entry);
+        }
+        return out;
+      },
+      py::arg("calibration"), py::arg("paths"), py::arg("members") = 1,
+      "Price resolved cost-advice paths ({name, form, intercept, "
+      "member_intercept, chunks, terms: [[bytes, rate_key, multiplier_key]]}) "
+      "against a calibration: [{name, ms (None when a key is missing), "
+      "missing_key}]. Raises ValueError('advice_invalid: ...') on invalid "
+      "numbers.");
 
   py::class_<reloc::GatherPool, std::shared_ptr<reloc::GatherPool>>(
       m, "GatherPool",

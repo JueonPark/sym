@@ -27,6 +27,7 @@
 #include <optional>
 #include <string>
 #include <variant>
+#include <vector>
 
 namespace reloc {
 namespace costmodel {
@@ -82,6 +83,35 @@ std::optional<MethodDecision>
 decide(const CostModel &m, Pattern p, int64_t srcBytes, double r,
        int threads = 8, int K = 1, int64_t nReuse = -1, bool broadcast = false,
        BPlacement bPlace = BPlacement::Overlapped);
+
+/// Cost advice pricing (docs/reloc-export.md "Cost advice"). The compiler
+/// states each admissible path's structure; the frontend resolves the
+/// plan's symbols and the calibration key names (reloc_torch.advice) and
+/// this function prices the concrete terms:
+///   serial      T = I + sum t_i
+///   overlapped  T = I + max t_i + (sum t_i - max t_i) / n   [n = cal[chunks]]
+///   grouped     T = I_group + members * I_member + sum t_i
+/// with t_i = bytes_i * mult_i / rate_i (ms; GB/s = 1e9 B/s). A missing key
+/// is reported in PathCost::missingKey, never guessed; a non-positive rate
+/// or multiplier, a negative byte or chunk count, an unknown form or
+/// members < 1 throws std::invalid_argument("advice_invalid: ...").
+struct AdviceTerm {
+  double bytes = 0;
+  std::string rateKey;
+  std::string multiplierKey; // empty: multiplier 1
+};
+struct PathAdvice {
+  std::string name, form, interceptKey, memberInterceptKey, chunksKey;
+  std::vector<AdviceTerm> terms;
+};
+struct PathCost {
+  std::string name;
+  double ms = 0; // NaN when missingKey is set
+  std::string missingKey;
+};
+std::vector<PathCost> priceAdvice(const CostModel &m,
+                                  const std::vector<PathAdvice> &paths,
+                                  int members = 1);
 
 } // namespace costmodel
 } // namespace reloc

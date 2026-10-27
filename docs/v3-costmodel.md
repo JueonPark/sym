@@ -70,6 +70,13 @@ scripts into one MLIR-free libreloc component:
   dict. Both call the identical C++ arithmetic (`libreloc/python/PyReloc.cpp`);
   the prediction test and any future notebook share one implementation, no
   mirrored Python model.
+- **Cost advice pricing (2026-10)** — `costmodel::priceAdvice` /
+  `pyreloc.price_advice` price the compiler's cost advice
+  ([reloc-export.md](reloc-export.md#cost-advice-advice-interface-2)) for the
+  fast lane: the same calibration file, three closed forms (serial,
+  overlapped, grouped), a missing key reported rather than guessed and an
+  invalid number rejected. `Calibration.has(key)` / `Calibration.value(key)`
+  expose the keys to scripts.
 
 ## 2. Calibration provenance
 

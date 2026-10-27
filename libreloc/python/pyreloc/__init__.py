@@ -52,6 +52,7 @@ from ._pyreloc import (  # noqa: F401
     load_typed_plan,
     make_transfer,
     predict,
+    price_advice,
     prefold_s8,
     prepare_dispatch,
     prepare_dispatch_template,
