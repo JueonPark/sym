@@ -645,4 +645,24 @@ TEST(CostModelAdvice, RejectsNonPositiveRates) {
   EXPECT_THROW(priceAdvice(zero, unknownForm, 1), std::invalid_argument);
 }
 
+TEST(CostModelAdvice, OverlappedPathsPreferTheInPipelineRate) {
+  // Issue #110 (CM2) precedent: inside a chunked pipeline a host kernel runs
+  // at its measured in-pipeline rate (cpu_pipe.*), not its isolated
+  // roofline. Overlapped paths price cpu.t<k>.* terms with the cpu_pipe
+  // twin when the calibration carries it; serial and grouped paths keep the
+  // isolated rate, and an absent pipe key falls back to it.
+  CostModel pipe =
+      mustParse(kAdviceCal + "cpu_pipe.t8.contiguous.pooled_sum_f16_gbps 5\n");
+  auto costs = priceAdvice(pipe, pooledPaths(1e8), 1);
+  // direct unchanged: producer 2e8 B at 20 GB/s = 10 ms.
+  EXPECT_NEAR(costs[0].ms, 0.05 + 10 + 10 + 2, 1e-9);
+  // pipelined: producer 2e8 B at 5 GB/s = 40 ms is the max; (10 + 2) / 4.
+  EXPECT_NEAR(costs[1].ms, 0.3 + 40 + 3, 1e-9);
+  // grouped unchanged.
+  EXPECT_NEAR(costs[2].ms, 0.2 + 0.01 + 22, 1e-9);
+  CostModel noPipe = mustParse(kAdviceCal);
+  EXPECT_NEAR(priceAdvice(noPipe, pooledPaths(1e8), 1)[1].ms, 0.3 + 10 + 3,
+              1e-9);
+}
+
 } // namespace

@@ -187,7 +187,9 @@ the cheapest admissible path ([fast-transfers.md](fast-transfers.md#cost-advice-
 - A term is `[rate, quantity]`: `rate` ∈ `producer` (the calibration's
   `cpu.t<threads>.<pattern>.<kernel>_gbps` family; `read` resolves to
   `contig_read` or `gather_f32`, `quantize` to `quantize_pack` or
-  `gather_quantize`), `link` (`pcie.h2d_gbps`), `device` (`hbm.bw_gbps`
+  `gather_quantize`; an overlapped path prices it with the in-pipeline twin
+  `cpu_pipe.t<threads>.…` when the calibration carries one, the issue #110
+  convention), `link` (`pcie.h2d_gbps`), `device` (`hbm.bw_gbps`
   scaled by `recv.m.<receive kernel>` or, without one, `hbm.m.<pattern>`);
   `quantity` ∈ `source_bytes`, `result_bytes`, `wire`. A producer kind of
   `none` has no producer term; a `null` kernel has no measured rate, which

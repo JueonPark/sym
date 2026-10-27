@@ -91,8 +91,10 @@ decide(const CostModel &m, Pattern p, int64_t srcBytes, double r,
 ///   serial      T = I + sum t_i
 ///   overlapped  T = I + max t_i + (sum t_i - max t_i) / n   [n = cal[chunks]]
 ///   grouped     T = I_group + members * I_member + sum t_i
-/// with t_i = bytes_i * mult_i / rate_i (ms; GB/s = 1e9 B/s). A missing key
-/// is reported in PathCost::missingKey, never guessed; a non-positive rate
+/// with t_i = bytes_i * mult_i / rate_i (ms; GB/s = 1e9 B/s). An overlapped
+/// path prices a cpu.t<k>.* rate with its cpu_pipe.t<k>.* twin (the
+/// in-pipeline rate, issue #110) when the calibration carries one. A missing
+/// key is reported in PathCost::missingKey, never guessed; a non-positive rate
 /// or multiplier, a negative byte or chunk count, an unknown form or
 /// members < 1 throws std::invalid_argument("advice_invalid: ...").
 struct AdviceTerm {

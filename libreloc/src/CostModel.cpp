@@ -397,13 +397,20 @@ std::vector<PathCost> priceAdvice(const CostModel &m,
     for (const AdviceTerm &term : path.terms) {
       if (term.bytes < 0)
         throw std::invalid_argument("advice_invalid: negative byte count");
-      auto rate = positive(term.rateKey);
+      // Issue #110 (CM2): a host kernel inside the chunked pipeline runs at
+      // its in-pipeline rate. Overlapped paths prefer the cpu_pipe.* twin of
+      // a cpu.t<k>.* key; absent, the isolated rate stays (cpuBw's rule).
+      std::string rateKey = term.rateKey;
+      if (path.form == "overlapped" && rateKey.rfind("cpu.t", 0) == 0 &&
+          m.has("cpu_pipe." + rateKey.substr(4)))
+        rateKey = "cpu_pipe." + rateKey.substr(4);
+      auto rate = positive(rateKey);
       std::optional<double> multiplier = 1.0;
       if (!term.multiplierKey.empty())
         multiplier = positive(term.multiplierKey);
       if (!rate || !multiplier) {
         if (cost.missingKey.empty())
-          cost.missingKey = rate ? term.multiplierKey : term.rateKey;
+          cost.missingKey = rate ? term.multiplierKey : rateKey;
         continue;
       }
       // ms at GB/s: bytes / (rate * 1e9) s = bytes / rate * 1e-6 ms.

@@ -14,11 +14,17 @@ the dispatcher paths with FastTransfers(advice=False), the direct paths with a
 synthetic calibration that forces them (so the intercepts include the decision
 lookup, the wire ring and the event, everything the model must price). An
 intercept is the two-point affine fit's intercept at a small and a large size,
-clamped at 0. Producer rates are host-only kernel timings at eight threads:
-the pooled rate per wire byte (a pooled call's source volume changes with its
-bag lengths), the row gather rate per selected source byte. Single-thread
-rates are not measured: the native kernels share one worker pool whose size
-the first call fixes for the process. The host must be idle.
+clamped at 0. Each path's slope gives its producer rate: the direct path's
+through the serial form (cpu.t8.*, the producer running alone), the
+dispatcher's through the overlapped form (cpu_pipe.t8.*, the in-pipeline rate
+of the issue #110 convention, which the pricing prefers on overlapped paths).
+The model then reproduces both measured lines at the calibration sizes;
+host-only kernel timings are recorded as measurements for comparison. Rates
+are per wire byte for the pooled producer (a pooled call's source volume
+changes with its bag lengths) and per selected source byte for the row
+gather, at eight threads. Single-thread rates are not measured: the native
+kernels share one worker pool whose size the first call fixes for the
+process. The host must be idle.
 """
 import argparse
 import json
@@ -41,7 +47,8 @@ from test_fast import gather_recipe
 
 NATIVE = _load_native_views()
 ADVICE_PREFIXES = ('overhead.direct.', 'overhead.dispatch.', 'overhead.group_', 'cpu.t8.contiguous.pooled_sum',
-                   'cpu.t8.indexed_rows.', 'recv.m.dequant_s8_f16', 'hbm.m.indexed_rows')
+                   'cpu.t8.indexed_rows.', 'cpu_pipe.t8.contiguous.pooled_sum', 'cpu_pipe.t8.indexed_rows.',
+                   'recv.m.dequant_s8_f16', 'hbm.m.indexed_rows')
 FORCE_DIRECT = """overhead.direct.pooled_ms 0
 overhead.direct.indexed_rows_ms 0
 overhead.direct.dequant_ms 0
@@ -87,6 +94,35 @@ def intercept(points):
     (s1, t1), (s2, t2) = points
     slope = (t2 - t1) / (s2 - s1)
     return max(0.0, t1 - slope * s1)
+
+
+def direct_rate(cal, points, producer_per_wire):
+    """The producer rate (GB/s per producer byte) at which the serial form
+    reproduces the direct path's measured slope:
+        slope = producer / R + link + device   (ms per wire byte)
+    None when the slope leaves nothing for the producer."""
+    (s1, t1), (s2, t2) = points
+    slope = (t2 - t1) / (s2 - s1)
+    producer = (slope - 1e-6 / cal.value('pcie.h2d_gbps')
+                - 1e-6 * cal.value('hbm.m.contiguous') / cal.value('hbm.bw_gbps'))
+    return None if producer <= 0 else producer_per_wire * 1e-6 / producer
+
+
+def pipe_rate(cal, points, producer_per_wire):
+    """The in-pipeline producer rate (GB/s per producer byte) that makes the
+    overlapped form reproduce the dispatcher's measured slope, assuming the
+    producer is the pipeline's largest stage:
+        slope = producer / R_pipe + (link + device) / n   (ms per wire byte)
+    None when the measured slope leaves the producer below the link (the
+    form cannot absorb the difference; the isolated rate then stays)."""
+    (s1, t1), (s2, t2) = points
+    slope = (t2 - t1) / (s2 - s1)
+    link = 1e-6 / cal.value('pcie.h2d_gbps')
+    device = 1e-6 * cal.value('hbm.m.contiguous') / cal.value('hbm.bw_gbps')
+    producer = slope - (link + device) / cal.value('pipeline.chunks_per_buffer')
+    if producer <= max(link, device):
+        return None
+    return producer_per_wire * 1e-6 / producer
 
 
 def bags_batch(bags, tables, rows, gen):
@@ -144,14 +180,22 @@ def main():
             if bags == 2048:
                 wire = torch.empty((bags, 26, 64), dtype=torch.float16, pin_memory=True)
                 ms = host_ms(lambda: NATIVE.pooled_bags(tables, indices, offsets, wire, 8), args.samples)
-                key = 'cpu.t8.contiguous.pooled_sum_f16_gbps'
-                fitted[key] = round(nbytes / (ms * 1e-3) / 1e9, 3)
-                notes[key] = f'wire bytes / producer ms at {bags} bags x 26 tables x 64 (wire-normalized)'
+                row['host_producer_gbps'] = nbytes / (ms * 1e-3) / 1e9
         check_paths(forced, 'direct', 1)
         for path in ('direct', 'pipelined'):
             key = f"overhead.{'direct' if path == 'direct' else 'dispatch'}.pooled_ms"
             fitted[key] = round(intercept(points[path]), 4)
             notes[key] = f'two-point fit of the fast lane\'s {path} path, 64 and 2048 bags'
+        rate = direct_rate(cal, points['direct'], 1)
+        if rate is not None:
+            fitted['cpu.t8.contiguous.pooled_sum_f16_gbps'] = round(rate, 3)
+            notes['cpu.t8.contiguous.pooled_sum_f16_gbps'] = (
+                'producer rate (per wire byte) reproducing the direct path\'s slope, 64 and 2048 bags')
+        rate = pipe_rate(cal, points['pipelined'], 1)
+        if rate is not None:
+            fitted['cpu_pipe.t8.contiguous.pooled_sum_f16_gbps'] = round(rate, 3)
+            notes['cpu_pipe.t8.contiguous.pooled_sum_f16_gbps'] = (
+                'in-pipeline producer rate (per wire byte) reproducing the dispatcher\'s slope, 64 and 2048 bags')
         del tables, pooled
         # -- indexed rows: 256 and 8192 rows of a [500k, 128] f32 table -> f16.
         source = torch.randn(500_000, 128, generator=gen)
@@ -171,13 +215,22 @@ def main():
                 wire = torch.empty((rows, 128), dtype=torch.float16, pin_memory=True)
                 ms = host_ms(lambda: NATIVE.gather_rows(compiled.decoded_plan, bindings, source, index, wire, 8),
                              args.samples)
-                key = 'cpu.t8.indexed_rows.gather_f16_gbps'
-                fitted[key] = round(rows * 128 * 4 / (ms * 1e-3) / 1e9, 3)
-                notes[key] = f'selected source bytes (f32) / producer ms at {rows} rows x 128'
+                row['host_producer_gbps'] = rows * 128 * 4 / (ms * 1e-3) / 1e9
         for path in ('direct', 'pipelined'):
             key = f"overhead.{'direct' if path == 'direct' else 'dispatch'}.indexed_rows_ms"
             fitted[key] = round(intercept(points[path]), 4)
             notes[key] = f'two-point fit of the fast lane\'s {path} path, 256 and 8192 rows'
+        rate = direct_rate(cal, points['direct'], 2)  # f32 source bytes per f16 wire byte
+        if rate is not None:
+            fitted['cpu.t8.indexed_rows.gather_f16_gbps'] = round(rate, 3)
+            notes['cpu.t8.indexed_rows.gather_f16_gbps'] = (
+                'gather rate (per selected source byte) reproducing the direct path\'s slope, 256 and 8192 rows')
+        rate = pipe_rate(cal, points['pipelined'], 2)  # f32 source bytes per f16 wire byte
+        if rate is not None:
+            fitted['cpu_pipe.t8.indexed_rows.gather_f16_gbps'] = round(rate, 3)
+            notes['cpu_pipe.t8.indexed_rows.gather_f16_gbps'] = (
+                'in-pipeline gather rate (per selected source byte) reproducing the dispatcher\'s slope, 256 and '
+                '8192 rows')
         del source, indexed
         # -- dequantize-first weights: one [out, in] int8 weight per group.
         # direct: the forced direct group; pipelined (a member on its own):

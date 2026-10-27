@@ -1,90 +1,96 @@
 {
   "fitted": {
-    "cpu.t8.contiguous.pooled_sum_f16_gbps": 2.454,
-    "cpu.t8.indexed_rows.gather_f16_gbps": 30.385,
+    "cpu.t8.contiguous.pooled_sum_f16_gbps": 2.305,
+    "cpu.t8.indexed_rows.gather_f16_gbps": 55.692,
+    "cpu_pipe.t8.contiguous.pooled_sum_f16_gbps": 2.101,
+    "cpu_pipe.t8.indexed_rows.gather_f16_gbps": 14.746,
     "hbm.m.indexed_rows": 1.0,
-    "overhead.direct.dequant_ms": 0.1341,
-    "overhead.direct.indexed_rows_ms": 0.1376,
-    "overhead.direct.pooled_ms": 0.2299,
-    "overhead.dispatch.dequant_ms": 0.1847,
-    "overhead.dispatch.indexed_rows_ms": 0.1768,
-    "overhead.dispatch.layout_ms": 0.1858,
-    "overhead.dispatch.pooled_ms": 0.4361,
+    "overhead.direct.dequant_ms": 0.1342,
+    "overhead.direct.indexed_rows_ms": 0.1252,
+    "overhead.direct.pooled_ms": 0.2194,
+    "overhead.dispatch.dequant_ms": 0.1835,
+    "overhead.dispatch.indexed_rows_ms": 0.1632,
+    "overhead.dispatch.layout_ms": 0.1866,
+    "overhead.dispatch.pooled_ms": 0.4773,
     "overhead.group_member_ms": 0.0093,
-    "overhead.group_ms": 0.1759,
-    "recv.m.dequant_s8_f16": 0.456
+    "overhead.group_ms": 0.1753,
+    "recv.m.dequant_s8_f16": 0.457
   },
   "gpu": "NVIDIA GeForce RTX 2080 Ti",
   "machine": "epyc7351-2080ti",
   "measurements": {
     "dequant_3072x1024": {
-      "direct_ms": 0.394907,
-      "pipelined_ms": 0.45561850000000004,
+      "direct_ms": 0.394152,
+      "pipelined_ms": 0.454822,
       "wire_bytes": 3145728
     },
     "dequant_768x256": {
-      "direct_ms": 0.1503965,
-      "pipelined_ms": 0.2016045,
+      "direct_ms": 0.15049050000000003,
+      "pipelined_ms": 0.20043,
       "wire_bytes": 196608
     },
     "indexed_256": {
-      "direct_ms": 0.1446855,
-      "pipelined_ms": 0.1856335,
+      "direct_ms": 0.1327015,
+      "pipelined_ms": 0.172402,
       "wire_bytes": 65536
     },
     "indexed_8192": {
-      "direct_ms": 0.364014,
-      "pipelined_ms": 0.4608735,
+      "direct_ms": 0.3648365,
+      "host_producer_gbps": 30.73786037785628,
+      "pipelined_ms": 0.457898,
       "wire_bytes": 2097152
     },
     "kv_restore_single": {
-      "s12_ms": 0.1880235,
-      "s192_ms": 0.221072
+      "s12_ms": 0.1886325,
+      "s192_ms": 0.219832
     },
     "kv_restore_x1": {
       "member_bytes": 49152,
       "members": 1,
-      "ms": 0.190824
+      "ms": 0.19011050000000002
     },
     "kv_restore_x16": {
       "member_bytes": 49152,
       "members": 16,
-      "ms": 0.45741699999999996
+      "ms": 0.456866
     },
     "kv_restore_x2": {
       "member_bytes": 49152,
       "members": 2,
-      "ms": 0.212695
+      "ms": 0.2118315
     },
     "kv_restore_x4": {
       "member_bytes": 49152,
       "members": 4,
-      "ms": 0.247612
+      "ms": 0.24713800000000002
     },
     "kv_restore_x8": {
       "member_bytes": 49152,
       "members": 8,
-      "ms": 0.31798099999999996
+      "ms": 0.317647
     },
     "pooled_2048": {
-      "direct_ms": 3.5819115,
-      "pipelined_ms": 3.704796,
+      "direct_ms": 3.710868,
+      "host_producer_gbps": 2.3915172336236235,
+      "pipelined_ms": 3.754706,
       "wire_bytes": 6815744
     },
     "pooled_64": {
-      "direct_ms": 0.334683,
-      "pipelined_ms": 0.5382709999999999,
+      "direct_ms": 0.3284825,
+      "pipelined_ms": 0.5797490000000001,
       "wire_bytes": 212992
     },
     "recv_3072x1024": {
-      "copy_f32_ms": 0.0610265,
-      "dequant_s8_f16_ms": 0.027838500000000002,
-      "dequant_s8_f32_ms": 0.041184
+      "copy_f32_ms": 0.060705,
+      "dequant_s8_f16_ms": 0.0277725,
+      "dequant_s8_f32_ms": 0.0411735
     }
   },
   "notes": {
-    "cpu.t8.contiguous.pooled_sum_f16_gbps": "wire bytes / producer ms at 2048 bags x 26 tables x 64 (wire-normalized)",
-    "cpu.t8.indexed_rows.gather_f16_gbps": "selected source bytes (f32) / producer ms at 8192 rows x 128",
+    "cpu.t8.contiguous.pooled_sum_f16_gbps": "producer rate (per wire byte) reproducing the direct path's slope, 64 and 2048 bags",
+    "cpu.t8.indexed_rows.gather_f16_gbps": "gather rate (per selected source byte) reproducing the direct path's slope, 256 and 8192 rows",
+    "cpu_pipe.t8.contiguous.pooled_sum_f16_gbps": "in-pipeline producer rate (per wire byte) reproducing the dispatcher's slope, 64 and 2048 bags",
+    "cpu_pipe.t8.indexed_rows.gather_f16_gbps": "in-pipeline gather rate (per selected source byte) reproducing the dispatcher's slope, 256 and 8192 rows",
     "hbm.m.indexed_rows": "gathered rows land densely on the device: hbm.m.contiguous",
     "overhead.direct.dequant_ms": "two-point fit of the fast lane's direct weight path, 256x768 and 1024x3072",
     "overhead.direct.indexed_rows_ms": "two-point fit of the fast lane's direct path, 256 and 8192 rows",
@@ -98,5 +104,5 @@
     "recv.m.dequant_s8_f16": "dequant_s8_f16 ms / device copy_f32 ms over the same element count (3072x1024), same run"
   },
   "samples": 60,
-  "source_revision": "cf4916d58059a3697db1a25249a34bfd4b5d26ce"
+  "source_revision": "b411a5f2c37106a21d7d2a871f90da66e08c01e4"
 }

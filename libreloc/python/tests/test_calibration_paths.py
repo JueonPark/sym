@@ -8,6 +8,7 @@ KEYS = ('overhead.direct.pooled_ms', 'overhead.dispatch.pooled_ms', 'overhead.di
         'overhead.dispatch.indexed_rows_ms', 'overhead.direct.dequant_ms', 'overhead.dispatch.dequant_ms',
         'overhead.dispatch.layout_ms', 'overhead.group_ms', 'overhead.group_member_ms',
         'cpu.t8.contiguous.pooled_sum_f16_gbps', 'cpu.t8.indexed_rows.gather_f16_gbps',
+        'cpu_pipe.t8.contiguous.pooled_sum_f16_gbps', 'cpu_pipe.t8.indexed_rows.gather_f16_gbps',
         'recv.m.dequant_s8_f16', 'hbm.m.indexed_rows')
 
 
@@ -16,6 +17,9 @@ def test_epyc_calibration_carries_and_prices_every_advice_key():
     for key in KEYS:
         assert cal.has(key), key
         assert cal.value(key) >= 0, key
+    for family in ('contiguous.pooled_sum_f16', 'indexed_rows.gather_f16'):
+        # In a chunked pipeline the producer runs below its isolated rate (#110).
+        assert cal.value(f'cpu_pipe.t8.{family}_gbps') < cal.value(f'cpu.t8.{family}_gbps'), family
     for kind in ('pooled', 'indexed_rows', 'dequant'):
         # The premise of the direct path: it has the smaller fixed cost.
         assert cal.value(f'overhead.direct.{kind}_ms') < cal.value(f'overhead.dispatch.{kind}_ms'), kind

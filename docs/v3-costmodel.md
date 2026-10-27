@@ -75,7 +75,10 @@ scripts into one MLIR-free libreloc component:
   ([reloc-export.md](reloc-export.md#cost-advice-advice-interface-2)) for the
   fast lane: the same calibration file, three closed forms (serial,
   overlapped, grouped), a missing key reported rather than guessed and an
-  invalid number rejected. `Calibration.has(key)` / `Calibration.value(key)`
+  invalid number rejected. Overlapped paths price a `cpu.t<k>.*` rate with
+  its `cpu_pipe.t<k>.*` twin when present (the CM2 in-pipeline rule);
+  `bench/beat_torch/calibrate_paths.py` fits both from the fast lane's own
+  direct and dispatcher slopes. `Calibration.has(key)` / `Calibration.value(key)`
   expose the keys to scripts.
 
 ## 2. Calibration provenance
