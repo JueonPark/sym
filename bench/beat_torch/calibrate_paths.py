@@ -44,21 +44,27 @@ from reloc_torch import CompilerClient, PreparedWireWeights
 from reloc_torch.advice import resolve
 from reloc_torch.fast import FastTransfers, FastWeights, KVCacheSwap, _load_native_views
 from test_fast import gather_recipe
+sys.path.insert(0, str(ROOT / 'bench/beat_torch'))
+from isolation import Watch
 
 NATIVE = _load_native_views()
-ADVICE_PREFIXES = ('overhead.direct.', 'overhead.dispatch.', 'overhead.group_', 'cpu.t8.contiguous.pooled_sum',
+ADVICE_PREFIXES = ('overhead.direct.', 'overhead.dispatch.', 'overhead.group', 'cpu.t8.contiguous.pooled_sum',
                    'cpu.t8.indexed_rows.', 'cpu_pipe.t8.contiguous.pooled_sum', 'cpu_pipe.t8.indexed_rows.',
                    'recv.m.dequant_s8_f16', 'hbm.m.indexed_rows')
 FORCE_DIRECT = """overhead.direct.pooled_ms 0
 overhead.direct.indexed_rows_ms 0
 overhead.direct.dequant_ms 0
+overhead.direct.pooled_member_ms 0
+overhead.direct.indexed_rows_member_ms 0
+overhead.direct.dequant_member_ms 0
 overhead.dispatch.pooled_ms 1000
 overhead.dispatch.indexed_rows_ms 1000
 overhead.dispatch.dequant_ms 1000
 overhead.dispatch.layout_ms 1000
 overhead.dispatch.stages_ms 1000
 overhead.group_ms 1000
-overhead.group_member_ms 1000
+overhead.group_member.dequant_ms 1000
+overhead.group_member.layout_ms 1000
 cpu.t8.contiguous.pooled_sum_f16_gbps 1
 cpu.t8.indexed_rows.gather_f16_gbps 1
 recv.m.dequant_s8_f16 1
@@ -88,6 +94,22 @@ def host_ms(fn, samples, warmup=10):
         fn()
         values.append((time.perf_counter_ns() - start) / 1e6)
     return statistics.median(values)
+
+
+def terms_ms(cal, path):
+    """The size-proportional part of a resolved advice path under `cal`:
+    its terms priced serially, without any intercept."""
+    priced = pyreloc.price_advice(cal, [dict(path, form='serial', intercept='overhead.b_ms', member_intercept=None,
+                                             chunks=None)])[0]['ms']
+    return priced - cal.value('overhead.b_ms')
+
+
+def ols(points):
+    """(intercept, slope) of the least-squares line through (x, y) points."""
+    xs, ys = [x for x, _ in points], [y for _, y in points]
+    mx, my = statistics.mean(xs), statistics.mean(ys)
+    slope = sum((x - mx) * (y - my) for x, y in points) / sum((x - mx) ** 2 for x in xs)
+    return my - slope * mx, slope
 
 
 def intercept(points):
@@ -162,7 +184,7 @@ def main():
     base = ROOT / 'calibration' / f'{args.machine}.cal'
     cal = pyreloc.load_calibration(str(base))
     measurements, fitted, notes = {}, {}, {}
-    with tempfile.TemporaryDirectory() as tmp, torch.no_grad(), \
+    with Watch() as watch, tempfile.TemporaryDirectory() as tmp, torch.no_grad(), \
             FastTransfers(device, gather_threads=8, advice=False) as plain, \
             FastTransfers(device, gather_threads=8, calibration=forcing_calibration(base, tmp)) as forced:
         # -- pooled DLRM producer: 64 and 2048 bags over 26 [100k, 64] tables.
@@ -262,11 +284,36 @@ def main():
                     fitted['recv.m.dequant_s8_f16'] = round(k16 / copy, 3)
                     notes['recv.m.dequant_s8_f16'] = ('dequant_s8_f16 ms / device copy_f32 ms over the same '
                                                       'element count (3072x1024), same run')
+            # Groups of N identical [3072, 1024] members on both executors:
+            # the fixed cost of one submission against what each member adds.
+            for i in range(4):
+                weights.prepare(f'g{i}', torch.randint(-127, 128, (1024, 3072), dtype=torch.int8, generator=gen),
+                                torch.rand(3072, generator=gen) * 0.05 + 1e-3)
+            member_terms = terms_ms(cal, resolve(weights.advice, {'out': 3072, 'in': 1024},
+                                                 plain.gather_threads).path('direct'))
+            group_points = {'direct': [], 'grouped': []}
+            for n in (1, 2, 4):
+                names = [f'g{i}' for i in range(n)]
+                for path, loader in (('direct', loaders['direct']), ('grouped', loaders['pipelined'])):
+                    ms = completed_ms(lambda: loader.load_many(names), args.samples)
+                    group_points[path].append((n, ms - n * member_terms))
+                    measurements[f'dequant_{path}_group_x{n}'] = dict(members=n, ms=ms,
+                                                                       modelled_terms_ms=n * member_terms)
         check_paths(forced, 'direct', 2)
-        for path in ('direct', 'pipelined'):
-            key = f"overhead.{'direct' if path == 'direct' else 'dispatch'}.dequant_ms"
-            fitted[key] = round(intercept(points[path]), 4)
-            notes[key] = f'two-point fit of the fast lane\'s {path} weight path, 256x768 and 1024x3072'
+        fitted['overhead.dispatch.dequant_ms'] = round(intercept(points['pipelined']), 4)
+        notes['overhead.dispatch.dequant_ms'] = ('two-point fit of a weight as its own group (the split path), '
+                                                 '256x768 and 1024x3072')
+        submission, per_member = ols(group_points['direct'])
+        fitted['overhead.direct.dequant_ms'] = round(max(0.0, submission), 4)
+        fitted['overhead.direct.dequant_member_ms'] = round(max(0.0, per_member), 4)
+        notes['overhead.direct.dequant_ms'] = notes['overhead.direct.dequant_member_ms'] = (
+            'least-squares intercept / slope of (ms - modelled terms) vs members, direct weight groups of 1, 2, 4 '
+            '[3072, 1024] members')
+        # Single-call kinds: their whole fixed cost is per submission.
+        for kind in ('pooled', 'indexed_rows'):
+            fitted[f'overhead.direct.{kind}_member_ms'] = 0.0
+            notes[f'overhead.direct.{kind}_member_ms'] = ('a single-call direct path: the whole fixed cost is '
+                                                          f'overhead.direct.{kind}_ms')
         # -- groups: K/V restores of N caches [16, 12, 64] f32 -> [12, 16, 64]
         # stored, N = 1, 2, 4, 8, 16, as one group each.
         swap = KVCacheSwap(plain, 16, 64)
@@ -282,15 +329,20 @@ def main():
         # What the advice itself charges per member besides the member
         # intercept: the member's grouped terms, priced with this calibration.
         layout = swap._program(swap._restore_recipe, stored[0])
-        member = resolve(layout.compiled.advice, {'s0': 12}, plain.gather_threads).path('grouped')
-        priced = pyreloc.price_advice(cal, [dict(member, form='serial', intercept='overhead.b_ms',
-                                                 member_intercept=None, chunks=None)])[0]['ms']
-        modelled = priced - cal.value('overhead.b_ms')
-        fitted['overhead.group_ms'] = round(max(0.0, mean_t - slope * mean_n), 4)
-        fitted['overhead.group_member_ms'] = round(max(0.0, slope - modelled), 4)
+        modelled = terms_ms(cal, resolve(layout.compiled.advice, {'s0': 12}, plain.gather_threads).path('grouped'))
+        group_ms = max(0.0, mean_t - slope * mean_n)
+        fitted['overhead.group_ms'] = round(group_ms, 4)
+        fitted['overhead.group_member.layout_ms'] = round(max(0.0, slope - modelled), 4)
         notes['overhead.group_ms'] = 'intercept of ms vs N, K/V restore groups of N [12,16,64] f32 members, N=1..16'
-        notes['overhead.group_member_ms'] = ('slope of ms vs N minus the advice\'s own per-member terms '
-                                             f'({modelled:.4f} ms) under this calibration')
+        notes['overhead.group_member.layout_ms'] = ('slope of ms vs N minus the advice\'s own per-member terms '
+                                                    f'({modelled:.4f} ms) under this calibration')
+        # Weight members of a native group, with the same submission intercept:
+        # least squares through the origin of (ms - terms - group_ms) vs N.
+        weight_points = [(n, y - group_ms) for n, y in group_points['grouped']]
+        fitted['overhead.group_member.dequant_ms'] = round(
+            max(0.0, sum(n * y for n, y in weight_points) / sum(n * n for n, _ in weight_points)), 4)
+        notes['overhead.group_member.dequant_ms'] = ('least squares through the origin of (ms - modelled terms - '
+                                                     'overhead.group_ms) vs members, native weight groups of 1, 2, 4')
         # A layout member on its own: single-member restores at S=12 and S=192.
         big = swap.evict([torch.randn(16, 192, 64, device=device)])
         single = completed_ms(lambda: swap.restore(stored[:1]), args.samples)
@@ -302,6 +354,8 @@ def main():
         notes['overhead.dispatch.layout_ms'] = 'two-point fit over single-member K/V restores, S=12 and S=192'
         fitted['hbm.m.indexed_rows'] = cal.value('hbm.m.contiguous')
         notes['hbm.m.indexed_rows'] = 'gathered rows land densely on the device: hbm.m.contiguous'
+    if watch.observed:
+        raise SystemExit(f'contaminated measurement, nothing written: foreign work {watch.observed}')
     revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
     args.out.write_text(json.dumps(dict(machine=args.machine, source_revision=revision, samples=args.samples,
                                         gpu=torch.cuda.get_device_name(0), measurements=measurements,

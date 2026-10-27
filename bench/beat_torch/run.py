@@ -14,9 +14,9 @@ import time
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from bench.issue227.run import audit
+from bench.beat_torch.isolation import foreign
 
-PATHS = ['torch', 'inductor', 'sym_inductor', 'sym_fast', 'sym_fast_inductor', 'torch_whole']
+PATHS = ['torch', 'inductor', 'sym_inductor', 'sym_fast', 'sym_fast_noadvice', 'sym_fast_inductor', 'torch_whole']
 
 
 def main(args):
@@ -34,7 +34,7 @@ def main(args):
         name = f'workloads-r{r}'
         output, cache = args.output / f'{name}.json', args.output / f'{name}-cache'
         assert not output.exists() and not cache.exists(), name
-        assert not audit(set()), 'foreign build or GPU work'
+        assert not foreign(set()), 'foreign build, GPU or CPU work'
         order = paths[r % len(paths):] + paths[:r % len(paths)]
         command = ['taskset', '-c', args.affinity, args.python, str(ROOT / 'bench/beat_torch/compare.py'),
                    '--output', str(output), '--samples', str(args.samples), '--warmup', str(args.warmup),
@@ -43,13 +43,15 @@ def main(args):
             command += ['--cases', *args.cases]
         if args.compute_dtype:
             command += ['--compute-dtype', args.compute_dtype]
+        if args.calibration:
+            command += ['--calibration', args.calibration]
         started = time.time()
         observed = []
         with open(args.output / f'{name}.log', 'w') as log:
             process = subprocess.Popen(command, env=env | dict(TORCHINDUCTOR_CACHE_DIR=str(cache)),
                                        cwd=ROOT, stdout=log, stderr=subprocess.STDOUT)
             while process.poll() is None:
-                observed += audit({process.pid})
+                observed += foreign({process.pid})
                 time.sleep(3)
         if process.returncode:
             raise SystemExit(f'{name} failed with {process.returncode}')
@@ -74,4 +76,5 @@ if __name__ == '__main__':
     p.add_argument('--paths', nargs='*')
     p.add_argument('--cases', nargs='*')
     p.add_argument('--compute-dtype')
+    p.add_argument('--calibration')
     main(p.parse_args())

@@ -6,7 +6,9 @@ import pyreloc
 ROOT = Path(__file__).resolve().parents[3]
 KEYS = ('overhead.direct.pooled_ms', 'overhead.dispatch.pooled_ms', 'overhead.direct.indexed_rows_ms',
         'overhead.dispatch.indexed_rows_ms', 'overhead.direct.dequant_ms', 'overhead.dispatch.dequant_ms',
-        'overhead.dispatch.layout_ms', 'overhead.group_ms', 'overhead.group_member_ms',
+        'overhead.dispatch.layout_ms', 'overhead.group_ms', 'overhead.group_member.layout_ms',
+        'overhead.group_member.dequant_ms', 'overhead.direct.dequant_member_ms', 'overhead.direct.pooled_member_ms',
+        'overhead.direct.indexed_rows_member_ms',
         'cpu.t8.contiguous.pooled_sum_f16_gbps', 'cpu.t8.indexed_rows.gather_f16_gbps',
         'cpu_pipe.t8.contiguous.pooled_sum_f16_gbps', 'cpu_pipe.t8.indexed_rows.gather_f16_gbps',
         'recv.m.dequant_s8_f16', 'hbm.m.indexed_rows')
