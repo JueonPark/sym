@@ -1,4 +1,4 @@
-# Supported plan export (interface 1)
+# Supported plan export (interface 2)
 
 Build the compiler target `sym-reloc-export`, then invoke a form below.
 The typed form uses the artifact contract from [C3 / #143](https://github.com/JueonPark/sym/issues/143).
@@ -13,6 +13,8 @@ sym-reloc-export recipe.mlir --output plan.bin --manifest manifest.json --typed
 sym-reloc-export recipe.mlir --output plan.bin --manifest manifest.json --indexed --typed
 # Attribution mode: the raw fold output without plan canonicalization.
 sym-reloc-export recipe.mlir --output plan.bin --manifest manifest.json --no-canonicalize
+# Attribution mode: the same plan and manifest with `advice: null`.
+sym-reloc-export recipe.mlir --output plan.bin --manifest manifest.json --no-advice
 ```
 
 `--no-canonicalize` skips the canonicalizer (`canonicalizePlan` /
@@ -100,7 +102,7 @@ channel maps outside the manifest vocabularies.
 ## Manifest schema 1
 
 All manifests contain `schema_version: 1`, `wire_version: 0`, `status`, and
-`compiler`, whose fields are `name: "sym-reloc-export"`, `interface_version: 1`,
+`compiler`, whose fields are `name: "sym-reloc-export"`, `interface_version: 2`,
 `llvm_version`, and `build_identity` (configured source revision/build type).
 Successful manifests additionally contain:
 
@@ -115,6 +117,8 @@ Successful manifests additionally contain:
   all compiler divisibility constraints in emission order.
 - `plan_sha256`: lowercase hex SHA-256 of the exact plan bytes.
 - `input_sha256`: lowercase hex SHA-256 of the exact input MLIR bytes.
+- `advice`: the plan's cost advice (below), or `null` under `--no-advice`.
+  Every success manifest of every schema carries the key.
 
 `Expr` uses tagged JSON arrays:
 
@@ -145,6 +149,65 @@ The manifest is not a portable frontend Recipe. Transfer direction, original
 callable and provenance remain frontend data. Pad scalar values live in the
 v0 plan with their exact scalar bits; consumers must not reconstruct them by
 round-tripping decimal text from diagnostics.
+
+## Cost advice (`advice`, interface 2)
+
+The compiler states which execution paths a plan admits and what each costs
+in terms of the plan's symbols and named calibration quantities. It writes
+no numbers: the runtime prices the advice with its machine's calibration
+(`calibration/<machine>.cal`, [v3-costmodel.md](v3-costmodel.md)) and takes
+the cheapest admissible path ([fast-transfers.md](fast-transfers.md#cost-advice-and-the-direct-path)).
+
+```json
+{"version": 1,
+ "pattern": "contiguous" | "blocked" | "single_element" | "tiled" | "indexed_rows" | "symbolic",
+ "run_elements": Expr, "total_elements": Expr,
+ "source_bytes": Expr, "result_bytes": Expr,
+ "producer": {"kind": "none" | "layout" | "stages" | "indexed_rows",
+              "kernel": "read" | "convert_f32_f16" | "quantize" | "gather_f16" | null},
+ "receive": {"kernel": "dequant_s8_f32" | "dequant_s8_f16" | null},
+ "paths": [
+   {"name": "direct", "form": "serial", "wire": "source" | "result",
+    "intercept": "overhead.direct.<kind>_ms", "terms": [[rate, quantity], ...]},
+   {"name": "pipelined", "form": "overlapped", "wire": ..., "intercept": "overhead.dispatch.<kind>_ms",
+    "chunks": "pipeline.chunks_per_buffer", "terms": [...]},
+   {"name": "grouped", "form": "grouped", "wire": ..., "intercept": "overhead.group_ms",
+    "member_intercept": "overhead.group_member_ms", "terms": [...]}]}
+```
+
+- `pattern` is the host access pattern of the runtime's cost model
+  (`costmodel::classify`): the innermost unit-stride run `L` against the
+  total element count (`L ≥ total` contiguous, `L ≤ 1` single element,
+  `L ≥ 64` blocked, otherwise tiled). When `L` or the total is symbolic and
+  the verdict is not already decided, the pattern is `symbolic` and the
+  runtime classifies at bind time from `run_elements` and `total_elements`.
+- `source_bytes` is what the host producer reads (for an indexed plan, the
+  selected rows at the source width), `result_bytes` the logical result. A
+  path's `wire` names which of the two crosses the link.
+- A term is `[rate, quantity]`: `rate` ∈ `producer` (the calibration's
+  `cpu.t<threads>.<pattern>.<kernel>_gbps` family; `read` resolves to
+  `contig_read` or `gather_f32`, `quantize` to `quantize_pack` or
+  `gather_quantize`), `link` (`pcie.h2d_gbps`), `device` (`hbm.bw_gbps`
+  scaled by `recv.m.<receive kernel>` or, without one, `hbm.m.<pattern>`);
+  `quantity` ∈ `source_bytes`, `result_bytes`, `wire`. A producer kind of
+  `none` has no producer term; a `null` kernel has no measured rate, which
+  the runtime reports as a missing calibration key.
+- Forms: `serial` is `I + Σ t`, `overlapped` is `I + max t + (Σ t − max t) / n`
+  with `n` the calibration's chunk count, `grouped` is
+  `I_group + members × I_member + Σ t`.
+
+Admissible paths per plan kind (`<kind>` in the intercept keys):
+
+| Plan | `direct` | `pipelined` | `grouped` |
+| --- | --- | --- | --- |
+| layout-only, wire v0 (`layout`) | no | yes | yes |
+| typed, host stages (`stages`) | no | yes | yes |
+| typed, dequantize-first pure view: s8 → f32 without zero point, per tensor or per result axis 0, optionally then f32 → f16 (`dequant`) | yes: raw int8 copy + `receive.kernel` on the device | yes | yes |
+| indexed, wire v2 (`indexed_rows`) | yes: the row gather into a pinned wire + one copy | yes | yes |
+
+Interface 1 consumers reject interface 2 manifests by version; an interface 2
+consumer validates the block with exact keys and the fixed vocabulary above,
+and every expression may reference only the plan's symbols.
 
 ## Manifest schema 2 (typed plans, `--typed`)
 
@@ -219,6 +282,7 @@ either interface reads them.
 | typed fold bail | `--typed` | 2 | none | schema 1, `fold_unsupported` |
 | pre-folded `plan_result` / `typed_plan_result` | either | 2 | none | schema 1, `prefolded_input` |
 | verifier-invalid | either | 1 | none | none |
+| any success row | `--no-advice` | 0 | the same plan bytes | the same manifest with `advice: null` |
 
 Consumers: a runtime built before C3 (`libreloc 0.1`) rejects every wire v1
 blob at byte offset 4 with `unsupported wire format version` and knows no

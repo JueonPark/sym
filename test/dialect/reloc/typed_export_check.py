@@ -30,7 +30,7 @@ def run(root, source, expected=0, reason=None, *, typed=False):
         return
     meta = json.loads(manifest.read_text())
     assert meta["compiler"]["name"] == "sym-reloc-export"
-    assert meta["compiler"]["interface_version"] == 1
+    assert meta["compiler"]["interface_version"] == 2
     if expected == 2:
         # Unsupported manifests describe no plan: always schema 1 / wire 0.
         assert meta["schema_version"] == 1 and meta["wire_version"] == 0
@@ -58,7 +58,7 @@ def typed_keys(meta):
     return set(meta) == {
         "schema_version", "wire_version", "status", "compiler", "plan_count", "symbols",
         "logical_source", "logical_destination", "constraints", "stages", "fills",
-        "parameters", "plan_sha256", "input_sha256",
+        "parameters", "plan_sha256", "input_sha256", "advice",
     }
 
 

@@ -62,6 +62,15 @@ llvm::cl::opt<bool> noCanonicalize(
     "no-canonicalize",
     llvm::cl::desc("Skip plan canonicalization after folding (measurement "
                    "mode; never the default)."));
+// Cost advice (interface 2): every success manifest carries an `advice`
+// block -- the admissible execution paths and their cost structure over the
+// plan's symbols and named calibration quantities (docs/reloc-export.md
+// "Cost advice"). The attribution mode publishes `advice: null`; the
+// frontend's artifact cache keys on the flag (CompilerClient(advice=False)).
+llvm::cl::opt<bool>
+    noAdvice("no-advice",
+             llvm::cl::desc("Publish `advice: null` (attribution mode; never "
+                            "the default)."));
 
 // Output paths are exclusively created, never truncated. Only files owned by
 // this invocation are cleaned up, including when writing the second file fails.
@@ -129,7 +138,7 @@ json::Object baseManifest(StringRef status, int64_t schemaVersion = 1,
       {"wire_version", wireVersion},
       {"status", status},
       {"compiler", json::Object{{"name", "sym-reloc-export"},
-                                {"interface_version", 1},
+                                {"interface_version", 2},
                                 {"llvm_version", LLVM_VERSION_STRING},
                                 {"build_identity", SYM_EXPORT_BUILD_ID}}}};
 }
@@ -229,6 +238,183 @@ std::string digest(StringRef bytes) {
   auto hash = llvm::SHA256::hash(llvm::ArrayRef<uint8_t>(
       reinterpret_cast<const uint8_t *>(bytes.data()), bytes.size()));
   return llvm::toHex(hash, true);
+}
+
+//===----------------------------------------------------------------------===//
+// Cost advice (interface 2). The compiler states structure only: which paths
+// are admissible and which calibration quantities price them. Numbers come
+// from the runtime's calibration; nothing here is machine-specific.
+//===----------------------------------------------------------------------===//
+
+json::Value product(ArrayRef<Attribute> extents) {
+  if (extents.empty())
+    return json::Array{"const", 1};
+  json::Value out = expression(extents.front());
+  for (Attribute extent : extents.drop_front())
+    out = json::Array{"mul", std::move(out), expression(extent)};
+  return out;
+}
+
+int64_t widthOf(Type type) {
+  if (type.isF32())
+    return 4;
+  if (type.isF16() || type.isBF16())
+    return 2;
+  return 1; // int8: validateType admits nothing else
+}
+
+json::Value bytesOf(ArrayRef<Attribute> extents, Type element) {
+  return json::Array{"mul", product(extents),
+                     json::Array{"const", widthOf(element)}};
+}
+
+bool isConstantOne(Attribute attr) {
+  auto c = dyn_cast<sym::ConstantExprAttr>(attr);
+  return c && c.getValue() == 1;
+}
+
+struct RunInfo {
+  json::Value run = json::Array{"const", 1};
+  json::Value total = json::Array{"const", 1};
+  std::string pattern = "symbolic";
+};
+
+// Innermost coalesced unit-stride run of the layout, as the runtime's
+// classify(BoundPlan) sees it (Bind.cpp step 6, CostModel.cpp classify):
+// L >= total -> contiguous, L <= 1 -> single_element, L >= 64 -> blocked,
+// else tiled. With a symbolic total the verdict still follows when the run
+// is constant and an outer axis has a constant extent above one (then total
+// > run, which excludes contiguous); otherwise the runtime classifies at
+// bind from run_elements / total_elements.
+RunInfo runInfo(reloc::PlanAttr layout) {
+  RunInfo info;
+  ArrayRef<reloc::AxisInfoAttr> axes = layout.getAxes();
+  SmallVector<Attribute> extents;
+  for (reloc::AxisInfoAttr axis : axes)
+    extents.push_back(axis.getExtent());
+  info.total = product(extents);
+  if (axes.empty())
+    return info;
+  std::optional<int64_t> run = 1;
+  if (isConstantOne(axes.back().getSrcStride()) &&
+      isConstantOne(axes.back().getDstStride())) {
+    info.run = expression(axes.back().getExtent());
+    auto c = dyn_cast<sym::ConstantExprAttr>(axes.back().getExtent());
+    run = c ? std::optional<int64_t>(c.getValue()) : std::nullopt;
+  }
+  if (!run)
+    return info; // symbolic run: the runtime classifies at bind
+  std::optional<int64_t> total = 1;
+  bool outerAboveOne = false;
+  for (size_t i = 0; i < extents.size(); ++i) {
+    auto c = dyn_cast<sym::ConstantExprAttr>(extents[i]);
+    if (!c)
+      total = std::nullopt;
+    else if (total)
+      *total *= c.getValue();
+    if (c && c.getValue() > 1 && i + 1 < extents.size())
+      outerAboveOne = true;
+  }
+  if (total)
+    info.pattern = *run >= *total ? "contiguous"
+                   : *run <= 1    ? "single_element"
+                   : *run >= 64   ? "blocked"
+                                  : "tiled";
+  else if (*run <= 1)
+    info.pattern = "single_element";
+  else if (outerAboveOne)
+    info.pattern = *run >= 64 ? "blocked" : "tiled";
+  return info;
+}
+
+json::Value pathJson(StringRef name, StringRef form, StringRef wire,
+                     const std::string &intercept, bool producer) {
+  json::Array terms;
+  if (producer)
+    terms.push_back(json::Array{"producer", "source_bytes"});
+  terms.push_back(json::Array{"link", "wire"});
+  terms.push_back(json::Array{"device", "wire"});
+  json::Object out{{"name", name},
+                   {"form", form},
+                   {"wire", wire},
+                   {"intercept", intercept},
+                   {"terms", std::move(terms)}};
+  if (form == "overlapped")
+    out["chunks"] = "pipeline.chunks_per_buffer";
+  if (form == "grouped")
+    out["member_intercept"] = "overhead.group_member_ms";
+  return json::Value(std::move(out));
+}
+
+json::Value optionalString(const char *value) {
+  return value ? json::Value(value) : json::Value(nullptr);
+}
+
+// kind names the intercept keys: "layout" (wire v0), "stages" (typed, host
+// producer), "dequant" (typed dequantize-first pure view: raw copy + receive
+// kernel) or "indexed_rows" (wire v2). `direct` admits the direct path.
+json::Object adviceJson(const RunInfo &run, json::Value sourceBytes,
+                        json::Value resultBytes, StringRef producerKind,
+                        const char *producerKernel, const char *receiveKernel,
+                        const std::string &kind, bool direct, StringRef wire) {
+  const bool producer = producerKind != "none";
+  json::Array paths;
+  if (direct)
+    paths.push_back(pathJson("direct", "serial", wire,
+                             "overhead.direct." + kind + "_ms", producer));
+  paths.push_back(pathJson("pipelined", "overlapped", wire,
+                           "overhead.dispatch." + kind + "_ms", producer));
+  paths.push_back(
+      pathJson("grouped", "grouped", wire, "overhead.group_ms", producer));
+  return json::Object{
+      {"version", 1},
+      {"pattern", run.pattern},
+      {"run_elements", run.run},
+      {"total_elements", run.total},
+      {"source_bytes", std::move(sourceBytes)},
+      {"result_bytes", std::move(resultBytes)},
+      {"producer", json::Object{{"kind", producerKind},
+                                {"kernel", optionalString(producerKernel)}}},
+      {"receive", json::Object{{"kernel", optionalString(receiveKernel)}}},
+      {"paths", std::move(paths)}};
+}
+
+// The host producer kernel family of a typed stage list (the calibration's
+// cpu.t{t}.<pattern>.<kernel>_gbps rows): quantize beats an f16 cast; a
+// chain with neither (host dequantize, widening casts) has no measured rate.
+const char *producerKernelOf(reloc::TypedPlanAttr plan) {
+  bool quantize = false, narrow = false;
+  for (reloc::ValueStageAttr stage : plan.getStages()) {
+    if (stage.getTransform() == reloc::ValueTransform::Quantize)
+      quantize = true;
+    if (stage.getTransform() == reloc::ValueTransform::Cast &&
+        stage.getOutputType().isF16())
+      narrow = true;
+  }
+  return quantize ? "quantize" : narrow ? "convert_f32_f16" : nullptr;
+}
+
+// Dequantize-first pure views: stage 0 is an s8 -> f32 dequantize without a
+// zero point, per tensor or per result axis 0, the layout moves nothing, and
+// the only other stage is an f32 -> f16 cast. The direct path copies the raw
+// int8 wire and runs the fused device kernel.
+const char *receiveKernelOf(reloc::TypedPlanAttr plan) {
+  ArrayRef<reloc::ValueStageAttr> stages = plan.getStages();
+  if (stages.empty() || stages.size() > 2)
+    return nullptr;
+  reloc::ValueStageAttr first = stages.front();
+  if (first.getTransform() != reloc::ValueTransform::Dequantize ||
+      first.getZeroPoint() || !first.getInputType().isSignlessInteger(8) ||
+      !first.getOutputType().isF32() || first.getAxis() > 0 ||
+      !reloc::isPureView(plan.getLayout()))
+    return nullptr;
+  if (stages.size() == 1)
+    return "dequant_s8_f32";
+  reloc::ValueStageAttr second = stages.back();
+  if (second.getTransform() != reloc::ValueTransform::Cast ||
+      !second.getOutputType().isF16())
+    return nullptr;
+  return "dequant_s8_f16";
 }
 
 //===----------------------------------------------------------------------===//
@@ -586,6 +772,20 @@ int main(int argc, char **argv) {
                      {"indices", descriptor(cast<sym::SymbolicTensorType>(
                                      function.getArgument(1).getType()))}};
     meta["constraints"] = json::Object{{"divisibility", json::Array{}}};
+    if (noAdvice) {
+      meta["advice"] = nullptr;
+    } else {
+      // The producer gathers the selected rows at the source width.
+      ArrayRef<Attribute> selected = destination.getShape();
+      RunInfo run;
+      run.pattern = "indexed_rows";
+      run.total = product(selected);
+      meta["advice"] = adviceJson(
+          run, bytesOf(selected, source.getElementType()),
+          bytesOf(selected, destination.getElementType()), "indexed_rows",
+          destination.getElementType().isF16() ? "gather_f16" : nullptr,
+          nullptr, "indexed_rows", /*direct=*/true, "result");
+    }
     meta["plan_sha256"] = digest(blob);
     meta["input_sha256"] = inputHash;
     return outputs.publish(std::move(meta), blob) ? 0 : 1;
@@ -640,6 +840,29 @@ int main(int argc, char **argv) {
     meta["stages"] = std::move(stages);
     meta["fills"] = std::move(fills);
     meta["parameters"] = parameterDeclarations(typedResult.getPlan());
+  }
+  json::Value sourceBytes = bytesOf(source.getShape(), source.getElementType());
+  json::Value resultBytes =
+      bytesOf(destination.getShape(), destination.getElementType());
+  if (noAdvice) {
+    meta["advice"] = nullptr;
+  } else if (typedResult) {
+    reloc::TypedPlanAttr plan = typedResult.getPlan();
+    RunInfo run = runInfo(plan.getLayout());
+    if (const char *receive = receiveKernelOf(plan))
+      meta["advice"] = adviceJson(
+          run, std::move(sourceBytes), std::move(resultBytes), "none", nullptr,
+          receive, "dequant", /*direct=*/true, "source");
+    else
+      meta["advice"] =
+          adviceJson(run, std::move(sourceBytes), std::move(resultBytes),
+                     "stages", producerKernelOf(plan), nullptr, "stages",
+                     /*direct=*/false, "result");
+  } else {
+    meta["advice"] =
+        adviceJson(runInfo(result.getPlan()), std::move(sourceBytes),
+                   std::move(resultBytes), "layout", "read", nullptr, "layout",
+                   /*direct=*/false, "result");
   }
   meta["plan_sha256"] = digest(blob);
   meta["input_sha256"] = inputHash;

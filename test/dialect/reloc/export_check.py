@@ -43,7 +43,7 @@ def run(root, source, expected=0, reason=None):
         pos += size
     assert meta["symbols"] == symbols
     assert meta["compiler"]["name"] == "sym-reloc-export"
-    assert meta["compiler"]["interface_version"] == 1
+    assert meta["compiler"]["interface_version"] == 2
     assert meta["compiler"]["llvm_version"] and meta["compiler"]["build_identity"]
     return blob, manifest.read_bytes(), meta
 
@@ -62,6 +62,9 @@ with tempfile.TemporaryDirectory() as tmp:
     assert meta["logical_destination"]["shape"] == [["const", 64], ["floordiv", ["symbol", "s0"], 64]]
     assert meta["logical_destination"]["strides"] == [["floordiv", ["symbol", "s0"], 64], ["const", 1]]
     assert meta["constraints"] == {"divisibility": [{"expr": ["symbol", "s0"], "divisor": 64}]}
+    # Cost advice (interface 2): a layout plan admits the pipelined and grouped paths.
+    assert meta["advice"]["pattern"] in ("symbolic", "contiguous", "blocked", "single_element", "tiled")
+    assert [p["name"] for p in meta["advice"]["paths"]] == ["pipelined", "grouped"]
     identity = function("4, 4", "4, 4", '%0 = reloc.transpose %t perm [0, 1] : !sym.tensor<[4, 4], f32> -> !sym.tensor<[4, 4], f32>\nreturn %0 : !sym.tensor<[4, 4], f32>')
     ident = run(root / "identity", identity)[2]
     assert ident["logical_source"]["shape"] == ident["logical_destination"]["shape"] == [["const", 4], ["const", 4]]
