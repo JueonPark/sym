@@ -153,3 +153,41 @@ def test_closed_owner_invalidates_the_handle(compiler, cuda_device):
     del program
     with pytest.raises(RuntimeError, match='unknown or closed'):
         fast_ops.lookup_program(handle)
+
+
+@pytest.mark.gpu
+@pytest.mark.parametrize('kind', ['typed', 'indexed', 'pooled'])
+def test_program_collection_releases_registry_and_owned_storage(fast, kind):
+    import gc
+    import weakref
+    before = len(fast_ops.PROGRAMS)
+    table = torch.randn(16, 64)
+    table_ref = weakref.ref(table)
+    if kind == 'typed':
+        program = fast.typed(dlrm_recipe(), torch.randn(26, 3, 64))
+    elif kind == 'indexed':
+        program = fast.indexed(gather_recipe())
+    else:
+        program = fast.pooled([table])
+    handle = program.handle
+    assert fast_ops.lookup_program(handle) is program
+    del program, table
+    gc.collect()
+    assert len(fast_ops.PROGRAMS) == before
+    assert table_ref() is None
+    with pytest.raises(RuntimeError, match='unknown or closed'):
+        fast_ops.lookup_program(handle)
+
+
+@pytest.mark.gpu
+def test_owner_close_removes_live_program_registrations(fast):
+    before = len(fast_ops.PROGRAMS)
+    programs = [fast.typed(dlrm_recipe(), torch.randn(26, 3, 64)),
+                fast.indexed(gather_recipe()), fast.pooled([torch.randn(16, 64)])]
+    assert len(fast_ops.PROGRAMS) == before + 3
+    fast.close()
+    fast.close()
+    assert len(fast_ops.PROGRAMS) == before
+    for program in programs:
+        with pytest.raises(RuntimeError, match='unknown or closed'):
+            fast_ops.lookup_program(program.handle)

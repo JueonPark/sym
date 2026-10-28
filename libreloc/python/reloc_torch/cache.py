@@ -15,6 +15,7 @@ from dataclasses import dataclass
 import itertools
 import secrets
 import threading
+import weakref
 
 from .artifact import UnsupportedRecipe
 
@@ -166,8 +167,11 @@ class Registration:
 class HandleRegistry:
     """Thread-safe process-local map from live handle to execution entry."""
 
-    def __init__(self):
-        self._entries = {}
+    def __init__(self, *, weak_entries=False):
+        # Backend graphs own registrations, so their entries remain strong.
+        # Fast programs own their own registration and need weak entries to
+        # avoid a registry -> program -> registration ownership cycle.
+        self._entries = weakref.WeakValueDictionary() if weak_entries else {}
         # Reentrant: a Registration finalizer may run inside a cyclic-GC pass
         # triggered while this thread already holds the lock in register().
         self._lock = threading.RLock()

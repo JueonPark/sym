@@ -35,6 +35,7 @@ from __future__ import annotations
 from collections import deque
 import os
 from threading import RLock
+from weakref import WeakSet
 
 import pyreloc
 
@@ -81,7 +82,7 @@ class _Program:
 
     __slots__ = ("owner", "compiled", "bindings", "signature", "signature_dtype", "direction", "destination",
                  "_view_kind", "_view_device", "_out_dtype", "_out_device", "handle", "_registration",
-                 "_op_args")
+                 "_op_args", "__weakref__")
 
     def _init_common(self, owner, compiled, source, bindings):
         import torch
@@ -273,7 +274,7 @@ class _OneShot:
 class IndexedProgram:
     """An IndexSelect (+ optional cast) H2D recipe; indices bind per call."""
 
-    __slots__ = ("owner", "compiled", "_specs", "handle", "_registration", "_op_args")
+    __slots__ = ("owner", "compiled", "_specs", "handle", "_registration", "_op_args", "__weakref__")
 
     def __init__(self, owner, compiled):
         import torch
@@ -418,7 +419,7 @@ class PooledProgram:
     float32 in index order; the cast is IEEE round-to-nearest-even.
     """
 
-    __slots__ = ("owner", "tables", "dim", "dtype", "_views", "_out_dtype", "handle", "_registration")
+    __slots__ = ("owner", "tables", "dim", "dtype", "_views", "_out_dtype", "handle", "_registration", "__weakref__")
 
     def __init__(self, owner, tables, *, dtype="float16"):
         import torch
@@ -598,6 +599,7 @@ class FastTransfers:
         self._compiled = {}
         self._pid, self._lock = os.getpid(), RLock()
         self._closed = False
+        self._registrations = WeakSet()
         self._resources = TransferResources(
             max_typed_retained_bytes=max_scratch_bytes * contexts, max_typed_live_bytes=max_scratch_bytes * contexts,
             max_typed_background_workers=max(1, gather_threads - 1) * contexts, max_typed_streams=contexts,
@@ -640,6 +642,9 @@ class FastTransfers:
             if self._closed:
                 return
             self._closed = True
+            for registration in tuple(self._registrations):
+                registration.release()
+            self._registrations.clear()
             try:
                 self._retire(block=True)
             finally:

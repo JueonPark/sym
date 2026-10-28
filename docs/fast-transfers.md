@@ -17,6 +17,12 @@ Its workload speedups do not by themselves establish an AST-folding gain.
 The pooled EmbeddingBag producer is synthesized natively, outside the recipe
 compiler, and changes the CPU pooling implementation while preserving its math.
 
+Fast custom ops are opaque nodes to Inductor: surrounding compute can be
+compiled without a graph break, but Inductor does not fuse through their bodies.
+Keep the prepared program and its owner alive while executing a captured graph.
+The handle registry holds programs weakly; program collection or owner `close()`
+releases the handle. A stale captured handle raises an error at execution.
+
 - A program is bound to a **shape signature** (shape, strides, dtype, device
   type) and, for typed recipes, to **parameter values** snapshotted at
   preparation. Different shapes need different programs; changed parameters

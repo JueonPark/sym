@@ -43,7 +43,7 @@ POOLED_SCHEMA = (
 # Prepared programs by handle. Separate from reloc_torch.cache.REGISTRY (the
 # backend's execution entries): a program is a per-shape object owned by a
 # FastTransfers, and lookup() refuses it once that owner closed.
-PROGRAMS = HandleRegistry()
+PROGRAMS = HandleRegistry(weak_entries=True)
 
 
 def lookup_program(handle):
@@ -111,7 +111,12 @@ POOLED_OP = torch.ops.reloc_torch.fast_pooled.default
 
 def register(program):
     """Register a prepared program; returns the Registration that owns the handle."""
-    return PROGRAMS.register(program)
+    owner = program.owner
+    with owner._lock:
+        owner._check_open()
+        registration = PROGRAMS.register(program)
+        owner._registrations.add(registration)
+        return registration
 
 
 __all__ = ("PROGRAMS", "TYPED_OP", "INDEXED_OP", "POOLED_OP", "TYPED_QUALIFIED_NAME", "TYPED_SCHEMA",
