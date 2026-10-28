@@ -333,6 +333,12 @@ cannot serve as the folding-off arm of that experiment.
 
 ## Half-precision compute
 
+This extends supported precision and uses runtime recognition of a
+dequantize-plus-cast stage sequence to call a handwritten fused CUDA kernel.
+It is useful kernel lowering, not new evidence isolating AST optimization.
+These FP16 rounds have no `torch_kernels` arm, so the FP32 ablation's numerical
+attribution cannot be carried over to them.
+
 Reviewer question on #254: the offload regimes computed in float32 with TF32
 off, whereas real inference runs f16/bf16, where the dequantized weight is
 half the bytes and the GEMMs run on tensor cores; Sym had no s8 → f16 stage.
