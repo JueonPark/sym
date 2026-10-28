@@ -333,10 +333,18 @@ cannot serve as the folding-off arm of that experiment.
 
 ## When the runtime pays: cost advice
 
-#256's ablation (above) found that the plan/runtime layer costs 0.03–0.36 ms
-against the kernel-only control in five regimes, and the previous section
-put the compiler's share at zero. This tree gives the compiler a decision
-whose effect can be measured. `sym-reloc-export` now writes a machine-independent
+**Experimental, opt-in:** the historical registration below fails its
+never-lose criteria, including decode 19.986 → 20.767 ms. The executable-path
+selection defect is fixed in the current source, but no new CUDA benchmark
+has qualified that fix or resolved the streaming regression. Keep the
+unadvised runtime as the comparison (`FastTransfers(advice=False)`).
+
+
+#256's ablation (above) found a 0.03–0.36 ms net execution overhead against
+the optimized-kernel control in five regimes. The previous section did not
+establish an additional canonicalization gain; it did not switch off folding.
+This tree adds a runtime path-selection policy whose effect can be measured.
+`sym-reloc-export` now writes a machine-independent
 `advice` block into every plan ([reloc-export.md](../../docs/reloc-export.md#cost-advice-advice-interface-2)).
 The block lists the execution paths the plan admits and their cost terms
 over the plan's free symbols, naming calibration keys rather than numbers.
@@ -370,7 +378,7 @@ round medians [min–max round median]. Every output was bit-exact against
 eager Torch, there were no warm compilation callbacks, and the isolation
 audit was clean, including the CI runner's CPU-bound jobs (`isolation.py`).
 
-| Regime | `torch` | `torch_kernels` | `sym_fast_noadvice` | `sym_fast` | advice share | kernel share | path the advice chose |
+| Regime | `torch` | `torch_kernels` | `sym_fast_noadvice` | `sym_fast` | policy contrast | kernel contrast | path the advice chose |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 | DLRM 512 | 3.568 | 1.796 [1.785–1.803] | 2.307 [2.256–2.371] | 1.967 [1.967–1.988] | +0.340 | +1.771 | direct |
 | DLRM 2048 | 7.883 | 4.314 [4.314–4.334] | 4.851 [4.829–4.856] | 4.515 [4.514–4.533] | +0.335 | +3.569 | direct |
@@ -381,7 +389,9 @@ audit was clean, including the CI runner's CPU-bound jobs (`isolation.py`).
 | MoE sparse | 3.078 | 2.832 [2.828–2.845] | 2.919 [2.907–2.925] | 2.658 [2.654–2.664] | +0.261 | +0.246 | weights direct |
 | MoE dense | 10.376 | 9.937 [9.914–9.949] | 9.614 [9.566–9.690] | 8.690 [8.623–8.701] | +0.923 | +0.439 | weights direct |
 
-The advice share is `sym_fast_noadvice − sym_fast`. The kernel share is
+The policy contrast is `sym_fast_noadvice − sym_fast`; it measures the value
+of path selection, not whether its structural information must originate in
+the compiler. DLRM advice is constructed in Python. The kernel contrast is
 `torch − torch_kernels`, as in the ablation. Both are from these rounds,
 from `ablation.py`, in `attribution.csv`. Positive values are milliseconds
 saved.
@@ -453,9 +463,10 @@ misclassified cells are:
   This is a selection-rule defect, not a pricing error. The model priced a
   split cheapest (2.001 ms, against 2.017 direct and 2.101 grouped at
   23,170 columns). The runtime never splits a caller's group, so
-  `select_group` falls back to grouped. It should fall back to the cheaper
-  executable path, direct, which the model itself priced 0.08 ms below
-  grouped and which measured 0.06 ms faster.
+  `select_group` fell back to grouped on the measured revision. The current
+  source instead ranks only executable paths, choosing direct in this case;
+  the model priced it 0.08 ms below grouped and the historical sweep measured
+  it 0.06 ms faster. The stored sweep has not been rerun after this fix.
 
 Three of the four are intercept cells, as registered. The criterion is
 loose, though: it flags 15 of the 20 cells, so it does not separate model
@@ -479,16 +490,17 @@ not a measurement.
 - The bars were committed before the model took its final form (in-pipeline
   rates, per-kind member intercepts). They were not changed after the data.
 
-None of the three is fixed on this tree. Fixing them takes new evidence
-under a new registration:
+The split-selection logic is now fixed and regression-tested. The pooled
+operand floor and streaming model remain open; validating improvements takes
+new evidence under a new registration:
 
 - **The pooled operand floor:** validate once per tensor identity and
   version, or validate in the native binding.
 - **The streaming reversal:** price groups submitted into a window that
   already holds in-flight work in a throughput form (intercept hidden,
   overlapped terms), or give the direct weight path a second stream.
-- **The split fallback:** when a split is priced cheapest, run the cheapest
-  path that can execute.
+- **Re-evaluate the selector fix:** rerun the sweep and end-to-end rounds;
+  the old failure counts are retained until replacement measurements exist.
 
 Validation on `4461fd0` passed on every suite:
 

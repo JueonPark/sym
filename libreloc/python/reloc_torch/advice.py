@@ -302,11 +302,15 @@ def select(calibration, resolved, *, direct_available, advice_enabled=True):
     if calibration is None:
         return Decision("pipelined", "no_calibration", {})
     predicted = {c["name"]: c["ms"] for c in _price(calibration, resolved.paths, 1)}
-    candidates = [name for name in ("direct", "pipelined") if name in predicted]
+    candidates = [name for name in ("direct", "pipelined") if name in predicted
+                  and (name != "direct" or (direct_available and resolved.direct))]
+    if not candidates:
+        return Decision("pipelined", "advice_absent", predicted)
     if any(predicted[name] is None for name in candidates):
         return Decision("pipelined", "advice_missing_keys", predicted)
     best = min(candidates, key=lambda name: predicted[name])
-    if best == "direct" and not direct_available:
+    if (not direct_available and predicted.get("direct") is not None
+            and predicted["direct"] < predicted[best]):
         return Decision("pipelined", "advice_no_native_helper", predicted)
     return Decision(best, f"advice_prefers_{best}", predicted)
 
@@ -332,9 +336,8 @@ def _one_submission(calibration, paths):
 def select_group(calibration, members, *, direct_available, advice_enabled=True):
     """Group context: one grouped submission, against every member taken
     direct, or every member through its own pipelined dispatch (split). The
-    runtime never splits a group the caller submitted: when split prices
-    cheapest the group still runs and the reason (advice_prefers_split) is
-    advisory."""
+    runtime never splits a caller's group. Split costs are diagnostic only;
+    selection compares the paths that can actually execute this submission."""
     if not advice_enabled:
         return Decision("grouped", "advice_disabled", {})
     if not members or any(member is None for member in members):
@@ -350,18 +353,16 @@ def select_group(calibration, members, *, direct_available, advice_enabled=True)
                  "pipelined": 0.0}
     for member in members:
         # Split: every member as a submission of its own.
-        value = {c["name"]: c["ms"] for c in _price(calibration, [member.path("pipelined")], 1)}["pipelined"]
+        path = member.path("pipelined")
+        value = None if path is None else _price(calibration, [path], 1)[0]["ms"]
         predicted["pipelined"] = None if value is None or predicted["pipelined"] is None else predicted["pipelined"] + value
-    if predicted["grouped"] is None or predicted["pipelined"] is None:
+    candidates = ["grouped"]
+    if direct_available and all(member.direct for member in members) and all(path is not None for path in direct):
+        candidates.append("direct")
+    if any(predicted[name] is None for name in candidates):
         return Decision("grouped", "advice_missing_keys", predicted)
-    ranked = sorted((name for name in predicted if predicted[name] is not None), key=lambda name: predicted[name])
-    best = ranked[0]
-    if best == "direct":
-        if direct_available:
-            return Decision("direct", "advice_prefers_direct", predicted)
-        best = ranked[1]
-        if best == "grouped":
-            return Decision("grouped", "advice_no_native_helper", predicted)
-    if best == "pipelined":
-        return Decision("grouped", "advice_prefers_split", predicted)
-    return Decision("grouped", "advice_prefers_grouped", predicted)
+    best = min(candidates, key=lambda name: predicted[name])
+    if (not direct_available and predicted["direct"] is not None
+            and predicted["direct"] < predicted[best]):
+        return Decision("grouped", "advice_no_native_helper", predicted)
+    return Decision(best, f"advice_prefers_{best}", predicted)

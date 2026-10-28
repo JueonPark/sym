@@ -123,6 +123,12 @@ matter (bench/beat_torch).
 
 ## Cost advice and the direct path
 
+This is an experimental opt-in policy, enabled by supplying calibration
+(including `$RELOC_CALIBRATION`). It fails the registered performance criteria
+on the recorded workload suite, with a decode regression. Use `advice=False`
+to retain the unadvised runtime even when calibration is available. Fixing
+candidate selection does not establish a streaming-performance improvement.
+
 Every plan the compiler exports carries a cost advice
 ([reloc-export.md](reloc-export.md#cost-advice-advice-interface-2)): the
 execution paths the plan admits and their cost structure in terms of named
@@ -143,10 +149,9 @@ and runs the cheapest admissible path. Decisions are memoized per
 
 Placement reasons (in each report's `placement_reason` and counted in
 `stats()["advice"]`): `advice_prefers_direct`, `advice_prefers_pipelined`,
-`advice_prefers_grouped`, `advice_prefers_split` (a group the model priced
-cheaper as separate calls; the runtime never splits the caller's group, it
-records the advice), `advice_missing_keys` (the calibration lacks a key the
-advice names, for instance an uncalibrated machine; the dispatcher runs),
+`advice_prefers_grouped`, `advice_missing_keys` (the calibration lacks a key
+needed to compare executable paths, for instance an uncalibrated machine;
+the dispatcher runs),
 `advice_no_native_helper` (the direct path priced cheapest but the libtorch
 helper is not built), `advice_absent` (an artifact exported with
 `--no-advice`), `advice_disabled` (`FastTransfers(advice=False)`),
@@ -154,7 +159,9 @@ helper is not built), `advice_absent` (an artifact exported with
 (see below). The dispatcher's
 own row reason stays under `row_reason`; every report carries the priced
 paths as `predicted_ms` (milliseconds, `None` for a path the calibration
-cannot price).
+cannot price). For a group, `predicted_ms["pipelined"]` is the hypothetical
+split cost; split is never an execution candidate. A missing or lower split
+cost cannot suppress selection of a cheaper executable direct path.
 
 The direct path writes into wires owned by the `FastTransfers` instance,
 pinned unless the owner stages pageable memory (`pinning="pageable"`): at
@@ -179,7 +186,7 @@ weights take it as `FastWeights` groups.
 
 The advice prices one call's completed latency in isolation. The evidence
 ([bench/beat_torch](../bench/beat_torch/README.md#when-the-runtime-pays-cost-advice))
-shows three limits, none fixed yet:
+shows two remaining limits:
 
 - **Weight groups streamed through a prefetch window.** GPT decode streams
   them this way, and there the dispatcher is faster than the direct path
@@ -189,8 +196,6 @@ shows three limits, none fixed yet:
 - **The pooled direct path's Python floor.** It is about 260 µs per call
   for 26 tables, mostly per-operand validation. That is well above the
   30–50 µs of a single-operand gather.
-- **`advice_prefers_split`.** The group runs grouped even when the model
-  priced direct below grouped.
 
 ## Attribution knobs and kernel-only entry points
 

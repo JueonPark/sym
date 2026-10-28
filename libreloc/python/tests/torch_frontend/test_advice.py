@@ -211,11 +211,11 @@ def test_select_group_keeps_the_callers_group(compiler, calibration, tmp_path):
     assert decision.path == 'grouped' and decision.reason == 'advice_prefers_grouped'
     assert decision.predicted['direct'] is None and decision.predicted['grouped'] < decision.predicted['pipelined']
     # An absurd per-member intercept: split is priced cheaper, the group is
-    # still what runs, and the reason says so.
+    # still the only executable path; split is diagnostic, not a candidate.
     path = tmp_path / 'split.cal'
     path.write_text(SYNTH.replace('overhead.group_member.layout_ms 0.01', 'overhead.group_member.layout_ms 5'))
     split = select_group(pyreloc.load_calibration(str(path)), members, direct_available=True)
-    assert split.path == 'grouped' and split.reason == 'advice_prefers_split'
+    assert split.path == 'grouped' and split.reason == 'advice_prefers_grouped'
     # Four weights: every member admits the direct kernels, which beat the
     # group's intercept at this size.
     weights = compiler.compile(weight_recipe('float16'))
@@ -227,6 +227,73 @@ def test_select_group_keeps_the_callers_group(compiler, calibration, tmp_path):
     # A mixed group (weights and a layout member) prices but never goes direct.
     mixed = select_group(calibration, four + [members[0]], direct_available=True)
     assert mixed.predicted['direct'] is None and mixed.path == 'grouped'
+
+
+@pytest.mark.parametrize('split', ['cheapest', 'unpriced', 'absent'])
+def test_group_selects_direct_when_split_cannot_execute(compiler, tmp_path, split):
+    import pyreloc
+    from reloc_torch.advice import resolve, select_group
+    text = SYNTH.replace('overhead.dispatch.dequant_ms 0.25', 'overhead.dispatch.dequant_ms 0')
+    if split == 'unpriced':
+        text = text.replace('overhead.dispatch.dequant_ms 0\n', '')
+    path = tmp_path / 'split.cal'
+    path.write_text(text)
+    resolved = resolve(compiler.compile(weight_recipe()).advice, {'out': 1, 'in': 1}, 8)
+    if split == 'absent':
+        resolved = dataclasses.replace(resolved, paths=tuple(p for p in resolved.paths if p['name'] != 'pipelined'))
+    decision = select_group(pyreloc.load_calibration(str(path)), [resolved] * 4, direct_available=True)
+    if split == 'cheapest':
+        assert decision.predicted['pipelined'] < decision.predicted['direct'] < decision.predicted['grouped']
+    else:
+        assert decision.predicted['pipelined'] is None
+    assert decision.path == 'direct' and decision.reason == 'advice_prefers_direct'
+
+
+def test_single_selection_ignores_unavailable_direct_calibration(compiler, tmp_path):
+    import pyreloc
+    from reloc_torch.advice import resolve, select
+    path = tmp_path / 'no-direct.cal'
+    path.write_text(SYNTH.replace('overhead.direct.indexed_rows_ms 0.05\n', ''))
+    resolved = resolve(compiler.compile(gather_recipe()).advice, {'s0': 50, 'k': 10}, 8)
+    decision = select(pyreloc.load_calibration(str(path)), resolved, direct_available=False)
+    assert decision.path == 'pipelined' and decision.reason == 'advice_prefers_pipelined'
+
+
+def test_advised_direct_submission_rejects_wrong_signature_before_execution():
+    from types import SimpleNamespace
+    from reloc_torch.advice import Decision
+    from reloc_torch.fast import FastTransfers, _WireEntry, _signature
+    source = torch.zeros(2, 3, dtype=torch.int8)
+    program = object.__new__(_WireEntry)
+    program.signature, program.resolved = _signature(source), None
+
+    def unexpected_execution(*args):
+        pytest.fail('invalid input reached direct execution')
+
+    owner = SimpleNamespace(_check_open=lambda: None, _retire=lambda: None,
+                            _advise_group=lambda members: Decision('direct', 'advice_prefers_direct', {}),
+                            _submit_direct_weights=unexpected_execution)
+    with pytest.raises(ValueError, match='prepared program'):
+        FastTransfers.submit(owner, [(program, source.reshape(3, 2))])
+
+
+def test_direct_completion_wait_after_poll_records_each_consumer(monkeypatch):
+    from types import SimpleNamespace
+    from reloc_torch.fast import _DirectCompletion
+    recorded, reports = [], []
+    # CUDA is the external boundary; exercise the completion's real state
+    # machine, with recording stand-ins for stream/allocator operations.
+    owner = SimpleNamespace(device=torch.device('cuda:0'), _record=reports.append)
+    event = SimpleNamespace(query=lambda: True)
+    output = SimpleNamespace(record_stream=recorded.append)
+    completion = _DirectCompletion(owner, [output], event, {'implementation': 'direct'})
+    assert completion.done()
+    first, second = object(), object()
+    for stream in (first, second):
+        monkeypatch.setattr(torch.cuda, 'current_stream', lambda device, stream=stream: stream)
+        assert completion.wait() == [output]
+    assert recorded == [first, second]
+    assert len(reports) == 1
 
 
 def test_price_rejects_nonpositive_rate(compiler, tmp_path):
@@ -478,7 +545,7 @@ def test_weights_direct_group_is_bit_exact(advised, cuda_device, dtype):
 
 
 @pytest.mark.gpu
-def test_kv_groups_stay_grouped_with_an_advisory_reason(advised, cuda_device, tmp_path):
+def test_kv_groups_select_the_only_executable_path(advised, cuda_device, tmp_path):
     import pyreloc
     from reloc_torch.fast import KVCacheSwap
     swap = KVCacheSwap(advised, 16, 64)
@@ -491,20 +558,20 @@ def test_kv_groups_stay_grouped_with_an_advisory_reason(advised, cuda_device, tm
     assert advised.stats()['advice'] == {'advice_prefers_grouped': 2}
     assert advised.stats()['dispatches'] == {'layout_cuda': 16}
     # A calibration pricing the per-member intercept absurdly high: separate
-    # calls are cheaper on paper, the group still runs, the reason says so.
+    # calls are cheaper on paper, but grouped is the only executable path.
     path = tmp_path / 'split.cal'
     path.write_text(SYNTH.replace('overhead.group_member.layout_ms 0.01', 'overhead.group_member.layout_ms 50'))
     advised.calibration = pyreloc.load_calibration(str(path))
     swap.restore(swap.evict(caches))
     swap.drain()
-    assert advised.stats()['advice'] == {'advice_prefers_grouped': 2, 'advice_prefers_split': 2}
+    assert advised.stats()['advice'] == {'advice_prefers_grouped': 4}
     assert advised.stats()['dispatches'] == {'layout_cuda': 32}
 
 
 @pytest.mark.gpu
 def test_mixed_group_stays_grouped(advised, cuda_device):
     """A direct-capable weight and a layout member in one submit: the runtime
-    never splits the caller's group; the native group runs with an advisory reason."""
+    never splits the caller's group; the native group is the executable path."""
     from reloc_torch import PreparedWireWeights
     from reloc_torch.fast import KVCacheSwap, _WireEntry
     q = torch.randint(-127, 128, (64, 96), dtype=torch.int8)
@@ -521,7 +588,7 @@ def test_mixed_group_stays_grouped(advised, cuda_device):
         w, k = completion.wait()
         assert torch.equal(w, (q.to(cuda_device).float() * scale.to(cuda_device)).t().contiguous())
         assert torch.equal(k, cache.transpose(0, 1).contiguous().to(cuda_device))
-        assert completion.report['placement_reason'] in ('advice_prefers_grouped', 'advice_prefers_split')
+        assert completion.report['placement_reason'] == 'advice_prefers_grouped'
         assert completion.report['predicted_ms']['direct'] is None
         dispatches = advised.stats()['dispatches']
         assert 'direct' not in dispatches and dispatches.get('cpu_stages_cuda_stages@0') == 1

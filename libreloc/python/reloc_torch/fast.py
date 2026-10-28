@@ -802,13 +802,13 @@ class _DirectCompletion:
 
     def wait(self):
         """Host completion; the outputs may be used on the current stream."""
+        import torch
         if not self._done:
-            import torch
             self._event.synchronize()
             self._finish()
-            stream = torch.cuda.current_stream(self._owner.device)
-            for tensor in self._outputs:
-                tensor.record_stream(stream)
+        stream = torch.cuda.current_stream(self._owner.device)
+        for tensor in self._outputs:
+            tensor.record_stream(stream)
         return self._outputs
 
     def wait_stream(self, stream=None):
@@ -1190,6 +1190,11 @@ class FastTransfers:
         items = list(items)
         if not 1 <= len(items) <= 256:
             raise ValueError("a group holds between 1 and 256 transfers")
+        # Validate before either the direct or native dispatcher branch.
+        for program, source in items:
+            if not isinstance(program, (TypedProgram, LayoutProgram, _OneShot)):
+                raise TypeError("group members are typed or layout programs")
+            program.check(source)
         if decision is None:
             decision = self._advise_group([_group_advice(program) for program, _ in items])
             if decision.path == "direct":
@@ -1199,9 +1204,6 @@ class FastTransfers:
         native_views = _native_views is not None
         with torch.cuda.stream(self._stream):
             for position, (program, source) in enumerate(items):
-                if not isinstance(program, (TypedProgram, LayoutProgram, _OneShot)):
-                    raise TypeError("group members are typed or layout programs")
-                program.check(source)
                 out = program.allocate(pin=pin_outputs) if outputs is None else outputs[position]
                 host |= program.direction == "d2h"
                 sources.append(source)
