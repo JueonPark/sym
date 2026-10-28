@@ -254,3 +254,93 @@ def test_native_view_helper_agrees_with_python_descriptors(cuda_device):
         python.base, python.offset_bytes, python.extents, python.strides)
     with pytest.raises(TypeError):
         _native_views.view_from_tensor([1, 2])
+
+
+@pytest.mark.gpu
+@pytest.mark.parametrize('native', [False, True])
+@pytest.mark.parametrize('entry', ['typed', 'typed_group', 'layout_group'])
+@pytest.mark.parametrize('mismatch', ['shape', 'stride'])
+def test_prepared_program_rejects_same_size_wrong_signature(fast, monkeypatch, native, entry, mismatch):
+    import reloc_torch.fast as module
+    if native and module._native_views is None:
+        pytest.skip('built without RELOC_ENABLE_TORCH_EXT')
+    if not native:
+        monkeypatch.setattr(module, '_native_views', None)
+    source = torch.arange(6, dtype=torch.float32).reshape(2, 3)
+    ops = (Transpose((1, 0)),)
+    dtype = 'float32'
+    if entry != 'layout_group':
+        ops += (Cast('float16', 'ieee_rne'),)
+        dtype = 'float16'
+    recipe = Recipe(spec((Const(2), Const(3)), 'float32'), ops,
+                    spec((Const(3), Const(2)), dtype), 'h2d')
+    program = fast.layout(recipe, source) if entry == 'layout_group' else fast.typed(recipe, source)
+    wrong = source.reshape(3, 2) if mismatch == 'shape' else source.t().contiguous().t()
+    with pytest.raises(ValueError, match='prepared program'):
+        if entry == 'typed':
+            program.execute(wrong)
+        else:
+            fast.submit([(program, wrong)]).wait()
+    assert fast.stats()['logical_transfers'] == 0
+
+
+@pytest.mark.gpu
+@pytest.mark.parametrize('mixed', [False, True])
+def test_wait_after_done_records_every_consumer_stream(fast, cuda_device, monkeypatch, mixed):
+    source = torch.randn(26, 7, 64)
+    program = fast.typed(dlrm_recipe(), source)
+    items = [(program, source)]
+    if mixed:
+        swap = KVCacheSwap(fast, 4, 8)
+        cache = torch.randn(4, 5, 8, device=cuda_device)
+        items.append((swap._program(swap._evict_recipe, cache), cache))
+    completion = fast.submit(items)
+    torch.cuda.synchronize(cuda_device)
+    assert completion.done()
+    recorded = []
+    record_stream = torch.Tensor.record_stream
+
+    def record(tensor, stream):
+        recorded.append((tensor, stream))
+        return record_stream(tensor, stream)
+
+    monkeypatch.setattr(torch.Tensor, 'record_stream', record)
+    streams = [torch.cuda.Stream(device=cuda_device) for _ in range(2)]
+    for stream in streams:
+        with torch.cuda.stream(stream):
+            output = completion.wait()[0]
+            assert recorded and recorded[-1] == (output, stream)
+            assert torch.equal(output, source.transpose(0, 1).to(cuda_device, dtype=torch.float16))
+    assert len(recorded) == 2
+    assert fast.stats()['groups'] == 1
+
+
+@pytest.mark.parametrize('host', [False, True])
+@pytest.mark.parametrize('polled', [False, True])
+@pytest.mark.parametrize('method', ['wait', 'wait_stream'])
+def test_completion_records_cuda_outputs_and_preserves_explicit_stream(monkeypatch, host, polled, method):
+    from types import SimpleNamespace
+    from reloc_torch.fast import FastCompletion
+    recorded, reports = [], []
+    owner = SimpleNamespace(device=torch.device('cuda:0'), _record_group=reports.append, _retain=lambda c: None)
+    native = SimpleNamespace(query=lambda: True, wait=lambda: None, wait_stream=lambda stream: None)
+    device_output = SimpleNamespace(is_cuda=True, record_stream=recorded.append)
+
+    def unexpected_cpu_record(stream):
+        pytest.fail('CPU outputs must not be registered with the CUDA allocator')
+
+    outputs = [device_output]
+    if host:
+        outputs.append(SimpleNamespace(is_cuda=False, record_stream=unexpected_cpu_record))
+    completion = FastCompletion(owner, native, outputs, SimpleNamespace(report={}), host)
+    if polled:
+        assert completion.done()
+    streams = [SimpleNamespace(cuda_stream=i) for i in (1, 2)]
+    for stream in streams:
+        # An explicit consumer can differ from the current stream.
+        current = stream if method == 'wait' else SimpleNamespace(cuda_stream=99)
+        monkeypatch.setattr(torch.cuda, 'current_stream', lambda device, current=current: current)
+        result = completion.wait() if method == 'wait' else completion.wait_stream(stream)
+        assert result is outputs
+    assert recorded == streams
+    assert completion.done() and len(reports) == 1

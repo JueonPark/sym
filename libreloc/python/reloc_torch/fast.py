@@ -169,13 +169,13 @@ class TypedProgram(_Program):
         """Blocking single transfer through the prepared row (chunked CPU/DMA pipeline for CPU rows)."""
         owner = self.owner
         owner._check_open()
+        self.check(source)
         if out is None:
             out = self.allocate()
         try:
             if _native_views is not None:
                 native = _native_views.request_from_tensors(self.template, source, out, self.signature_dtype)
             else:
-                self.check(source)
                 native = pyreloc.prepare_dispatch_from_template(self.template, self.source_view(source),
                                                                 self.output_view(out))
         except pyreloc.TransferError as error:
@@ -460,11 +460,7 @@ class FastCompletion:
         if not self._done:
             self._native.wait()
             self._finish()
-            if not self._host:
-                import torch
-                stream = torch.cuda.current_stream(self._owner.device)
-                for tensor in self._outputs:
-                    tensor.record_stream(stream)
+        self._record_outputs()
         return self._outputs
 
     def wait_stream(self, stream=None):
@@ -476,15 +472,27 @@ class FastCompletion:
         """
         import torch
         if self._host:
-            return self.wait()
-        if stream is None:
-            stream = torch.cuda.current_stream(self._owner.device)
-        if not self._done:
-            self._native.wait_stream(stream.cuda_stream)
-            self._owner._retain(self)
-        for tensor in self._outputs:
-            tensor.record_stream(stream)
+            if not self._done:
+                self._native.wait()
+                self._finish()
+        else:
+            if stream is None:
+                stream = torch.cuda.current_stream(self._owner.device)
+            if not self._done:
+                self._native.wait_stream(stream.cuda_stream)
+                self._owner._retain(self)
+        self._record_outputs(stream)
         return self._outputs
+
+    def _record_outputs(self, stream=None):
+        # Transfer completion and consumer lifetime are independent, including
+        # mixed groups that host-complete D2H but also return CUDA outputs.
+        import torch
+        for tensor in self._outputs:
+            if tensor.is_cuda:
+                if stream is None:
+                    stream = torch.cuda.current_stream(self._owner.device)
+                tensor.record_stream(stream)
 
     def _finish(self):
         self._done = True
@@ -702,6 +710,7 @@ class FastTransfers:
             for position, (program, source) in enumerate(items):
                 if not isinstance(program, (TypedProgram, LayoutProgram, _OneShot)):
                     raise TypeError("group members are typed or layout programs")
+                program.check(source)
                 out = program.allocate(pin=pin_outputs) if outputs is None else outputs[position]
                 host |= program.direction == "d2h"
                 sources.append(source)
@@ -709,7 +718,6 @@ class FastTransfers:
                 if native_views:
                     entries.append(program.tensor_entry(source, out))
                 else:
-                    program.check(source)
                     entries.append(program.group_entry(source, out))
         if host:
             self._stream.wait_stream(torch.cuda.current_stream(self.device))

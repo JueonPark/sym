@@ -11,6 +11,12 @@ through a single native entry point.
 
 ## Contract
 
+This is an explicit inference API combining prepared transfer programs,
+handwritten fused producer/dequantization kernels and grouped execution.
+Its workload speedups do not by themselves establish an AST-folding gain.
+The pooled EmbeddingBag producer is synthesized natively, outside the recipe
+compiler, and changes the CPU pooling implementation while preserving its math.
+
 - A program is bound to a **shape signature** (shape, strides, dtype, device
   type) and, for typed recipes, to **parameter values** snapshotted at
   preparation. Different shapes need different programs; changed parameters

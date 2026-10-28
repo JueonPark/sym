@@ -2,6 +2,14 @@
 
 ## Outcome
 
+These measurements evaluate optimized producer/dequantization kernels together
+with an opt-in transfer runtime. They do not isolate AST folding as the source
+of the improvement. In particular, DLRM's fused EmbeddingBag producer is built
+natively outside the compiler recipe; the recipe does not express the pooling
+reduction. Grouped KV transfers and execution management are additional system
+contributions. The ablation in stacked PR #256 separates these effects more
+closely; its contrasts are not independent additive contributions.
+
 With the explicit fast-lane API (`reloc_torch.fast`, [docs](../../docs/fast-transfers.md))
 and the native changes behind it, the `sym_fast` arm has lower completed
 model latency than **both** eager Torch and Inductor in seven of the eight
@@ -58,9 +66,9 @@ not from the scheduling opportunity by itself.
 
 The arms share the model mathematics, wire precision (INT8 weights with FP32
 scales, FP16 feature wires, FP32 KV), shapes, offline prepacking and the
-two-slot prefetch budget of the #225 protocol. `sym_fast` runs **the same
-eager PyTorch compute as the `torch` control**; only the way bytes move
-differs:
+two-slot prefetch budget of the #225 protocol. `sym_fast` runs the same
+downstream eager GPU model compute as the `torch` control. CPU producers,
+value-conversion kernels and transfer execution also change:
 
 - **GPT decode/prefill, MoE.** Weight groups are submitted natively from
   prepared INT8 snapshots (`FastWeights`, one native call per group, the
