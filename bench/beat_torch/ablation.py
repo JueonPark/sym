@@ -6,18 +6,21 @@
 Reads workloads-r*.json(.gz) produced by run.py with the arms ``torch``,
 ``torch_kernels``, ``sym_fast_scalar``, ``sym_fast_nopipe``, ``sym_fast_kvsplit``
 and ``sym_fast`` (any subset) and prints, per regime, the median of the
-round medians for every arm plus two independent estimates of each share:
+round medians for every arm and related contrasts (not independent shares):
 
-- kernel share: ``torch - torch_kernels`` (Torch given the kernels) and
-  ``sym_fast_scalar - sym_fast`` (Sym without the vectorized dequantize; the
-  CPU producers have no scalar twin, so this estimate is zero for DLRM and
-  GraphSAGE by construction);
-- plan/runtime share: ``torch_kernels - sym_fast`` (what the runtime adds on
-  top of the kernels) and ``torch - sym_fast_scalar``;
-- chunk overlap: ``sym_fast_nopipe - sym_fast``; KV grouping:
-  ``sym_fast_kvsplit - sym_fast``.
+- ``torch - torch_kernels`` includes fused producer/dequantize changes;
+- ``sym_fast_scalar - sym_fast`` isolates vectorization only in GPT/MoE;
+  elsewhere those arms are identical implementations and differences are noise;
+- ``torch_kernels - sym_fast`` compares higher-level execution, retaining
+  compiler/plan use in the GraphSAGE kernel control and differing prefetch
+  windows in decode;
+- ``torch - sym_fast_scalar`` includes fusion and is NOT a runtime-only estimate;
+- ``sym_fast_nopipe - sym_fast`` tests producer overlap in DLRM/GraphSAGE;
+  ``sym_fast_kvsplit - sym_fast`` tests KV grouping in decode.
 
-Positive numbers are milliseconds saved by the component.
+Positive values mean the second arm is faster. These interacting contrasts
+must not be added as independent causal contributions. Legacy CSV field names
+are retained for existing evidence readers.
 """
 import argparse
 import csv
@@ -83,7 +86,7 @@ def main():
     print()
     columns = [('total', 'torch − sym_fast'), ('kernel_a', 'kernels A: torch − torch_kernels'),
                ('kernel_b', 'kernels B: scalar − sym_fast'), ('runtime_a', 'runtime A: torch_kernels − sym_fast'),
-               ('runtime_b', 'runtime B: torch − scalar'), ('overlap', 'chunk overlap: nopipe − sym_fast'),
+               ('runtime_b', 'total vs scalar (includes fusion): torch − scalar'), ('overlap', 'chunk overlap: nopipe − sym_fast'),
                ('kv_grouping', 'KV grouping: kvsplit − sym_fast')]
     print('| Regime | ' + ' | '.join(label for _, label in columns) + ' |')
     print('| --- | ' + ' | '.join('---:' for _ in columns) + ' |')
@@ -92,7 +95,7 @@ def main():
         share = shares(row)
         rows.append(dict(case=case, **{a: row.get(a) for a in arms}, **share))
         print(f'| {case} | ' + ' | '.join(fmt(share[key]) for key, _ in columns) + ' |')
-    print('(ms, medians of round medians; positive = saved by the component)')
+    print('(ms, medians of round medians; positive = second arm faster; contrasts are not independent)')
     if args.csv:
         with open(args.csv, 'w', newline='') as handle:
             writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
