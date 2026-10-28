@@ -283,14 +283,15 @@ an `EmbeddingBag` sum.
 | `kv_restore_12x16x64_x8` | v0 | 0 | 3 / 3 | 3 / 3 | False / False | 4.5 / 4.3 | 5.49 / 5.37 | layout_cuda (group_device_layout) | 306 / 305 |
 | `gnn_gather_9000x128` | v2 | 1 | n/a | n/a | n/a | 4.8 / 4.4 | 4.24 / 4.19 | cpu_reference (indexed rows) | 669 / 609 |
 | `dlrm_layout_cast_26x512x64` | v1 | 1 | 3 / 3 | 3 / 3 | False / False | 5.9 / 5.3 | 0.24 / 0.20 | cpu_reference | 314 / 312 |
-| `identity_view_2048x128` | v0 | 0 | 1 / 2 | - / 1 | True / False | 5.2 / 5.0 | 0.00 / 4.78 | none (pure view, nothing to transfer) | 0 / 276 |
+| `identity_view_2048x128` | v0 | 0 | 1 / 2 | - / 1 | True / False | 5.2 / 5.0 | 0.00 / 4.78 | historical comparison invalid; see note | N/A |
 
-The canonicalizer touches two of the six plans: it coalesces the weight dequantize layout from two axes to one, which the runtime's own bind-time coalescing does anyway (bound axes 1 / 1), and it proves the identity permutation a pure view (`no_copy`), which turns a 276 µs copy into no transfer at all. The K/V permutations, the typed DLRM layout and the indexed gather are exported identically in both modes (indexed plans are not canonicalized). Per-call latencies agree within noise.
+The canonicalizer touches two of the six plans: it coalesces the weight dequantize layout from two axes to one, which the runtime's own bind-time coalescing does anyway (bound axes 1 / 1), and it proves the identity permutation a pure view (`no_copy`), which removes layout work but does not remove H2D transport. The historical identity row recorded 0 without transferring data in the canonical arm and about 276 µs for real H2D in the raw arm; it is not a valid speedup comparison. `plans.py` now times completed direct H2D for the canonical arm; the original raw file is preserved with a correction in [evidence-compiler/README.md](evidence-compiler/README.md). The K/V permutations, the typed DLRM layout and the indexed gather are exported identically in both modes (indexed plans are not canonicalized). Per-call latencies agree within noise.
 
-**Whether the compiler's optimizations change the runtime.** `sym_fast_o0`
+**Additional effect of canonicalization.** `sym_fast_o0`
 runs every arm's plans exported with `--no-canonicalize` (the raw fold
 output: unmerged axes, no `no_copy` recomputation, no expression
-simplification), through the same runtime:
+simplification), through the same runtime. Both modes still execute
+`foldChainOp()` and generate a plan; this is not folding on versus off:
 
 Three independent rounds on revision `fa83b67` (`evidence-compiler/`), milliseconds, median of three round medians [min–max round median]; both Sym arms bit-exact against eager Torch, isolation audit clean:
 
@@ -313,23 +314,22 @@ compiled plan at all, and the gather plan is exported identically in both
 modes, so those gaps are the host's run-to-run bimodality (two of three
 `sym_fast` rounds landed in the slow mode for DLRM 2048; the minimum round
 medians, 4.757 vs 4.586 ms, agree) and the rotation effect documented for
-GraphSAGE 256, not the canonicalizer. The attribution reads as zero: no
-regime moved in the direction the plans changed.
+GraphSAGE 256, rather than evidence for canonicalization. No additional
+canonicalization benefit is established by these workload measurements.
 
-**What the compiler is for, then.** In these regimes the compiler's share of
-the speed is zero within noise: its canonicalizer changes two of six plans
-(the weight dequantize layout coalesces from rank 2 to rank 1, which the
-runtime redoes at bind time, and the identity view's `no_copy` proof, which
-no workload exercises), the folded typed plan is executed as one fused
-device kernel that `torch_kernels` reproduces by hand, and the plan's
-per-call cost is the native validation of the declared views (a few
-microseconds inside the `execute` numbers above). What the compiler
-contributes is the contract: the bit-exact fold semantics every stage obeys,
-the guards that reject a mismatched binding before anything launches, the
-versioned portable artifact, and the single plan format all three transfer
-kinds share. The README's earlier wording ("the compiler plus the runtime")
-overstated the former; the honest statement is that the win is runtime and
-kernel engineering executed under a compiler-defined contract.
+**What this does and does not show.** The extra canonicalization pass has
+no demonstrated latency benefit in these workloads. This does not measure
+all AST folding or establish that its contribution is zero. Weight layouts
+were transposed/prepacked offline in both controls, KV is a simple permutation,
+indexed gather bypasses the canonicalizer, and pooled DLRM bypasses the compiler.
+
+The compiler contributes a common plan format, guards, portable artifacts and
+composition semantics. Its automation and generality need a separate test:
+use real chains of multiple layout/value operations, compare folding on/off ×
+pipeline on/off under identical kernels and resource limits, and include a
+manually fused implementation. The goal is to reach that implementation's
+performance automatically across chains. The current canonicalization switch
+cannot serve as the folding-off arm of that experiment.
 
 ## Where the time goes (Nsight Systems)
 

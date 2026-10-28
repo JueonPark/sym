@@ -18,6 +18,9 @@ becomes a pure view), compile with the canonicalizer on and off and report:
 
 The DLRM pooled producer of ``sym_fast`` has no row here: it is synthesized
 natively (``prepare_pooled_program``) and never passes through the compiler.
+Both modes still run foldChainOp() and plan construction; this tests only
+the subsequent canonicalization pass, not folding as a whole. A no-copy
+layout proof does not eliminate the H2D transfer.
 """
 import argparse
 import json
@@ -149,19 +152,22 @@ def main():
                                                           prepare_ms=prepare, row=program.selection['implementation'],
                                                           per_call_us=completed_us(lambda: program.execute(dlrm_source),
                                                                                    args.samples))
-                # Identity permutation: a pure view once canonicalized, which the
-                # fast lane refuses to transfer (no_copy_layout: nothing to move);
-                # the raw plan is a real two-axis copy.
+                # Identity layout still requires H2D. If no relocation program
+                # is needed, time direct transport instead of recording zero.
                 compiled, export = ms(lambda: fresh().compile(identity_recipe()))
                 try:
                     program, prepare = ms(lambda: fast.layout(identity_recipe(), ident))
                 except UnsupportedRecipe as error:
                     assert error.reason == 'no_copy_layout', error
+                    direct = lambda: ident.to(fast.device)
+                    # Check the same destination and values as the raw arm.
+                    output = direct()
+                    assert output.device == fast.device and torch.equal(output.cpu(), ident)
                     rows['identity_view_2048x128'] = dict(wire=compiled.wire_version, stages=0,
                                                           exported_axes=compiled.decoded_plan.num_axes, axes=None,
                                                           no_copy=bool(compiled.decoded_plan.no_copy), export_ms=export,
-                                                          prepare_ms=0.0, row='none (pure view, nothing to transfer)',
-                                                          per_call_us=0.0)
+                                                          prepare_ms=0.0, row='direct H2D (identity layout)',
+                                                          per_call_us=completed_us(direct, args.samples))
                 else:
                     rows['identity_view_2048x128'] = dict(plan_facts(compiled, program), export_ms=export, prepare_ms=prepare,
                                                           row='layout (group)',
