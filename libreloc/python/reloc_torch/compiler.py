@@ -19,8 +19,13 @@ class CompilerClient:
     """Invoke the supported exporter and admit only associated artifacts."""
 
     def __init__(self, executable, *, cache_dir=None, cache_max_bytes=64 << 20,
-                 cache_max_entries=128, cache_namespace="default"):
+                 cache_max_entries=128, cache_namespace="default", canonicalize=True):
         self.executable = Path(executable)
+        # canonicalize=False exports the raw fold output (sym-reloc-export
+        # --no-canonicalize): a measurement mode for compiler attribution,
+        # never the default. The manifest does not record it, so every
+        # identity this client derives carries the mode itself.
+        self.canonicalize = bool(canonicalize)
         self._identity = None
         self._binary_signature = self._binary_digest = None
         self._store = None
@@ -61,6 +66,8 @@ class CompilerClient:
         previous binary. Never an object id."""
         if self._identity is None:
             self._identity = f"sym-reloc-export@{self.executable.resolve()}"
+            if not self.canonicalize:
+                self._identity += "+no-canonicalize"
         try:
             status = os.stat(self.executable)
         except OSError:
@@ -82,7 +89,7 @@ class CompilerClient:
                     hasher.update(block)
                 digest = hasher.hexdigest()
             self._binary_signature, self._binary_digest = signature, digest
-        return self._binary_digest
+        return self._binary_digest if self.canonicalize else self._binary_digest + "+no-canonicalize"
 
     def compile(self, recipe):
         if self._store is None:
@@ -121,6 +128,8 @@ class CompilerClient:
                 arguments.append("--typed")
             if recipe.indexed:
                 arguments.append('--indexed')
+            if not self.canonicalize:
+                arguments.append('--no-canonicalize')
             try:
                 result = subprocess.run(arguments, check=False, capture_output=True)
             except OSError as error:

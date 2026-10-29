@@ -536,3 +536,37 @@ def test_compiler_artifact_api_remains_torch_free():
         env=os.environ.copy(),
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_no_canonicalize_exports_the_raw_fold_output_under_its_own_identity(compiler, tmp_path):
+    """CompilerClient(canonicalize=False): same transfer, unmerged plan, separate cache entries."""
+    import pyreloc
+    from pyreloc.torch_interop import as_ptr
+    from reloc_torch import CompilerClient
+    from reloc_torch.recipe import Recipe, TensorSpec, Transpose
+    from reloc_torch.symbolic import Const, Symbol, dense_strides
+
+    shape = (Symbol("s0"), Const(128))
+    spec = TensorSpec(shape, dense_strides(shape), Const(0), "float32")
+    recipe = Recipe(spec, (Transpose((0, 1)),), spec, "h2d")
+    raw_client = CompilerClient(compiler.executable, canonicalize=False)
+    assert raw_client.identity != compiler.identity and "+no-canonicalize" in raw_client.identity
+    canonical, raw = compiler.compile(recipe), raw_client.compile(recipe)
+    assert canonical.plan_bytes != raw.plan_bytes
+    assert canonical.wire_version == raw.wire_version == 0
+    assert canonical.manifest["logical_destination"] == raw.manifest["logical_destination"]
+    canonical_plan, raw_plan = pyreloc.load_plan(canonical.plan_bytes), pyreloc.load_plan(raw.plan_bytes)
+    assert (canonical_plan.num_axes, canonical_plan.no_copy) == (1, True)
+    assert (raw_plan.num_axes, raw_plan.no_copy) == (2, False)
+    x = torch.arange(8 * 128, dtype=torch.float32).reshape(8, 128)
+    for compiled, plan in ((canonical, canonical_plan), (raw, raw_plan)):
+        bound = pyreloc.bind(plan, compiled.bind_values(x))
+        out = torch.empty_like(x)
+        pyreloc.relocate(bound, *as_ptr(x), *as_ptr(out))
+        assert torch.equal(out, x)
+    # Both modes share one cache directory without sharing entries.
+    cached = CompilerClient(compiler.executable, cache_dir=tmp_path)
+    cached_raw = CompilerClient(compiler.executable, cache_dir=tmp_path, canonicalize=False)
+    assert cached.compile(recipe).plan_bytes == canonical.plan_bytes
+    assert cached_raw.compile(recipe).plan_bytes == raw.plan_bytes
+    assert len(list(tmp_path.glob("*.artifact"))) == 2

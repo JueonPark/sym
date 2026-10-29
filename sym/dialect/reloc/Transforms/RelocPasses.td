@@ -76,7 +76,19 @@ def RelocFoldPass : Pass<"reloc-fold", "::mlir::ModuleOp"> {
     still a no-op on its own output. Every produced plan passes the
     #reloc.plan verifier; a verification failure is a pass error, never a
     silent skip.
+
+    `canonicalize=false` keeps every folded plan as the transfer functions
+    built it (no axis merging, expression re-simplification, no_copy
+    recomputation or stage/fill normalization). The output is a valid plan
+    that describes the same transfer; it exists so that the canonicalizer's
+    contribution can be measured (bench/beat_torch, compiler attribution)
+    and is never the default.
   }];
+
+  let options = [
+    Option<"canonicalize", "canonicalize", "bool", "true",
+           "Canonicalize folded plans (#B5); false keeps the raw fold output">
+  ];
 
   let dependentDialects = [
     "sym::SymDialect",

@@ -823,6 +823,10 @@ PYBIND11_MODULE(_pyreloc, m) {
       .def_property_readonly(
           "num_stages",
           [](const reloc::TypedRelocationPlan &p) { return p.stages.size(); })
+      .def_property_readonly("layout_axes",
+                             [](const reloc::TypedRelocationPlan &p) {
+                               return p.layout.axes.size();
+                             })
       .def_property_readonly("stages", &typedStages,
                              "Decoded stages: transform, policy, input/output "
                              "dtypes with signedness, rank, axis, channel "

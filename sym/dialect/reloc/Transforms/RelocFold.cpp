@@ -35,6 +35,8 @@ constexpr StringLiteral kFallbackAttrName = "reloc.fallback";
 constexpr StringLiteral kFallbackReasonAttrName = "reloc.fallback_reason";
 
 struct RelocFoldPass : public impl::RelocFoldPassBase<RelocFoldPass> {
+  using RelocFoldPassBase::RelocFoldPassBase;
+
   void runOnOperation() override {
     // Collect tails first: rewriting invalidates walk iteration.
     SmallVector<Operation *> tails;
@@ -168,9 +170,11 @@ struct RelocFoldPass : public impl::RelocFoldPassBase<RelocFoldPass> {
       TypedPlanAttr typed = builder.finalizeTyped(tail->getLoc());
       if (!typed)
         return failure(); // getChecked already emitted the diagnostic
-      typed = canonicalizeTypedPlan(typed, tail->getLoc());
-      if (!typed)
-        return failure();
+      if (canonicalize) {
+        typed = canonicalizeTypedPlan(typed, tail->getLoc());
+        if (!typed)
+          return failure();
+      }
       materialized = rewriter.create<TypedPlanResultOp>(
           tail->getLoc(), tail->getResult(0).getType(), root, typed);
     } else {
@@ -183,10 +187,13 @@ struct RelocFoldPass : public impl::RelocFoldPassBase<RelocFoldPass> {
       if (!plan)
         return failure(); // getChecked already emitted the diagnostic
 
-      // #B5: canonicalize so equivalent chains materialize identical plans.
-      plan = canonicalizePlan(plan, tail->getLoc());
-      if (!plan)
-        return failure(); // getChecked already emitted the diagnostic
+      // #B5: canonicalize so equivalent chains materialize identical plans
+      // (skipped under canonicalize=false, the attribution mode).
+      if (canonicalize) {
+        plan = canonicalizePlan(plan, tail->getLoc());
+        if (!plan)
+          return failure(); // getChecked already emitted the diagnostic
+      }
 
       materialized = rewriter.create<PlanResultOp>(
           tail->getLoc(), tail->getResult(0).getType(), root, plan);
