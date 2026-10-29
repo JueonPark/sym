@@ -17,6 +17,12 @@ Its workload speedups do not by themselves establish an AST-folding gain.
 The pooled EmbeddingBag producer is synthesized natively, outside the recipe
 compiler, and changes the CPU pooling implementation while preserving its math.
 
+Fast custom ops are opaque nodes to Inductor: surrounding compute can be
+compiled without a graph break, but Inductor does not fuse through their bodies.
+Keep the prepared program and its owner alive while executing a captured graph.
+The handle registry holds programs weakly; program collection or owner `close()`
+releases the handle. A stale captured handle raises an error at execution.
+
 - A program is bound to a **shape signature** (shape, strides, dtype, device
   type) and, for typed recipes, to **parameter values** snapshotted at
   preparation. Different shapes need different programs; changed parameters
@@ -66,6 +72,49 @@ buffers that are adjacent views of one allocation share a single copy.
   and its first use.
 - `FastPrefetch(owner, groups, slots)`: the same window over arbitrary
   group item lists.
+
+## Inside `torch.compile`
+
+A prepared program is also a `torch.compile` primitive. `TypedProgram.op(source)`
+(H2D programs), `IndexedProgram.op(source, index)` and
+`PooledProgram.op(indices, offsets)` call the functional custom ops
+`reloc_torch::fast_typed`, `reloc_torch::fast_indexed` and
+`reloc_torch::fast_pooled` (`reloc_torch.fast_ops`). Each op carries the
+program handle and the output metadata as explicit arguments:
+
+- the **fake kernel** returns `empty_strided` of the program's destination
+  descriptor and never consults the registry, so Dynamo captures the call as
+  one opaque node (`fullgraph=True` holds, no graph break) and Inductor
+  schedules the surrounding compute around it as a fallback kernel; the
+  indexed op derives its row count from the index tensor (`SymInt`-capable
+  under dynamic shapes), the trailing extents are the recipe's constants;
+- the **real kernel** runs `execute` (typed, indexed) or
+  `submit(...).wait_stream()` (pooled: the output is ordered on the caller's
+  current stream and the DMA tail overlaps the compute that follows), then
+  verifies the produced metadata against the declared one;
+- handles are registered when the program is prepared (never inside a
+  trace) and die with the program or its `FastTransfers` owner; a graph that
+  still carries one fails with `unknown or closed` instead of fabricating
+  output. Autograd is rejected like the other `reloc_torch` ops.
+
+What is **not** an op: `FastPrefetch`, `FastWeights.prefetch` and
+`KVCacheSwap` carry completions across calls, so they sit between compiled
+regions, where the Torch controls keep their own prefetch queues.
+
+Per-call cost of the entry points (`bench/beat_torch/op_overhead.py`,
+microseconds, median of 200 completed calls, EPYC 7351 + RTX 2080 Ti):
+
+| Transfer | `execute` | `op` eager | `op` inside a compiled region | previous generic route (`RelocBackend` custom op) | eager Torch |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| typed 26×16×64 f32 → [16, 26, 64] f16 (106 KB) | 128 | 204 | 294 | 489 | 85 |
+| gather 256 rows × 128 f32 → f16 (64 KB) | 154 | 225 | 339 | 618 | 79 |
+
+The dispatcher wrapper adds about 70 µs to an eager op call and the
+compiled-function call another 90–115 µs; the generic route's per-call
+rebinding and descriptor rebuild (260–360 µs) are gone. At these sizes eager
+Torch is faster than any Sym entry point; the fast lane pays off once a
+transfer is large enough for the chunked pipeline or the fused producer to
+matter (bench/beat_torch).
 
 ## Build options
 

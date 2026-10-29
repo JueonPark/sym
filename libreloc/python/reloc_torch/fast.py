@@ -35,6 +35,7 @@ from __future__ import annotations
 from collections import deque
 import os
 from threading import RLock
+from weakref import WeakSet
 
 import pyreloc
 
@@ -80,7 +81,8 @@ class _Program:
     """Shared per-shape state: signature, destination descriptor, direction."""
 
     __slots__ = ("owner", "compiled", "bindings", "signature", "signature_dtype", "direction", "destination",
-                 "_view_kind", "_view_device", "_out_dtype", "_out_device")
+                 "_view_kind", "_view_device", "_out_dtype", "_out_device", "handle", "_registration",
+                 "_op_args", "__weakref__")
 
     def _init_common(self, owner, compiled, source, bindings):
         import torch
@@ -105,6 +107,19 @@ class _Program:
         self.destination = destination_descriptor(compiled, bindings, target)
         self._out_dtype = getattr(torch, self.destination.dtype)
         self._out_device = self.destination.device
+        self.handle = self._registration = self._op_args = None
+
+    @property
+    def closed(self):
+        return self.owner._closed
+
+    def _register_op(self):
+        # Registered at preparation (never inside a Dynamo trace): the op
+        # arguments are the destination descriptor, constants to the tracer.
+        from . import fast_ops
+        self._registration = fast_ops.register(self)
+        d = self.destination
+        self._op_args = (self.handle, tuple(d.shape), tuple(d.strides), self._out_device, self._out_dtype)
 
     def check(self, source):
         if _signature(source) != self.signature:
@@ -158,12 +173,21 @@ class TypedProgram(_Program):
         except pyreloc.TransferError as error:
             raise UnsupportedRecipe(_code(error), str(error)) from error
         self.selection = dict(self.template.selection)
+        if self.direction == "h2d":
+            self._register_op()
 
     def group_entry(self, source, out):
         return (self.template, self.source_view(source), self.output_view(out), self.direction)
 
     def tensor_entry(self, source, out):
         return (self.template, source, out, self.direction, self.signature_dtype)
+
+    def op(self, source):
+        """``execute(source)`` as a functional custom op (traceable by Dynamo, opaque to Inductor)."""
+        from .fast_ops import TYPED_OP
+        if self._op_args is None:
+            raise RuntimeError("only H2D typed programs are available as ops")
+        return TYPED_OP(source, *self._op_args)
 
     def execute(self, source, *, out=None, pipeline=True, gather_threads=None):
         """Blocking single transfer through the prepared row (chunked CPU/DMA pipeline for CPU rows)."""
@@ -250,13 +274,41 @@ class _OneShot:
 class IndexedProgram:
     """An IndexSelect (+ optional cast) H2D recipe; indices bind per call."""
 
-    __slots__ = ("owner", "compiled", "_specs")
+    __slots__ = ("owner", "compiled", "_specs", "handle", "_registration", "_op_args", "__weakref__")
 
     def __init__(self, owner, compiled):
+        import torch
+        from .symbolic import Const
         if not compiled.indexed or compiled.recipe.direction != "h2d":
             raise UnsupportedRecipe("unsupported_index_select", "expected an H2D index_select recipe")
         self.owner, self.compiled = owner, compiled
         self._specs = {}
+        # The op needs the output metadata without binding: rows follow the
+        # index length, the remaining extents are the recipe's constants.
+        destination = compiled.recipe.destination
+        columns = tuple(e.value if isinstance(e, Const) else None for e in destination.shape[1:])
+        self.handle = self._registration = None
+        from . import fast_ops
+        self._registration = fast_ops.register(self)
+        self._op_args = (None if None in columns else columns, self.handle, owner.device,
+                         getattr(torch, destination.dtype))
+
+    @property
+    def closed(self):
+        return self.owner._closed
+
+    def op(self, source, index):
+        """``execute(source, index)`` as a functional custom op; the output has ``len(index)`` rows."""
+        from .fast_ops import INDEXED_OP
+        columns, handle, device, dtype = self._op_args
+        if columns is None:
+            raise RuntimeError("index_select ops need constant trailing extents")
+        shape = (index.shape[0],) + columns
+        strides, stride = [], 1
+        for extent in reversed(shape):
+            strides.append(stride)
+            stride = stride * extent
+        return INDEXED_OP(source, index, handle, shape, tuple(reversed(strides)), device, dtype)
 
     def _prepare(self, source, index, out):
         """Bind the live indices natively; returns (program, source view, out)."""
@@ -367,7 +419,7 @@ class PooledProgram:
     float32 in index order; the cast is IEEE round-to-nearest-even.
     """
 
-    __slots__ = ("owner", "tables", "dim", "dtype", "_views", "_out_dtype")
+    __slots__ = ("owner", "tables", "dim", "dtype", "_views", "_out_dtype", "handle", "_registration", "__weakref__")
 
     def __init__(self, owner, tables, *, dtype="float16"):
         import torch
@@ -387,6 +439,20 @@ class PooledProgram:
         self.owner, self.tables, self.dim, self.dtype = owner, tables, dim, dtype
         self._views = [_storage_view(t, "host", -1) for t in tables]
         self._out_dtype = getattr(torch, dtype)
+        self.handle = self._registration = None
+        from . import fast_ops
+        self._registration = fast_ops.register(self)
+
+    @property
+    def closed(self):
+        return self.owner._closed
+
+    def op(self, indices, offsets):
+        """``submit(indices, offsets).wait_stream()[0]`` as a functional custom op."""
+        from .fast_ops import POOLED_OP
+        indices, offsets = list(indices), list(offsets)
+        shape = (offsets[0].shape[0], len(self.tables), self.dim)
+        return POOLED_OP(indices, offsets, self.handle, shape, self.owner.device, self._out_dtype)
 
     def _prepare(self, indices, offsets, out):
         import torch
@@ -533,6 +599,7 @@ class FastTransfers:
         self._compiled = {}
         self._pid, self._lock = os.getpid(), RLock()
         self._closed = False
+        self._registrations = WeakSet()
         self._resources = TransferResources(
             max_typed_retained_bytes=max_scratch_bytes * contexts, max_typed_live_bytes=max_scratch_bytes * contexts,
             max_typed_background_workers=max(1, gather_threads - 1) * contexts, max_typed_streams=contexts,
@@ -575,6 +642,9 @@ class FastTransfers:
             if self._closed:
                 return
             self._closed = True
+            for registration in tuple(self._registrations):
+                registration.release()
+            self._registrations.clear()
             try:
                 self._retire(block=True)
             finally:
@@ -918,6 +988,8 @@ class _WireEntry(TypedProgram):
         from .runtime import ConcreteDescriptor
         self.destination = ConcreteDescriptor(tuple(source.shape), tuple(source.stride()), "float32", owner.device)
         self._out_dtype, self._out_device = torch.float32, owner.device
+        self.handle = self._registration = self._op_args = None
+        self._register_op()
 
 
 __all__ = ("FastTransfers", "FastCompletion", "FastPrefetch", "TypedProgram", "LayoutProgram",

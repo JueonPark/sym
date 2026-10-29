@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from bench.issue227.run import audit
 
-PATHS = ['torch', 'inductor', 'sym_inductor', 'sym_fast', 'torch_whole']
+PATHS = ['torch', 'inductor', 'sym_inductor', 'sym_fast', 'sym_fast_inductor', 'torch_whole']
 
 
 def main(args):

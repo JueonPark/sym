@@ -110,6 +110,60 @@ or write-combined staging and an asynchronous submission did not move the
 rotated or cold medians. The 1024-seed regime, where the gather is large
 enough to overlap its DMA, wins in every cache state.
 
+## Inside `torch.compile`: the `sym_fast_inductor` arm
+
+The fast lane's prepared programs are also `torch.compile` primitives
+(`program.op`, [docs](../../docs/fast-transfers.md#inside-torchcompile)):
+functional custom ops with fake kernels that return the program's destination
+metadata, so Dynamo captures them whole and Inductor schedules the compute
+around them. `sym_fast_inductor` is `sym_fast` with the `inductor` control's
+compute: the DLRM pooled producer and the GraphSAGE gather are ops inside the
+compiled model regions; the GPT/MoE weight windows and the KV swaps stay
+between regions, exactly where the Inductor control keeps its `TorchQueue`.
+Per-call overhead of the op entry points: `op_overhead.py` (table in the
+docs: +70 µs over the direct call in eager mode, +170 µs inside a compiled
+region, against +360–460 µs for the previous generic custom-op route).
+
+Three independent rounds on revision `04a5eff` (same protocol as above,
+arms `torch`, `inductor`, `sym_fast`, `sym_fast_inductor`; evidence in
+`evidence-compile-op/`), milliseconds, median of three round medians
+[min–max round median]; the last two columns compare each fast arm with the
+faster Torch control of this run:
+
+| Regime | Eager Torch | Inductor | `sym_fast` | `sym_fast_inductor` | `sym_fast` | `sym_fast_inductor` |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| DLRM, batch 512 | 3.690 [3.595–4.069] | 3.909 [3.869–4.249] | 2.396 [2.393–2.444] | 2.442 [2.419–2.479] | -35.1% (every round) | -33.8% (every round) |
+| DLRM, batch 2048 | 7.808 [7.807–7.884] | 8.042 [7.990–8.081] | 4.866 [4.830–6.238] | 4.837 [4.829–6.693] | -37.7% (every round) | -38.0% (every round) |
+| GraphSAGE, 256 seeds | 1.215 [1.196–1.265] | 1.324 [1.315–1.326] | 1.332 [1.316–1.435] | 1.412 [1.400–1.450] | +9.7% | +16.3% |
+| GraphSAGE, 1024 seeds | 4.030 [4.011–4.048] | 2.965 [2.965–2.967] | 2.693 [2.684–2.962] | 2.884 [2.866–3.249] | -9.2% | -2.8% |
+| GPT, four decode steps | 26.300 [26.257–26.364] | 30.023 [29.986–30.226] | 20.637 [20.557–21.060] | **19.356 [19.199–19.449]** | -21.5% (every round) | -26.4% (every round) |
+| GPT, 256-token prefill | 6.971 [6.963–6.999] | 6.394 [6.388–6.409] | 6.022 [6.018–6.037] | **5.817 [5.802–5.826]** | -5.8% (every round) | -9.0% (every round) |
+| MoE, one token | 3.175 [3.172–3.208] | 4.356 [4.322–4.360] | 3.032 [3.013–3.073] | 3.773 [3.764–3.815] | -4.5% | +18.8% |
+| MoE, 512 tokens | 10.678 [10.666–10.760] | 16.337 [16.306–16.339] | 10.221 [10.126–10.259] | 13.982 [13.953–14.045] | -4.3% | +31.0% |
+
+Reading the arm:
+
+- **The fast lane composes with Inductor's compute.** Where Inductor's
+  fused kernels beat eager compute (GPT decode and prefill), the fast lane
+  inside the compiled model is the best arm: 19.36 ms for four decode steps
+  (−26.4% against eager Torch, −35.5% against the Inductor control) and
+  5.82 ms for prefill (−9.0% / −9.0%), in every round. `sym_fast`'s eager
+  compute was leaving that on the table.
+- **The ops cost what `op_overhead.py` says.** DLRM is unchanged (the op is
+  called once per request against a 2–5 ms budget); GraphSAGE 256 pays the
+  compiled-function call (about +0.1 ms on a 1.2 ms request) on top of the
+  ordering effect documented above.
+- **It inherits Inductor's losses.** On MoE the Inductor control itself is
+  37–53% slower than eager Torch (per-expert graphs around the routing
+  synchronizations), and `sym_fast_inductor` moves exactly the same bytes as
+  `sym_fast`, so it lands between the two: the transfer path cannot repay a
+  compute regression. The right arm per workload is therefore the control's
+  own compute plus the fast lane, which is what both `sym_fast` arms now
+  offer.
+- Zero graph breaks in every arm (the harness asserts it), outputs within
+  the Inductor rounding band (≤ 2.5e-6), `sym_fast` bit-exact; the isolation
+  audit saw no foreign process in any round.
+
 ## Where the time goes (Nsight Systems)
 
 `profile.sh` captures `torch` and `sym_fast` in one process under NVTX
