@@ -290,15 +290,20 @@ py::object executeGroupPy(reloc::dispatch::GroupRequest &group,
                           std::optional<size_t> minPinnedBytes,
                           size_t maxScratchBytes,
                           std::shared_ptr<reloc::dispatch::Resources> resources,
-                          const py::object &owners) {
+                          const py::object &owners, bool deviceLayout,
+                          int nBuffers, bool chunkedMembers) {
   if (group.executing || group.consumed)
     raise({"already_executed", "group is executing or already executed"});
-  if (!py::isinstance<py::tuple>(owners) || py::len(owners) != 2)
-    throw py::value_error("owners must be (source owners, destination owners)");
-  for (const auto &part : owners.cast<py::tuple>()) {
-    if (!py::isinstance<py::tuple>(part) || py::len(part) != group.items.size())
+  if (!py::isinstance<py::tuple>(owners) ||
+      (py::len(owners) != 2 && py::len(owners) != 3))
+    throw py::value_error("owners must be (source owners, destination owners"
+                          "[, extra owners])");
+  for (size_t part = 0; part < py::len(owners); ++part) {
+    const py::object members = owners[py::int_(part)];
+    if (!py::isinstance<py::tuple>(members) ||
+        (part < 2 && py::len(members) != group.items.size()))
       throw py::value_error("each group buffer needs a strong owner");
-    for (const auto &owner : part.cast<py::tuple>())
+    for (const auto &owner : members.cast<py::tuple>())
       if (owner.is_none())
         throw py::value_error("group owner cannot be None");
   }
@@ -307,14 +312,18 @@ py::object executeGroupPy(reloc::dispatch::GroupRequest &group,
         "gather_threads and max_scratch_bytes must be positive");
   if (pool && pool->closed())
     throw py::value_error("gather_pool is closed");
+  if (nBuffers < 1)
+    throw py::value_error("n_buffers must be >= 1");
   reloc::TransferOptions options;
-  options.nBuffers = 1;
+  options.nBuffers = nBuffers;
   options.gatherThreads = gatherThreads;
   options.gather = pool.get();
   options.pinning = parsePinning(pinning);
   options.minPinnedBytes = minPinnedBytes;
   options.maxScratchBytes = maxScratchBytes;
   options.staging = &group.report.staging;
+  options.deviceLayout = deviceLayout;
+  options.chunkedGroupMembers = chunkedMembers;
   if (!callerStream.is_none()) {
     options.hasCallerStream = true;
     options.callerStream =
@@ -457,6 +466,41 @@ void registerDispatchBindings(py::module_ &m) {
       "prepare_typed_program",
       [](const reloc::TypedBoundPlan &p) { return checkedProgram(p); },
       py::arg("bound"));
+  m.def(
+      "prepare_pooled_program",
+      [](const std::vector<reloc::BufferView> &tables,
+         const std::vector<std::pair<uintptr_t, int64_t>> &indices,
+         const std::vector<std::pair<uintptr_t, int64_t>> &offsets,
+         int64_t bags, int64_t dim, const std::string &outputDtype) {
+        bool narrow;
+        if (outputDtype == "float16")
+          narrow = true;
+        else if (outputDtype == "float32")
+          narrow = false;
+        else
+          throw py::value_error(
+              "pooled output dtype must be float16 or float32");
+        auto operand = [](const std::vector<std::pair<uintptr_t, int64_t>> &v) {
+          std::vector<reloc::dispatch::PooledOperand> out;
+          out.reserve(v.size());
+          for (const auto &[pointer, count] : v)
+            out.push_back({reinterpret_cast<const int64_t *>(pointer), count});
+          return out;
+        };
+        std::variant<reloc::typed::Program, reloc::TransferError> prepared;
+        {
+          py::gil_scoped_release release;
+          prepared = reloc::dispatch::preparePooledBags(
+              tables, operand(indices), operand(offsets), bags, dim, narrow);
+        }
+        if (auto *error = std::get_if<reloc::TransferError>(&prepared))
+          raise(*error);
+        return std::get<reloc::typed::Program>(std::move(prepared));
+      },
+      py::arg("tables"), py::arg("indices"), py::arg("offsets"),
+      py::arg("bags"), py::arg("dim"), py::arg("output_dtype"),
+      "Fused embedding-bag sum producer over host tables: indices/offsets are "
+      "(int64 pointer, count) pairs the caller keeps alive until completion.");
   using Template = reloc::dispatch::DispatchTemplate;
   py::class_<Template>(m, "DispatchTemplate")
       .def_property_readonly(
@@ -474,6 +518,34 @@ void registerDispatchBindings(py::module_ &m) {
         result["placement_reason"] = t.selection.reason;
         return result;
       });
+  m.def(
+      "prepare_dispatch_template_from_program",
+      [](const reloc::typed::Program &program, const std::string &direction,
+         int threads, const std::string &implementation) {
+        if (threads < 1)
+          throw py::value_error("threads must be >= 1");
+        reloc::dispatch::Options options;
+        options.policy = reloc::dispatch::Policy::Auto;
+        options.threads = threads;
+        options.cuda = true;
+        options.implementation = implementation;
+        reloc::dispatch::DispatchTemplate result;
+        result.program = program;
+        result.direction = parseDirection(direction);
+        result.cuda = true;
+        result.capability = reloc::dispatch::queryCapability(
+            result.program, result.direction, true);
+        auto selected = reloc::dispatch::selectImplementation(
+            result.program, result.direction, options);
+        if (auto *error = std::get_if<reloc::TransferError>(&selected))
+          raise(*error);
+        result.selection = std::get<reloc::dispatch::Selection>(selected);
+        return result;
+      },
+      py::arg("program"), py::arg("direction"), py::kw_only(),
+      py::arg("threads") = 8, py::arg("implementation") = "",
+      "A CUDA dispatch template over an already prepared program (indexed "
+      "or pooled producers), for group submission.");
   m.def("prepare_dispatch_template", &prepareTemplate, py::arg("bound"),
         py::arg("direction"), py::arg("device") = "host", py::kw_only(),
         py::arg("policy") = "auto",
@@ -504,6 +576,8 @@ void registerDispatchBindings(py::module_ &m) {
         py::arg("pinning") = "auto", py::arg("min_pinned_bytes") = py::none(),
         py::arg("max_scratch_bytes") = size_t(64) << 20,
         py::arg("resources") = nullptr, py::arg("owners") = py::none(),
+        py::arg("device_layout") = false, py::arg("n_buffers") = 1,
+        py::arg("chunked_members") = false,
         "Submit a consumer-sized group on one owned queue and complete once; "
         "never reuse requests.");
   using Completion = reloc::dispatch::Completion;
@@ -550,8 +624,13 @@ void registerDispatchBindings(py::module_ &m) {
         py::arg("pinning") = "auto", py::arg("min_pinned_bytes") = py::none(),
         py::arg("max_scratch_bytes") = size_t(64) << 20,
         py::arg("resources") = nullptr, py::arg("owners") = py::none(),
+        py::arg("device_layout") = false, py::arg("n_buffers") = 2,
+        py::arg("chunked_members") = false,
         "Enqueue a group and return an owned completion; CPU preparation is "
-        "synchronous.");
+        "synchronous. With chunked_members, typed CPU-stage uploads use an "
+        "n_buffers-slot chunk ring whose completion the group's event covers "
+        "(slot reuse waits for earlier chunks: only for groups not ordered "
+        "behind foreign GPU work).");
   using Resources = reloc::dispatch::Resources;
   py::class_<Resources, std::shared_ptr<Resources>>(m, "DispatchResources")
       .def(py::init<size_t, size_t, unsigned, unsigned, unsigned, unsigned,

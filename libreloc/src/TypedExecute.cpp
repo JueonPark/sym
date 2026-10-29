@@ -9,10 +9,16 @@
 #include "reloc/Quant.h"
 #include "reloc/TypedValue.h"
 
+#if defined(__x86_64__) || defined(_M_X64)
+#include <immintrin.h>
+#define RELOC_POOLED_AVX2 1
+#endif
+
 #include <algorithm>
 #include <atomic>
 #include <cassert>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <mutex>
 #include <utility>
@@ -465,6 +471,8 @@ HostKernel hostKernel(const Program &p, uint32_t from, uint32_t to) {
     return HostKernel::Generic;
   if (p.indexedSourceRows)
     return HostKernel::IndexedRows;
+  if (!p.pooledTables.empty())
+    return HostKernel::PooledBags;
   const auto &l = p.plan.layout;
   if (!detail::simpleChannels(p, from, to, l.extents.back()))
     return HostKernel::Generic;
@@ -472,6 +480,9 @@ HostKernel hostKernel(const Program &p, uint32_t from, uint32_t to) {
       l.srcStrides[1] == l.extents[0] && l.dstStrides[1] == 1 &&
       l.dstStrides[0] >= l.extents[1])
     return HostKernel::TiledTranspose;
+  if (l.extents.size() == 3 && l.padRegions.empty() && l.srcStrides[2] == 1 &&
+      l.dstStrides[2] == 1 && l.extents[2] >= 8)
+    return HostKernel::StridedRuns;
   if (l.srcStrides.back() == 1 && l.dstStrides.back() == 1) {
     if (to == from + 1 &&
         p.stages[from].transform == ValueTransformKind::Cast &&
@@ -494,6 +505,10 @@ const char *hostKernelName(HostKernel kernel) {
     return "tiled_transpose";
   case HostKernel::IndexedRows:
     return "indexed_rows";
+  case HostKernel::StridedRuns:
+    return "strided_runs";
+  case HostKernel::PooledBags:
+    return "pooled_bags";
   }
   return "generic";
 }
@@ -506,6 +521,172 @@ int64_t workerFloor(int64_t bytesPerUnit,
   return std::max<int64_t>(1, (minBytes + bytesPerUnit - 1) / bytesPerUnit);
 }
 
+// Typed windows are at most a few MiB (the chunked H2D ring targets 1 MiB
+// slots), so the layout pipeline's 1 MiB per-worker floor would hand a chunk
+// to two or three workers and leave the rest of a retained pool idle. 64 KiB
+// keeps tiny windows inline while a default chunk still feeds eight workers.
+constexpr int64_t kMinTypedBytesPerWorker = 64 * 1024;
+
+// Rows of an indexed gather are independent random reads; issuing the next
+// rows' cache lines early keeps several misses in flight per worker.
+// RELOC_INDEXED_PREFETCH overrides the distance (0 disables) for experiments.
+int64_t indexedPrefetchRows() {
+  static const int64_t value = [] {
+    if (const char *env = std::getenv("RELOC_INDEXED_PREFETCH"))
+      return std::max<int64_t>(0, std::atoll(env));
+    return int64_t(32);
+  }();
+  return value;
+}
+
+// Sum one bag of `dim` floats per table into `acc`, in index order (matching
+// an unweighted EmbeddingBag sum). Returns false on an index out of range.
+#ifdef RELOC_POOLED_AVX2
+__attribute__((target("avx2,f16c"))) bool
+pooledBagAvx2(const Program::PooledTable &table, int64_t begin, int64_t end,
+              int64_t dim, float *acc) {
+  for (int64_t d = 0; d + 8 <= dim; d += 8)
+    _mm256_storeu_ps(acc + d, _mm256_setzero_ps());
+  for (int64_t d = dim & ~int64_t(7); d < dim; ++d)
+    acc[d] = 0.f;
+  for (int64_t k = begin; k < end; ++k) {
+    const int64_t row = table.indices[k];
+    if (row < 0 || row >= table.rowCount)
+      return false;
+    const float *src =
+        reinterpret_cast<const float *>(table.rows + row * dim * sizeof(float));
+    int64_t d = 0;
+    for (; d + 8 <= dim; d += 8)
+      _mm256_storeu_ps(acc + d, _mm256_add_ps(_mm256_loadu_ps(acc + d),
+                                              _mm256_loadu_ps(src + d)));
+    for (; d < dim; ++d)
+      acc[d] += src[d];
+  }
+  return true;
+}
+#endif
+
+bool pooledBagScalar(const Program::PooledTable &table, int64_t begin,
+                     int64_t end, int64_t dim, float *acc) {
+  for (int64_t d = 0; d < dim; ++d)
+    acc[d] = 0.f;
+  for (int64_t k = begin; k < end; ++k) {
+    const int64_t row = table.indices[k];
+    if (row < 0 || row >= table.rowCount)
+      return false;
+    const float *src =
+        reinterpret_cast<const float *>(table.rows + row * dim * sizeof(float));
+    for (int64_t d = 0; d < dim; ++d)
+      acc[d] += src[d];
+  }
+  return true;
+}
+
+/// Result rows [first, last) of a pooled program into `dst` (the window's
+/// own storage): dst[(b - first), t, :] = stages(sum of bag (t, b)).
+std::optional<ExecutionError>
+executePooledBags(const Program &program, void *dst, GatherPool *pool,
+                  unsigned threads, const Chunk *chunk, uint64_t chunkIndex) {
+  const uint32_t stageCount = static_cast<uint32_t>(program.stages.size());
+  const int64_t bags = program.pooledBags, dim = program.pooledDim;
+  const int64_t tables = static_cast<int64_t>(program.pooledTables.size());
+  const uint32_t outputWidth = widthAt(program, stageCount);
+  const bool narrow = stageCount == 1 && isF32(program.stages[0].input) &&
+                      isF16(program.stages[0].output);
+  if (stageCount > 1 || (stageCount == 1 && !narrow))
+    return fail("unsupported_stage",
+                "pooled programs support no stage or one f32 -> f16 cast");
+  const int64_t rowBytes = tables * dim * outputWidth;
+  int64_t first = 0, last = bags;
+  if (chunk) {
+    if (chunk->validBegin < 0 || chunk->validEnd <= chunk->validBegin ||
+        chunk->validEnd > bags || chunk->paddedBegin != chunk->validBegin ||
+        chunk->paddedEnd != chunk->validEnd ||
+        chunk->byteOffset != chunk->validBegin * rowBytes ||
+        chunk->bytes !=
+            size_t((chunk->validEnd - chunk->validBegin) * rowBytes))
+      return fail("invalid_chunk", "pooled chunk must contain complete bags");
+    first = chunk->validBegin;
+    last = chunk->validEnd;
+  }
+  std::atomic<bool> outOfRange{false};
+#ifdef RELOC_POOLED_AVX2
+  const bool avx2 = quant::cpuSupports(quant::Variant::AVX2);
+#else
+  const bool avx2 = false;
+#endif
+  auto rows = [&](int64_t begin, int64_t end) {
+    reloc::detail::TraceRange trace("reloc.typed.transform.work", chunkIndex);
+    alignas(64) float acc[1024];
+    std::vector<float> spill;
+    float *sum = acc;
+    if (dim > 1024) {
+      spill.resize(static_cast<size_t>(dim));
+      sum = spill.data();
+    }
+    // Table-major: one table's bags [begin, end) read a contiguous run of
+    // its index stream, so the prefetch window can run ahead across bag
+    // boundaries (bags are short) and keep several row misses in flight.
+    constexpr int64_t kAhead = 12;
+    const int64_t rowStride = dim * int64_t(sizeof(float));
+    for (int64_t t = 0; t < tables; ++t) {
+      const auto &table = program.pooledTables[static_cast<size_t>(t)];
+      const int64_t streamEnd =
+          end < bags ? table.offsets[end] : table.indexCount;
+      auto touch = [&](int64_t k) {
+        if (k < streamEnd) {
+          const int64_t row = table.indices[k];
+          if (row >= 0 && row < table.rowCount) {
+            const uint8_t *p = table.rows + row * rowStride;
+            for (int64_t byte = 0; byte < rowStride; byte += 64)
+              __builtin_prefetch(p + byte, 0, 1);
+          }
+        }
+      };
+      for (int64_t k = table.offsets[begin]; k < table.offsets[begin] + kAhead;
+           ++k)
+        touch(k);
+      for (int64_t b = begin; b < end; ++b) {
+        const int64_t lo = table.offsets[b];
+        const int64_t hi =
+            b + 1 < bags ? table.offsets[b + 1] : table.indexCount;
+        for (int64_t k = lo; k < hi; ++k)
+          touch(k + kAhead);
+        bool ok;
+#ifdef RELOC_POOLED_AVX2
+        if (avx2)
+          ok = pooledBagAvx2(table, lo, hi, dim, sum);
+        else
+#endif
+          ok = pooledBagScalar(table, lo, hi, dim, sum);
+        if (!ok) {
+          outOfRange.store(true);
+          return;
+        }
+        uint8_t *cell = static_cast<uint8_t *>(dst) + (b - first) * rowBytes +
+                        t * dim * outputWidth;
+        if (narrow)
+          quant::convertF32F16(sum, reinterpret_cast<uint16_t *>(cell), dim);
+        else
+          std::memcpy(cell, sum, static_cast<size_t>(dim) * sizeof(float));
+      }
+    }
+  };
+  std::unique_ptr<GatherPool> owned;
+  const int64_t grain = workerFloor(rowBytes * 3, kMinTypedBytesPerWorker);
+  if (!pool && threads != 1 && last - first >= 2 * grain) {
+    owned = std::make_unique<GatherPool>(threads);
+    pool = owned.get();
+  }
+  if (pool)
+    pool->parallelFor(first, last, grain, rows);
+  else
+    rows(first, last);
+  if (outOfRange.load())
+    return fail("index_out_of_range", "pooled bag index is outside its table");
+  return std::nullopt;
+}
+
 std::optional<ExecutionError>
 executeHostWindow(const Program &program, uint32_t from, uint32_t to,
                   const void *src, void *dst, GatherPool *pool,
@@ -515,6 +696,12 @@ executeHostWindow(const Program &program, uint32_t from, uint32_t to,
     return fail("invalid_boundary", "stage range [" + std::to_string(from) +
                                         ", " + std::to_string(to) +
                                         ") is not inside the program");
+  if (!program.pooledTables.empty()) {
+    if (from != 0 || to != stageCount)
+      return fail("invalid_boundary",
+                  "pooled programs execute all host stages together");
+    return executePooledBags(program, dst, pool, threads, chunk, chunkIndex);
+  }
   if (program.indexedSourceRows) {
     if (from != 0 || to != stageCount)
       return fail("invalid_boundary",
@@ -540,7 +727,15 @@ executeHostWindow(const Program &program, uint32_t from, uint32_t to,
     }
     auto rows = [&](int64_t begin, int64_t end) {
       reloc::detail::TraceRange trace("reloc.typed.transform.work", chunkIndex);
+      const int64_t rowInputBytes = columns * inputWidth;
+      const int64_t ahead = indexedPrefetchRows();
       for (int64_t row = begin; row < end; ++row) {
+        if (ahead > 0 && row + ahead < end) {
+          const auto *next = static_cast<const uint8_t *>(src) +
+                             program.rowIndices[row + ahead] * rowInputBytes;
+          for (int64_t b = 0; b < rowInputBytes; b += 64)
+            __builtin_prefetch(next + b, 0, 1);
+        }
         const auto *input = static_cast<const uint8_t *>(src) +
                             program.rowIndices[row] * columns * inputWidth;
         auto *output = static_cast<uint8_t *>(dst) + (row - first) * rowBytes;
@@ -563,7 +758,8 @@ executeHostWindow(const Program &program, uint32_t from, uint32_t to,
       }
     };
     std::unique_ptr<GatherPool> owned;
-    const int64_t grain = workerFloor(columns * (inputWidth + outputWidth));
+    const int64_t grain = workerFloor(columns * (inputWidth + outputWidth),
+                                      kMinTypedBytesPerWorker);
     if (!pool && threads != 1 && last - first >= 2 * grain) {
       owned = std::make_unique<GatherPool>(threads);
       pool = owned.get();
@@ -637,6 +833,11 @@ executeHostWindow(const Program &program, uint32_t from, uint32_t to,
   const bool rowsDisjoint = layout.dstStrides.front() >= innerSpan + 1;
 
   const bool tiled = kernel == HostKernel::TiledTranspose;
+  const bool runs = kernel == HostKernel::StridedRuns;
+  const bool narrowCast =
+      to == from + 1 &&
+      program.stages[from].transform == ValueTransformKind::Cast &&
+      isF32(program.stages[from].input) && isF16(program.stages[from].output);
   const int64_t units =
       tiled ? (end - begin + detail::kTypedTile - 1) / detail::kTypedTile
             : end - begin;
@@ -652,11 +853,9 @@ executeHostWindow(const Program &program, uint32_t from, uint32_t to,
   // cast/copy. 256 KiB lets a default 1 MiB wire chunk use the worker budget
   // while keeping tiny windows inline. Direct contiguous casts use the
   // existing gather/copy floor of 1 MiB.
-  const int64_t grain =
-      kernel == HostKernel::Generic
-          ? 1
-          : workerFloor(unitBytes, state.narrowRun ? kMinGatherBytesPerWorker
-                                                   : 256 * 1024);
+  const int64_t grain = kernel == HostKernel::Generic
+                            ? 1
+                            : workerFloor(unitBytes, kMinTypedBytesPerWorker);
   std::unique_ptr<GatherPool> owned;
   if (pool == nullptr && threads != 1 && rowsDisjoint && units >= 2 * grain) {
     owned = std::make_unique<GatherPool>(threads);
@@ -664,7 +863,10 @@ executeHostWindow(const Program &program, uint32_t from, uint32_t to,
   }
   auto work = [&](int64_t first, int64_t last) {
     reloc::detail::TraceRange trace("reloc.typed.transform.work", chunkIndex);
-    if (tiled)
+    if (runs)
+      detail::stridedRuns(program, from, to, state.src, state.dst,
+                          begin + first, begin + last, origin, narrowCast);
+    else if (tiled)
       detail::transpose(program, from, to, state.src, state.dst,
                         begin + first * detail::kTypedTile,
                         std::min(end, begin + last * detail::kTypedTile),

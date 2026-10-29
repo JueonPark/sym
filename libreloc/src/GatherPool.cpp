@@ -26,13 +26,14 @@ GatherPool::GatherPool(unsigned threads) {
   if (threads == 0)
     threads = 1;
   threads_ = static_cast<int>(threads);
+  assigned_.assign(static_cast<size_t>(threads_), Range{0, 0});
   workers_.reserve(static_cast<size_t>(threads_ - 1));
   for (int w = 0; w + 1 < threads_; ++w) {
     // Same rationale as executeH2DThreaded: if a std::thread constructor
     // throws partway through, join the already-spawned workers before
     // rethrowing so unwinding never destroys a joinable std::thread.
     try {
-      workers_.emplace_back([this] { workerLoop(); });
+      workers_.emplace_back([this, w] { workerLoop(w + 1); });
     } catch (...) {
       close();
       throw;
@@ -52,8 +53,7 @@ void GatherPool::close() {
     return;
   {
     std::lock_guard<std::mutex> lk(mu_);
-    assert(pending_.empty() && outstanding_ == 0 &&
-           "close() during an in-flight parallelFor");
+    assert(outstanding_ == 0 && "close() during an in-flight parallelFor");
     stop_ = true;
   }
   cv_.notify_all();
@@ -64,14 +64,18 @@ void GatherPool::close() {
   closed_ = true;
 }
 
-void GatherPool::workerLoop() {
+void GatherPool::workerLoop(int worker) {
   std::unique_lock<std::mutex> lk(mu_);
+  const size_t index = static_cast<size_t>(worker);
+  // Index the slot under the lock on every use: assigned_ is rewritten by
+  // each dispatch, so no reference into it may outlive the lock.
+  auto pending = [&] { return assigned_[index].begin < assigned_[index].end; };
   for (;;) {
-    cv_.wait(lk, [&] { return stop_ || !pending_.empty(); });
-    if (pending_.empty())
-      return; // stop_ set and nothing left to claim
-    Range r = pending_.back();
-    pending_.pop_back();
+    cv_.wait(lk, [&] { return stop_ || pending(); });
+    if (!pending())
+      return; // stop_ set and nothing assigned
+    Range r = assigned_[index];
+    assigned_[index] = Range{0, 0};
     const auto *fn = fn_;
     lk.unlock();
     std::exception_ptr failure;
@@ -98,16 +102,19 @@ void GatherPool::parallelFor(int64_t begin, int64_t end, int64_t minPerWorker,
   const int64_t parts =
       std::min<int64_t>(threads_, std::max<int64_t>(1, n / minPerWorker));
   const int64_t per = (n + parts - 1) / parts; // ceil
-  // Sub-ranges 1..parts-1 go to the workers; range 0 runs inline below.
-  // (ceil rounding can make trailing ranges empty; skip them.)
-  std::vector<Range> rest;
+  // Sub-range p goes to worker p; range 0 runs inline below. (ceil rounding
+  // can make trailing ranges empty; skip them.)
+  std::vector<Range> rest(static_cast<size_t>(threads_), Range{0, 0});
+  int count = 0;
   for (int64_t p = 1; p < parts; ++p) {
     int64_t b = begin + p * per;
     int64_t e = std::min(begin + (p + 1) * per, end);
-    if (b < e)
-      rest.push_back({b, e});
+    if (b < e) {
+      rest[static_cast<size_t>(p)] = {b, e};
+      ++count;
+    }
   }
-  if (rest.empty()) {
+  if (count == 0) {
     invoke(fn, begin, end); // single sub-range: bit-identical to a direct call
     return;
   }
@@ -124,8 +131,9 @@ void GatherPool::parallelFor(int64_t begin, int64_t end, int64_t minPerWorker,
   {
     std::lock_guard<std::mutex> lk(mu_);
     fn_ = &fn;
-    pending_ = std::move(rest);
-    outstanding_ = static_cast<int>(pending_.size());
+    for (size_t i = 0; i < assigned_.size(); ++i)
+      assigned_[i] = rest[i];
+    outstanding_ = count;
     failure_ = nullptr;
   }
   cv_.notify_all();

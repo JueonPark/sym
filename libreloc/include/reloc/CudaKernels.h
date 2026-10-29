@@ -42,6 +42,13 @@ void relocateNaiveF32(const BoundPlan &bound, const float *dSrc, float *dDst,
 void relocateF32(const BoundPlan &bound, const float *dSrc, float *dDst,
                  void *stream = nullptr);
 
+/// `relocate_batch_f32`: the naive permute over `count` independent
+/// (source, destination) pairs that share one BoundPlan, launched as one
+/// grid per 32 pairs (pointer tables travel as kernel parameters). Same
+/// preconditions and bit-identical results as relocateNaiveF32 per pair.
+void relocateBatchF32(const BoundPlan &bound, const float *const *dSrcs,
+                      float *const *dDsts, int count, void *stream = nullptr);
+
 /// `quantize_f32_s8` (GPU side, Method B for EXP-2's quantize workloads):
 /// contiguous per-channel int8 quantize, BIT-IDENTICAL to the CPU scalar
 /// contract (fmaxf-then-fminf clamp so NaN -> -128; __float2int_rn = RNE).

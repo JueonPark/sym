@@ -33,6 +33,41 @@ set_target_properties(pyreloc_ext PROPERTIES
   OUTPUT_NAME _pyreloc
   LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/python/pyreloc)
 
+# Optional libtorch-backed request builders for reloc_torch.fast. Off by
+# default: it binds the module to the exact Torch the build found, so wheels
+# and Torch-free installs never carry it; reloc_torch.fast falls back to its
+# pure-Python descriptor path when the module is absent.
+option(RELOC_ENABLE_TORCH_EXT "Build _pyreloc_torch against the configured Torch" OFF)
+if(RELOC_ENABLE_TORCH_EXT)
+  # Locate the Torch package of the configured interpreter directly: its
+  # TorchConfig.cmake insists on a matching CUDA toolkit scan that this
+  # metadata-only module does not need. Only CPU-side tensor metadata is read.
+  execute_process(
+    COMMAND ${Python_EXECUTABLE} -c "import os, torch; print(os.path.dirname(torch.__file__), end='')"
+    OUTPUT_VARIABLE RELOC_TORCH_ROOT RESULT_VARIABLE torch_status)
+  if(NOT torch_status EQUAL 0 OR NOT EXISTS "${RELOC_TORCH_ROOT}/include/torch/csrc/autograd/python_variable.h")
+    message(FATAL_ERROR "RELOC_ENABLE_TORCH_EXT: torch is not importable from ${Python_EXECUTABLE}")
+  endif()
+  execute_process(
+    COMMAND ${Python_EXECUTABLE} -c "import torch; print(int(torch._C._GLIBCXX_USE_CXX11_ABI), end='')"
+    OUTPUT_VARIABLE RELOC_TORCH_CXX11_ABI)
+  pybind11_add_module(pyreloc_torch_ext MODULE PyTorchViews.cpp)
+  # Torch ships its own pybind11; the helper must see the project's pybind11
+  # first so its types live in the same registry as _pyreloc's.
+  target_include_directories(pyreloc_torch_ext BEFORE PRIVATE ${pybind11_INCLUDE_DIRS})
+  target_include_directories(pyreloc_torch_ext SYSTEM PRIVATE
+    "${RELOC_TORCH_ROOT}/include" "${RELOC_TORCH_ROOT}/include/torch/csrc/api/include")
+  target_link_directories(pyreloc_torch_ext PRIVATE "${RELOC_TORCH_ROOT}/lib")
+  target_link_libraries(pyreloc_torch_ext PRIVATE reloc_runtime torch torch_cpu c10 torch_python)
+  target_compile_definitions(pyreloc_torch_ext PRIVATE _GLIBCXX_USE_CXX11_ABI=${RELOC_TORCH_CXX11_ABI})
+  target_compile_features(pyreloc_torch_ext PRIVATE cxx_std_20) # ATen headers require C++20
+  set_target_properties(pyreloc_torch_ext PROPERTIES
+    OUTPUT_NAME _pyreloc_torch
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/python/pyreloc
+    BUILD_RPATH "${RELOC_TORCH_ROOT}/lib"
+    INSTALL_RPATH "${RELOC_TORCH_ROOT}/lib")
+endif()
+
 if(SYM_BUILD_TESTS)
   pybind11_add_module(typed_host_test MODULE tests/TypedHostHarness.cpp)
   target_link_libraries(typed_host_test PRIVATE reloc_runtime)

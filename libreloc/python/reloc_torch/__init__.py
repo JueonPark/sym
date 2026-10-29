@@ -40,6 +40,9 @@ __all__ = (
     "TransferCompletion",
     "PlacementPolicy",
     "PlacementProfile",
+    "FastTransfers",
+    "FastWeights",
+    "KVCacheSwap",
 )
 
 
@@ -56,6 +59,10 @@ def __getattr__(name):
         from .wire_weights import PreparedWireWeights
         globals()[name] = PreparedWireWeights
         return PreparedWireWeights
+    if name in {"FastTransfers", "FastWeights", "KVCacheSwap"}:
+        from .fast import FastTransfers, FastWeights, KVCacheSwap
+        globals().update(FastTransfers=FastTransfers, FastWeights=FastWeights, KVCacheSwap=KVCacheSwap)
+        return globals()[name]
     if name in {"TransferQueue", "TransferCompletion"}:
         from .asynchronous import TransferQueue, TransferCompletion
         globals().update(TransferQueue=TransferQueue, TransferCompletion=TransferCompletion)

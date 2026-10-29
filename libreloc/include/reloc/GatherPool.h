@@ -70,7 +70,7 @@ private:
     int64_t begin, end;
   };
 
-  void workerLoop();
+  void workerLoop(int worker);
 
   int threads_ = 1;
   std::atomic<bool> closed_{false};
@@ -83,8 +83,11 @@ private:
   std::condition_variable cv_;   // wakes workers (new work or stop)
   std::condition_variable done_; // wakes the parallelFor barrier
   const std::function<void(int64_t, int64_t)> *fn_ = nullptr; // live dispatch
-  std::vector<Range> pending_; // sub-ranges not yet claimed
-  int outstanding_ = 0;        // handed to workers, not yet finished
+  // Static schedule: sub-range p always runs on worker p (range 0 on the
+  // caller), so repeated dispatches with the same partition find a worker's
+  // rows in its own L2 the way an OpenMP static schedule does.
+  std::vector<Range> assigned_; // per worker; begin >= end means none
+  int outstanding_ = 0;         // handed to workers, not yet finished
   bool stop_ = false;
   std::exception_ptr failure_; // first failure in the current dispatch
 };

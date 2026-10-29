@@ -39,6 +39,23 @@ namespace dispatch {
 std::variant<typed::Program, TransferError>
 prepareIndexSelect(const IndexedBoundPlan &bound, const BufferView &source);
 
+/// A fused embedding-bag producer: `tables[t]` is a dense float32
+/// [rows_t, dim] host view, `indices[t]`/`offsets[t]` the table's bag
+/// operands (int64, EmbeddingBag semantics without include_last_offset).
+/// The result is the dense [bags, tables, dim] tensor of bag sums, in
+/// float32 or (``narrow``) float16 with IEEE round-to-nearest-even. Only the
+/// CPU reference row executes it; the caller keeps every operand alive and
+/// unchanged until the request completed.
+struct PooledOperand {
+  const int64_t *values = nullptr;
+  int64_t count = 0;
+};
+std::variant<typed::Program, TransferError>
+preparePooledBags(const std::vector<BufferView> &tables,
+                  const std::vector<PooledOperand> &indices,
+                  const std::vector<PooledOperand> &offsets, int64_t bags,
+                  int64_t dim, bool narrow);
+
 /// `OriginalCpu`: the declared layout and every stage run on the CPU, then
 /// the necessary cross-device copy (transform then H2D, or D2H of the
 /// logical source then the forward CPU transform). `Auto`: enumerate the
