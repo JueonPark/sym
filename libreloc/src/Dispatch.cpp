@@ -4,6 +4,7 @@
 #include "DispatchGroupInternal.h"
 #include "Trace.h"
 #include "TransferInternal.h"
+#include "reloc/Ablation.h"
 
 #include "reloc/ChunkSchedule.h"
 #include "reloc/GatherPool.h"
@@ -51,6 +52,9 @@ bool isF32(ElementType t) {
 }
 bool isF16(ElementType t) {
   return t.kind == ElementTypeKind::Float && t.bitwidth == 16;
+}
+bool isBF16(ElementType t) {
+  return t.kind == ElementTypeKind::BFloat && t.bitwidth == 16;
 }
 
 std::string label(const char *id, uint32_t boundary) {
@@ -637,10 +641,18 @@ std::optional<TransferError> runDeviceStages(const Program &program,
   const void *input = dIn;
   for (uint32_t j = from; j < to; ++j) {
     const typed::StageArithmetic &stage = program.stages[j];
+    // dequantize followed by the f16 narrowing runs as one kernel without
+    // the f32 intermediate (same two roundings, bit-identical).
+    const bool fused =
+        stage.transform == ValueTransformKind::Dequantize && j + 1 < to &&
+        program.stages[j + 1].transform == ValueTransformKind::Cast &&
+        isF32(program.stages[j + 1].input) &&
+        isF16(program.stages[j + 1].output) &&
+        !ablation::enabled(ablation::Knob::UnfusedDequantF16);
+    const uint32_t next = fused ? j + 2 : j + 1;
     void *output = dOut;
-    if (j + 1 < to) {
-      output =
-          scratch.allocDevice(typed::bytesAt(program, j + 1, resultLayout));
+    if (next < to) {
+      output = scratch.allocDevice(typed::bytesAt(program, next, resultLayout));
       if (output == nullptr)
         return backendFailure(backend, "device scratch allocation failed");
     }
@@ -648,12 +660,22 @@ std::optional<TransferError> runDeviceStages(const Program &program,
     const int64_t channelSize = elements / channels;
     switch (stage.transform) {
     case ValueTransformKind::Cast:
-      if (isF32(stage.input))
-        cuda::convertF32F16(static_cast<const float *>(input),
-                            static_cast<uint16_t *>(output), elements, stream);
-      else
+      if (isF32(stage.input)) {
+        if (isBF16(stage.output))
+          cuda::convertF32BF16(static_cast<const float *>(input),
+                               static_cast<uint16_t *>(output), elements,
+                               stream);
+        else
+          cuda::convertF32F16(static_cast<const float *>(input),
+                              static_cast<uint16_t *>(output), elements,
+                              stream);
+      } else if (isBF16(stage.input)) {
+        cuda::convertBF16F32(static_cast<const uint16_t *>(input),
+                             static_cast<float *>(output), elements, stream);
+      } else {
         cuda::convertF16F32(static_cast<const uint16_t *>(input),
                             static_cast<float *>(output), elements, stream);
+      }
       break;
     case ValueTransformKind::Quantize: {
       std::vector<float> inv = stage.perChannel
@@ -673,9 +695,14 @@ std::optional<TransferError> runDeviceStages(const Program &program,
       const float *dScale = scratch.uploadFloats(scale, payload);
       if (dScale == nullptr)
         return backendFailure(backend, "parameter upload failed");
-      cuda::dequantS8F32(static_cast<const int8_t *>(input),
-                         static_cast<float *>(output), channels, channelSize,
-                         dScale, stream);
+      if (fused)
+        cuda::dequantS8F16(static_cast<const int8_t *>(input),
+                           static_cast<uint16_t *>(output), channels,
+                           channelSize, dScale, stream);
+      else
+        cuda::dequantS8F32(static_cast<const int8_t *>(input),
+                           static_cast<float *>(output), channels, channelSize,
+                           dScale, stream);
       break;
     }
     }
@@ -684,6 +711,8 @@ std::optional<TransferError> runDeviceStages(const Program &program,
     if (!backend.recordLaunchStatus("typed stage kernel launch"))
       return backendFailure(backend, "kernel launch failed");
     input = output;
+    if (fused)
+      ++j; // the cast stage was consumed by the fused kernel
   }
   return std::nullopt;
 }

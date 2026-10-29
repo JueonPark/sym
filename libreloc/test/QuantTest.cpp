@@ -662,3 +662,84 @@ TEST(QuantParallel, NonDisjointDstRowsFallBackInline) {
 }
 
 } // namespace
+
+//===----------------------------------------------------------------------===//
+// bfloat16 casts (docs/reloc-typed-semantics.md §3.5 / §3.6).
+//===----------------------------------------------------------------------===//
+
+TEST(TypedSemantics, BFloat16NarrowingAndWideningWitnessBits) {
+  struct Row {
+    float x;
+    uint16_t want;
+  };
+  const Row rows[] = {
+      {0.0f, 0x0000},
+      {-0.0f, 0x8000},
+      {1.0f, 0x3F80},
+      {1.0f + 0x1p-8f, 0x3F80},         // tie -> even
+      {1.0f + 3 * 0x1p-9f, 0x3F81},     // above the tie
+      {0x1p-133f, 0x0001},              // smallest subnormal
+      {0x1p-134f, 0x0000},              // tie below it -> even -> zero
+      {1.5f * 0x1p-134f, 0x0001},       // above that tie
+      {0x1p-126f, 0x0080},              // smallest normal
+      {3.3895313892515355e38f, 0x7F7F}, // largest finite (0x7F7F0000)
+      {3.3961775292304193e38f, 0x7F80}, // tie with 2^128 -> even -> inf
+      {3.4e38f, 0x7F80},
+      {HUGE_VALF, 0x7F80},
+      {-HUGE_VALF, 0xFF80},
+  };
+  for (const Row &row : rows)
+    EXPECT_EQ(reloc::quant::narrowF32BF16(row.x), row.want) << row.x;
+  const uint16_t nan = reloc::quant::narrowF32BF16(std::nanf("0x12345"));
+  EXPECT_TRUE(std::isnan(reloc::quant::widenBF16F32(nan)));
+  struct Wide {
+    uint16_t b;
+    uint32_t want;
+  };
+  const Wide wide[] = {{0x0001, 0x00010000}, {0x0080, 0x00800000},
+                       {0x7F7F, 0x7F7F0000}, {0x7F80, 0x7F800000},
+                       {0xFF80, 0xFF800000}, {0x8000, 0x80000000},
+                       {0x3F80, 0x3F800000}, {0x3F81, 0x3F810000}};
+  for (const Wide &w : wide) {
+    const float value = reloc::quant::widenBF16F32(w.b);
+    uint32_t bits;
+    std::memcpy(&bits, &value, sizeof(bits));
+    EXPECT_EQ(bits, w.want);
+  }
+}
+
+TEST(TypedSemantics, BFloat16NarrowingIsNearestEvenOnRandomBits) {
+  // Independent oracle on the magnitude: of the two bf16 neighbours
+  // (truncation and its successor; the successor of the largest finite
+  // value is 2^128, so overflow rounds to infinity exactly when IEEE says
+  // so) pick the nearer in double precision, ties to even; the sign bit is
+  // carried over unchanged.
+  std::mt19937 rng(4242);
+  for (int i = 0; i < 200000; ++i) {
+    uint32_t bits = rng();
+    float x;
+    std::memcpy(&x, &bits, sizeof(x));
+    if (std::isnan(x))
+      continue;
+    const uint32_t magnitude = bits & 0x7FFFFFFFu;
+    const uint16_t sign = static_cast<uint16_t>((bits >> 16) & 0x8000u);
+    const uint16_t lo = static_cast<uint16_t>(magnitude >> 16);
+    const uint16_t hi = static_cast<uint16_t>(lo + 1);
+    const double dx = std::fabs(static_cast<double>(x));
+    const double dlo = reloc::quant::widenBF16F32(lo);
+    const double dhi =
+        hi >= 0x7F80 ? std::ldexp(1.0, 128) : reloc::quant::widenBF16F32(hi);
+    uint16_t want;
+    if ((magnitude & 0xFFFF) == 0 || (lo & 0x7F80) == 0x7F80)
+      want = lo; // exactly on the grid, or infinite
+    else if (dx - dlo < dhi - dx)
+      want = lo;
+    else if (dx - dlo > dhi - dx)
+      want = hi;
+    else
+      want = (lo & 1) ? hi : lo;
+    ASSERT_EQ(reloc::quant::narrowF32BF16(x),
+              static_cast<uint16_t>(want | sign))
+        << std::hexfloat << x;
+  }
+}

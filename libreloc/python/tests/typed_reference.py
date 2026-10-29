@@ -21,10 +21,15 @@ import numpy as np
 DTYPES = {
     "float32": np.dtype(np.float32),
     "float16": np.dtype(np.float16),
+    # NumPy has no bfloat16: bf16 arrays are their uint16 bit patterns, and
+    # the replay tracks the logical dtype from the recipe.
+    "bfloat16": np.dtype(np.uint16),
+    "uint16": np.dtype(np.uint16),  # how a corpus fixture names a bf16 bit array
     "int8": np.dtype(np.int8),
     "int32": np.dtype(np.int32),
 }
-_BITS = {"float32": np.uint32, "float16": np.uint16, "int8": np.uint8, "int32": np.uint32}
+_BITS = {"float32": np.uint32, "float16": np.uint16, "bfloat16": np.uint16, "uint16": np.uint16,
+         "int8": np.uint8, "int32": np.uint32}
 
 
 #===----------------------------------------------------------------------===#
@@ -41,6 +46,25 @@ def cast_f32_f16(x):
 def cast_f16_f32(h):
     """§3.2 ``exact``: every binary16 value is a binary32 value."""
     return np.asarray(h, dtype=np.float16).astype(np.float32)
+
+
+def cast_f32_bf16(x):
+    """§3.5 ``ieee_rne`` to bfloat16: round the discarded 16 bits to nearest
+    even (the carry reaches the exponent, so overflow lands on infinity and
+    subnormals are exact); a NaN stays a quiet NaN. Returns uint16 bits."""
+    bits = np.ascontiguousarray(np.asarray(x, dtype=np.float32)).view(np.uint32)
+    nan = (bits & np.uint32(0x7FFFFFFF)) > np.uint32(0x7F800000)
+    with np.errstate(over="ignore"):
+        lsb = (bits >> np.uint32(16)) & np.uint32(1)
+        rounded = ((bits + np.uint32(0x7FFF) + lsb) >> np.uint32(16)).astype(np.uint16)
+    quiet = ((bits >> np.uint32(16)) | np.uint32(0x0040)).astype(np.uint16)
+    return np.where(nan, quiet, rounded).astype(np.uint16)
+
+
+def cast_bf16_f32(b):
+    """§3.6 ``exact``: every bfloat16 value is a binary32 value (bits << 16)."""
+    bits = np.asarray(b, dtype=np.uint16).astype(np.uint32) << np.uint32(16)
+    return bits.view(np.float32)
 
 
 def _along(param, rank, axis):
@@ -146,6 +170,7 @@ def replay(recipe, source, symbols, parameters=None):
     expected_shape = tuple(evaluate(d, symbols) for d in recipe["source"]["shape"])
     if a.shape != expected_shape:
         raise ValueError(f"source shape {a.shape} does not match the recipe {expected_shape}")
+    current = recipe["source"]["dtype"]  # logical dtype (bf16 arrays are uint16 bits)
     for op in recipe["operations"]:
         kind = op["kind"]
         if kind == "transpose":
@@ -161,29 +186,37 @@ def replay(recipe, source, symbols, parameters=None):
                 raise ValueError("pad fill dtype differs from the stage dtype")
             a = np.pad(a, widths, mode="constant", constant_values=fill)
         elif kind == "cast":
-            if a.dtype == np.float32 and op["dtype"] == "float16" and op["policy"] == "ieee_rne":
+            pair = (current, op["dtype"], op["policy"])
+            if pair == ("float32", "float16", "ieee_rne"):
                 a = cast_f32_f16(a)
-            elif a.dtype == np.float16 and op["dtype"] == "float32" and op["policy"] == "exact":
+            elif pair == ("float16", "float32", "exact"):
                 a = cast_f16_f32(a)
+            elif pair == ("float32", "bfloat16", "ieee_rne"):
+                a = cast_f32_bf16(a)
+            elif pair == ("bfloat16", "float32", "exact"):
+                a = cast_bf16_f32(a)
             else:
-                raise ValueError(f"cast {a.dtype} -> {op['dtype']} {op['policy']} has no C1 table")
+                raise ValueError(f"cast {current} -> {op['dtype']} {op['policy']} has no C1 table")
+            current = op["dtype"]
         elif kind == "quantize":
-            if a.dtype != np.float32 or op["dtype"] != "int8" or op["policy"] != "symmetric_rne":
+            if current != "float32" or op["dtype"] != "int8" or op["policy"] != "symmetric_rne":
                 raise ValueError("quantize outside C1's table")
             zp = _parameter(op["zero_point"], parameters)
             if zp is not None and np.any(np.asarray(zp) != 0):
                 raise ValueError("symmetric_rne admits only zero point 0")
             a = quantize_f32_s8(a, _parameter(op["scale"], parameters), op["axis"])
+            current = "int8"
         elif kind == "dequantize":
-            if a.dtype != np.int8 or op["dtype"] != "float32" or op["policy"] != "affine":
+            if current != "int8" or op["dtype"] != "float32" or op["policy"] != "affine":
                 raise ValueError("dequantize outside C1's table")
             zp = _parameter(op["zero_point"], parameters)
             a = dequantize_s8_f32(a, _parameter(op["scale"], parameters), 0 if zp is None else zp, op["axis"])
+            current = "float32"
         else:
             raise ValueError(f"unknown operation {kind!r}")
     result = np.ascontiguousarray(a)
     destination = recipe["destination"]
-    if result.dtype != DTYPES[destination["dtype"]]:
+    if result.dtype != DTYPES[destination["dtype"]] or current != destination["dtype"]:
         raise ValueError("replayed dtype does not reach the destination dtype")
     shape = tuple(evaluate(d, symbols) for d in destination["shape"])
     if result.shape != shape:
@@ -193,7 +226,9 @@ def replay(recipe, source, symbols, parameters=None):
 
 __all__ = (
     "DTYPES",
+    "cast_bf16_f32",
     "cast_f16_f32",
+    "cast_f32_bf16",
     "cast_f32_f16",
     "dequantize_s8_f32",
     "evaluate",

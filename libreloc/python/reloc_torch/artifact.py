@@ -404,7 +404,7 @@ def _parse_descriptor(value, where, *, index=False):
     if not value["shape"] or len(value["shape"]) != len(value["strides"]):
         raise RuntimeError(f"compiler manifest {where} has invalid rank")
     dtype = _string(value["dtype"], f"{where}.dtype")
-    if dtype not in (("int32", "int64") if index else ("float32", "float16", "int8")):
+    if dtype not in (("int32", "int64") if index else ("float32", "float16", "bfloat16", "int8")):
         raise RuntimeError(f"compiler manifest {where} has unsupported dtype")
     return TensorSpec(
         tuple(_parse_expr(item, f"{where}.shape") for item in value["shape"]),

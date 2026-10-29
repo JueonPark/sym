@@ -182,6 +182,8 @@ StringRef dtype(Type type) {
     return "float32";
   if (type.isF16())
     return "float16";
+  if (type.isBF16())
+    return "bfloat16";
   if (type.isSignlessInteger(8))
     return "int8";
   return {};

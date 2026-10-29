@@ -64,6 +64,21 @@ void dequantS8F32(const int8_t *dSrc, float *dDst, int64_t channels,
                   int64_t channelSize, const float *dScales,
                   void *stream = nullptr);
 
+/// dequantize s8 -> f32 affine followed by the ieee_rne narrowing to f16
+/// as one kernel: out = half_rn((float)s8 * scale[channel]). Bit-identical
+/// to dequantS8F32 followed by convertF32F16; no f32 intermediate.
+void dequantS8F16(const int8_t *dSrc, uint16_t *dDst, int64_t channels,
+                  int64_t channelSize, const float *dScales,
+                  void *stream = nullptr);
+
+/// bfloat16 casts (docs/reloc-typed-semantics.md §3.5 / §3.6): f32 -> bf16
+/// round to nearest even (non-NaN bits match quant::narrowF32BF16) and the
+/// exact widening.
+void convertF32BF16(const float *dSrc, uint16_t *dDst, int64_t count,
+                    void *stream = nullptr);
+void convertBF16F32(const uint16_t *dSrc, float *dDst, int64_t count,
+                    void *stream = nullptr);
+
 /// `convert_f16_f32` (Method A r=0.5 receive path, issue #83): contiguous
 /// IEEE binary16 -> fp32 widening. Exact -- every f16 value is
 /// representable in f32, so the output is unique and bit-comparable to any

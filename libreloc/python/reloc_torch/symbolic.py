@@ -258,7 +258,7 @@ def bind_recipe(recipe, sources, concrete_source, *, bindings=None):
         return result
 
     def footprint(values, dtype):
-        size = {'float32': 4, 'float16': 2, 'int8': 1}.get(dtype)
+        size = {'float32': 4, 'float16': 2, 'bfloat16': 2, 'int8': 1}.get(dtype)
         if size is None:
             raise GuardError('unsupported_dtype')
         return _i64(ev(product(values)) * size)

@@ -29,6 +29,9 @@ bool isF32(ElementType type) {
 bool isF16(ElementType type) {
   return type.kind == ElementTypeKind::Float && type.bitwidth == 16;
 }
+bool isBF16(ElementType type) {
+  return type.kind == ElementTypeKind::BFloat && type.bitwidth == 16;
+}
 bool isI8(ElementType type) {
   return type.kind == ElementTypeKind::Integer && type.bitwidth == 8;
 }
@@ -78,6 +81,10 @@ std::optional<uint64_t> foldFill(uint64_t bits, ElementType type,
       return static_cast<uint64_t>(quant::narrowF32F16(f32FromBits(bits)));
     if (isF16(type) && isF32(stage.output.type))
       return bitsFromF32(quant::widenF16F32(static_cast<uint16_t>(bits)));
+    if (isF32(type) && isBF16(stage.output.type))
+      return static_cast<uint64_t>(quant::narrowF32BF16(f32FromBits(bits)));
+    if (isBF16(type) && isF32(stage.output.type))
+      return bitsFromF32(quant::widenBF16F32(static_cast<uint16_t>(bits)));
     return std::nullopt;
   case ValueTransformKind::Quantize: {
     if (!isF32(type) || !isI8(stage.output.type) || stage.axis >= 0 ||

@@ -95,6 +95,13 @@ void gatherQuantizeF32S8(const BoundPlan &bound, const float *srcBase,
 int8_t quantizeOneF32S8(float x, float invScale);
 uint16_t narrowF32F16(float x);
 float widenF16F32(uint16_t h);
+/// bfloat16 (the upper 16 bits of binary32) casts,
+/// docs/reloc-typed-semantics.md §3.5 / §3.6:
+///   narrowF32BF16: ieee_rne on the 16 discarded bits (overflow -> inf,
+///                  subnormals kept, NaN stays a NaN).
+///   widenBF16F32:  exact (bits << 16).
+uint16_t narrowF32BF16(float x);
+float widenBF16F32(uint16_t b);
 
 /// Multi-thread wrappers over a caller-owned GatherPool (D-track parallel
 /// producer, issue #65): partition with the pipeline's per-worker byte

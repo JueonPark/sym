@@ -119,7 +119,7 @@ class PreparedTransfers:
                 raise ValueError("layout preparation does not accept typed/indexed arguments")
             request = prepare_transfer(compiled, source, device)
         descriptor = request.destination
-        sizes = {"float32": 4, "float16": 2, "int8": 1}
+        sizes = {"float32": 4, "float16": 2, "bfloat16": 2, "int8": 1}
         output_bytes = sizes[descriptor.dtype]
         for extent in descriptor.shape:
             output_bytes *= extent

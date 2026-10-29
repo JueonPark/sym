@@ -10,7 +10,7 @@
 //===----------------------------------------------------------------------===//
 
 func.func @cast_same_type(%t: !sym.tensor<[4], f32>) {
-  // expected-error @below {{cast from 'f32' to 'f32' is not a supported typed conversion (f32 -> f16, f16 -> f32)}}
+  // expected-error @below {{cast from 'f32' to 'f32' is not a supported typed conversion (f32 -> f16, f16 -> f32, f32 -> bf16, bf16 -> f32)}}
   %0 = reloc.cast %t policy ieee_rne : !sym.tensor<[4], f32> -> !sym.tensor<[4], f32>
   return
 }
@@ -18,16 +18,23 @@ func.func @cast_same_type(%t: !sym.tensor<[4], f32>) {
 // -----
 
 func.func @cast_unsupported_pair(%t: !sym.tensor<[4], f32>) {
-  // expected-error @below {{cast from 'f32' to 'f64' is not a supported typed conversion (f32 -> f16, f16 -> f32)}}
+  // expected-error @below {{cast from 'f32' to 'f64' is not a supported typed conversion (f32 -> f16, f16 -> f32, f32 -> bf16, bf16 -> f32)}}
   %0 = reloc.cast %t policy ieee_rne : !sym.tensor<[4], f32> -> !sym.tensor<[4], f64>
   return
 }
 
 // -----
 
+// The two 16-bit floats do not convert into each other: no table defines it.
+func.func @cast_bf16_to_f16(%t: !sym.tensor<[4], bf16>) {
+  // expected-error @below {{cast from 'bf16' to 'f16' is not a supported typed conversion (f32 -> f16, f16 -> f32, f32 -> bf16, bf16 -> f32)}}
+  %0 = reloc.cast %t policy ieee_rne : !sym.tensor<[4], bf16> -> !sym.tensor<[4], f16>
+  return
+}
+
 // A cast never changes integer storage: quantization is a distinct operation.
 func.func @cast_to_int8(%t: !sym.tensor<[4], f32>) {
-  // expected-error @below {{cast from 'f32' to 'i8' is not a supported typed conversion (f32 -> f16, f16 -> f32)}}
+  // expected-error @below {{cast from 'f32' to 'i8' is not a supported typed conversion (f32 -> f16, f16 -> f32, f32 -> bf16, bf16 -> f32)}}
   %0 = reloc.cast %t policy ieee_rne : !sym.tensor<[4], f32> -> !sym.tensor<[4], i8>
   return
 }

@@ -28,6 +28,7 @@ reinterpreted (Global Constraints of [#141](https://github.com/JueonPark/sym/iss
 | Term | Meaning |
 | --- | --- |
 | `f32`, `f16` | IEEE 754-2008 binary32 and binary16. |
+| `bf16` | bfloat16: the upper 16 bits of binary32 (8 exponent bits, 7 fraction bits). Wire type kind 1 (`BFloat`), width 16; manifest dtype `"bfloat16"`. |
 | `s8` | Signed two's-complement 8-bit integer, range `[-128, 127]`. Stored as MLIR signless `i8` (wire type kind 2, width 8; manifest dtype `"int8"`). The signed interpretation is declared by the operation: `reloc.quantize` produces s8, `reloc.dequantize` consumes s8. `si8`/`ui8` element types are rejected. |
 | `fl32(e)` | The binary32 value nearest to the exact real `e`, ties to even (one rounding). |
 | `rne(t)` | The integer nearest to `t`, ties to even. |
@@ -42,9 +43,11 @@ Policies and the operation/type pair each one is defined for:
 | `exact` | `reloc.cast` | f16 → f32 | [§3.2](#32-reloccast-f16--f32-policy-exact) |
 | `symmetric_rne` | `reloc.quantize` | f32 → s8 | [§3.3](#33-relocquantize-f32--s8-policy-symmetric_rne) |
 | `affine` | `reloc.dequantize` | s8 → f32 | [§3.4](#34-relocdequantize-s8--f32-policy-affine) |
+| `ieee_rne` | `reloc.cast` | f32 → bf16 | [§3.5](#35-reloccast-f32--bf16-policy-ieee_rne) |
+| `exact` | `reloc.cast` | bf16 → f32 | [§3.6](#36-reloccast-bf16--f32-policy-exact) |
 
 Any other pair (`f32 → f32`, `f32 → f64`, `f32 → i8` as a cast, `f16 → s8`,
-…) or any other policy/operation combination fails verification
+`bf16 → f16`, …) or any other policy/operation combination fails verification
 (`test/dialect/reloc/typed_invalid_ops.mlir`). Extending the vocabulary means
 adding a policy case, a table here, a verifier rule and a characterization case.
 
@@ -173,6 +176,59 @@ range, and the pair is never cancelled (§5). Characterization:
 `TypedSemantics.AffineDequantizeReferenceBits` (CPU reference arithmetic),
 `CudaTypedSemantics.AffineDequantizeWitnessBits`,
 `CudaDequant.ExactVsHostReference` (GPU, zero point 0).
+
+### 3.5 `reloc.cast` f32 → bf16, policy `ieee_rne`
+
+`y = roundTiesToEven(x)` to the bfloat16 grid: the discarded 16 fraction
+bits round to nearest even into the retained 16, the carry propagates into
+the exponent (so magnitudes at or beyond the overflow threshold round to
+infinity), subnormal results are produced exactly (bfloat16 shares binary32's
+exponent range, so no binary32 value underflows).
+
+| Input class | Output |
+| --- | --- |
+| `±0` | `±0` (`-0.0 → 0x8000`) |
+| Normal | Nearest bfloat16, ties to even: `1 + 2^-8 → 0x3F80` (tie, even), `1 + 3·2^-9 → 0x3F81` |
+| Subnormal binary32 | Nearest multiple of `2^-133`, ties to even: `2^-133 → 0x0001`, `2^-134 → 0x0000`, `1.5·2^-134 → 0x0001`; `2^-126 → 0x0080` |
+| `3.3895314e38` (`0x7F7F0000`, the largest bfloat16) | `0x7F7F` |
+| `|x| ≥ 3.3961775e38` (`0x7F7F8000`, the tie with `2^128`, rounds to even which is infinity) | `±inf` (`0x7F80`/`0xFF80`); `3.4e38 → +inf` |
+| `±inf` | `±inf` |
+| NaN | A NaN (payload and sign outside conformance; the reference keeps the payload's top bits and sets the quiet bit). |
+
+Conformance: bit-exact for every non-NaN input; NaN-ness for NaN inputs.
+Characterization: `TypedSemantics.BFloat16NarrowingAndWideningWitnessBits`,
+`TypedSemantics.BFloat16NarrowingIsNearestEvenOnRandomBits` (`QuantTest.cpp`,
+an independent nearest-even oracle over 200k random bit patterns),
+`CudaConvertBF16.NarrowingAndWideningMatchTheHostBits` (actual GPU),
+corpus fixture `cast_transpose_bf16`. PyTorch's `to(torch.bfloat16)` is the
+same rounding on CPU and CUDA (tested bit for bit in
+`test_precision.py`).
+
+### 3.6 `reloc.cast` bf16 → f32, policy `exact`
+
+`y = x` exactly: the binary32 bit pattern is the bfloat16 pattern followed by
+sixteen zero bits.
+
+| Input (bits) | Output (bits) |
+| --- | --- |
+| `0x0001` (`2^-133`) | `0x00010000` |
+| `0x0080` (`2^-126`) | `0x00800000` |
+| `0x7F7F` | `0x7F7F0000` |
+| `0x7F80` / `0xFF80` | `0x7F800000` / `0xFF800000` |
+| `0x8000` | `0x80000000` |
+| `0x3F81` | `0x3F810000` |
+
+Conformance: bit-exact for non-NaN inputs. Characterization: the tests of
+§3.5 and corpus fixture `widen_bf16_reshape`.
+
+**Fused execution of `dequantize` then `cast f32 → f16`.** The chain
+`affine` (§3.4) followed by `ieee_rne` (§3.1) keeps both roundings
+(`y = f16(fl32(d · scale))`); it is not a new policy. The device executes the
+pair as one kernel (`cuda::dequantS8F16`) without the binary32 intermediate
+buffer, bit-identical to the two-kernel chain
+(`CudaDequantF16.FusedPairMatchesTheTwoKernelChainBitForBit`, corpus
+fixture `dequant_then_f16`). bfloat16 is supported in typed plans (`reloc.cast`)
+but not after an `index_select` (wire v2 keeps its f32/f16 pairs).
 
 ## 4. Parameters
 
@@ -309,6 +365,8 @@ outputs.
 | Signed-i8 limits | `[-129, -128, -127, 126, 127, 128]` | `symmetric_rne`: `[-128, -128, -127, 126, 127, 127]` |
 | binary16 boundaries | `±0, 2^-24, 2^-25, 1.5·2^-25, 2^-14, 65504, 65519.99, 65520, 1e5, 1+2^-11, 1+3·2^-12` | `ieee_rne`: `0x0000/0x8000, 0x0001, 0x0000, 0x0001, 0x0400, 0x7BFF, 0x7BFF, 0x7C00, 0x7C00, 0x3C00, 0x3C01` |
 | binary16 → binary32 | `0x0001, 0x0400, 0x7BFF, 0x7C00, 0xFC00, 0x8000` | `exact`: `0x33800000, 0x38800000, 0x477FE000, 0x7F800000, 0xFF800000, 0x80000000` |
+| bfloat16 boundaries | `±0, 1+2^-8, 1+3·2^-9, 2^-133, 2^-134, 1.5·2^-134, 2^-126, 3.3895314e38, 3.3961775e38, 3.4e38` | `ieee_rne`: `0x0000/0x8000, 0x3F80, 0x3F81, 0x0001, 0x0000, 0x0001, 0x0080, 0x7F7F, 0x7F80, 0x7F80` |
+| bfloat16 → binary32 | `0x0001, 0x0080, 0x7F7F, 0x7F80, 0xFF80, 0x8000` | `exact`: `0x00010000, 0x00800000, 0x7F7F0000, 0x7F800000, 0xFF800000, 0x80000000` |
 | Specials | `NaN, +inf, -inf` | `symmetric_rne`: `-128, 127, -128`; `ieee_rne`: NaN, `0x7C00`, `0xFC00` |
 | Reciprocal formation | `scale = 0.3`, `x ∈ [0.1, 0.3, 0.7, 1.1, 2.9, 10.1, 100.3, 1000.7]` | `x · fl32(1/0.3)` and `x / 0.3` differ in 3 of 8 bit patterns; the contract is the former |
 | Dequantize bits | `q ∈ [-128, -1, 0, 1, 127]`, `scale = 0.3`, zero point 0 | `0xC219999A, 0xBE99999A, 0x00000000, 0x3E99999A, 0x42186667`; with zero point 127 and `q = -128`: `0xC2990000` |

@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cuda_bf16.h>
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 
@@ -181,6 +182,47 @@ __global__ void dequantS8F32Quad(const char4 *src, float4 *dst,
   }
 }
 
+__global__ void dequantS8F16Kernel(const int8_t *src, __half *dst,
+                                   int64_t channelSize, const float *scales,
+                                   int64_t total) {
+  int64_t i = blockIdx.x * static_cast<int64_t>(blockDim.x) + threadIdx.x;
+  if (i >= total)
+    return;
+  dst[i] =
+      __float2half_rn(static_cast<float>(src[i]) * scales[i / channelSize]);
+}
+
+// dequantS8F16Kernel over char4 quads: two half2 stores per quad, one scale
+// lookup; channelQuads = channelSize / 4.
+__global__ void dequantS8F16Quad(const char4 *src, __half2 *dst,
+                                 unsigned channelQuads, const float *scales,
+                                 unsigned quads) {
+  const unsigned stride = gridDim.x * blockDim.x;
+  for (unsigned i = blockIdx.x * blockDim.x + threadIdx.x; i < quads;
+       i += stride) {
+    const char4 q = src[i];
+    const float s = scales[i / channelQuads];
+    dst[2 * i] = __floats2half2_rn(static_cast<float>(q.x) * s,
+                                   static_cast<float>(q.y) * s);
+    dst[2 * i + 1] = __floats2half2_rn(static_cast<float>(q.z) * s,
+                                       static_cast<float>(q.w) * s);
+  }
+}
+
+__global__ void convertF32BF16Kernel(const float *src, __nv_bfloat16 *dst,
+                                     int64_t count) {
+  int64_t i = blockIdx.x * static_cast<int64_t>(blockDim.x) + threadIdx.x;
+  if (i < count)
+    dst[i] = __float2bfloat16_rn(src[i]);
+}
+
+__global__ void convertBF16F32Kernel(const __nv_bfloat16 *src, float *dst,
+                                     int64_t count) {
+  int64_t i = blockIdx.x * static_cast<int64_t>(blockDim.x) + threadIdx.x;
+  if (i < count)
+    dst[i] = __bfloat162float(src[i]);
+}
+
 __global__ void convertF16F32Kernel(const __half *src, float *dst,
                                     int64_t count) {
   int64_t i = blockIdx.x * static_cast<int64_t>(blockDim.x) + threadIdx.x;
@@ -337,6 +379,42 @@ void dequantS8F32(const int8_t *dSrc, float *dDst, int64_t channels,
   dequantS8F32Kernel<<<static_cast<unsigned>(gridFor(total)), kThreads, 0,
                        asStream(stream)>>>(dSrc, dDst, channelSize, dScales,
                                            total);
+}
+
+void dequantS8F16(const int8_t *dSrc, uint16_t *dDst, int64_t channels,
+                  int64_t channelSize, const float *dScales, void *stream) {
+  int64_t total = channels * channelSize;
+  if (!ablation::enabled(ablation::Knob::ScalarDequant) && total % 4 == 0 &&
+      channelSize % 4 == 0 && total / 4 < (int64_t(1) << 31) &&
+      reinterpret_cast<uintptr_t>(dSrc) % 4 == 0 &&
+      reinterpret_cast<uintptr_t>(dDst) % 4 == 0) {
+    const int64_t quads = total / 4;
+    int64_t blocks = std::min<int64_t>(gridFor(quads), 65535 * 16);
+    dequantS8F16Quad<<<static_cast<unsigned>(blocks), kThreads, 0,
+                       asStream(stream)>>>(
+        reinterpret_cast<const char4 *>(dSrc),
+        reinterpret_cast<__half2 *>(dDst),
+        static_cast<unsigned>(channelSize / 4), dScales,
+        static_cast<unsigned>(quads));
+    return;
+  }
+  dequantS8F16Kernel<<<static_cast<unsigned>(gridFor(total)), kThreads, 0,
+                       asStream(stream)>>>(
+      dSrc, reinterpret_cast<__half *>(dDst), channelSize, dScales, total);
+}
+
+void convertF32BF16(const float *dSrc, uint16_t *dDst, int64_t count,
+                    void *stream) {
+  convertF32BF16Kernel<<<static_cast<unsigned>(gridFor(count)), kThreads, 0,
+                         asStream(stream)>>>(
+      dSrc, reinterpret_cast<__nv_bfloat16 *>(dDst), count);
+}
+
+void convertBF16F32(const uint16_t *dSrc, float *dDst, int64_t count,
+                    void *stream) {
+  convertBF16F32Kernel<<<static_cast<unsigned>(gridFor(count)), kThreads, 0,
+                         asStream(stream)>>>(
+      reinterpret_cast<const __nv_bfloat16 *>(dSrc), dDst, count);
 }
 
 void convertF16F32(const uint16_t *dSrc, float *dDst, int64_t count,

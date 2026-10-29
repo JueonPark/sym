@@ -24,6 +24,9 @@ enum class Knob {
   /// dequantS8F32 launches the one-element-per-thread kernel instead of the
   /// char4/float4 quad kernel.
   ScalarDequant = 0,
+  /// Device stages run dequantize -> cast f32->f16 as two kernels with an
+  /// f32 intermediate instead of the fused dequantS8F16 kernel.
+  UnfusedDequantF16 = 1,
   Count
 };
 

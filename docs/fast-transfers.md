@@ -65,7 +65,12 @@ buffers that are adjacent views of one allocation share a single copy.
   GPU caches to `[S, H, Dh]` pinned CPU tensors (views of one block) in one
   group; `restore(stored)` brings them back asynchronously.
 - `FastWeights(owner, PreparedWireWeights)`: grouped loads and a
-  `prefetch(name_groups, slots=2)` window over prepared INT8 snapshots. The
+  `prefetch(name_groups, slots=2)` window over prepared INT8 snapshots.
+  `PreparedWireWeights(dtype="float16")` prepares the C1 chain dequantize
+  then `ieee_rne` (two roundings, one fused device kernel), so the loaded
+  weights arrive in the model's half precision. `KVCacheSwap(dtype="float16")`
+  (or `"bfloat16"`, even head dimension) moves 16-bit caches as float32 pairs
+  through the same batched layout kernel and hands back the original dtype. The
   window opens with one submission so that its DMA starts before the next is
   prepared, keeps `slots` groups in flight, and performs any slot wait at
   the start of the next iteration rather than between handing out a group

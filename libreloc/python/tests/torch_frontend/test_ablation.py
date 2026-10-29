@@ -28,7 +28,7 @@ def knobs_off():
 
 
 def test_knobs_default_off_toggle_and_reject_unknown_names(knobs_off):
-    assert pyreloc.ablations() == {'scalar_dequant': False}
+    assert pyreloc.ablations() == {'scalar_dequant': False, 'unfused_dequant_f16': False}
     pyreloc.set_ablation('scalar_dequant', True)
     assert pyreloc.ablations()['scalar_dequant'] is True
     pyreloc.set_ablation('scalar_dequant', False)

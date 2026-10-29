@@ -37,6 +37,9 @@ bool isF32(ElementType t) {
 bool isF16(ElementType t) {
   return t.kind == ElementTypeKind::Float && t.bitwidth == 16;
 }
+bool isBF16(ElementType t) {
+  return t.kind == ElementTypeKind::BFloat && t.bitwidth == 16;
+}
 bool isS8(ElementType t) {
   return t.kind == ElementTypeKind::Integer && t.bitwidth == 8;
 }
@@ -290,14 +293,17 @@ prepareProgram(const TypedBoundPlan &plan) {
     std::string why;
     switch (bound.transform) {
     case ValueTransformKind::Cast: {
-      const bool narrow = isF32(stage.input) && isF16(stage.output) &&
+      const bool narrow = isF32(stage.input) &&
+                          (isF16(stage.output) || isBF16(stage.output)) &&
                           bound.policy == NumericPolicyKind::IeeeRne;
-      const bool widen = isF16(stage.input) && isF32(stage.output) &&
+      const bool widen = (isF16(stage.input) || isBF16(stage.input)) &&
+                         isF32(stage.output) &&
                          bound.policy == NumericPolicyKind::Exact;
       if (!narrow && !widen)
         return fail("unsupported_stage",
-                    where + "only cast f32->f16 ieee_rne and f16->f32 exact "
-                            "have a reference implementation");
+                    where + "only cast f32->f16/bf16 ieee_rne and "
+                            "f16/bf16->f32 exact have a reference "
+                            "implementation");
       break;
     }
     case ValueTransformKind::Quantize: {
@@ -447,7 +453,10 @@ uint64_t applyStage(const StageArithmetic &stage, uint64_t bits,
   switch (stage.transform) {
   case ValueTransformKind::Cast:
     if (isF32(stage.input))
-      return quant::narrowF32F16(f32FromBits(bits));
+      return isBF16(stage.output) ? quant::narrowF32BF16(f32FromBits(bits))
+                                  : quant::narrowF32F16(f32FromBits(bits));
+    if (isBF16(stage.input))
+      return bitsFromF32(quant::widenBF16F32(static_cast<uint16_t>(bits)));
     return bitsFromF32(quant::widenF16F32(static_cast<uint16_t>(bits)));
   case ValueTransformKind::Quantize: {
     const int8_t q =

@@ -161,6 +161,25 @@ int8_t quantizeOneF32S8(float x, float invScale) {
 
 uint16_t narrowF32F16(float x) { return detail::f32ToF16Scalar(x); }
 
+uint16_t narrowF32BF16(float x) {
+  uint32_t bits;
+  std::memcpy(&bits, &x, sizeof(bits));
+  if ((bits & 0x7fffffffu) > 0x7f800000u) // NaN: a quiet NaN, payload's top
+    return static_cast<uint16_t>((bits >> 16) | 0x0040u); // bits preserved
+  // Round to nearest even on the discarded half: the carry propagates into
+  // the exponent, so the overflow threshold rounds to infinity as IEEE
+  // requires and subnormal results are produced exactly.
+  const uint32_t lsb = (bits >> 16) & 1u;
+  return static_cast<uint16_t>((bits + 0x7fffu + lsb) >> 16);
+}
+
+float widenBF16F32(uint16_t b) {
+  const uint32_t bits = static_cast<uint32_t>(b) << 16;
+  float x;
+  std::memcpy(&x, &bits, sizeof(x));
+  return x;
+}
+
 float widenF16F32(uint16_t h) {
   // Exact: every binary16 value is a binary32 value. NaN payloads shift
   // into the high mantissa bits (outside conformance either way).

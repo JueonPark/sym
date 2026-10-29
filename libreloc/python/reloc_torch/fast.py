@@ -894,16 +894,25 @@ class KVCacheSwap:
     """
 
     def __init__(self, owner, heads, head_dim, *, dtype="float32"):
+        import torch
         from .recipe import Recipe, TensorSpec, Transpose
         from .symbolic import Const, Symbol, dense_strides
-        if dtype != "float32":
-            raise ValueError("KV swap relocates float32 caches")
+        if dtype not in ("float32", "float16", "bfloat16"):
+            raise ValueError("KV swap relocates float32, float16 or bfloat16 caches")
+        if dtype != "float32" and head_dim % 2:
+            raise ValueError("16-bit caches need an even head dimension")
         self.owner, self.heads, self.head_dim = owner, heads, head_dim
+        # 16-bit caches move as float32 pairs: the layout kernels relocate
+        # 4-byte elements, and a [H, S, Dh] half tensor is bit for bit a
+        # [H, S, Dh/2] float32 tensor. The user sees the original dtype.
+        self.dtype = getattr(torch, dtype)
+        self._pair = dtype != "float32"
+        inner = head_dim // 2 if self._pair else head_dim
         s = Symbol("s0")
-        cache, stored = (Const(heads), s, Const(head_dim)), (s, Const(heads), Const(head_dim))
+        cache, stored = (Const(heads), s, Const(inner)), (s, Const(heads), Const(inner))
 
         def spec(shape):
-            return TensorSpec(shape, dense_strides(shape), Const(0), dtype)
+            return TensorSpec(shape, dense_strides(shape), Const(0), "float32")
         self._evict_recipe = Recipe(spec(cache), (Transpose((1, 0, 2)),), spec(stored), "d2h")
         self._restore_recipe = Recipe(spec(stored), (Transpose((1, 0, 2)),), spec(cache), "h2d")
         self._programs = {}
@@ -920,10 +929,21 @@ class KVCacheSwap:
         while self._inflight and (block or self._inflight[0].done()):
             self._inflight.popleft().wait()
 
+    def _pairs(self, tensor):
+        import torch
+        if not self._pair:
+            return tensor
+        if tensor.dtype != self.dtype:
+            raise ValueError(f"cache dtype {tensor.dtype} is not the swap's {self.dtype}")
+        return tensor.view(torch.float32)
+
+    def _unpair(self, tensor):
+        return tensor.view(self.dtype) if self._pair else tensor
+
     def evict(self, caches):
         """One packed pinned block holds every evicted cache; returns views of it."""
         import torch
-        caches = list(caches)
+        caches = [self._pairs(t) for t in caches]
         self._retire()
         programs = [self._program(self._evict_recipe, t) for t in caches]
         counts = [int(torch.Size(p.destination.shape).numel()) for p in programs]
@@ -934,15 +954,15 @@ class KVCacheSwap:
             offset += count
         completion = self.owner.submit(list(zip(programs, caches)), outputs=outputs,
                                        device_layout=True, gather_threads=1)
-        return list(completion.wait())
+        return [self._unpair(t) for t in completion.wait()]
 
     def restore(self, stored):
         """GPU caches ordered on the current stream; the host is not blocked."""
-        stored = list(stored)
+        stored = [self._pairs(t) for t in stored]
         self._retire()
         completion = self.owner.submit([(self._program(self._restore_recipe, t), t) for t in stored],
                                        device_layout=True, gather_threads=1)
-        outputs = list(completion.wait_stream())
+        outputs = [self._unpair(t) for t in completion.wait_stream()]
         self._inflight.append(completion)
         return outputs
 
@@ -963,7 +983,9 @@ class FastWeights:
             entry = self._entries.get(name)
             if entry is None or entry[1] is not source:
                 # A re-prepared snapshot is a new source object; rebuild its member.
-                entry = self._entries[name] = (_WireEntry(self.owner, template, source), source)
+                entry = self._entries[name] = (_WireEntry(self.owner, template, source,
+                                                          getattr(self.weights, 'output_dtype', 'float32')),
+                                               source)
             items.append(entry)
         return items
 
@@ -983,7 +1005,7 @@ class _WireEntry(TypedProgram):
 
     __slots__ = ()
 
-    def __init__(self, owner, template, source):  # noqa: D401 - adapter
+    def __init__(self, owner, template, source, dtype="float32"):  # noqa: D401 - adapter
         import torch
         self.owner, self.compiled, self.bindings = owner, None, None
         self.signature = _signature(source)
@@ -993,8 +1015,8 @@ class _WireEntry(TypedProgram):
         self.template, self.bound, self.selection = template, None, dict(template.selection)
         self.parameter_bytes = 0
         from .runtime import ConcreteDescriptor
-        self.destination = ConcreteDescriptor(tuple(source.shape), tuple(source.stride()), "float32", owner.device)
-        self._out_dtype, self._out_device = torch.float32, owner.device
+        self.destination = ConcreteDescriptor(tuple(source.shape), tuple(source.stride()), dtype, owner.device)
+        self._out_dtype, self._out_device = getattr(torch, dtype), owner.device
         self.handle = self._registration = self._op_args = None
         self._register_op()
 

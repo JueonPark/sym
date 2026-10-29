@@ -228,10 +228,10 @@ def Reloc_CastOp : Reloc_Op<"cast", [Pure]> {
   let summary = "Convert element values between floating-point types";
   let description = [{
     Element-wise floating-point conversion with an explicit numerical
-    policy. Supported pairs: f32 -> f16 under `ieee_rne` (round to nearest
-    even, overflow to infinity, subnormals preserved) and f16 -> f32 under
-    `exact`. Integer storage never appears in a cast: quantization and
-    dequantization are distinct operations.
+    policy. Supported pairs: f32 -> f16 and f32 -> bf16 under `ieee_rne`
+    (round to nearest even, overflow to infinity, subnormals preserved) and
+    f16 -> f32 and bf16 -> f32 under `exact`. Integer storage never appears
+    in a cast: quantization and dequantization are distinct operations.
 
     Example:
     ```mlir

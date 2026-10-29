@@ -79,7 +79,17 @@ void stage(const StageArithmetic &s, Buffer &input, Buffer &output,
   switch (s.transform) {
   case ValueTransformKind::Cast:
     if (s.input.bitwidth == 32) {
+      if (s.output.kind == ElementTypeKind::BFloat) {
+        for (int64_t i = 0; i < count; ++i)
+          output.f16[i] = quant::narrowF32BF16(input.f32[i]);
+        return;
+      }
       quant::convertF32F16(input.f32, output.f16, count);
+      return;
+    }
+    if (s.input.kind == ElementTypeKind::BFloat) {
+      for (int64_t i = 0; i < count; ++i)
+        output.f32[i] = quant::widenBF16F32(input.f16[i]);
       return;
     }
 #ifdef RELOC_TYPED_AVX2

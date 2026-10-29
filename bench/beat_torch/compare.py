@@ -113,12 +113,17 @@ class PathState:
                     self.fast.stats() if self.fast else None)
 
 
+TOLERANCE = {'float32': dict(rtol=2e-4, atol=2e-5), 'float16': dict(rtol=2e-2, atol=2e-2)}
+COMPUTE_DTYPE = 'float32'
+
+
 def check(actual, expected):
     # Native transfer bytes are exact; Inductor's compute fusion/reductions may
-    # change floating point rounding. Keep tokens and selected experts exact.
+    # change floating point rounding (more so in half precision). Keep tokens
+    # and selected experts exact.
     assert actual[0] == expected[0], (actual[0], expected[0])
-    torch.testing.assert_close(actual[1], expected[1], rtol=2e-4, atol=2e-5)
-    return (actual[1] - expected[1]).abs().max().item()
+    torch.testing.assert_close(actual[1], expected[1], **TOLERANCE[COMPUTE_DTYPE])
+    return (actual[1].float() - expected[1].float()).abs().max().item()
 
 
 def recommendation(case, states, lifetime):
@@ -257,59 +262,68 @@ def recommendation(case, states, lifetime):
     return paths, transfer, mutate, extra
 
 
-def offload(case, states, lifetime):
+def offload(case, states, lifetime, compute_dtype='float32'):
     gen = torch.Generator().manual_seed(225)
     device = torch.device('cuda:0')
+    dtype = getattr(torch, compute_dtype)
+    # Reference weights in the compute precision: the C1 chain dequantize
+    # (f32) then ieee_rne, the same two roundings every arm performs.
+    reference = lambda q, s, d: common.WeightFetcher.reference(q, s, d).to(dtype)
     if case.startswith('llm'):
         sizes = dict(vocab=2048, d_model=1024, heads=16, d_ff=4096, layers=4,
                      prompt=256 if case == 'llm_prefill' else 8,
                      new_tokens=1 if case == 'llm_prefill' else 4)
         model = OffloadedGPT(sizes, device, gen)
+        model.token, model.position = model.token.to(dtype), model.position.to(dtype)
         containers = model.layers
         x = torch.randint(2048, (sizes['prompt'],), device=device)
-        kv_groups = [[torch.randn(16, sizes['prompt']+step, 64, device=device) for _ in range(8)]
+        kv_groups = [[torch.randn(16, sizes['prompt']+step, 64, device=device).to(dtype) for _ in range(8)]
                      for step in range(sizes['new_tokens']-1)]
     else:
         sizes = dict(d_model=1024, d_ff=2048, experts=8, blocks=2,
                      tokens=512 if case == 'moe_dense' else 1)
         model = OffloadedMoE(sizes, [device], gen)
+        model.routers = [router.to(dtype) for router in model.routers]
         containers = [e for block in model.experts for e in block]
-        x = torch.randn(sizes['tokens'], 1024, device=device)
+        x = torch.randn(sizes['tokens'], 1024, device=device).to(dtype)
     pairs = [pair for item in containers for pair in item.values()]
+    convert = packed if dtype == torch.float32 else (lambda q, s: packed(q, s).to(dtype))
     names = {id(q): str(i) for i, (q, s) in enumerate(pairs)}
     paths, transfer, extra = {}, {}, dict(sizes=sizes, preparation={}, resources={}, kv_diagnostics={})
     for state in states:
         name = state.name
         start = time.perf_counter_ns()
         if name.startswith('sym_fast'):
-            owner = lifetime.enter_context(PreparedWireWeights(compiler=state.fast._compiler))
+            owner = lifetime.enter_context(PreparedWireWeights(compiler=state.fast._compiler, dtype=compute_dtype))
             setup = (time.perf_counter_ns()-start)/1e6
             _, prep = completed(lambda: [owner.prepare(names[id(q)], q, s) for q, s in pairs])
             fast_weights = FastWeights(state.fast, owner)
             delivery = lambda groups, d, fw=fast_weights: fw.prefetch([names[id(q)] for q,s in g] for g in groups)
             extra['resources'][name] = owner.stats
         elif name.startswith('sym'):
-            owner = lifetime.enter_context(PreparedWireWeights())
+            owner = lifetime.enter_context(PreparedWireWeights(dtype=compute_dtype))
             setup = (time.perf_counter_ns()-start)/1e6
             _, prep = completed(lambda: [owner.prepare(names[id(q)], q, s) for q, s in pairs])
             delivery = lambda groups, d, owner=owner: owner.prefetch([names[id(q)] for q,s in g] for g in groups)
             extra['resources'][name] = owner.stats
         elif name in ('torch_whole', 'torch_kernels'):
             if name == 'torch_kernels':
+                if dtype != torch.float32:
+                    raise RuntimeError('torch_kernels is offered for float32 compute only')
                 # The fast lane's dequantize kernel on the queue's stream; Torch stages and copies.
-                def convert(q, s):
+                def kernel_convert(q, s):
                     return NATIVE.dequant_s8_f32(q, s, torch.empty(q.shape, dtype=torch.float32, device=q.device),
                                                  torch.cuda.current_stream().cuda_stream)
-                queue = TorchQueue(convert)
+                queue = TorchQueue(kernel_convert)
             else:
-                queue = TorchQueue(packed)
+                queue = TorchQueue(convert)
             lifetime.callback(queue.close)
             setup = (time.perf_counter_ns()-start)/1e6
             images, prep = completed(lambda: {id(q): host_pack(q, s) for q, s in pairs})
             delivery = Delivery(queue, lambda g,d,images=images: [images[id(q)] for q,s in g], True)
             extra['resources'][name] = queue.stats
         else:
-            queue = TorchQueue(state.compile(packed))
+            queue = TorchQueue(state.compile(convert))
             lifetime.callback(queue.close)
             setup = (time.perf_counter_ns()-start)/1e6
             images, prep = completed(lambda: {id(q): host_pack(q, s) for q, s in pairs})
@@ -319,14 +333,14 @@ def offload(case, states, lifetime):
         if case.startswith('llm') and (name.startswith('sym_fast') or name in ('torch_whole', 'torch_kernels')):
             layer, embed, finish = (state.compile(fn) for fn in (models.decoder_layer, models.embed, models.logits))
             if name == 'sym_fast_kvsplit':
-                swap = KVCacheSwap(state.fast, 16, 64)
+                swap = KVCacheSwap(state.fast, 16, 64, dtype=compute_dtype)
                 lifetime.callback(swap.drain)
                 def evict_all(pairs_, swap=swap):
                     return [(swap.evict([k])[0], swap.evict([v])[0]) for k, v in pairs_]
                 def restore_all(pairs_, swap=swap):
                     return [(swap.restore([k])[0], swap.restore([v])[0]) for k, v in pairs_]
             elif name.startswith('sym_fast'):
-                swap = KVCacheSwap(state.fast, 16, 64)
+                swap = KVCacheSwap(state.fast, 16, 64, dtype=compute_dtype)
                 lifetime.callback(swap.drain)
                 def evict_all(pairs_, swap=swap):
                     flat = swap.evict([t for pair in pairs_ for t in pair])
@@ -425,7 +439,7 @@ def offload(case, states, lifetime):
                     h0 = h0 + out
                 return routes, h0
             routes = []
-            model.forward(x, lambda q,s,d: common.WeightFetcher.reference(q,s,d), routes.append)
+            model.forward(x, reference, routes.append)
             def transfer_only(delivery=delivery, routes=routes):
                 for experts, active in zip(model.experts, routes):
                     with delivery(((experts[e]['w1'], experts[e]['w2']) for e in active), device) as loaded:
@@ -450,7 +464,7 @@ def offload(case, states, lifetime):
             # Freeze the active set from an untimed eager reference. Routing
             # remains inside every end-to-end invocation above.
             routes = []
-            model.forward(x, lambda q,s,d: common.WeightFetcher.reference(q,s,d), routes.append)
+            model.forward(x, reference, routes.append)
             def transfer_only(delivery=delivery, routes=routes):
                 for experts, active in zip(model.experts, routes):
                     with delivery(((experts[e]['w1'], experts[e]['w2']) for e in active), device) as loaded:
@@ -461,12 +475,12 @@ def offload(case, states, lifetime):
     # Independent original-model oracle validates the factored compute regions.
     if case.startswith('llm'):
         oracle = generate(model, x, sizes['new_tokens'],
-            lambda q,s: common.WeightFetcher.reference(q,s,device),
+            lambda q,s: reference(q,s,device),
             lambda t: t.transpose(0,1).contiguous().cpu(),
             lambda t: t.transpose(0,1).contiguous().to(device))
     else:
         routes = []
-        oracle = routes, model.forward(x, common.WeightFetcher.reference, routes.append)
+        oracle = routes, model.forward(x, reference, routes.append)
     extra['oracle'] = oracle
     extra['common_source_bytes'] = sum(q.numel()+s.numel()*4 for q,s in pairs)
     extra['transfer_scope'] = 'request weight groups only; KV and routing excluded from transfer diagnostic'
@@ -488,11 +502,17 @@ def main():
     p.add_argument('--warmup', type=int, default=5)
     p.add_argument('--dynamic', action='store_true', help='force symbolic compute shapes instead of fixed-regime specialization')
     p.add_argument('--trace', action='store_true', help='NVTX ranges around timed calls (run under nsys)')
+    p.add_argument('--compute-dtype', choices=('float32', 'float16'), default='float32',
+                   help='precision of the offload regimes\' model compute and dequantized weights '
+                        '(float16: s8 -> f32 -> f16, the fused device pair; the KV caches move as f16 pairs); '
+                        'the DLRM/GraphSAGE regimes are unaffected')
     p.add_argument('--cache-state', choices=('rotated', 'cold', 'warm'), default='rotated',
                    help='rotated: #225 protocol (mutate once per sample, paths back to back); '
                         'cold: sweep the caches (mutate twice, an involution for the GraphSAGE source) before every '
                         'path; warm: run each path once untimed right before its timed run')
     args = p.parse_args()
+    global COMPUTE_DTYPE
+    COMPUTE_DTYPE = args.compute_dtype
     torch.set_num_threads(8)
     torch.set_num_interop_threads(1)
     torch.manual_seed(225)
@@ -512,7 +532,8 @@ def main():
             torch._dynamo.utils.counters.clear()
             with ExitStack() as lifetime:
                 states = [PathState(n,lifetime,args.dynamic) for n in args.paths]
-                paths, transfers, mutate, extra = (recommendation if case.startswith(('dlrm','gnn')) else offload)(case,states,lifetime)
+                paths, transfers, mutate, extra = (recommendation(case, states, lifetime) if case.startswith(('dlrm', 'gnn'))
+                                                   else offload(case, states, lifetime, args.compute_dtype))
                 expected = extra.pop('oracle', None)
                 resources = extra.pop('resources', {})
                 kv_diagnostics = extra.pop('kv_diagnostics', {})
