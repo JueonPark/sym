@@ -116,6 +116,27 @@ Torch is faster than any Sym entry point; the fast lane pays off once a
 transfer is large enough for the chunked pipeline or the fused producer to
 matter (bench/beat_torch).
 
+## Attribution knobs and kernel-only entry points
+
+For the ablation in [bench/beat_torch](../bench/beat_torch/README.md#ablation-kernels-versus-planruntime)
+the runtime exposes switches that turn one optimization off without changing
+any result (every disabled path is the bit-identical reference the
+optimization replaced): `pyreloc.set_ablation(name, enabled)` /
+`pyreloc.ablations()`, or `RELOC_ABLATE="name,..."` in the environment at
+startup. Knobs: `scalar_dequant` (the one-element-per-thread dequantize
+kernel instead of the `char4`/`float4` one). `IndexedProgram.execute` and
+`PooledProgram.execute` take `pipeline=False` (gather the whole wire, then
+one copy; no chunk overlap).
+
+The libtorch helper also exposes the fast lane's kernels on plain tensors,
+without plans, dispatch or pipeline, so that a Torch program can move the
+bytes itself: `pooled_bags(tables, indices, offsets, out, threads)` (the fused
+EmbeddingBag-sum producer into a host tensor), `gather_rows(plan, symbols,
+source, index, out, threads)` (the fused row gather + cast of an
+`index_select` recipe into a host tensor) and `dequant_s8_f32(q, scale, out,
+stream)` (the per-channel dequantize kernel on a CUDA stream handle). They
+exist for attribution measurements, not as a public transfer API.
+
 ## Build options
 
 `RELOC_ENABLE_TORCH_EXT=ON` builds `pyreloc._pyreloc_torch`, a small

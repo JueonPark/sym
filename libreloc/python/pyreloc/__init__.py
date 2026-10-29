@@ -40,6 +40,8 @@ from ._pyreloc import (  # noqa: F401
     bind,
     bind_typed,
     cuda_enabled,
+    set_ablation,
+    ablations,
     cuda_pointer_device,
     d2h,
     execute_dispatch,

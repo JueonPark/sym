@@ -12,6 +12,15 @@ and the GNN gather run as custom ops inside the compiled regions
 where the Inductor control keeps its ``TorchQueue``. The Torch/Inductor
 controls are unchanged from bench/issue225. Run each round in a fresh process
 with an empty Inductor cache and rotated path order.
+
+Ablation arms (kernel engineering versus plan/runtime, bench/beat_torch
+README "Ablation"): ``torch_kernels`` is the eager Torch control with the fast
+lane's kernels alone (the fused pooled/gather CPU producers writing the pinned
+wire, the per-channel dequantize kernel in the TorchQueue) while Torch moves
+the bytes; ``sym_fast_scalar`` is ``sym_fast`` with the quad dequantize kernel
+replaced by the scalar one (``pyreloc.set_ablation``); ``sym_fast_nopipe``
+executes the DLRM/GraphSAGE producers without chunk overlap; ``sym_fast_kvsplit``
+moves the decode KV caches one tensor per group instead of eight per group.
 """
 import argparse
 from contextlib import ExitStack
@@ -35,12 +44,29 @@ from model_prefetch import TorchQueue, Delivery, completed
 from prepared_wire import host_pack, packed
 from typed_pipeline import distribution, metadata
 from reloc_torch import PreparedWireWeights, RelocBackend, compat
-from reloc_torch.fast import FastTransfers, FastWeights, KVCacheSwap
+from reloc_torch.fast import FastTransfers, FastWeights, KVCacheSwap, _load_native_views
 from reloc_torch.recipe import Cast, IndexSelect, Recipe, TensorSpec, Transpose
 from reloc_torch.symbolic import Const, Symbol, dense_strides
 import models
+import pyreloc
 
-PATHS = ('torch', 'inductor', 'sym', 'sym_inductor', 'sym_fast', 'sym_fast_inductor', 'torch_whole')
+NATIVE = _load_native_views()   # the libtorch helper (kernel-only entry points for torch_kernels)
+EAGER_PATHS = ('torch', 'torch_whole', 'torch_kernels', 'sym_fast', 'sym_fast_scalar', 'sym_fast_nopipe',
+               'sym_fast_kvsplit')
+
+
+def ablated(fn, knob):
+    """Run fn with one native optimization switched off (results never change)."""
+    def call(*args):
+        pyreloc.set_ablation(knob, True)
+        try:
+            return fn(*args)
+        finally:
+            pyreloc.set_ablation(knob, False)
+    return call
+
+PATHS = ('torch', 'inductor', 'sym', 'sym_inductor', 'sym_fast', 'sym_fast_inductor', 'torch_whole',
+         'torch_kernels', 'sym_fast_scalar', 'sym_fast_nopipe', 'sym_fast_kvsplit')
 # torch_whole: the eager Torch control with sym_fast's whole-request weight prefetch
 # window (a transparency arm; identical to 'torch' outside the offload regimes).
 FAST_THREADS = {'dlrm': 8, 'gnn': 8}
@@ -57,15 +83,16 @@ class PathState:
         if name.startswith('sym_fast'):
             self.fast = FastTransfers('cuda:0', gather_threads=8, pinning='pinned')
             lifetime.callback(self.fast.close)
-        elif name == 'torch_whole':
-            pass
+        elif name in ('torch_whole', 'torch_kernels'):
+            if name == 'torch_kernels' and NATIVE is None:
+                raise RuntimeError('torch_kernels needs the libtorch helper (RELOC_ENABLE_TORCH_EXT=ON)')
         elif name.startswith('sym'):
             self.backend = RelocBackend(compute_backend='inductor' if name.endswith('inductor') else 'eager',
                 transfer_options=dict(gather_threads=8, n_streams=1, n_buffers=2, pinning='pinned'))
             lifetime.callback(self.backend.close)
 
     def compile(self, fn):
-        if self.name in ('torch', 'sym_fast', 'torch_whole'):
+        if self.name in EAGER_PATHS:
             return fn
         def counted(gm, inputs):
             start = time.perf_counter_ns()
@@ -119,7 +146,19 @@ def recommendation(case, states, lifetime):
                     fn = state.compile(lambda i, o, d, program=program: model.predict(d, program.op(i, o)))
                     paths[name] = lambda fn=fn: (None, fn(indices, offsets, dense))
                 else:
+                    if name == 'sym_fast_nopipe':
+                        def tx(program=program, threads=threads):
+                            return program.execute(indices, offsets, gather_threads=threads, pipeline=False)
                     paths[name] = lambda tx=tx: (None, model.predict(dense, tx()))
+                transfer[name] = tx
+            elif name == 'torch_kernels':
+                # The fused producer kernel writes the pinned wire; Torch copies it.
+                wire = torch.empty((count, 26, 64), dtype=torch.float16, pin_memory=True)
+                tables = [bag.weight for bag in model.tables]
+                def tx(wire=wire, tables=tables):
+                    return NATIVE.pooled_bags(tables, indices, offsets, wire, FAST_THREADS['dlrm']).to(
+                        'cuda:0', non_blocking=True)
+                paths[name] = lambda tx=tx: (None, model.predict(dense, tx()))
                 transfer[name] = tx
             elif name.startswith('sym'):
                 fn, tx = state.compile(whole), state.compile(region)
@@ -172,7 +211,26 @@ def recommendation(case, states, lifetime):
                     fn = state.compile(lambda x, i, program=program: model.forward(program.op(x, i), layer1, layer2))
                     paths[name] = lambda fn=fn: (None, fn(source, selected))
                 else:
+                    if name == 'sym_fast_nopipe':
+                        def tx(program=program, threads=threads):
+                            return program.execute(source, selected, gather_threads=threads, pipeline=False)
                     paths[name] = lambda tx=tx: (None, model.forward(tx(), layer1, layer2))
+                transfer[name] = tx
+            elif name == 'torch_kernels':
+                from reloc_torch import CompilerClient
+                n_sym, k_sym = Symbol('s0'), Symbol('k')
+                recipe = Recipe(TensorSpec((n_sym, Const(128)), dense_strides((n_sym, Const(128))), Const(0), 'float32'),
+                                (IndexSelect(TensorSpec((k_sym,), (Const(1),), Const(0), 'int64')),
+                                 Cast('float16', 'ieee_rne')),
+                                TensorSpec((k_sym, Const(128)), dense_strides((k_sym, Const(128))), Const(0), 'float16'),
+                                'h2d')
+                compiled = CompilerClient.from_environment().compile(recipe)
+                plan, bindings = compiled.decoded_plan, compiled.bind_values(source, selected)
+                wire = torch.empty((len(selected), 128), dtype=torch.float16, pin_memory=True)
+                def tx(wire=wire, plan=plan, bindings=bindings):
+                    return NATIVE.gather_rows(plan, bindings, source, selected, wire, FAST_THREADS['gnn']).to(
+                        'cuda:0', non_blocking=True)
+                paths[name] = lambda tx=tx: (None, model.forward(tx(), layer1, layer2))
                 transfer[name] = tx
             elif name.startswith('sym'):
                 fn, tx = state.compile(whole), state.compile(region)
@@ -189,6 +247,9 @@ def recommendation(case, states, lifetime):
             source.neg_()
         extra.update(seeds=count, selected=len(selected), fanouts=[10, 5], nodes=500_000,
                      wire_bytes=len(selected)*128*2, common_source_bytes=source.numel()*4)
+    if 'sym_fast_scalar' in paths:
+        paths['sym_fast_scalar'] = ablated(paths['sym_fast_scalar'], 'scalar_dequant')
+        transfer['sym_fast_scalar'] = ablated(transfer['sym_fast_scalar'], 'scalar_dequant')
     return paths, transfer, mutate, extra
 
 
@@ -229,8 +290,15 @@ def offload(case, states, lifetime):
             _, prep = completed(lambda: [owner.prepare(names[id(q)], q, s) for q, s in pairs])
             delivery = lambda groups, d, owner=owner: owner.prefetch([names[id(q)] for q,s in g] for g in groups)
             extra['resources'][name] = owner.stats
-        elif name == 'torch_whole':
-            queue = TorchQueue(packed)
+        elif name in ('torch_whole', 'torch_kernels'):
+            if name == 'torch_kernels':
+                # The fast lane's dequantize kernel on the queue's stream; Torch stages and copies.
+                def convert(q, s):
+                    return NATIVE.dequant_s8_f32(q, s, torch.empty(q.shape, dtype=torch.float32, device=q.device),
+                                                 torch.cuda.current_stream().cuda_stream)
+                queue = TorchQueue(convert)
+            else:
+                queue = TorchQueue(packed)
             lifetime.callback(queue.close)
             setup = (time.perf_counter_ns()-start)/1e6
             images, prep = completed(lambda: {id(q): host_pack(q, s) for q, s in pairs})
@@ -244,9 +312,16 @@ def offload(case, states, lifetime):
             delivery = Delivery(queue, lambda g,d,images=images: [images[id(q)] for q,s in g], True)
             extra['resources'][name] = queue.stats
         extra['preparation'][name] = dict(artifact_and_owner_ms=setup, snapshot_ms=prep)
-        if case.startswith('llm') and name in ('sym_fast', 'sym_fast_inductor', 'torch_whole'):
+        if case.startswith('llm') and (name.startswith('sym_fast') or name in ('torch_whole', 'torch_kernels')):
             layer, embed, finish = (state.compile(fn) for fn in (models.decoder_layer, models.embed, models.logits))
-            if name.startswith('sym_fast'):
+            if name == 'sym_fast_kvsplit':
+                swap = KVCacheSwap(state.fast, 16, 64)
+                lifetime.callback(swap.drain)
+                def evict_all(pairs_, swap=swap):
+                    return [(swap.evict([k])[0], swap.evict([v])[0]) for k, v in pairs_]
+                def restore_all(pairs_, swap=swap):
+                    return [(swap.restore([k])[0], swap.restore([v])[0]) for k, v in pairs_]
+            elif name.startswith('sym_fast'):
                 swap = KVCacheSwap(state.fast, 16, 64)
                 lifetime.callback(swap.drain)
                 def evict_all(pairs_, swap=swap):
@@ -330,7 +405,7 @@ def offload(case, states, lifetime):
                         for weights in loaded:
                             pass
                 return weights
-        elif name in ('sym_fast', 'sym_fast_inductor', 'torch_whole'):
+        elif name.startswith('sym_fast') or name in ('torch_whole', 'torch_kernels'):
             route, expert, combine = (state.compile(fn) for fn in (models.route, models.expert, models.combine))
             def run(delivery=delivery, route=route, expert=expert, combine=combine):
                 h0, routes = x, []
@@ -391,6 +466,12 @@ def offload(case, states, lifetime):
     extra['oracle'] = oracle
     extra['common_source_bytes'] = sum(q.numel()+s.numel()*4 for q,s in pairs)
     extra['transfer_scope'] = 'request weight groups only; KV and routing excluded from transfer diagnostic'
+    if 'sym_fast_scalar' in paths:
+        paths['sym_fast_scalar'] = ablated(paths['sym_fast_scalar'], 'scalar_dequant')
+        transfer['sym_fast_scalar'] = ablated(transfer['sym_fast_scalar'], 'scalar_dequant')
+        if 'sym_fast_scalar' in extra['kv_diagnostics']:
+            extra['kv_diagnostics']['sym_fast_scalar'] = ablated(extra['kv_diagnostics']['sym_fast_scalar'],
+                                                                 'scalar_dequant')
     return paths, transfer, lambda: None, extra
 
 

@@ -164,6 +164,100 @@ Reading the arm:
   the Inductor rounding band (≤ 2.5e-6), `sym_fast` bit-exact; the isolation
   audit saw no foreign process in any round.
 
+## Ablation: kernels versus plan/runtime
+
+Reviewer question on #254: how much of the `sym_fast` win is kernel
+engineering a Torch user could adopt directly (the vectorized per-channel
+dequantize, the fused pooled/gather CPU producers), and how much is the
+plan/runtime (chunked CPU/DMA overlap, grouped submissions, the prefetch
+window)? Six arms provide related contrasts
+(`ablation.py`):
+
+| Arm | What it keeps |
+| --- | --- |
+| `torch` | the eager control (unchanged) |
+| `torch_kernels` | the eager control given the fast lane's **optimized kernels**: the fused pooled-sum / row-gather CPU producers write the pinned wire and Torch issues the copy (DLRM, GraphSAGE); the fused per-channel dequantize kernel replaces `q.float() * scale` in the `TorchQueue` (GPT, MoE). Torch submits the copies; no Sym chunk pipeline or grouped submission. GraphSAGE still prepares a compiler plan and passes it to the native gather. |
+| `sym_fast_scalar` | `sym_fast` with the quad dequantize kernel replaced by the one-element-per-thread kernel (`pyreloc.set_ablation("scalar_dequant")`); identical to `sym_fast` outside GPT/MoE |
+| `sym_fast_nopipe` | `sym_fast` with the DLRM/GraphSAGE producers executed whole-wire-then-copy (`pipeline=False`, no chunk overlap); identical elsewhere |
+| `sym_fast_kvsplit` | `sym_fast` moving each decode K/V cache as its own group (sixteen per step instead of two); identical outside decode |
+| `sym_fast` | everything |
+
+Every arm's output equals eager Torch's bit for bit (the kernels are the
+reference's arithmetic). Contrasts, in milliseconds saved: **kernel control** =
+`torch − torch_kernels` (fused kernel versus Torch's own ops; for the
+dequantize this is one fused pass against two elementwise passes) and, within
+Sym, `sym_fast_scalar − sym_fast` (vectorization alone); **runtime contrast** =
+`torch_kernels − sym_fast` (the net difference with Sym execution).
+`torch − sym_fast_scalar` still includes fused kernels and is not an isolated
+runtime estimate; **chunk overlap** = `sym_fast_nopipe −
+sym_fast`; **KV grouping** = `sym_fast_kvsplit − sym_fast`.
+
+Three independent rounds on revision `d77984f` (evidence in
+`evidence-ablation/`, attribution in `evidence-ablation/attribution.csv`),
+milliseconds, median of three round medians; every arm bit-exact against
+eager Torch, isolation audit clean:
+
+| Regime | `torch` | `torch_kernels` | `sym_fast_scalar` | `sym_fast_nopipe` | `sym_fast_kvsplit` | `sym_fast` |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| DLRM 512 | 3.607 | **1.796** | 2.227 | 2.134 | 2.156 | 2.156 |
+| DLRM 2048 | 7.881 | **4.353** | 4.737 | 4.664 | 4.711 | 4.598 |
+| GraphSAGE 256 | 1.170 | **0.947** | 1.244 | 1.144 | 1.099 | 1.065 |
+| GraphSAGE 1024 | 4.001 | 2.773 | 2.986 | 3.039 | **2.664** | 2.806 |
+| GPT decode | 26.145 | 22.563 | **19.735** | 19.833 | 26.181 | 19.783 |
+| GPT prefill | 6.940 | 5.922 | 5.988 | 5.887 | 5.887 | **5.878** |
+| MoE sparse | 3.090 | **2.859** | 2.990 | 2.954 | 2.951 | 2.947 |
+| MoE dense | 10.450 | 9.979 | 9.554 | 9.554 | 9.552 | **9.544** |
+
+Contrasts (ms; these are not independent contributions and must not be summed):
+
+| Regime | `torch − sym_fast` | kernels A | kernels B (quad vs scalar) | runtime contrast | total vs scalar Sym (includes fusion) | chunk overlap | KV grouping |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| DLRM 512 | +1.45 | **+1.81** | +0.07 | −0.36 | +1.38 | −0.02 | 0.00 |
+| DLRM 2048 | +3.28 | **+3.53** | +0.14 | −0.25 | +3.15 | +0.07 | +0.11 |
+| GraphSAGE 256 | +0.11 | **+0.22** | +0.18 | −0.12 | −0.07 | +0.08 | +0.03 |
+| GraphSAGE 1024 | +1.20 | **+1.23** | +0.18 | −0.03 | +1.02 | +0.23 | −0.14 |
+| GPT decode | +6.36 | +3.58 | −0.05 | **+2.78** | +6.41 | +0.05 | **+6.40** |
+| GPT prefill | +1.06 | **+1.02** | +0.11 | +0.04 | +0.95 | +0.01 | +0.01 |
+| MoE sparse | +0.14 | **+0.23** | +0.04 | −0.09 | +0.10 | +0.01 | 0.00 |
+| MoE dense | +0.91 | +0.47 | +0.01 | **+0.44** | +0.90 | +0.01 | +0.01 |
+
+What the ablation says, stated plainly:
+
+- **Fused producers and dequantization explain much of the gain.**
+  `torch_kernels` is faster than `sym_fast` in five regimes, by 0.032–0.360 ms.
+  The runtime contrast is −0.360/−0.245 ms for DLRM 512/2048,
+  −0.118/−0.032 ms for GraphSAGE 256/1024, +2.780/+0.044 ms for GPT
+  decode/prefill, and −0.088/+0.435 ms for sparse/dense MoE. This compares
+  higher-level dispatch and scheduling while retaining optimized kernels;
+  it does not remove all compiler/plan use. DLRM's native pooled producer
+  bypasses the compiler, so its roughly 40% headline gain is not AST folding.
+- **The runtime's distinct contribution is grouping.** GPT decode is the
+  regime where the plan/runtime adds 2.8 ms on top of the 3.6 ms the fused
+  dequantize saves: the sixteen K/V caches of a step move as two groups
+  (one batched permute, one copy, one completion each). Moving them one
+  tensor per group (`sym_fast_kvsplit`) gives all 6.4 ms back and lands on
+  eager Torch's time. Dense MoE has a +0.44 ms runtime contrast, but no matched expert-group
+  splitting ablation here isolates its cause. Decode also changes the
+  prefetch window between `torch_kernels` and `sym_fast`; grouping, fusion
+  and overlap interact, so the contrasts are not causal shares to add up.
+- **Vectorizing the dequantize kernel does not move wall time.** `kernels B`
+  (quad versus scalar kernel inside Sym) is within noise everywhere: the
+  kernel overlaps the DMA that follows, so its lower SM time (Nsight above)
+  is off the critical path. What matters in `kernels A` is fusion, one pass
+  instead of Torch's two elementwise passes.
+- **Chunk overlap saves about 0.233 ms on GraphSAGE 1024**, evidence
+  of CPU work–H2D overlap even though total Sym latency remains above the
+  kernel control. Other sizes show little or inconsistent benefit; the DLRM pipeline's first-byte advantage in the Nsight
+  table does not translate into completed latency because the producer is
+  faster than the copy it overlaps.
+
+The honest claim is therefore: `sym_fast` beats the Torch controls mainly
+through kernel engineering a Torch user could adopt directly, plus grouped
+submission where many small transfers belong together (decode KV, expert
+groups). The kernel control's lower latency in several regimes motivates
+measuring a simpler direct path; it does not establish how much a future
+Sym implementation will save after its own validation and lifetime costs.
+
 ## Where the time goes (Nsight Systems)
 
 `profile.sh` captures `torch` and `sym_fast` in one process under NVTX

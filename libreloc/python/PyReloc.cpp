@@ -9,6 +9,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "reloc/Ablation.h"
 #include "reloc/Bind.h"
 #include "reloc/CostModel.h"
 #include "reloc/Decode.h"
@@ -547,6 +548,30 @@ PYBIND11_MODULE(_pyreloc, m) {
             "(pointer, nbytes) integer pairs -- see pyreloc.torch_interop.";
 
   py::register_exception<DecodeException>(m, "DecodeError");
+
+  m.def(
+      "set_ablation",
+      [](const std::string &name, bool enabled) {
+        auto knob = reloc::ablation::parse(name);
+        if (!knob)
+          throw py::value_error("unknown ablation knob '" + name + "'");
+        reloc::ablation::set(*knob, enabled);
+      },
+      py::arg("name"), py::arg("enabled"),
+      "Turn one native optimization off (True) or back on (False) for "
+      "attribution measurements; results never change, only speed.");
+  m.def(
+      "ablations",
+      [] {
+        py::dict out;
+        for (size_t i = 0; i < size_t(reloc::ablation::Knob::Count); ++i) {
+          auto knob = static_cast<reloc::ablation::Knob>(i);
+          out[py::str(reloc::ablation::name(knob))] =
+              reloc::ablation::enabled(knob);
+        }
+        return out;
+      },
+      "Current state of every ablation knob.");
 
   py::class_<reloc::RelocationPlan>(m, "PlanHandle")
       .def_property_readonly(

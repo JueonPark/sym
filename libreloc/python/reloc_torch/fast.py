@@ -347,8 +347,11 @@ class IndexedProgram:
             raise RuntimeError(f"index_select dispatch rejected: {error}") from error
         return program, src_view, out
 
-    def execute(self, source, index, *, out=None, gather_threads=None):
-        """Blocking fused row gather/cast/H2D; the index tensor is read in place."""
+    def execute(self, source, index, *, out=None, gather_threads=None, pipeline=True):
+        """Blocking fused row gather/cast/H2D; the index tensor is read in place.
+
+        ``pipeline=False`` gathers the whole wire first and copies it once
+        (no chunk overlap); it exists for attribution measurements."""
         owner = self.owner
         if _native_views is not None and out is None:
             # One native call binds the live indices, prepares the program over
@@ -372,9 +375,9 @@ class IndexedProgram:
                                         str(error)) from error
             except pyreloc.TransferError as error:
                 raise RuntimeError(f"index_select dispatch rejected: {error}") from error
-            return owner._execute_request(native, source, out, (index,), gather_threads)
+            return owner._execute_request(native, source, out, (index,), gather_threads, pipeline)
         program, src_view, out = self._prepare(source, index, out)
-        return self.owner._execute_program(program, src_view, source, out, (index,), gather_threads)
+        return self.owner._execute_program(program, src_view, source, out, (index,), gather_threads, pipeline)
 
     def submit(self, source, index, *, out=None, gather_threads=None):
         """Asynchronous fused gather; wait_stream() on the completion yields the output."""
@@ -488,10 +491,14 @@ class PooledProgram:
             raise RuntimeError(f"pooled producer rejected: {error}") from error
         return program, out, tuple(self.tables[1:]) + tuple(indices) + tuple(offsets)
 
-    def execute(self, indices, offsets, *, out=None, gather_threads=None):
-        """Blocking pooled gather; returns the [bags, tables, dim] CUDA tensor."""
+    def execute(self, indices, offsets, *, out=None, gather_threads=None, pipeline=True):
+        """Blocking pooled gather; returns the [bags, tables, dim] CUDA tensor.
+
+        ``pipeline=False`` sums every bag first and copies the wire once (no
+        chunk overlap); it exists for attribution measurements."""
         program, out, extra = self._prepare(indices, offsets, out)
-        return self.owner._execute_program(program, self._views[0], self.tables[0], out, extra, gather_threads)
+        return self.owner._execute_program(program, self._views[0], self.tables[0], out, extra, gather_threads,
+                                           pipeline)
 
     def submit(self, indices, offsets, *, out=None, gather_threads=None):
         """Asynchronous pooled gather; wait_stream() on the completion yields the output."""
@@ -702,20 +709,20 @@ class FastTransfers:
         return PooledProgram(self, tables, dtype=dtype)
 
     # -- one-shot producers (indexed / pooled programs) -------------------
-    def _execute_request(self, native, source, out, extra, gather_threads):
+    def _execute_request(self, native, source, out, extra, gather_threads, pipeline=True):
         try:
             report = pyreloc.execute_dispatch(
                 native, caller_stream=compat.cuda_stream_handle(self.device),
                 n_buffers=self.n_buffers, n_streams=1,
                 gather_threads=self.gather_threads if gather_threads is None else gather_threads,
-                pinning=self.pinning, direct_dense_upload=True, pipeline=True,
+                pinning=self.pinning, direct_dense_upload=True, pipeline=pipeline,
                 chunk_size=self.chunk_size, resources=self.native, owners=((source,) + tuple(extra), out))
         except pyreloc.TransferError as error:
             raise RuntimeError(f"producer dispatch failed: {error}") from error
         self._record(report)
         return out
 
-    def _execute_program(self, program, src_view, source, out, extra, gather_threads):
+    def _execute_program(self, program, src_view, source, out, extra, gather_threads, pipeline=True):
         """Blocking single dispatch of a freshly prepared producer program."""
         try:
             native = pyreloc.prepare_dispatch(program, src_view, _storage_view(out, "cuda", out.device.index),
@@ -724,7 +731,7 @@ class FastTransfers:
                 native, caller_stream=compat.cuda_stream_handle(self.device),
                 n_buffers=self.n_buffers, n_streams=1,
                 gather_threads=self.gather_threads if gather_threads is None else gather_threads,
-                pinning=self.pinning, direct_dense_upload=True, pipeline=True,
+                pinning=self.pinning, direct_dense_upload=True, pipeline=pipeline,
                 chunk_size=self.chunk_size, resources=self.native, owners=((source,) + tuple(extra), out))
         except pyreloc.TransferError as error:
             raise RuntimeError(f"producer dispatch failed: {error}") from error
