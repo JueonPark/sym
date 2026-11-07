@@ -7,7 +7,7 @@ from bench.issue265.analyze import paired, validate_campaign, coverage
 
 def fixture():
     jobs = [dict(name=f'r{r}-{arm}', round=r, case='cast', arm=arm, runtime=arm,
-                 policy=None if arm == 'torch' else {'min_bytes': 0})
+                 policy=None if arm == 'torch' else {'min_bytes': 0, 'max_entries': 2, 'max_parameter_bytes': 10})
             for r in range(1, 4) for arm in ('torch', 'prepared')]
     contract = dict(jobs=jobs, sequence=[3, 5, 3], epochs=2, rounds=3,
         harness_sha256={'worker.py': 'a'}, artifact_sha256={'benchmark.py': 'b'},
@@ -18,7 +18,10 @@ def fixture():
         record = dict(job=job, complete=True, metadata=dict(harness_sha256=contract['harness_sha256'],
             artifact_sha256=contract['artifact_sha256'], runtime_sha256=contract['runtime_sha256'][job['runtime']],
             environment=contract['environment']), policy=job['policy'],
-            requests=[dict(step=i, n=n, correct=True, held_correct=True, completed_ms=1.)
+            requests=[dict(step=i, n=n, correct=True, held_correct=True, completed_ms=1.,
+                stats={'backend': None if job['policy'] is None else {'replaced_regions': 1, 'runtime_executions': i + 1,
+                    'prepared_execution': {'policy': job['policy'], 'cache_entries': 1, 'retained_parameter_bytes': 0,
+                        'executions': i + 1, 'native': {'logical_transfers': i + 1}}}})
                       for i, n in enumerate(contract['sequence'] * contract['epochs'])],
             held_checks_after_close=1, resources_after_close={'typed': {'retained_bytes': 0, 'live_bytes': 0}},
             audit=dict(job=job, returncode=0, observations=[]))
@@ -78,3 +81,18 @@ def test_resumption_validates_the_whole_record_not_only_runtime_hashes():
     row['requests'][0]['held_correct'] = False
     with pytest.raises(ValueError, match='oracle'):
         validate_record(contract, row, contract['jobs'][0])
+
+
+@pytest.mark.parametrize('damage', ['actual_policy', 'missing_manager', 'entries', 'bytes', 'execution_counts'])
+def test_actual_backend_policy_bounds_and_native_counts_are_verified(damage):
+    contract, records = fixture()
+    records = deepcopy(records)
+    backend = records[1]['requests'][0]['stats']['backend']
+    prepared = backend['prepared_execution']
+    if damage == 'actual_policy': prepared['policy'] = {'min_bytes': 99}
+    elif damage == 'missing_manager': backend['prepared_execution'] = None
+    elif damage == 'entries': prepared['cache_entries'] = 3
+    elif damage == 'bytes': prepared['retained_parameter_bytes'] = 11
+    elif damage == 'execution_counts': prepared['native']['logical_transfers'] = 99
+    with pytest.raises(ValueError):
+        validate_campaign(contract, records)

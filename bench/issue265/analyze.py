@@ -70,6 +70,17 @@ def validate_record(contract, row, job):
         require(request.get('correct') is True and request.get('held_correct') is True, 'oracle/held output failure')
         ms = request['completed_ms']
         require(isinstance(ms, (float, int)) and math.isfinite(ms) and ms > 0, 'invalid timing')
+        backend = request['stats']['backend']
+        if backend is not None:
+            prepared = backend.get('prepared_execution')
+            if job['policy'] is not None and (backend.get('replaced_regions', 0) or backend.get('runtime_executions', 0)):
+                require(prepared is not None, 'prepared policy was not installed')
+            if prepared is not None:
+                require(prepared['policy'] == job['policy'], 'actual backend policy changed')
+                for field, limit in (('cache_entries', 'max_entries'), ('retained_parameter_bytes', 'max_parameter_bytes')):
+                    require(0 <= prepared[field] <= job['policy'][limit], 'prepared cache bound exceeded')
+                require(prepared['executions'] == prepared['native']['logical_transfers'], 'native execution accounting differs')
+                require(prepared['executions'] <= backend['runtime_executions'], 'runtime execution accounting differs')
     require(row['held_checks_after_close'] == 1, 'held output not checked after close')
     resources = row['resources_after_close']
     if resources is not None:
