@@ -31,3 +31,13 @@ def test_complete_flag_cannot_hide_a_missing_model_case(tmp_path):
     (tmp_path/'e2.json').write_text(json.dumps(x))
     (tmp_path/'audit.json').write_text(json.dumps(dict(returncode=0,observations=[])))
     with pytest.raises(AssertionError,match='case coverage'):collect(tmp_path)
+
+
+def test_dependency_witness_excludes_kernel_enqueued_before_stream_wait():
+    from bench.issue263.analyze import dependency_witnesses
+    row=dict(dependencies=[dict(eventId=7,streamId=2,end=21,wait_api=dict(start=20,end=21),
+            record=dict(streamId=1,api_start=10))],activities=[
+        dict(streamId=1,launch_start=9,start=25,end=30,kind='KERNEL',group='g0',name='producer'),
+        dict(streamId=2,launch_start=15,start=31,end=34,kind='KERNEL',group=None,name='queued_before_wait'),
+        dict(streamId=2,launch_start=22,start=35,end=38,kind='KERNEL',group=None,name='queued_after_wait')])
+    assert dependency_witnesses(row)[0]['consumer_next_kernel']['name']=='queued_after_wait'

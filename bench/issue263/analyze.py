@@ -164,6 +164,23 @@ def comparisons(records):
     return output
 
 
+def dependency_witnesses(first):
+    """Use enqueue order: a stream-wait API return is not GPU completion."""
+    witnesses=[]
+    for d in first['dependencies']:
+        record=d['record']
+        if record is None or record['streamId']==d['streamId']:continue
+        producer=[a for a in first['activities'] if a['streamId']==record['streamId'] and a['launch_start']<=record['api_start']]
+        consumer=[a for a in first['activities'] if a['streamId']==d['streamId'] and a['launch_start']>=d['wait_api']['end'] and a['kind']=='KERNEL' and a['group'] is None]
+        if not producer or not consumer:continue
+        last=max(producer,key=lambda a:a['launch_start']);following=min(consumer,key=lambda a:a['start'])
+        if last['group'] is None:continue
+        witnesses.append(dict(event_id=d['eventId'],producer_stream=record['streamId'],consumer_stream=d['streamId'],
+            producer_last_activity=last,record=record,wait=d,consumer_next_kernel=following))
+        if len(witnesses)==2:break
+    return witnesses
+
+
 def trace_summary(path,out):
     result=analyze_trace(path)
     with gzip.open(out,'wt') as f:json.dump(result,f,separators=(',',':'))
@@ -178,18 +195,7 @@ def trace_summary(path,out):
         median_elapsed=statistics.median(r['elapsed_ns'] for r in rows)
         first=min(rows,key=lambda r:abs(r['elapsed_ns']-median_elapsed))
         signatures=Counter((a['kind'],a.get('copyKind'),a['name']) for a in first['activities'])
-        witnesses=[]
-        for d in first['dependencies']:
-            record=d['record']
-            if record is None or record['streamId']==d['streamId']:continue
-            producer=[a for a in first['activities'] if a['streamId']==record['streamId'] and a['launch_start']<=record['api_start']]
-            consumer=[a for a in first['activities'] if a['streamId']==d['streamId'] and a['start']>=d['end'] and a['kind']=='KERNEL' and a['group'] is None]
-            if not producer or not consumer:continue
-            last=max(producer,key=lambda a:a['launch_start']);following=min(consumer,key=lambda a:a['start'])
-            if last['group'] is None:continue
-            witnesses.append(dict(event_id=d['eventId'],producer_stream=record['streamId'],consumer_stream=d['streamId'],
-                producer_last_activity=last,record=record,wait=d,consumer_next_kernel=following))
-            if len(witnesses)==2:break
+        witnesses=dependency_witnesses(first)
         summaries.append(dict(label=key,requests=len(rows),elapsed_ms=distribution([r['elapsed_ns']/1e6 for r in rows]),
             assigned_gpu_ms=distribution([r['assigned_gpu_ns']/1e6 for r in rows]),
             device_busy_ms=distribution([r['device_busy_ns']/1e6 for r in rows]),

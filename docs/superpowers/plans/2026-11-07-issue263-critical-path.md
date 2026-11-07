@@ -1,6 +1,6 @@
 # Issue 263 Critical-Path Attribution Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Resolve #263 with request-correlated CPU/CUDA evidence, controlled bypass experiments, unprofiled uncertainty, and a publicly accessible artifact.
 
@@ -34,10 +34,10 @@
 
 **Interfaces:** `load_artifact(root, repo)` returns the E2/E5 modules without editing the artifact; `Instrumentation(mode)` supplies thread-local `request(label)` / `phase(name)` contexts and JSON records; `Intervention(name)` restores all changed callables on exit. `models.py` exposes a CLI for original E2 matched native/grouped/whole-window paths.
 
-- [ ] Add failing tests for nested exclusive attribution, concurrent scope isolation, restoration after exceptions, and real CUDA numerical/held-output behavior under interventions.
-- [ ] Implement the minimal adapter and instrumentation, retaining original source/binary hashes and an explicit mode (`off`, `counters`, `nvtx`).
-- [ ] Probe Nsight capture/export on this runtime and run the current 21 E2 controls as the clean baseline.
-- [ ] Run focused pytest gates and small E2 pilots; preserve all failures. Commit the harness and tests after successful gates.
+- [x] Add failing tests for nested exclusive attribution, concurrent scope isolation, restoration after exceptions, and real CUDA numerical/held-output behavior under interventions.
+- [x] Implement the minimal adapter and instrumentation, retaining original source/binary hashes and an explicit mode (`off`, `counters`, `nvtx`).
+- [x] Probe Nsight capture/export on this runtime and run the current 21 E2 controls as the clean baseline.
+- [x] Run focused pytest gates and small E2 pilots; preserve all failures. Commit the harness and tests after successful gates.
 
 ### Task 2: Correlated trace and paired-statistics analysis
 
@@ -45,10 +45,10 @@
 
 **Interfaces:** `analyze_trace(sqlite_path)` emits host-exclusive phases, GPU interval unions, CPU-to-GPU correlation, and representative dependency witnesses. `paired_summary(rows)` reports process-paired effects and bootstrap intervals, separately from request percentiles.
 
-- [ ] Add failing hand-checked fixtures for overlapping intervals, nested/threaded requests, missing GPU evidence, paired aggregation, and unmatched/incomplete rounds.
-- [ ] Implement request/thread/correlation joins; distinguish serialized request analysis from concurrent burst unions and flag unassigned activity.
-- [ ] Validate against real pilot SQLite exports and unprofiled records. Report unsupported trace fields or residuals explicitly rather than inventing dependency edges.
-- [ ] Run CPU analysis tests and commit.
+- [x] Add failing hand-checked fixtures for overlapping intervals, nested/threaded requests, missing GPU evidence, paired aggregation, and unmatched/incomplete rounds.
+- [x] Implement request/thread/correlation joins; distinguish serialized request analysis from concurrent burst unions and flag unassigned activity.
+- [x] Validate against real pilot SQLite exports and unprofiled records. Report unsupported trace fields or residuals explicitly rather than inventing dependency edges.
+- [x] Run CPU analysis tests and commit.
 
 ### Task 3: E2/E5 qualification campaign
 
@@ -56,10 +56,10 @@
 
 **Interfaces:** A serialized runner accepts `--artifact`, `--build`, `--python`, `--output`, and `--nsys`; every process records configuration, provenance, isolation, correctness, and raw samples. Lifecycle/concurrency adapters use the frozen workload and retained-output checks.
 
-- [ ] Add integration gates for original controls versus interventions, fresh values/revisions, retained outputs, counter-off execution, and 1/2/4-caller isolation.
-- [ ] Capture diagnostic traces for the required workload/compute/phase/caller coverage; establish explicit hypotheses and select interventions before acceptance.
-- [ ] Run the registered unprofiled rounds and instrumentation-overhead contrasts with no concurrent GPU/build jobs. Record contamination as failed evidence, never accepted timing.
-- [ ] Analyze actual critical-path evidence, attributable savings with uncertainty, parity requirements, memory counters, and unexplained residuals. Commit runner/analysis and compact results.
+- [x] Add integration gates for original controls versus interventions, fresh values/revisions, retained outputs, counter-off execution, and 1/2/4-caller isolation.
+- [x] Capture diagnostic traces for the required workload/compute/phase/caller coverage; establish explicit hypotheses and select interventions before acceptance.
+- [x] Run the registered unprofiled rounds and instrumentation-overhead contrasts with no concurrent GPU/build jobs. Record contamination as failed evidence, never accepted timing.
+- [x] Analyze actual critical-path evidence, attributable savings with uncertainty, parity requirements, memory counters, and unexplained residuals. Commit runner/analysis and compact results.
 
 ### Task 4: Review, publish, and reconcile the issue
 

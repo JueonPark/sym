@@ -11,7 +11,7 @@ The target is attribution of the matched E2/E5 regressions, not a claim that a p
 
 ## Separation of modes
 
-- `off`: original callables, no phase/counter wrappers and no profiler; used for accepted paired latency.
+- `off`: no phase/counter wrappers and no profiler (only the selected diagnostic intervention applies); used for accepted paired latency.
 - `counters`: thread-local CPU phase timing and counts, no NVTX/profiler; compared with `off` to measure instrumentation overhead.
 - `nvtx`: request/group/phase annotations plus Nsight CUDA activity; diagnostic only. Profiler overhead is measured separately and never subtracted to manufacture production timings.
 

@@ -2,7 +2,7 @@
 
 This directory contains the benchmark-only investigation of [#263](https://github.com/JueonPark/sym/issues/263). It compares Sym with the matched Torch control using the frozen FP16 E2/E5 workloads. The production runtime remains at `2617ba166f98a7476a5f472d829a573317fc0cfb`.
 
-**Measurement is in progress.** Results and public artifact links will be added after the registered campaign completes and the evidence is reviewed. Pilot timings are excluded from acceptance.
+**The 150-process campaign is complete.** Read the [results and limitations](RESULTS.md), [compact result index](result-index.json), and [public artifact release](https://github.com/JueonPark/sym/releases/tag/profile-issue263-2026-11-07-v1). Pilot timings are excluded from acceptance.
 
 ## What the experiment changes
 
@@ -14,7 +14,7 @@ This directory contains the benchmark-only investigation of [#263](https://githu
 
 ## Reproduce
 
-Download and verify the [frozen E1–E5 artifact](https://github.com/JueonPark/sym/releases/tag/experiments-2026-11-04-v1). Its native helper and the published runtime hashes correspond to the recorded Python 3.14 / Torch 2.14 / CUDA 12.6 environment. Preserve the extracted artifact unchanged. Supply explicit paths to the artifact, runtime build, Python interpreter, Nsight executable, and an empty output directory:
+Download and verify the [frozen E1–E5 artifact](https://github.com/JueonPark/sym/releases/tag/experiments-2026-11-04-v1). Its native helper and the published runtime hashes correspond to the recorded Python 3.14 / Torch 2.14 / CUDA 12.6 environment. Preserve the extracted artifact unchanged. The new release also bundles the verified runtime under `runtime/`. Use a Git checkout of the release tag for new runs (benchmark provenance reads the Git revision); the bundled `source/` supports offline inspection and reanalysis. Supply explicit paths to the frozen input artifact, runtime build, Python interpreter, Nsight executable, and an empty output directory:
 
 ```sh
 python3 bench/issue263/run.py \
@@ -32,7 +32,7 @@ The runner defaults to GPU 0 and CPU affinity `4-7,20-23`, the original machine'
 
 A new runtime build normally has different binary hashes. Individual benchmark CLIs accept `--allow-new-build` to record that difference, but the registered baseline campaign and its analyzer require the original hashes. Rebuilding the historical native helper for a different Python/Torch ABI also requires a separately recorded artifact manifest. This strict mode is intentional: it prevents a changed baseline from being presented as a reproduction of this attribution result.
 
-The runner serializes jobs, rotates arm order, assigns fresh Inductor caches, and audits foreign GPU/build processes every three seconds. A failed or contaminated run is preserved and stops the campaign. Completed jobs can be resumed against the same `matrix.json`; incomplete jobs must be investigated and preserved separately before rerunning. The matrix includes all named interventions, counter-overhead contrasts, and diagnostic traces. See [PROTOCOL.md](PROTOCOL.md) for the registered counts and selection rule.
+The runner uses an allowlisted launch environment, serializes jobs, rotates arm order, assigns fresh Inductor caches, and audits foreign GPU/build processes every three seconds. A failed or contaminated run is preserved and stops the campaign. Completed jobs can be resumed against the same `matrix.json`; incomplete jobs must be investigated and preserved separately before rerunning. The matrix includes all named interventions, counter-overhead contrasts, and diagnostic traces. See [PROTOCOL.md](PROTOCOL.md) for the registered counts and selection rule.
 
 ## Evidence and aggregation
 

@@ -136,6 +136,7 @@ def analyze_trace(path):
           'GPU-idle intersections are descriptive; only unprofiled interventions estimate removable latency.',
           'Device busy includes concurrent requests on the same process/device; assigned GPU uses launch-thread correlation.',
           'Event record-to-wait evidence uses the latest preceding record for the same process/context/event; stream ordering remains visible in raw activity.',
+          'Synchronization records include stream-wait API enqueue intervals. Their end timestamps are not GPU event-completion timestamps or GPU stall durations.',
           'Native CPU NVTX is disabled in the frozen runtime. Native submission includes binding/runtime work that this build cannot subdivide.'])
 
 
