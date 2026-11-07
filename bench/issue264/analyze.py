@@ -126,3 +126,161 @@ def validate_workload(data, job):
             if job['runtime'] == 'sym': no_growth(a['transfer']['resources'], b['transfer']['resources'])
     else:
         raise ValueError('unknown workload')
+
+
+def verify_trace(directory, data):
+    from pathlib import Path
+    import hashlib
+    info = data['physical_memory']
+    root = Path(directory).resolve()
+    path = (root / info['file']).resolve()
+    if not path.is_relative_to(root) or not path.is_file():
+        raise ValueError('missing or invalid physical memory trace')
+    if hashlib.sha256(path.read_bytes()).hexdigest() != info['sha256']:
+        raise ValueError('physical memory trace digest mismatch')
+
+
+def summarize_lifecycle(data):
+    phases = data['phases']
+    initial = [r['completed_ms'] for r in data['requests'] if r['phase'] == 'initial']
+    shape = [r['completed_ms'] for r in data['requests'] if r['phase'] == 'shape_change']
+    scale = [r['completed_ms'] for r in data['requests'] if r['phase'] == 'scale_change']
+    setup = data['launch_to_pre_cuda_ms'] + sum(phases[k] for k in
+            ('cuda_init_ms', 'fixture_ms', 'snapshot_total_ms', 'request_owner_ms'))
+    retirement = phases['owner_retirement_ms'] + phases['caller_release_and_cache_clear_ms']
+    return dict(setup_ms=setup, first_ms=initial[0], p50_ms=percentile(initial[1:], 50),
+                p95_ms=percentile(initial[1:], 95), samples=len(initial)-1,
+                shape_first_ms=shape[0], shape_p50_ms=percentile(shape[1:], 50),
+                scale_first_ms=scale[0], scale_p50_ms=percentile(scale[1:], 50),
+                scale_reprepare_ms=phases['scale_reprepare_ms'], retirement_ms=retirement,
+                full_accounted_ms=setup + sum(r['completed_ms'] for r in data['requests']) +
+                    phases['shape_update_ms'] + phases['scale_reprepare_ms'] + retirement,
+                observed_deployment_device_peak=data['observed_deployment_device_peak'])
+
+
+def summarize_burst(data):
+    requests = [r for batch in data['batches'] for r in batch['requests']]
+    result = dict(samples=len(requests), requests_per_second=1000 * len(requests) /
+                  sum(b['completed_ms'] for b in data['batches']),
+                  mean_burst_ms=statistics.mean(b['completed_ms'] for b in data['batches']),
+                  observed_warm_app_increment_peak=data['observed_warm_app_increment_peak'])
+    for key in ('service_ms', 'executor_execution_ms', 'sojourn_ms', 'queue_wait_ms'):
+        for quantile in (50, 95):
+            result[key.removesuffix('_ms') + f'_p{quantile}_ms'] = percentile([r[key] for r in requests], quantile)
+    result['p50_ms'], result['p95_ms'] = result['service_p50_ms'], result['service_p95_ms']
+    return result
+
+
+def collect(directory, *, partial=False):
+    import json
+    from pathlib import Path
+    directory = Path(directory)
+    contract = json.loads((directory / 'contract.json').read_text())
+    jobs = json.loads((directory / 'matrix.json').read_text())
+    records, missing = [], []
+    for job in jobs:
+        path = directory / (job['name'] + '.json')
+        if not path.exists():
+            missing.append(job['name'])
+            continue
+        data = json.loads(path.read_text())
+        if partial and (not data.get('complete') or 'job' not in data):
+            missing.append(job['name'])
+            continue
+        audit = json.loads((directory / data['isolation']['audit']).read_text())
+        validate_record(contract, data, job, audit)
+        validate_workload(data, job)
+        base = dict(file=path.name, kind=job['kind'], round=job['round'], policy=job['policy'])
+        if job['kind'] == 'groups':
+            for row in summarize_groups(data, round=job['round'], policy=job['policy']):
+                raw = data['cases'][row['case']]
+                before, after = raw['diagnostics']['before'], raw['diagnostics']['after']
+                prepared_a, prepared_b = before.get('prepared_groups', {}), after.get('prepared_groups', {})
+                counts = {k: prepared_b.get(k, 0) - prepared_a.get(k, 0)
+                          for k in ('group_constructions', 'view_descriptors', 'rebinds')}
+                counts['group_constructions'] += raw['diagnostics']['legacy_group_constructions']
+                counts['view_descriptors'] += raw['diagnostics']['legacy_view_descriptors']
+                counts['report_materializations'] = (after.get('report_materializations', after['groups']) -
+                                                       before.get('report_materializations', before['groups']))
+                row.update(file=path.name, diagnostics=counts,
+                    rss_bytes=raw['after_warm']['process']['rss_bytes'],
+                    rss_growth_bytes=raw['after_warm']['process']['rss_bytes'] - raw['before_first']['process']['rss_bytes'],
+                    native_retained_bytes=raw['after_warm']['transfer']['resources']['retained_bytes'],
+                    live_slots=raw['after_warm']['transfer'].get('prepared_groups', {}).get('live_slots', 0),
+                    source_bytes=raw['source_bytes'])
+                records.append(row)
+        elif job['kind'] == 'models':
+            for case, row in data['cases'].items():
+                for arm in row['arms'].values():
+                    stats = distribution(arm['samples_ms'])
+                    records.append(dict(base, case=case, compute=arm['factors']['compute'], runtime=arm['factors']['runtime'],
+                        p50_ms=stats['p50'], p95_ms=stats['p95'], samples=stats['n'], first_ms=arm['first_ms'],
+                        torch_snapshot_ms=row['torch_snapshot_ms'], sym_snapshot_ms=row['sym_snapshot_ms'],
+                        allocation_diagnostic=arm['allocation_diagnostic']))
+        else:
+            verify_trace(directory, data)
+            row = summarize_lifecycle(data) if job['kind'] == 'lifecycle' else summarize_burst(data)
+            records.append(dict(base, case=job['case'], runtime=job['runtime'],
+                                compute=job.get('compute', 'eager'), callers=job.get('callers', 1), **row))
+    if missing and not partial: raise ValueError('missing jobs: ' + ', '.join(missing))
+    return dict(records=records, missing=missing, contract=contract, jobs=len(jobs))
+
+
+def comparisons(records):
+    result = []
+    def select(**criteria):
+        return [r for r in records if all(r.get(k) == v for k, v in criteria.items())]
+    def compare(label, a, b, metrics, rounds, **labels):
+        if len(a) != rounds or len(b) != rounds: return
+        row = dict(comparison=label, **labels, metrics={k: paired(a, b, k, rounds) for k in metrics})
+        if all(all(k in r for k in ('setup_ms', 'first_ms', 'p50_ms')) for r in a + b):
+            left, right = {r['round']: r for r in a}, {r['round']: r for r in b}
+            row['estimated_break_even_requests'] = [dict(round=i, requests=break_even(
+                left[i]['setup_ms'], right[i]['setup_ms'], left[i]['first_ms'], right[i]['first_ms'],
+                left[i]['p50_ms'], right[i]['p50_ms'])) for i in sorted(left)]
+        result.append(row)
+    for kind in sorted({r['kind'] for r in records}):
+        keys = ('case',) if kind == 'groups' else (('case', 'compute') if kind == 'models' else ('case', 'compute', 'callers'))
+        combinations = sorted({tuple(r[k] for k in keys) for r in records if r['kind'] == kind})
+        for values in combinations:
+            key = dict(zip(keys, values)) | {'kind': kind}
+            rows = select(**key)
+            policies = sorted({r['policy'] for r in rows})
+            rounds = 5 if kind in ('groups', 'models') else 3
+            metrics = ['p50_ms', 'p95_ms']
+            if kind == 'groups': metrics += ['submit_p50_ms', 'submit_p95_ms', 'setup_ms', 'first_ms']
+            if kind == 'lifecycle': metrics += ['first_ms', 'full_accounted_ms', 'scale_reprepare_ms', 'shape_first_ms', 'scale_first_ms']
+            if kind == 'concurrency': metrics += ['sojourn_p95_ms', 'mean_burst_ms']
+            runtime = {} if kind == 'groups' else {'runtime': 'sym'}
+            baseline = select(**key, **runtime, policy='baseline')
+            legacy = select(**key, **runtime, policy='legacy-eager')
+            for p in policies:
+                candidate = select(**key, **runtime, policy=p)
+                if p != 'baseline': compare('vs_frozen_sym', baseline, candidate, metrics, rounds, **key, policy=p)
+                if p not in ('baseline', 'legacy-eager'):
+                    compare('vs_new_legacy_sym', legacy, candidate, metrics, rounds, **key, policy=p)
+                if kind != 'groups':
+                    control = select(**key, runtime='torch', policy=p if kind == 'models' else 'baseline')
+                    compare('sym_vs_torch', control, candidate, ['p50_ms', 'p95_ms'], rounds, **key, policy=p)
+    return result
+
+
+def main():
+    import argparse
+    import hashlib
+    import json
+    from pathlib import Path
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('directory', type=Path)
+    parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--partial', action='store_true')
+    args = parser.parse_args()
+    result = collect(args.directory, partial=args.partial)
+    result['comparisons'] = comparisons(result['records'])
+    result['analysis_sha256'] = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(result, indent=2) + '\n')
+    print(len(result['records']), 'rows;', len(result['comparisons']), 'comparisons;', len(result['missing']), 'missing jobs')
+
+
+if __name__ == '__main__': main()

@@ -88,3 +88,24 @@ def test_claimed_policy_must_match_actual_owner_constructor_settings():
     data['optimization']['owners'] = [dict(prepared_groups=False, report_mode='eager')]
     with pytest.raises(ValueError, match='constructor|owner'):
         validate_record(contract, data, job, audit)
+
+
+def test_collect_rejects_missing_jobs(tmp_path):
+    import json
+    from bench.issue264.analyze import collect
+    contract, data, job, audit = record()
+    (tmp_path / 'contract.json').write_text(json.dumps(contract))
+    (tmp_path / 'matrix.json').write_text(json.dumps([job]))
+    with pytest.raises(ValueError, match='missing'):
+        collect(tmp_path)
+    result = collect(tmp_path, partial=True)
+    assert result['missing'] == [job['name']] and result['records'] == []
+
+
+def test_memory_trace_digest_and_path_are_verified(tmp_path):
+    from bench.issue264.analyze import verify_trace
+    (tmp_path / 'trace.gz').write_bytes(b'abc')
+    good = dict(physical_memory={'file': 'trace.gz', 'sha256': 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'})
+    verify_trace(tmp_path, good)
+    for info in ({'file': 'trace.gz', 'sha256': 'wrong'}, {'file': '../elsewhere', 'sha256': 'wrong'}):
+        with pytest.raises(ValueError): verify_trace(tmp_path, {'physical_memory': info})

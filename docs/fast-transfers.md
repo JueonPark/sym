@@ -59,6 +59,55 @@ releases the handle. A stale captured handle raises an error at execution.
 items sharing one plan run as a single batched permute kernel, and host
 buffers that are adjacent views of one allocation share a single copy.
 
+## Reusable groups and reports
+
+With the native Torch bridge, `FastTransfers` caches up to
+`max_prepared_groups=64` structural handles when `prepared_groups=True`.
+Each handle retains immutable programs and at most `contexts` native slots.
+An explicit handle avoids implicit cache lookup:
+
+```python
+with owner.prepare_group([program_a, program_b]) as group:
+    completion = group.submit([source_a, source_b])
+    outputs = completion.wait()
+    # After completion, input values or storage addresses may change.
+    next_outputs = group.submit([source_a, source_b]).wait()
+    # outputs still contains the first request's values.
+```
+
+Every binding checks actual shape, strides, dtype, device, storage bounds,
+and aliases. Storage offsets may change when the same view still fits its
+allocation. Invalid binding leaves a slot reusable; execution failure
+permanently discards that slot. Pending slots are completed before reuse.
+Output tensors remain fresh unless valid `outputs=` are supplied. Keep inputs
+unchanged until transfer completion, including when using `wait_stream()`.
+
+Implicit handles use program identity as their key. `FastWeights` invalidates
+handles using an old snapshot program on its next lookup after replacement;
+in-flight requests retain their old values and parameters. Explicit handles
+retain their chosen program revisions until close. Structural handles, shape
+specializations, and compact weight snapshots have separate lifetimes.
+Eviction and close drain active transfers and preserve returned outputs.
+Owner locking serializes structural state changes and completion accounting;
+native contexts continue to govern transfer overlap. Forked use is rejected
+before touching inherited locks.
+
+`report_mode="native"` folds aggregate counters in C++ and materializes the
+existing detailed schema only when `completion.report` is accessed after
+completion has been finalized by `done()` or a wait. Reports remain valid
+after slot reuse and owner close; modifying a returned dictionary does not
+change subsequent reports. `stats()` includes `prepared_groups` counters
+(constructions, view descriptors, rebinds, slots, cache hits/misses/evictions)
+and `report_materializations`. Metadata counts are distinct from native
+scratch bytes and Torch output storage.
+
+`prepared_groups=False` retains per-call group construction, and
+`report_mode="eager"` retains eager detailed accounting for comparison.
+Indexed/pooled one-shot producers and builds without the native Torch bridge
+use the original construction path. Explicit preparation requires the bridge.
+See [issue 264's matched qualification](../bench/issue264/README.md) for costs,
+retention, and workload-dependent performance.
+
 ## Conveniences
 
 - `KVCacheSwap(owner, heads, head_dim)`: `evict(caches)` moves `[H, S, Dh]`

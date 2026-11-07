@@ -56,9 +56,9 @@
 
 **Interfaces:** explicit artifact/harness/baseline-build/candidate-build/python/output paths; immutable campaign contract and per-process hashes/audits; separate unprofiled samples and diagnostic counts. Compare legacy/eager, legacy/native-accounting, prepared/eager, and prepared/native-accounting in grouped tests.
 
-- [ ] Test paired aggregation/missing rounds and provenance rejection before implementing analysis/runner. Verify exact kernels/grouping/precision, numeric oracles, and output lifetime in pilots.
-- [ ] Measure preparation, cold and warm completed latency, CPU submission, actual native group/descriptor/report counts, retained memory, and positive-savings break-even with process uncertainty.
-- [ ] Select the model candidate/default policy from independent focused results. Preserve unfavorable outcomes and any design adjustment in the ledger; commit finalized protocol before acceptance runs.
+- [x] Test paired aggregation/missing rounds and provenance rejection before implementing analysis/runner. Verify exact kernels/grouping/precision, numeric oracles, and output lifetime in pilots.
+- [x] Measure preparation, cold and warm completed latency, CPU submission, actual native group/descriptor/report counts, retained memory, and positive-savings break-even with process uncertainty.
+- [x] Select the model candidate/default policy from independent focused results. Preserve unfavorable outcomes and any design adjustment in the ledger; commit finalized protocol before acceptance runs.
 
 ### Task 4: Matched E2/E5 campaign and report
 
