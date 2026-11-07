@@ -67,5 +67,7 @@
 
 - [x] Map each #263 acceptance criterion to evidence and state whether the original regression reproduces under the current protocol.
 - [x] Run the focused harness suite and relevant existing frontend/lifetime controls; obtain an independent whole-branch review and address important findings.
-- [ ] Publish a versioned release containing the raw records, Nsight traces/SQLite, source snapshot, report, and checksum manifest; verify an anonymous download.
-- [ ] Push the isolated branch and create a reviewable PR. Post the evidence and prioritized follow-ups on #263; close it only if all attribution acceptance criteria are met, otherwise state the remaining work precisely.
+- [x] Publish a versioned release containing the raw records, Nsight traces/SQLite, source snapshot, report, and checksum manifest; verify an anonymous download.
+- [x] Push the isolated branch and create a reviewable PR. Post the evidence and prioritized follow-ups on #263; close it only if all attribution acceptance criteria are met, otherwise state the remaining work precisely.
+
+Completion: [PR #275](https://github.com/JueonPark/sym/pull/275) is open for review; [#263](https://github.com/JueonPark/sym/issues/263#issuecomment-6703223362) is closed with all four attribution criteria satisfied. The [public release](https://github.com/JueonPark/sym/releases/tag/profile-issue263-2026-11-07-v1) pins implementation commit `351c4664b6796ae7cd58fed0854e56ec2e9fbecd`. Anonymous download verified all 18,400 file digests and reproduced all 570 rows / 122 comparisons exactly. Final validation: 134 tests passed (47 harness + 87 original controls/frontend). No production optimization or merge into main is included.
