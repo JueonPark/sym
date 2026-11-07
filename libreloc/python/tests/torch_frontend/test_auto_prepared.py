@@ -464,3 +464,45 @@ def test_closed_prepared_statistics_are_independent_snapshots():
     snapshot['native']['dispatches']['invented'] = 99
     assert manager.stats()['native']['logical_transfers'] == 0
     assert manager.stats()['native']['dispatches'] == {}
+
+
+@pytest.mark.parametrize('prepared', [True, policy()])
+def test_backend_rejects_borrowed_prepared_adapter(prepared):
+    from reloc_torch import RelocBackend
+    from reloc_torch.resources import AUTO
+    from reloc_torch.runtime import TransportAdapter
+    adapter = TransportAdapter(transfer_resources=AUTO, prepared_execution=prepared)
+    try:
+        # Reusing an adapter would mix its cumulative totals into local stats.
+        for _ in range(2):
+            with pytest.raises(ValueError, match='share TransferResources'):
+                RelocBackend(runtime=adapter)
+        assert adapter.resource_stats() is None
+        assert adapter.prepared_stats()['executions'] == 0
+    finally:
+        adapter.close()
+
+
+@pytest.mark.gpu
+def test_prepared_backends_share_resources_without_sharing_counters(compiler, cuda_device):
+    resources = TransferResources()
+    first = backend(compiler, transfer_resources=resources)
+    second = backend(compiler, transfer_resources=resources)
+    try:
+        x = torch.randn(7, 9)
+        run_first, _ = captured_entry(first, cast, x)
+        run_second, _ = captured_entry(second, cast, x)
+        exact(run_first(x), cast(x))
+        assert first.stats()['runtime_executions'] == first.stats()['typed_executions'] == 1
+        assert second.stats()['runtime_executions'] == second.stats()['typed_executions'] == 0
+        assert second.stats()['dispatches'] == {}
+        first.close()
+        assert not resources.closed
+        exact(run_second(x), cast(x))
+        exact(run_second(x), cast(x))
+        assert second.stats()['runtime_executions'] == second.stats()['typed_executions'] == 2
+        assert first.stats()['typed_executions'] == 1
+    finally:
+        first.close()
+        second.close()
+        resources.close()

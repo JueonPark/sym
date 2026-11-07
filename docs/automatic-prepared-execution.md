@@ -86,6 +86,12 @@ Explicit placement, D2H, per-call resources (`transfer_resources=None`), custom
 gather pools, explicit multiple streams, automatic thread count and configured
 pinning thresholds use the legacy adapter with a recorded bypass reason. A custom
 runtime owns its policy and rejects backend-level prepared configuration.
+An externally supplied `TransportAdapter` with prepared execution enabled is
+also rejected: its cumulative native counters cannot be attributed to one
+backend. Enable preparation on each backend and pass the same
+`transfer_resources=owner` to share resources while keeping execution counters
+independent. A backend-owned adapter is reserved for that backend's execution;
+direct adapter calls have adapter-wide statistics.
 Unconfigured `pinning="auto"` remains conservative/pageable. Disabling prepared
 execution preserves the original adapter and its configuration.
 

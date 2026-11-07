@@ -138,6 +138,11 @@ class RelocBackend:
         self._prepared_execution = normalize_policy(prepared_execution)
         if runtime is not None and self._prepared_execution is not None:
             raise ValueError("custom runtime owns its prepared execution policy")
+        if isinstance(runtime, TransportAdapter) and runtime._prepared is not None:
+            raise ValueError(
+                "prepared execution requires a backend-owned adapter; "
+                "share TransferResources across backends instead"
+            )
         if transfer_resources is _UNSPECIFIED_RESOURCES:
             transfer_resources = AUTO if runtime is None else None
         if runtime is not None and (transfer_resources is not None or transfer_options is not None):
