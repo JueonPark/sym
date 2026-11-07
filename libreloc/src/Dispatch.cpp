@@ -1714,6 +1714,118 @@ prepareDispatchGroup(const std::vector<GroupEntry> &entries) {
   return group;
 }
 
+std::variant<GroupRequest, TransferError>
+prepareReusableDispatchGroup(const std::vector<GroupEntry> &entries) {
+  auto prepared = prepareDispatchGroup(entries);
+  if (auto *error = std::get_if<TransferError>(&prepared))
+    return *error;
+  auto group = std::get<GroupRequest>(std::move(prepared));
+  group.initialReports = group.reports;
+  group.bindingSpans.reserve(entries.size());
+  for (const auto &entry : entries) {
+    // These views were fully checked above. Retain their spans so warm
+    // binding need not rebuild descriptors or re-prove invariant strides.
+    auto source = viewSpanBytes(entry.source, "source");
+    auto destination = viewSpanBytes(entry.destination, "destination");
+    if (auto *error = std::get_if<TransferError>(&source))
+      return *error;
+    if (auto *error = std::get_if<TransferError>(&destination))
+      return *error;
+    group.bindingSpans.emplace_back(std::get<size_t>(source),
+                                    std::get<size_t>(destination));
+  }
+  return group;
+}
+
+std::optional<TransferError>
+rebindDispatchGroup(GroupRequest &group,
+                    const std::vector<GroupBinding> &bindings) {
+  if (group.executing || group.pending->load())
+    return fail("group_pending", "cannot rebind a pending group");
+  if (group.failed)
+    return fail("group_failed", "a failed group cannot be rebound");
+  if (group.initialReports.empty() ||
+      group.bindingSpans.size() != group.items.size())
+    return fail("not_prepared", "group has no reusable binding structure");
+  if (bindings.size() != group.items.size())
+    return fail("invalid_group", "binding count differs from prepared group");
+  struct Interval {
+    uintptr_t begin, end;
+    MemoryKind kind;
+    int device;
+  };
+  std::vector<Interval> inputs, outputs;
+  inputs.reserve(bindings.size());
+  outputs.reserve(bindings.size());
+  auto validate = [](const BufferBinding &binding, const BufferView &view,
+                     size_t span,
+                     Interval &out) -> std::optional<TransferError> {
+    if (!binding.base)
+      return fail("invalid_view", "binding base pointer is null");
+    size_t last;
+    if (__builtin_add_overflow(binding.offsetBytes, span, &last) ||
+        __builtin_add_overflow(binding.base, binding.offsetBytes, &out.begin) ||
+        __builtin_add_overflow(out.begin, span, &out.end))
+      return fail("integer_overflow", "binding span overflows");
+    if (last > binding.capacityBytes)
+      return fail("insufficient_capacity", "binding does not fit storage");
+    out.kind = view.kind;
+    out.device = view.device;
+    return std::nullopt;
+  };
+  for (size_t i = 0; i < bindings.size(); ++i) {
+    Interval input{}, output{};
+    auto error = std::visit(
+        [&](const auto &request) -> std::optional<TransferError> {
+          if (auto error = validate(bindings[i].source, request.source,
+                                    group.bindingSpans[i].first, input))
+            return error;
+          return validate(bindings[i].destination, request.destination,
+                          group.bindingSpans[i].second, output);
+        },
+        group.items[i]);
+    if (error)
+      return error;
+    inputs.push_back(input);
+    outputs.push_back(output);
+  }
+  auto overlaps = [](const Interval &a, const Interval &b) {
+    return a.kind == b.kind && a.device == b.device && a.begin < b.end &&
+           b.begin < a.end;
+  };
+  for (size_t i = 0; i < outputs.size(); ++i) {
+    for (const auto &input : inputs)
+      if (overlaps(outputs[i], input))
+        return fail("group_alias", "a group output aliases an input");
+    for (size_t j = 0; j < i; ++j)
+      if (overlaps(outputs[i], outputs[j]))
+        return fail("group_alias", "group outputs must not overlap");
+  }
+  // No request state changes until every binding has passed validation.
+  group.report = {};
+  for (size_t i = 0; i < bindings.size(); ++i) {
+    std::visit(
+        [&](auto &request) {
+          request.source.base = bindings[i].source.base;
+          request.source.capacityBytes = bindings[i].source.capacityBytes;
+          request.source.offsetBytes = bindings[i].source.offsetBytes;
+          request.destination.base = bindings[i].destination.base;
+          request.destination.capacityBytes =
+              bindings[i].destination.capacityBytes;
+          request.destination.offsetBytes = bindings[i].destination.offsetBytes;
+          request.consumed = false;
+        },
+        group.items[i]);
+    if (auto *typed = std::get_if<DispatchRequest>(&group.items[i]))
+      typed->report = group.initialReports[i];
+    group.reports[i] = group.initialReports[i];
+    group.report.outputBytes += group.initialReports[i].destinationBytes;
+  }
+  group.consumed = false;
+  ++group.rebindCount;
+  return std::nullopt;
+}
+
 // Resources' arena keeps even logically freed scratch busy until the group
 // finishes. On any failure Resources independently drains or quarantines the
 // entire arena and all borrowed buffer owners. Never run this with a backend

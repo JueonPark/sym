@@ -28,6 +28,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -196,14 +197,39 @@ struct GroupRequest {
   GroupReport report;
   int device = -1;
   bool consumed = false, executing = false;
+  bool failed = false;
   // Stable shared flag across moves; reports are immutable once it clears.
   std::shared_ptr<std::atomic<bool>> pending =
       std::make_shared<std::atomic<bool>>(false);
+  // Populated only by prepareReusableDispatchGroup; the one-shot path does
+  // not copy report skeletons or retain reusable binding metadata.
+  std::vector<Report> initialReports;
+  std::vector<std::pair<size_t, size_t>> bindingSpans;
+  std::shared_ptr<const void> bindingIdentity;
+  uint64_t rebindCount = 0;
 };
 /// Validate the entire group before any allocation/submission; at most 256
 /// items, one device, no destination aliases with other outputs or inputs.
 std::variant<GroupRequest, TransferError>
 prepareDispatchGroup(const std::vector<GroupEntry> &);
+
+/// Storage of a fresh buffer with the prepared view's exact metadata. A
+/// framework bridge must validate dtype/shape/strides/device before supplying
+/// this compact declaration. Values are always read from the supplied base.
+struct BufferBinding {
+  uintptr_t base = 0;
+  size_t capacityBytes = 0, offsetBytes = 0;
+};
+struct GroupBinding {
+  BufferBinding source, destination;
+};
+std::variant<GroupRequest, TransferError>
+prepareReusableDispatchGroup(const std::vector<GroupEntry> &);
+/// Reject pending/failed groups, invalid capacities and aliases atomically.
+/// Successfully completed (or never submitted) slots may be rebound. Reports
+/// are per invocation; callers must snapshot any report they wish to retain.
+std::optional<TransferError>
+rebindDispatchGroup(GroupRequest &, const std::vector<GroupBinding> &);
 
 /// Pure selection without views: capability for `direction`/`options.cuda`,
 /// then the policy. Lets a bridge fix the row at preparation time and force

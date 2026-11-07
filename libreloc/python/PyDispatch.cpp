@@ -14,6 +14,7 @@
 #include <pybind11/stl.h>
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -242,10 +243,10 @@ py::dict executeDispatchPy(
   return reportDict(request.report);
 }
 
-py::dict groupReport(const reloc::dispatch::GroupRequest &group) {
-  const auto &r = group.report;
+py::dict groupReport(size_t count, const reloc::dispatch::GroupReport &r,
+                     const std::vector<reloc::dispatch::Report> &reports) {
   py::dict out;
-  out["logical_transfers"] = group.items.size();
+  out["logical_transfers"] = count;
   out["request_count"] = 1;
   out["completion_granularity"] = "group";
   out["payload_copy_calls"] = r.payloadCopyCalls;
@@ -263,10 +264,70 @@ py::dict groupReport(const reloc::dispatch::GroupRequest &group) {
   out["scratch_peak_bytes"] = r.scratchPeakBytes;
   out["staging"] = stagingReport(r.staging);
   py::list items;
-  for (const auto &item : group.reports)
+  for (const auto &item : reports)
     items.append(reportDict(item));
   out["items"] = items;
   return out;
+}
+py::dict groupReport(const reloc::dispatch::GroupRequest &group) {
+  return groupReport(group.items.size(), group.report, group.reports);
+}
+
+struct GroupCounterState {
+  uint64_t groups = 0, transfers = 0, payload = 0, materializations = 0;
+  std::map<std::string, uint64_t> dispatches;
+};
+struct GroupReportSnapshot {
+  reloc::dispatch::GroupReport group;
+  std::vector<reloc::dispatch::Report> items;
+  std::shared_ptr<GroupCounterState> counters;
+  py::dict report() const {
+    auto result = groupReport(items.size(), group, items);
+    ++counters->materializations;
+    return result;
+  }
+};
+struct GroupCounters {
+  std::shared_ptr<GroupCounterState> state =
+      std::make_shared<GroupCounterState>();
+  GroupReportSnapshot capture(const reloc::dispatch::GroupRequest &group) {
+    if (group.executing || group.pending->load() || !group.consumed ||
+        group.failed)
+      throw py::value_error(
+          "accounting requires successful completed group work");
+    GroupReportSnapshot snapshot{group.report, group.reports, state};
+    for (const auto &item : snapshot.items)
+      if (!item.executed)
+        throw py::value_error("accounting requires completed group items");
+    ++state->groups;
+    state->transfers += snapshot.items.size();
+    for (const auto &item : snapshot.items) {
+      state->payload += item.payloadBytesTransferred;
+      ++state->dispatches[item.implementation];
+    }
+    return snapshot;
+  }
+  py::dict stats() const {
+    py::dict result;
+    result["groups"] = state->groups;
+    result["logical_transfers"] = state->transfers;
+    result["payload_bytes"] = state->payload;
+    result["dispatches"] = py::cast(state->dispatches);
+    result["report_materializations"] = state->materializations;
+    return result;
+  }
+};
+
+void rebindGroup(
+    reloc::dispatch::GroupRequest &group,
+    const std::vector<std::tuple<uintptr_t, size_t, size_t, uintptr_t, size_t,
+                                 size_t>> &args) {
+  std::vector<reloc::dispatch::GroupBinding> bindings;
+  bindings.reserve(args.size());
+  for (const auto &[src, srcSize, srcOffset, dst, dstSize, dstOffset] : args)
+    bindings.push_back({{src, srcSize, srcOffset}, {dst, dstSize, dstOffset}});
+  if (auto error = reloc::dispatch::rebindDispatchGroup(group, bindings))
+    raise(*error);
 }
 using GroupArguments = std::tuple<
     std::variant<reloc::dispatch::DispatchTemplate, reloc::BoundPlan>,
@@ -292,7 +353,7 @@ py::object executeGroupPy(reloc::dispatch::GroupRequest &group,
                           std::shared_ptr<reloc::dispatch::Resources> resources,
                           const py::object &owners, bool deviceLayout,
                           int nBuffers, bool chunkedMembers) {
-  if (group.executing || group.consumed)
+  if (group.executing || group.consumed || group.failed)
     raise({"already_executed", "group is executing or already executed"});
   if (!py::isinstance<py::tuple>(owners) ||
       (py::len(owners) != 2 && py::len(owners) != 3))
@@ -364,8 +425,10 @@ py::object executeGroupPy(reloc::dispatch::GroupRequest &group,
       error = ephemeral.execute(group, options, token).error;
     }
   }
-  if (error)
+  if (error) {
+    group.failed = true;
     raise(*error);
+  }
   if constexpr (Async)
     return py::cast(std::move(completion));
   return groupReport(group);
@@ -560,6 +623,8 @@ void registerDispatchBindings(py::module_ &m) {
         "never reselect a row.");
   using Group = reloc::dispatch::GroupRequest;
   py::class_<Group>(m, "DispatchGroup")
+      .def_readonly("rebind_count", &Group::rebindCount)
+      .def_readonly("failed", &Group::failed)
       .def_property_readonly(
           "consumed", [](const Group &g) { return g.executing || g.consumed; })
       .def_property_readonly("report", [](const Group &g) {
@@ -567,6 +632,16 @@ void registerDispatchBindings(py::module_ &m) {
           throw py::value_error("report is unavailable during execution");
         return groupReport(g);
       });
+  m.def("rebind_dispatch_group", &rebindGroup, py::arg("group"),
+        py::arg("bindings"),
+        "Rebind compact storage declarations after the bridge validates "
+        "invariant metadata.");
+  py::class_<GroupReportSnapshot>(m, "GroupReportSnapshot")
+      .def_property_readonly("report", &GroupReportSnapshot::report);
+  py::class_<GroupCounters>(m, "GroupCounters")
+      .def(py::init<>())
+      .def("capture", &GroupCounters::capture, py::arg("group"))
+      .def("stats", &GroupCounters::stats);
   m.def("prepare_dispatch_group", &prepareGroup, py::arg("entries"),
         "Validate fresh (template or layout bound, source, destination, "
         "direction) entries together.");

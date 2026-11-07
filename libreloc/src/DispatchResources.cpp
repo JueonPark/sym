@@ -374,6 +374,8 @@ bool Completion::State::finishLocked(bool wait) {
   if (!outcome.error)
     for (auto &report : group->reports)
       report.executed = true;
+  else
+    group->failed = true;
   host.clear();
   complete = true;
   group->pending->store(false);
@@ -540,8 +542,11 @@ TransferOutcome Resources::execute(GroupRequest &group,
         fail("invalid_options", "group scratch byte limit must be positive")};
   if (group.device < 0)
     return {fail("backend_mismatch", "groups require a CUDA device")};
-  return executeImpl(nullptr, &group, group.device, 1, options,
-                     std::move(owners));
+  auto outcome =
+      executeImpl(nullptr, &group, group.device, 1, options, std::move(owners));
+  if (outcome.error)
+    group.failed = true;
+  return outcome;
 }
 TransferOutcome
 Resources::executeImpl(DispatchRequest *request, GroupRequest *group,
@@ -729,10 +734,12 @@ Resources::submit(GroupRequest &group, const TransferOptions &options,
     outcome = executeImpl(nullptr, &group, group.device, 1, options,
                           std::move(owners), state);
   } catch (...) {
+    group.failed = true;
     group.pending->store(false);
     throw;
   }
   if (outcome.error) {
+    group.failed = true;
     group.pending->store(false);
     return *outcome.error;
   }

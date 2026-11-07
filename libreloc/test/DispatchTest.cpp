@@ -317,6 +317,110 @@ TEST(Dispatch, HostToHostReferenceMatchesExecuteHostAndReports) {
   EXPECT_EQ(error->code, "already_executed");
 }
 
+TEST(Dispatch, ReusableGroupKeepsProgramAndViewStorageAcrossBindings) {
+  auto plan = mustBind(typed_goldens::kQuantDequantSymHex, {{"N", 16}});
+  Options options;
+  options.policy = Policy::OriginalCpu;
+  auto prepared = reloc::dispatch::prepareDispatchTemplate(
+      plan, TransferDirection::HostToDevice, options);
+  ASSERT_TRUE(
+      std::holds_alternative<reloc::dispatch::DispatchTemplate>(prepared));
+  std::vector<float> source(16), destination(16), nextSource(17),
+      nextDestination(18);
+  std::vector<reloc::dispatch::GroupEntry> entries{
+      {std::get<reloc::dispatch::DispatchTemplate>(prepared),
+       view(source.data(), 64, {16}, 4), view(destination.data(), 64, {16}, 4),
+       TransferDirection::HostToDevice}};
+  auto made = reloc::dispatch::prepareReusableDispatchGroup(entries);
+  ASSERT_TRUE(std::holds_alternative<reloc::dispatch::GroupRequest>(made));
+  auto &group = std::get<reloc::dispatch::GroupRequest>(made);
+  auto &request = std::get<DispatchRequest>(group.items[0]);
+  auto *programStages = request.program.stages.data();
+  auto *sourceExtents = request.source.extents.data();
+  group.consumed = request.consumed = true;
+  group.report.copyCalls = 99;
+  request.report.executed = group.reports[0].executed = true;
+  request.report.payloadBytesTransferred = 100;
+  auto error = reloc::dispatch::rebindDispatchGroup(
+      group, {{{reinterpret_cast<uintptr_t>(nextSource.data()), 68, 4},
+               {reinterpret_cast<uintptr_t>(nextDestination.data()), 72, 8}}});
+  ASSERT_FALSE(error) << error->message;
+  EXPECT_EQ(request.program.stages.data(), programStages);
+  EXPECT_EQ(request.source.extents.data(), sourceExtents);
+  EXPECT_EQ(request.source.base,
+            reinterpret_cast<uintptr_t>(nextSource.data()));
+  EXPECT_EQ(request.source.offsetBytes, 4u);
+  EXPECT_EQ(request.destination.offsetBytes, 8u);
+  EXPECT_FALSE(group.consumed);
+  EXPECT_FALSE(request.consumed);
+  EXPECT_FALSE(request.report.executed);
+  EXPECT_FALSE(group.reports[0].executed);
+  EXPECT_EQ(request.report.payloadBytesTransferred, 0u);
+  EXPECT_EQ(group.report.copyCalls, 0u);
+  EXPECT_EQ(group.report.outputBytes, 64u);
+  EXPECT_EQ(group.rebindCount, 1u);
+  auto legacy = reloc::dispatch::prepareDispatchGroup(entries);
+  auto &oneShot = std::get<reloc::dispatch::GroupRequest>(legacy);
+  EXPECT_TRUE(oneShot.initialReports.empty());
+  EXPECT_TRUE(oneShot.bindingSpans.empty());
+  EXPECT_EQ(reloc::dispatch::rebindDispatchGroup(oneShot, {})->code,
+            "not_prepared");
+}
+
+TEST(Dispatch, ReusableGroupRejectsPendingFailedAndInvalidBindingsAtomically) {
+  auto plan = mustBind(typed_goldens::kQuantDequantSymHex, {{"N", 16}});
+  Options options;
+  options.policy = Policy::OriginalCpu;
+  auto prepared = reloc::dispatch::prepareDispatchTemplate(
+      plan, TransferDirection::HostToDevice, options);
+  auto templ = std::get<reloc::dispatch::DispatchTemplate>(prepared);
+  std::vector<float> source(16), a(16), b(16), replacement(16);
+  auto made = reloc::dispatch::prepareReusableDispatchGroup(
+      {{templ, view(source.data(), 64, {16}, 4), view(a.data(), 64, {16}, 4),
+        TransferDirection::HostToDevice},
+       {templ, view(source.data(), 64, {16}, 4), view(b.data(), 64, {16}, 4),
+        TransferDirection::HostToDevice}});
+  ASSERT_TRUE(std::holds_alternative<reloc::dispatch::GroupRequest>(made));
+  auto &group = std::get<reloc::dispatch::GroupRequest>(made);
+  using Binding = reloc::dispatch::BufferBinding;
+  Binding src{reinterpret_cast<uintptr_t>(replacement.data()), 64, 0};
+  Binding dstA{reinterpret_cast<uintptr_t>(a.data()), 64, 0};
+  Binding dstB{reinterpret_cast<uintptr_t>(b.data()), 64, 0};
+  std::vector<reloc::dispatch::GroupBinding> bindings{{src, dstA}, {src, dstB}};
+  auto reject = [&](const char *code) {
+    auto error = reloc::dispatch::rebindDispatchGroup(group, bindings);
+    ASSERT_TRUE(error);
+    EXPECT_EQ(error->code, code);
+    EXPECT_EQ(group.rebindCount, 0u);
+    EXPECT_EQ(std::get<DispatchRequest>(group.items[0]).source.base,
+              reinterpret_cast<uintptr_t>(source.data()));
+  };
+  group.pending->store(true);
+  reject("group_pending");
+  group.pending->store(false);
+  group.executing = true;
+  reject("group_pending");
+  group.executing = false;
+  group.failed = true;
+  reject("group_failed");
+  group.failed = false;
+  bindings[1].destination.capacityBytes = 1;
+  reject("insufficient_capacity");
+  bindings[1].destination = dstA;
+  reject("group_alias");
+  bindings[1].destination = src;
+  reject("group_alias");
+  bindings[1].destination = dstB;
+  bindings[1].destination.offsetBytes = std::numeric_limits<size_t>::max();
+  reject("integer_overflow");
+  bindings[1].destination = dstB;
+  bindings[1].destination.base = 0;
+  reject("invalid_view");
+  bindings[1].destination = dstB;
+  ASSERT_FALSE(reloc::dispatch::rebindDispatchGroup(group, bindings));
+  EXPECT_EQ(group.rebindCount, 1u);
+}
+
 TEST(Dispatch, DeviceToHostReferenceStagesThenExecutes) {
   reloc::ParameterMap params;
   params["s"] = f32Param({1.0f, 0.5f, 0.25f}, true);
