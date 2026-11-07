@@ -3,7 +3,7 @@
 This harness connects evaluation to the public `RelocBackend` configuration.
 Production code contains no workload recipes or names. See
 [the runtime contract](../../docs/automatic-prepared-execution.md),
-[the frozen protocol](PROTOCOL.md), and the results/report added after qualification.
+[the frozen protocol](PROTOCOL.md), [results](RESULTS.md), and [evidence index](INDEX.json).
 
 Inputs are the immutable `sym_experiments_261104` directory from the
 [E1–E5 release](https://github.com/JueonPark/sym/releases/tag/experiments-2026-11-04-v1).

@@ -51,7 +51,10 @@ compilation and preparation nested within calls must not be added twice.
 `cold_first_ms` adds import/configuration, CUDA initialization and owner setup
 to the first call. `accounted_full_ms` adds those phases and retirement to the
 sum of completed calls. Process launch/import includes Python and Torch setup;
-filesystem/OS caches are not flushed. Parent polling wall time is not latency.
+filesystem/OS and CUDA driver JIT caches are not flushed. Parent polling wall time is not latency.
+All arms import the same frozen E3 module, which imports Sym even for Torch
+controls. Thus cold launch/RSS includes common harness and unused Sym import
+overhead in those controls; it is not a minimal Torch-only application footprint.
 
 Phase memory snapshots report current physical device use, Torch allocated/
 reserved peaks and process RSS. Physical boundary observations are lower bounds

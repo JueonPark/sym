@@ -6,7 +6,7 @@ and compiler, including the compiler's layout, value stages and parameter
 coordinates. It does not construct workload-specific recipes or register a
 handwritten producer as generated fusion. The compatibility default remains
 `False`; qualification results and the admission policy are recorded in
-`bench/issue265/`.
+[the qualification report](../bench/issue265/RESULTS.md).
 
 ```python
 import torch
@@ -21,7 +21,8 @@ run = torch.compile(
     backend=backend, fullgraph=True, dynamic=True,
 )
 with torch.no_grad():
-    result = run(torch.randn(512, 1024))
+    for _ in range(3):  # First occurrence admits; later calls can reuse preparation.
+        result = run(torch.randn(512, 1024))
 print(backend.stats()["prepared_execution"])
 backend.close()
 ```
