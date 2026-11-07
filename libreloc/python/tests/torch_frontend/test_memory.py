@@ -11,6 +11,16 @@ import torch
 from reloc_torch.runtime import ConcreteDescriptor
 
 
+@pytest.fixture(autouse=True)
+def packed_bridge(request):
+    if request.node.name.startswith('test_plan_'):
+        return
+    from reloc_torch.fast import _load_native_views
+    bridge = _load_native_views()
+    if bridge is None or not hasattr(bridge, 'PackedStorage'):
+        pytest.skip('packed storage requires the optional native Torch bridge')
+
+
 def descriptor(shape, dtype="float32", device="cpu"):
     strides, stride = [], 1
     for size in reversed(shape):

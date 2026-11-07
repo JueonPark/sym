@@ -11,6 +11,14 @@ from test_fast import dlrm_recipe
 from test_memory import descriptor
 
 
+@pytest.fixture(autouse=True)
+def packed_bridge():
+    from reloc_torch.fast import _load_native_views
+    bridge = _load_native_views()
+    if bridge is None or not hasattr(bridge, 'PackedStorage'):
+        pytest.skip('packed storage requires the optional native Torch bridge')
+
+
 @pytest.mark.gpu
 @pytest.mark.parametrize("prepared", [False, True])
 def test_fast_groups_pack_live_outputs_without_overwriting_aliases(compiler, cuda_device, prepared):

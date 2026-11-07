@@ -41,7 +41,8 @@ option(RELOC_ENABLE_TORCH_EXT "Build _pyreloc_torch against the configured Torch
 if(RELOC_ENABLE_TORCH_EXT)
   # Locate the Torch package of the configured interpreter directly: its
   # TorchConfig.cmake insists on a matching CUDA toolkit scan that this
-  # metadata-only module does not need. Only CPU-side tensor metadata is read.
+  # CPU metadata/storage bindings do not need. CUDA storage completion and
+  # kernel bindings use the toolkit already selected by RELOC_ENABLE_CUDA.
   execute_process(
     COMMAND ${Python_EXECUTABLE} -c "import os, torch; print(os.path.dirname(torch.__file__), end='')"
     OUTPUT_VARIABLE RELOC_TORCH_ROOT RESULT_VARIABLE torch_status)
