@@ -174,6 +174,63 @@ def percentile(values, fraction):
     return values[min(len(values) - 1, max(0, int(len(values) * fraction + .999999) - 1))]
 
 
+def scoped_metrics(job, result):
+    """Separate allocator/owner scopes; never synthesize a physical peak."""
+    mib = 1 << 20
+    before = result['ready'] if job['kind'] == 'e5' else result['warm_before']
+    after = result['warm_after']
+    def owners(snapshot):
+        if job['kind'] == 'e5': return [w['transfer'] for w in snapshot['workers']]
+        resources = snapshot['resources']
+        return [resources['native'] if job['runtime'] == 'sym' else resources]
+    def counter(snapshot, key, *, arena=False):
+        total = 0
+        for owner in owners(snapshot):
+            if arena:
+                item = (owner.get('weight_storage') or {}).get('output_arena') if job['runtime'] == 'sym' else owner.get('output_arena')
+            else:
+                item = owner['resources'] if job['runtime'] == 'sym' else None
+            total += item[key] if item is not None else 0
+        return total
+    metrics = dict(planning_ms=result['optimization']['planning_ms'])
+    for key in ('allocated', 'reserved', 'max_allocated', 'max_reserved'):
+        metrics['torch_' + key + '_mib'] = after['torch'][key] / mib
+    metrics['torch_pinned_active_mib'] = after['torch']['pinned_host']['active_bytes.current'] / mib
+    for key in ('device', 'host'):
+        metrics['native_' + key + '_retained_mib'] = counter(after, key + '_bytes') / mib
+    for key in ('device_allocations', 'context_creations'):
+        metrics['native_warm_' + key] = counter(after, key) - counter(before, key)
+    for key in ('allocated', 'live'):
+        metrics['arena_' + key + '_mib'] = counter(after, key + '_bytes', arena=True) / mib
+    for key in ('allocations', 'reuses', 'completion_barriers', 'refusals'):
+        metrics['arena_warm_' + key] = counter(after, key, arena=True) - counter(before, key, arena=True)
+    if job['kind'] == 'e5':
+        metrics['snapshot_pinned_mib'] = after['snapshots']['pinned_bytes'] / mib
+        metrics['owner_preparation_ms'] = result['optimization']['owner_preparation_ms']
+        costs = result['worker_costs']
+        metrics['worker_preparation_sum_ms'] = sum(c['preparation_ms'] for c in costs)
+        metrics['worker_first_max_ms'] = max(c['first_request_ms'] for c in costs)
+        metrics['worker_retirement_sum_ms'] = sum(c['retirement_ms'] for c in costs)
+        requests = [q for b in result['batches'] for q in b['requests']]
+        for key in ('service', 'queue_wait'):
+            metrics[key + '_p95_ms'] = percentile([q[key + '_ms'] for q in requests], .95)
+    elif job['kind'] == 'e4':
+        metrics['first_request_ms'] = result['first_request_ms']
+        metrics['resident_weights_mib'] = result['resident_weight_bytes'] / mib
+        metrics['snapshot_pinned_mib'] = result['owned_pinned_checkpoint_bytes'] / mib
+    else:
+        metrics['first_request_ms'] = result['first_ms']
+        metrics['retirement_ms'] = result['retirement_ms']
+        # Sym snapshots expose their own owner counter; the Torch control's
+        # pinned allocations are reported by the process-wide Torch scope.
+        if job['runtime'] == 'sym':
+            metrics['snapshot_pinned_mib'] = after['resources']['snapshots']['pinned_bytes'] / mib
+    if job['kind'] != 'e4':
+        for key in ('allocated', 'reserved'):
+            metrics['torch_after_close_' + key + '_mib'] = result['torch_with_outputs_after_close'][key] / mib
+    return metrics
+
+
 def summarize(records):
     groups = defaultdict(list)
     for record in records:
@@ -199,8 +256,80 @@ def summarize(records):
             field = 'preparation_ms' if row['kind'] == 'groups' else 'snapshot_preparation_ms'
             row['preparation_ms'] = statistics.median(r[field] for r in successes)
             row['preload_ms'] = statistics.median(r.get('residency_preload_ms', 0) for r in successes)
+            scoped = [scoped_metrics(row, r) for r in successes]
+            row.update({k: statistics.median(v[k] for v in scoped) for k in scoped[0]})
         rows.append(row)
     return rows
+
+
+def markdown_tables(analysis):
+    """Render every predeclared arm, including unsuccessful arms, in order."""
+    lines = ['# Complete issue 266 tables', '',
+        'Accepted campaign: **' + str(analysis['accepted']).lower() + '**. '
+        'All predeclared arms are retained. Times and memory are medians across '
+        'successful rounds only; outcomes show the denominator. A dash means '
+        'not applicable or no successful measurement, never zero.', '',
+        'E4 latency is a completed request; E5 latency is completed burst time '
+        'divided by eight requests and p95 is request sojourn. Group latency '
+        'is completed iterator delivery, excluding initial iterator submission. '
+        'P95 is the median of the round p95s, not a pooled percentile.', '',
+        'Physical peaks are sampled NVML increments above the reservation/context '
+        'baseline: E4 deployment excluding the oracle; E5/groups the warm loop '
+        'including validation gaps. MiB means 2^20 bytes. Native device/host '
+        'retention sums callers; arena storage is already inside Torch allocation. '
+        'These scopes must not be added to estimate a physical peak.', '']
+    def number(value):
+        if value is None: return '—'
+        if type(value) is int: return str(value)
+        return f'{value:.4f}'.rstrip('0').rstrip('.')
+    def label(row):
+        if row['kind'] == 'e4':
+            return f"L{row['layers']}/S{row['context']}/B{row['budget_mib']} {row['placement']} {row['runtime']} {row['policy']}"
+        if row['kind'] == 'e5':
+            return f"{row['case']} C{row['callers']} {row['runtime']} {row['policy']}"
+        return f"{row['size']} {row['runtime']} {row['policy']}"
+    def table(rows, columns):
+        lines.append('| Arm | ' + ' | '.join(title for title, _ in columns) + ' |')
+        lines.append('| --- | ' + ' | '.join('---:' for _ in columns) + ' |')
+        for row in rows:
+            cells = []
+            for _, key in columns:
+                if key == 'outcomes':
+                    cells.append('/'.join(str(row['outcomes'].get(k, 0)) for k in ('success', 'oom', 'admission')))
+                else: cells.append(number(row.get(key)))
+            lines.append('| ' + label(row) + ' | ' + ' | '.join(cells) + ' |')
+        lines.append('')
+    for kind in ('e4', 'e5', 'groups'):
+        rows = [r for r in analysis['rows'] if r['kind'] == kind]
+        lines += ['## ' + kind.upper() + ': completed timing and physical memory', '']
+        table(rows, [('Success/OOM/admission', 'outcomes'), ('Median ms', 'median_ms'),
+                     ('P95 ms', 'p95_ms'), ('Physical MiB', 'physical_peak_mib')])
+        lines += ['### Preparation and retirement', '']
+        columns = [('Plan ms', 'planning_ms'), ('Snapshot/preparation ms', 'preparation_ms')]
+        if kind == 'e5':
+            columns += [('Owner ms', 'owner_preparation_ms'), ('Workers prepare sum ms', 'worker_preparation_sum_ms'),
+                        ('First max ms', 'worker_first_max_ms'), ('Workers retire sum ms', 'worker_retirement_sum_ms'),
+                        ('Service p95 ms', 'service_p95_ms'), ('Queue p95 ms', 'queue_wait_p95_ms')]
+        else:
+            if kind == 'e4': columns.append(('Preload ms', 'preload_ms'))
+            columns.append(('First ms', 'first_request_ms'))
+            if kind == 'groups': columns.append(('Retire ms', 'retirement_ms'))
+        table(rows, columns)
+        lines += ['### Retained owner and allocator scopes at warm end', '']
+        table(rows, [('Torch allocated MiB', 'torch_allocated_mib'), ('Torch reserved MiB', 'torch_reserved_mib'),
+            ('Native device MiB', 'native_device_retained_mib'), ('Native host MiB', 'native_host_retained_mib'),
+            ('Arena allocated MiB', 'arena_allocated_mib'), ('Arena live MiB', 'arena_live_mib'),
+            ('Torch pinned active MiB', 'torch_pinned_active_mib')])
+        lines += ['### Warm allocation and reuse counter deltas', '']
+        table(rows, [('Native device allocations', 'native_warm_device_allocations'),
+            ('Native context creations', 'native_warm_context_creations'),
+            ('Arena allocations', 'arena_warm_allocations'), ('Arena reuses', 'arena_warm_reuses'),
+            ('Arena barriers', 'arena_warm_completion_barriers'), ('Arena refused attempts', 'arena_warm_refusals')])
+    lines += ['Arena refused attempts include speculative prefetch backpressure '
+        'that subsequently progressed; they are not terminal admission outcomes. '
+        'Full per-round samples, worker lifecycle timings, allocator peaks, snapshot '
+        'counters and post-close counters remain in the JSON records and analysis.', '']
+    return '\n'.join(lines)
 
 
 def analyze(directory, *, acceptance=True):
@@ -221,6 +350,7 @@ def analyze(directory, *, acceptance=True):
     result = dict(accepted=acceptance, jobs=len(records), outcomes=dict(Counter(r['result']['outcome'] for r in records)),
                   rows=summarize(records))
     save(directory / ('analysis.json' if acceptance else 'analysis-pilot.json'), result)
+    (directory / ('tables.md' if acceptance else 'tables-pilot.md')).write_text(markdown_tables(result))
     return result
 
 

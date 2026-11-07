@@ -117,3 +117,38 @@ def test_trace_windows_require_observations_and_reconstruct_the_peak(mutation):
     if mutation == 'none': validate_trace(dict(kind='groups'), result, trace)
     else:
         with pytest.raises(ValueError): validate_trace(dict(kind='groups'), result, trace)
+
+
+def test_scoped_metrics_sum_callers_without_double_counting_torch_storage():
+    from bench.issue266.analyze import scoped_metrics
+    mib = 1 << 20
+    def snapshot(count, retained):
+        return dict(torch=dict(allocated=100*mib, reserved=200*mib,
+                    max_allocated=120*mib, max_reserved=220*mib,
+                    pinned_host={'active_bytes.current': 30*mib}),
+            snapshots=dict(pinned_bytes=20*mib), workers=[dict(transfer=dict(
+                resources=dict(device_bytes=retained*mib, host_bytes=mib,
+                    device_allocations=count, context_creations=1),
+                weight_storage=dict(output_arena=dict(allocated_bytes=24*mib,
+                    live_bytes=8*mib, allocations=3, reuses=count,
+                    completion_barriers=count, refusals=0)))) for _ in range(2)])
+    result = dict(ready=snapshot(4, 8), warm_after=snapshot(7, 12),
+                  optimization=dict(planning_ms=.2, owner_preparation_ms=.5),
+                  snapshot_preparation_ms=3.,
+                  worker_costs=[dict(preparation_ms=p, first_request_ms=f, retirement_ms=c)
+                                for p, f, c in [(1., 10., .1), (2., 20., .2)]],
+                  torch_with_outputs_after_close=dict(allocated=8*mib, reserved=200*mib),
+                  batches=[dict(requests=[dict(service_ms=2., queue_wait_ms=3.)])])
+    metrics = scoped_metrics(dict(kind='e5', runtime='sym'), result)
+    assert metrics['native_device_retained_mib'] == 24
+    assert metrics['native_host_retained_mib'] == 2
+    assert metrics['native_warm_device_allocations'] == 6
+    assert metrics['native_warm_context_creations'] == 0
+    assert metrics['arena_allocated_mib'] == 48
+    assert metrics['arena_warm_reuses'] == 6
+    assert metrics['torch_reserved_mib'] == 200
+    assert metrics['snapshot_pinned_mib'] == 20  # Shared, not multiplied by callers.
+    assert metrics['worker_preparation_sum_ms'] == 3
+    assert metrics['worker_first_max_ms'] == 20
+    assert metrics['worker_retirement_sum_ms'] == pytest.approx(.3)
+    assert 'physical_peak_mib' not in metrics  # Only the sampled trace supplies this.
