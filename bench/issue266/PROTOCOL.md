@@ -40,6 +40,17 @@ agree within16MiB. The2ms NVML trace records sampled lower bounds, not exact
 transient peaks. A process-tree audit checks foreign GPU/build/packaging work
 every2seconds. Run no concurrent GPU tests, compilers or archive creation.
 
+The acceptance runner uses `--wait-for-idle`: it requires 60 consecutive quiet
+seconds initially and after detected interference. Clean completed jobs remain
+in the campaign. If a process completes but its audit detects foreign work,
+all of that attempt's files move to a separately numbered `excluded/` directory
+with SHA-256 checksums and the interference record; the same job is retried only
+after another idle interval. The analyzer verifies these exclusion records.
+An uncontaminated OOM or admission refusal is never retried or dropped. A
+nonzero worker exit or unexpected validation failure stops execution. Thus the
+matrix can span interrupted idle windows without selecting favorable outcomes.
+Historical pilot directories remain wholly excluded from acceptance.
+
 Fresh arms use the candidate runtime with ordinary independent output
 allocations and existing bounded native scratch reuse. Packing adds one
 allocation per group without storage recycling or an extra retirement fence.

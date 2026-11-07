@@ -15,7 +15,7 @@ are measured separately from that earlier optimization.
 python -m pytest -q bench/issue266/test_analysis.py
 python bench/issue266/run.py --artifact /path/to/sym_experiments_261104 \
   --build /path/to/qualified/runtime --output /path/to/new/campaign \
-  --python /path/to/qualified/python
+  --python /path/to/qualified/python --wait-for-idle
 python3 bench/issue266/analyze.py /path/to/campaign
 ```
 
@@ -25,3 +25,9 @@ campaign requires unchanged source, input, runtime and job hashes. Each job
 uses a fresh process and a separate raw result, trace, execution log and audit.
 The analyzer requires only Python's standard library and can run without CUDA
 or Torch on a downloaded artifact.
+
+`--wait-for-idle` preserves clean jobs across host interruptions and retains
+every contaminated attempt under `excluded/` before retrying it. It never
+retries a clean OOM/admission outcome or an unexpected worker error. Analysis
+verifies excluded-attempt hashes and emits complete timing, lifecycle-cost,
+retained-memory and allocation/reuse tables alongside `analysis.json`.

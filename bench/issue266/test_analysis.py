@@ -152,3 +152,81 @@ def test_scoped_metrics_sum_callers_without_double_counting_torch_storage():
     assert metrics['worker_first_max_ms'] == 20
     assert metrics['worker_retirement_sum_ms'] == pytest.approx(.3)
     assert 'physical_peak_mib' not in metrics  # Only the sampled trace supplies this.
+
+
+@pytest.mark.parametrize('foreign,exit_code,allowed', [([], 0, False), ([(12, 'tar')], 1, False), ([(12, 'tar')], 0, True)])
+def test_only_successfully_recorded_contamination_can_be_quarantined(tmp_path, foreign, exit_code, allowed):
+    import json
+    from bench.issue266.run import exclude_contaminated
+    from bench.issue266.analyze import validate_exclusions
+    from bench.issue266.support import digest, save
+    job = matrix()[0]
+    paths = [tmp_path / (job['id'] + suffix) for suffix in ('.run.json', '.record.json', '.raw.memory.json.gz', '.log')]
+    save(paths[0], dict(exit_code=exit_code, foreign_busy_processes=foreign))
+    save(paths[1], dict(job=job, provenance={}, complete=True, result=dict(outcome='oom'),
+                        isolation=dict(foreign_busy_processes=foreign)))
+    paths[2].write_bytes(b'original trace bytes')
+    paths[3].write_text('original log')
+    expected = {p.name: digest(p) for p in paths}
+    sentinel = tmp_path / 'unrelated.record.json'
+    sentinel.write_text('unchanged')
+    if allowed:
+        directory = exclude_contaminated(tmp_path, job)
+        note = json.loads((directory / 'exclusion.json').read_text())
+        assert note['files'] == expected and note['job'] == job
+        assert all(digest(directory / name) == sha for name, sha in expected.items())
+        assert all(not p.exists() for p in paths)
+        manifest = dict(jobs=[job], provenance={}, interference_retry='preserve-and-retry')
+        assert validate_exclusions(tmp_path, manifest) == 1
+        (directory / paths[3].name).write_text('changed')
+        with pytest.raises(ValueError): validate_exclusions(tmp_path, manifest)
+    else:
+        with pytest.raises(ValueError): exclude_contaminated(tmp_path, job)
+        assert {p.name: digest(p) for p in paths} == expected
+    assert sentinel.read_text() == 'unchanged'
+
+
+def test_runner_retries_interference_but_keeps_clean_oom(tmp_path, monkeypatch):
+    import json
+    from bench.issue266 import run
+    from bench.issue266.support import save
+    jobs = matrix()[:2]
+    frozen = dict(source={'test': 'unchanged'})
+    state = dict(starts=0, active=False, idle_waits=0)
+    monkeypatch.setattr(run, 'matrix', lambda: jobs)
+    monkeypatch.setattr(run, 'provenance', lambda *args: frozen)
+    monkeypatch.setattr(run.subprocess, 'check_output', lambda *args, **kwargs: 'test-revision\n')
+    monkeypatch.setattr(run.time, 'sleep', lambda seconds: None)
+    monkeypatch.setattr(run, 'audit', lambda allowed: [(12, 'tar')]
+                        if state['active'] and state['starts'] == 1 else [])
+    def idle(*args): state['idle_waits'] += 1
+    monkeypatch.setattr(run, 'wait_idle', idle)
+    class Process:
+        pid, returncode = 123, 0
+        def __init__(self, command, **kwargs):
+            state['starts'] += 1
+            state['active'] = True
+            self.polls = 0
+            name = command[command.index('--job') + 1]
+            job = next(j for j in jobs if j['id'] == name)
+            # An uncontaminated OOM must be retained just like success, even
+            # after a preceding attempt of this same cell was contaminated.
+            save(tmp_path / (name + '.record.json'), dict(job=job, provenance=frozen,
+                 complete=True, result=dict(outcome='oom')))
+        def poll(self):
+            self.polls += 1
+            if self.polls == 1: return None
+            state['active'] = False
+            return 0
+    monkeypatch.setattr(run.subprocess, 'Popen', Process)
+    monkeypatch.setattr(run.sys, 'argv', ['run.py', '--artifact', str(tmp_path),
+        '--build', str(tmp_path), '--output', str(tmp_path), '--wait-for-idle'])
+    run.main()
+    assert state == dict(starts=3, active=False, idle_waits=2)
+    assert json.loads((tmp_path / 'completion.json').read_text())['jobs'] == 2
+    assert len(list(tmp_path.glob('*.record.json'))) == 2
+    assert len(list((tmp_path / 'excluded').glob('*/attempt-*/exclusion.json'))) == 1
+    for path in tmp_path.glob('*.record.json'):
+        record = json.loads(path.read_text())
+        assert record['result']['outcome'] == 'oom'
+        assert record['isolation']['foreign_busy_processes'] == []

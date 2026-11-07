@@ -240,6 +240,7 @@ def summarize(records):
     for key, values in sorted(groups.items()):
         row = dict(key)
         row['outcomes'] = dict(Counter(r['result']['outcome'] for r in values))
+        row['selected_policy'] = policy_configuration(row)
         successes = [r['result'] for r in values if r['result']['outcome'] == 'success']
         row['rounds'] = len(values)
         if successes:
@@ -332,6 +333,26 @@ def markdown_tables(analysis):
     return '\n'.join(lines)
 
 
+def validate_exclusions(directory, manifest):
+    notes = sorted((Path(directory) / 'excluded').glob('*/attempt-*/exclusion.json'))
+    allowed = {j['id']: j for j in manifest['jobs']}
+    for path in notes:
+        note = json.loads(path.read_text())
+        job, files = note['job'], note['files']
+        require(manifest.get('interference_retry') == 'preserve-and-retry' and
+                job == allowed.get(job['id']), 'undeclared excluded attempt')
+        for name, sha in files.items():
+            require(Path(name).name == name and digest(path.parent / name) == sha, 'changed excluded evidence')
+        record = json.loads((path.parent / (job['id'] + '.record.json')).read_text())
+        execution = json.loads((path.parent / (job['id'] + '.run.json')).read_text())
+        busy = note['foreign_busy_processes']
+        require(busy and execution['exit_code'] == 0 and execution['foreign_busy_processes'] == busy and
+                record['isolation']['foreign_busy_processes'] == busy and record['job'] == job and
+                record['provenance'] == manifest['provenance'] and record['complete'],
+                'excluded attempt was not recorded contamination')
+    return len(notes)
+
+
 def analyze(directory, *, acceptance=True):
     directory = Path(directory)
     manifest = json.loads((directory / 'manifest.json').read_text())
@@ -347,7 +368,9 @@ def analyze(directory, *, acceptance=True):
         require(digest(path) == physical['sha256'], 'physical trace checksum mismatch')
         with gzip.open(path, 'rt') as stream: trace = json.load(stream)
         validate_trace(record['job'], record['result'], trace)
-    result = dict(accepted=acceptance, jobs=len(records), outcomes=dict(Counter(r['result']['outcome'] for r in records)),
+    excluded = validate_exclusions(directory, manifest)
+    result = dict(accepted=acceptance, jobs=len(records), excluded_contaminated_attempts=excluded,
+                  outcomes=dict(Counter(r['result']['outcome'] for r in records)),
                   rows=summarize(records))
     save(directory / ('analysis.json' if acceptance else 'analysis-pilot.json'), result)
     (directory / ('tables.md' if acceptance else 'tables-pilot.md')).write_text(markdown_tables(result))
