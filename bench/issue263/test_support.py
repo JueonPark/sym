@@ -26,3 +26,16 @@ def test_manifest_check_rejects_changed_input(tmp_path):
     file.write_bytes(b'abd')
     with pytest.raises(ValueError, match='data'):
         verify_files(tmp_path, expected)
+
+
+def test_baseline_transitive_workload_change_is_rejected(tmp_path):
+    import json
+    from bench.issue263.support import baseline_sources, verify_repository
+    expected=baseline_sources()['repository_sha256']
+    for name in expected:
+        target=tmp_path/name;target.parent.mkdir(parents=True,exist_ok=True)
+        target.write_bytes((Path(__file__).resolve().parents[2]/name).read_bytes())
+    assert verify_repository(tmp_path)==expected
+    target=tmp_path/'libreloc/python/examples/workloads/llm_offload.py'
+    target.write_text(target.read_text()+'\n# changed dependency\n')
+    with pytest.raises(ValueError,match='llm_offload.py'):verify_repository(tmp_path)

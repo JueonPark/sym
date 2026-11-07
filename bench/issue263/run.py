@@ -12,6 +12,7 @@ REPO=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(REPO))
 from bench.issue227.run import audit
 from bench.issue263.support import digest,save
+from bench.issue263.contract import requested_contract,freeze_contract,validate_record
 
 
 def clean_environment(inherited):
@@ -66,12 +67,16 @@ def main():
     p.add_argument('--suite',choices=('all','models','lifecycle','concurrency'),default='all')
     p.add_argument('--affinity',default='4-7,20-23');p.add_argument('--device',default='0')
     args=p.parse_args();args.output=args.output.resolve();args.output.mkdir(parents=True,exist_ok=True)
+    args.artifact=args.artifact.resolve();args.build=args.build.resolve()
+    args.python=os.path.abspath(args.python);args.nsys=os.path.abspath(args.nsys)
     jobs=matrix();manifest=args.output/'matrix.json'
     if manifest.exists():assert json.loads(manifest.read_text())==jobs,'matrix changed after freeze'
     else:save(manifest,jobs)
     env=dict(clean_environment(os.environ),PYTHONPATH=str(args.build/'python'),LD_LIBRARY_PATH=str(args.build/'libreloc'),
         CUDA_VISIBLE_DEVICES=args.device,OMP_NUM_THREADS='8',MKL_NUM_THREADS='8',OMP_WAIT_POLICY='PASSIVE',
         GOMP_SPINCOUNT='0',TORCHINDUCTOR_COMPILE_THREADS='1')
+    contract=requested_contract(args,env)
+    freeze_contract(args.output,contract)
     source={p.name:digest(p) for p in Path(__file__).parent.glob('*.py')}
     revision=subprocess.check_output(['git','rev-parse','HEAD'],cwd=REPO,text=True).strip()
     for job in jobs:
@@ -80,6 +85,9 @@ def main():
         if output.exists():
             previous=json.loads(output.read_text())
             assert previous.get('complete') and previous.get('campaign_job')==job and previous.get('isolation',{}).get('valid'),f'incomplete existing job {name}'
+            previous_audit=json.loads(audit_path.read_text())
+            assert previous_audit['returncode']==0 and not previous_audit['observations'],name
+            validate_record(contract,previous,job,previous_audit)
             if job['profile']:
                 assert all((args.output/(name+suffix)).is_file() for suffix in ('.nsys-rep','.sqlite')),f'incomplete trace export {name}'
             print(name,'already verified',flush=True);continue
@@ -106,6 +114,7 @@ def main():
         save(audit_path,metadata)
         if process.returncode or metadata['observations']:raise RuntimeError(f'failed/contaminated job {name}; see {audit_path}')
         result=json.loads(output.read_text());assert result['complete'],name
+        validate_record(contract,result,job,metadata)
         if job['profile']:
             with (args.output/(name+'.export.log')).open('w') as log:
                 subprocess.run([args.nsys,'export','--type','sqlite','--output',str(args.output/(name+'.sqlite')),

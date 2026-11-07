@@ -65,7 +65,7 @@
 
 **Files:** Create `bench/issue263/README.md` and a compact machine-readable result index.
 
-- [ ] Map each #263 acceptance criterion to evidence and state whether the original regression reproduces under the current protocol.
-- [ ] Run the focused harness suite and relevant existing frontend/lifetime controls; obtain an independent whole-branch review and address important findings.
+- [x] Map each #263 acceptance criterion to evidence and state whether the original regression reproduces under the current protocol.
+- [x] Run the focused harness suite and relevant existing frontend/lifetime controls; obtain an independent whole-branch review and address important findings.
 - [ ] Publish a versioned release containing the raw records, Nsight traces/SQLite, source snapshot, report, and checksum manifest; verify an anonymous download.
 - [ ] Push the isolated branch and create a reviewable PR. Post the evidence and prioritized follow-ups on #263; close it only if all attribution acceptance criteria are met, otherwise state the remaining work precisely.

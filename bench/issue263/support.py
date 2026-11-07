@@ -29,6 +29,16 @@ def verify_files(root, expected):
     return actual
 
 
+def baseline_sources():
+    return json.loads(Path(__file__).with_name('baseline-sources.json').read_text())
+
+
+def verify_repository(repo=REPO):
+    # The frozen benchmark imports these legacy workloads through REPO. A Git
+    # revision alone cannot detect dirty copies, so qualify their actual bytes.
+    return verify_files(repo, baseline_sources()['repository_sha256'])
+
+
 def load_module(name, path, *, repository=None):
     """Override only the historical REPO assignment in memory before execution."""
     path = Path(path)
@@ -58,6 +68,7 @@ def load_module(name, path, *, repository=None):
 
 def load_artifact(root, repo=REPO):
     root, repo = Path(root).resolve(), Path(repo).resolve()
+    repository_hashes = verify_repository(repo)
     inventory = {x['path']: x['sha256'] for x in json.loads((root / 'SHA256-MANIFEST.json').read_text())['files']}
     files = ['02_fp16_attribution/benchmark.py', '02_fp16_attribution/controls.py',
              '05_lifecycle_concurrency/workload.py', '00_protocol/observed_memory.py']
@@ -71,7 +82,8 @@ def load_artifact(root, repo=REPO):
     e2 = load_module('benchmark', root / '02_fp16_attribution/benchmark.py', repository=repo)
     e5 = load_module('workload', root / '05_lifecycle_concurrency/workload.py')
     memory = load_module('observed_memory', root / '00_protocol/observed_memory.py')
-    return SimpleNamespace(root=root, controls=controls, e2=e2, e5=e5, memory=memory, hashes=hashes)
+    return SimpleNamespace(root=root, controls=controls, e2=e2, e5=e5, memory=memory,
+                           hashes=hashes, repository_hashes=repository_hashes)
 
 
 def add_arguments(parser):
@@ -95,6 +107,7 @@ def configure(args, *, threads=8):
                       SYM_OPT=str(args.build / 'sym/tools/sym-opt'))
     original = json.loads((args.artifact / '00_protocol/final-runtime-verification.json').read_text())
     recorded = {x['path'].split('/build/perf/', 1)[1]: x['sha256'] for x in original['files']}
+    recorded.update(baseline_sources()['extra_runtime_sha256'])
     actual = {name: digest(args.build / name) for name in recorded}
     mismatches = [name for name in recorded if recorded[name] != actual[name]]
     if mismatches and not args.allow_new_build:
@@ -115,7 +128,9 @@ def provenance(args, artifact, runtime):
     import torch
     import pyreloc
     import reloc_torch
-    return dict(runtime, artifact_sha256=artifact.hashes, python=sys.version,
+    return dict(runtime, artifact_sha256=artifact.hashes,
+                repository_sha256=artifact.repository_hashes, python=sys.version,
+                python_executable=sys.executable,
                 torch=torch.__version__, torch_cuda=torch.version.cuda,
                 gpu=torch.cuda.get_device_name(0), affinity=sorted(os.sched_getaffinity(0)),
                 torch_threads=torch.get_num_threads(), interop_threads=torch.get_num_interop_threads(),

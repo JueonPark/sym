@@ -19,9 +19,13 @@ def test_lifecycle_uses_accounted_envelope_not_oracle_wall_time():
     assert m['shape_first_ms']==5 and m['scale_first_ms']==7
 
 
-def test_complete_flag_cannot_hide_a_missing_model_case(tmp_path):
+def test_complete_flag_cannot_hide_a_missing_model_case(tmp_path,monkeypatch):
     import json
     from bench.issue263.analyze import collect
+    # This fixture isolates coverage validation; execution qualification has
+    # separate mixed-platform/source tests in test_contract.py.
+    monkeypatch.setattr('bench.issue263.analyze.load_contract',lambda _:({},False))
+    monkeypatch.setattr('bench.issue263.analyze.validate_record',lambda *a,**kw:None)
     job=dict(name='e2',kind='models',round=1,variant='baseline',mode='off',profile=False,accepted=True)
     names=('support.py','instrument.py','interventions.py','models.py','e5.py','lifecycle.py','concurrency.py')
     x=dict(complete=True,isolation=dict(valid=True,audit='audit.json'),campaign_job=job,host_phases=[],

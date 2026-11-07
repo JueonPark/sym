@@ -13,6 +13,7 @@ sys.path.insert(0,str(REPO))
 from bench.issue263.paired import distribution, paired_summary
 from bench.issue263.support import digest,save
 from bench.issue263.trace import analyze_trace
+from bench.issue263.contract import load_contract,validate_record
 
 
 def pair_rows(baseline,candidate,metric,expected):
@@ -50,6 +51,7 @@ def burst_metrics(x):
 
 
 def collect(directory,*,partial=False):
+    contract,historical=load_contract(directory)
     matrix=json.loads((directory/'matrix.json').read_text());records=[];missing=[];input_hashes={}
     measurement_sources=None;frozen_inputs=None
     measured_names=('support.py','instrument.py','interventions.py','models.py','e5.py','lifecycle.py','concurrency.py')
@@ -70,6 +72,7 @@ def collect(directory,*,partial=False):
             assert (directory/(job['name']+'.sqlite')).is_file(),job['name']
         audit=json.loads((directory/x['isolation']['audit']).read_text())
         assert audit['returncode']==0 and not audit['observations'],job['name']
+        validate_record(contract,x,job,audit,historical=historical)
         c=x['configuration'];kind=job['kind']
         base=dict(file=path.name,kind=kind,round=job['round'],variant=job['variant'],instrument=job['mode'],profile=job['profile'],accepted=job['accepted'])
         if kind=='models':
