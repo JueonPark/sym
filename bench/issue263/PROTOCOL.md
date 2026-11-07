@@ -37,3 +37,13 @@ The historical 4.6–10.9% Sym slowdown implies a 4.4–9.8% reduction of Sym's 
 ## Execution and reporting
 
 No production runtime changes are needed for the initial investigation. Keep the published evidence and runtime build intact. CPU/CUDA timelines, raw samples, SQLite exports, logs, source snapshots, and failure records are release assets; compact reports and reusable harness code belong in the PR. Fresh runs must accept explicit artifact/build paths rather than require the original machine's home directory.
+
+## Frozen selection (2026-11-07, before acceptance)
+
+Four unprofiled eager pilots (15 requests per path, one process per variant) showed the report bypass reduced decode/sparse/dense MoE medians by approximately 3–4%, versus smaller signature-check effects; prefill was nearly unchanged. All numerical checks passed. These pilots are excluded from inference. Select `no_report` for the full E5 lifecycle/concurrency contrast; retain all four variants in E2 to test interaction and negative results.
+
+`run.py:matrix()` is the exact registered matrix. E2 has five process rounds for each variant and counter mode; three separate NVTX/CUDA rounds use three warm samples per path after the same three warmups. E5 has three rounds of Torch, Sym, and Sym `no_report` at every registered condition. Counter overhead is additionally measured in three process rounds of decode lifecycle/eager and decode/four-caller bursts, for both runtimes. Diagnostic E5 traces cover both models/runtimes, both lifecycle compute modes, and all caller counts, with three initial requests plus ten requests per revision, or three bursts. They do not estimate full-lifecycle speedups; accepted E5 retains 100+10+10 requests and 30 bursts.
+
+Frozen E5 runners are imported and executed unchanged (their original samplers remain active in all E5 arms). Instrumentation-off installs no E5 wrappers. The adapter records its additional imports/provenance outside the request timing. Counter and profiler contrasts quantify the added instrumentation, not the historical E5 sampler's own cost. Trace overhead estimates use warm request medians, with the smaller trace sample count explicitly reported.
+
+The SQLite analyzer preserves CUDA event-record/wait evidence and stream IDs. It does not infer an exact maximum speedup from host/GPU-idle intersections. Its native CPU boundary remains opaque because the baseline was built without native NVTX. The paired-statistics module is named `paired.py` to avoid shadowing Python's standard-library `statistics` module.

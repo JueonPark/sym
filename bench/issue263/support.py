@@ -100,8 +100,9 @@ def configure(args, *, threads=8):
     if mismatches and not args.allow_new_build:
         raise ValueError('runtime differs from published baseline: ' + ', '.join(mismatches))
     import torch
-    torch.set_num_threads(threads)
-    torch.set_num_interop_threads(1)
+    if threads is not None:
+        torch.set_num_threads(threads)
+        torch.set_num_interop_threads(1)
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
     torch._dynamo.config.recompile_limit = 64
