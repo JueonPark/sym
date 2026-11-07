@@ -73,6 +73,6 @@
 
 **Files:** final docs/tests/report fixes only; release bundle/guide/manifests outside source tree.
 
-- [ ] Obtain one independent whole-branch review; address Important/Critical findings with regression tests and final gates. Record deferred limits explicitly.
+- [x] Obtain one independent whole-branch review; address Important/Critical findings with regression tests and final gates. Record deferred limits explicitly.
 - [ ] Publish a versioned evidence release with source/build provenance and hashes; verify anonymous download and CPU-only reanalysis.
 - [ ] Push the isolated branch and create a PR, cross-link #248/#261/#272/#274, and map all #264 acceptance items to evidence. Close #264 only when the criteria are satisfied; preserve the worktree for review.

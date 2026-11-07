@@ -86,9 +86,12 @@ class PreparedGroup:
                 self._slots += 1
             else:
                 self._binder.rebind(native, sources, outputs)
-        except BaseException:
+        except BaseException as error:
             if native is not None:
                 self._free.append(native)  # failed binding is atomic
+            import pyreloc
+            if isinstance(error, pyreloc.TransferError):
+                raise RuntimeError(f"transfer group failed: {error}") from error
             raise
         try:
             completion = self._owner._launch_group(native, sources, outputs, extra_owners, gather_threads,

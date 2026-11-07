@@ -2,7 +2,7 @@
 
 This harness qualifies the production prepared-group implementation against the original runtime and a new-build legacy control. It reuses the published #263 E2 runner and the immutable E5 programs; model mathematics, kernels, grouping, prefetch, precision, and budgets stay fixed.
 
-Inputs are explicit: `--artifact` is the extracted November E1–E5 artifact; `--harness` is a Git checkout of the #263 release tag (its provenance helper reads Git metadata); `--baseline-build` and `--candidate-build` identify separate runtime trees. See [protocol](PROTOCOL.md) for measurement scopes and limitations. See [final results](RESULTS.md), [grouped ablation](GROUPS.md), [result index](INDEX.json), and the [public evidence release](https://github.com/JueonPark/sym/releases/tag/prepared-groups-issue264-2026-11-07-v1).
+Inputs are explicit: `--artifact` is the extracted November E1–E5 artifact; `--harness` is a Git checkout of the #263 release tag (its provenance helper reads Git metadata); `--baseline-build` and `--candidate-build` identify separate runtime trees. See [protocol](PROTOCOL.md) for measurement scopes and limitations. See [final results](RESULTS.md), [grouped ablation](GROUPS.md), [result index](INDEX.json), and the [versioned evidence release](https://github.com/JueonPark/sym/releases/tag/prepared-groups-issue264-2026-11-07-v1).
 
 ```sh
 python bench/issue264/run.py \

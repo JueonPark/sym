@@ -276,3 +276,26 @@ def test_explicit_handle_keeps_parameter_revision_after_replacement(compiler, cu
         assert torch.equal(first.wait()[0], torch.ones(96, 64, device=cuda_device))
         assert torch.equal(old_again.wait()[0], torch.ones(96, 64, device=cuda_device))
         assert torch.equal(replacement.wait()[0], torch.full((96, 64), 3., device=cuda_device))
+
+
+@pytest.mark.parametrize('prepared', [False, True])
+@pytest.mark.parametrize('warm', [False, True])
+def test_submit_native_binding_error_keeps_runtimeerror_contract(compiler, cuda_device, prepared, warm):
+    import pyreloc
+    source = torch.ones(26, 7, 64)
+    with owner(compiler, cuda_device, contexts=1, prepared_groups=prepared) as runtime:
+        program = runtime.typed(dlrm_recipe(), source)
+        items = [(program, source), (program, source)]
+        if warm:
+            runtime.submit(items).wait()
+        output = program.allocate()
+        with pytest.raises(RuntimeError, match='transfer group failed: group_alias') as rejected:
+            runtime.submit(items, outputs=[output, output])
+        assert isinstance(rejected.value.__cause__, pyreloc.TransferError)
+        results = runtime.submit(items).wait()
+        assert all(torch.equal(result, expected(source, cuda_device)) for result in results)
+        stats = runtime.stats()
+        assert stats['groups'] == 1 + warm
+        if prepared:
+            assert stats['prepared_groups']['group_constructions'] == 1
+            assert stats['prepared_groups']['rebinds'] == int(warm)
