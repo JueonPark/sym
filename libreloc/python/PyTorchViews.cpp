@@ -26,6 +26,7 @@
 #endif
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <variant>
 #include <vector>
@@ -105,6 +106,139 @@ reloc::TransferDirection parseDirection(const std::string &direction) {
 }
 
 using Plan = std::variant<reloc::dispatch::DispatchTemplate, reloc::BoundPlan>;
+
+using PreparedMember =
+    std::tuple<Plan, std::string, std::string, std::string,
+               std::vector<int64_t>, std::vector<int64_t>, int,
+               std::vector<int64_t>, std::vector<int64_t>, int>;
+
+at::ScalarType scalarType(const std::string &name) {
+  static const std::pair<const char *, at::ScalarType> types[] = {
+      {"float32", at::kFloat},     {"float16", at::kHalf},
+      {"bfloat16", at::kBFloat16}, {"float64", at::kDouble},
+      {"int8", at::kChar},         {"int16", at::kShort},
+      {"int32", at::kInt},         {"int64", at::kLong},
+      {"uint8", at::kByte},        {"bool", at::kBool}};
+  for (const auto &[label, type] : types)
+    if (name == label)
+      return type;
+  throw py::value_error("unsupported prepared tensor dtype: " + name);
+}
+
+class PreparedTensorGroup {
+  struct Metadata {
+    at::ScalarType dtype;
+    std::vector<int64_t> shape, strides;
+    int device;
+  };
+  struct Member {
+    Plan plan;
+    reloc::TransferDirection direction;
+    Metadata source, destination;
+  };
+  std::vector<Member> members_;
+  std::shared_ptr<const void> identity_ = std::make_shared<const uint8_t>(0);
+  py::object tensorType_, parameterType_;
+  uint64_t constructions_ = 0, rebinds_ = 0;
+
+  const at::Tensor &checked(const py::handle &object, const Metadata &metadata,
+                            const char *what) const {
+    auto *type = reinterpret_cast<PyObject *>(Py_TYPE(object.ptr()));
+    if (type != tensorType_.ptr() && type != parameterType_.ptr())
+      throw py::type_error(std::string(what) +
+                           " must be a plain inference tensor");
+    const auto &tensor = unpack(object, what);
+    if (tensor.requires_grad() || tensor.is_conj() || tensor.is_neg() ||
+        tensor.layout() != at::kStrided)
+      throw py::value_error(std::string(what) +
+                            " must be a plain inference tensor");
+    if ((!tensor.is_cuda() && !tensor.device().is_cpu()) ||
+        (tensor.is_cuda() ? tensor.get_device() : -1) != metadata.device ||
+        tensor.scalar_type() != metadata.dtype ||
+        !tensor.sizes().equals(metadata.shape) ||
+        !tensor.strides().equals(metadata.strides))
+      throw py::value_error(std::string(what) +
+                            " metadata differs from prepared program");
+    return tensor;
+  }
+
+  void count(const py::sequence &sources, const py::sequence &outputs) const {
+    if (py::len(sources) != members_.size() ||
+        py::len(outputs) != members_.size())
+      throw py::value_error(
+          "one source and output per prepared member is required");
+  }
+
+  static reloc::dispatch::BufferBinding binding(const at::Tensor &tensor) {
+    const auto &storage = tensor.storage();
+    return {reinterpret_cast<uintptr_t>(storage.data()), storage.nbytes(),
+            size_t(tensor.storage_offset()) * tensor.element_size()};
+  }
+
+public:
+  explicit PreparedTensorGroup(const std::vector<PreparedMember> &members) {
+    if (members.empty() || members.size() > 256)
+      throw py::value_error("a group holds between 1 and 256 transfers");
+    auto torch = py::module_::import("torch");
+    tensorType_ = torch.attr("Tensor");
+    parameterType_ = torch.attr("nn").attr("Parameter");
+    members_.reserve(members.size());
+    for (const auto &[plan, direction, srcType, dstType, srcShape, srcStrides,
+                      srcDevice, dstShape, dstStrides, dstDevice] : members)
+      members_.push_back(
+          {plan,
+           parseDirection(direction),
+           {scalarType(srcType), srcShape, srcStrides, srcDevice},
+           {scalarType(dstType), dstShape, dstStrides, dstDevice}});
+  }
+
+  reloc::dispatch::GroupRequest prepare(const py::sequence &sources,
+                                        const py::sequence &outputs) {
+    count(sources, outputs);
+    std::vector<reloc::dispatch::GroupEntry> entries;
+    entries.reserve(members_.size());
+    for (size_t i = 0; i < members_.size(); ++i) {
+      const auto &member = members_[i];
+      const auto &source = checked(sources[i], member.source, "source");
+      const auto &output =
+          checked(outputs[i], member.destination, "destination");
+      entries.push_back({member.plan, viewOf(source, "source"),
+                         viewOf(output, "destination"), member.direction});
+    }
+    auto prepared = reloc::dispatch::prepareReusableDispatchGroup(entries);
+    if (auto *error = std::get_if<reloc::TransferError>(&prepared))
+      raise(*error);
+    auto group = std::get<reloc::dispatch::GroupRequest>(std::move(prepared));
+    group.bindingIdentity = identity_;
+    ++constructions_;
+    return group;
+  }
+
+  void rebind(reloc::dispatch::GroupRequest &group, const py::sequence &sources,
+              const py::sequence &outputs) {
+    if (group.bindingIdentity != identity_)
+      throw py::value_error("group belongs to a different prepared binder");
+    count(sources, outputs);
+    std::vector<reloc::dispatch::GroupBinding> bindings;
+    bindings.reserve(members_.size());
+    for (size_t i = 0; i < members_.size(); ++i)
+      bindings.push_back(
+          {binding(checked(sources[i], members_[i].source, "source")),
+           binding(
+               checked(outputs[i], members_[i].destination, "destination"))});
+    if (auto error = reloc::dispatch::rebindDispatchGroup(group, bindings))
+      raise(*error);
+    ++rebinds_;
+  }
+
+  py::dict stats() const {
+    py::dict result;
+    result["group_constructions"] = constructions_;
+    result["rebinds"] = rebinds_;
+    result["view_descriptors"] = 2 * constructions_ * members_.size();
+    return result;
+  }
+};
 
 /// entries: (plan, source tensor, destination tensor, direction, source dtype
 /// name or "") -> DispatchGroup, validated by prepareDispatchGroup.
@@ -392,6 +526,13 @@ py::object dequantS8F32(const py::object &q, const py::object &scale,
 PYBIND11_MODULE(_pyreloc_torch, m) {
   py::module_::import("pyreloc._pyreloc"); // registers the returned types
   m.doc() = "libtorch-backed request builders for reloc_torch.fast";
+  py::class_<PreparedTensorGroup>(m, "PreparedTensorGroup")
+      .def(py::init<const std::vector<PreparedMember> &>(), py::arg("members"))
+      .def("prepare", &PreparedTensorGroup::prepare, py::arg("sources"),
+           py::arg("outputs"))
+      .def("rebind", &PreparedTensorGroup::rebind, py::arg("group"),
+           py::arg("sources"), py::arg("outputs"))
+      .def("stats", &PreparedTensorGroup::stats);
   m.def("group_from_tensors", &groupFromTensors, py::arg("entries"),
         "Validate (plan, source, destination, direction, source_dtype) entries "
         "straight from tensors; same checks as prepare_dispatch_group.");

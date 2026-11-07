@@ -41,12 +41,17 @@ __all__ = (
     "PlacementPolicy",
     "PlacementProfile",
     "FastTransfers",
+    "PreparedGroup",
     "FastWeights",
     "KVCacheSwap",
 )
 
 
 def __getattr__(name):
+    if name == "PreparedGroup":
+        from .prepared_group import PreparedGroup
+        globals()[name] = PreparedGroup
+        return PreparedGroup
     if name == "PreparedTransfers":
         from .preparation import PreparedTransfers
         globals()[name] = PreparedTransfers
