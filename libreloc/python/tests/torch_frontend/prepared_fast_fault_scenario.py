@@ -14,6 +14,7 @@ from reloc_torch.recipe import Dequantize, InlineParam, Recipe, TensorSpec, Tran
 from reloc_torch.symbolic import Const, dense_strides
 
 mode = int(sys.argv[1])
+finish = sys.argv[2] if len(sys.argv) > 2 else 'wait'
 shim = ctypes.CDLL(os.environ['SYM_DISPATCH_FAULT_SHIM'])
 shim.sym_dispatch_fault_mode.argtypes = [ctypes.c_int]
 shape = (Const(128), Const(128))
@@ -35,19 +36,38 @@ def inject(group, **options):
         return submit(group, **options)
     finally:
         shim.sym_dispatch_fault_mode(0)
-pyreloc.submit_dispatch_group = inject
+if mode <= 4:
+    pyreloc.submit_dispatch_group = inject
+completion = None
 try:
-    handle.submit(sources).wait()
-except RuntimeError as error:
-    assert ('completion_unknown' if mode in (2, 4) else 'backend_failure') in str(error), error
+    completion = handle.submit(sources)
+    if mode >= 5:
+        shim.sym_dispatch_fault_mode(mode)
+    if finish == 'close':
+        handle.close()
+    else:
+        completion.wait()
+except (RuntimeError, pyreloc.TransferError) as error:
+    assert ('completion_unknown' if mode in (2, 4, 6) else 'backend_failure') in str(error), error
 else:
-    raise AssertionError('fault did not reach submission')
+    raise AssertionError('fault did not reach submission/completion')
+finally:
+    shim.sym_dispatch_fault_mode(0)
+if completion is not None:
+    assert completion.report is None
+    try:
+        completion.wait()
+    except (RuntimeError, pyreloc.TransferError):
+        pass  # a failed completion never becomes a successful group later
+    else:
+        raise AssertionError('failed completion was accepted')
+del completion
 assert runtime.stats()['groups'] == 0
 assert runtime.stats()['prepared_groups']['live_slots'] == 0
 handle.close()
 del sources
 gc.collect()
-unknown = mode in (2, 4)
+unknown = mode in (2, 4, 6)
 assert runtime.stats()['resources']['quarantined'] == unknown
 assert all((ref() is not None) == unknown for ref in refs)
 if unknown:

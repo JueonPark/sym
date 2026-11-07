@@ -233,8 +233,8 @@ def test_failed_execution_never_recycles_failed_slot(compiler, cuda_device):
         handle.close()
 
 
-@pytest.mark.parametrize('mode', [1, 2, 3, 4])
-def test_prepared_partial_failure_keeps_quarantine_ownership(cuda_device, mode):
+@pytest.mark.parametrize('mode,finish', [(i, 'wait') for i in range(1, 7)] + [(5, 'close'), (6, 'close')])
+def test_prepared_partial_failure_keeps_quarantine_ownership(cuda_device, mode, finish):
     import os
     from pathlib import Path
     import subprocess
@@ -243,7 +243,7 @@ def test_prepared_partial_failure_keeps_quarantine_ownership(cuda_device, mode):
     shim = Path(pyreloc.__file__).resolve().parent.parent / 'libtyped_dispatch_faults.so'
     env = dict(os.environ, LD_PRELOAD=str(shim), SYM_DISPATCH_FAULT_SHIM=str(shim))
     result = subprocess.run([sys.executable, str(Path(__file__).with_name('prepared_fast_fault_scenario.py')),
-                             str(mode)], env=env, capture_output=True, text=True, timeout=45)
+                             str(mode), finish], env=env, capture_output=True, text=True, timeout=45)
     assert result.returncode == 0, result.stdout + result.stderr
     assert '"passed": true' in result.stdout
 

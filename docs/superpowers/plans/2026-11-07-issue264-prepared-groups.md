@@ -64,10 +64,10 @@
 
 **Files:** finalize `bench/issue264/run.py`, `analyze.py`, `RESULTS.md`, compact result index; raw evidence outside source control.
 
-- [ ] Register and run E2 decode/prefill/sparse/dense with eager/Inductor, five rounds, 60 samples/three warmups; include original-build Sym, candidate, and candidate-build legacy control with matched Torch.
-- [ ] Run representative E5 decode/sparse lifecycle including revisions and 1/2/4-caller bursts, three rounds, original resource/budget/freshness checks. Serialize GPU/build work and audit contamination.
-- [ ] Report preparation/break-even/retention together with matched p50/p95 and independent-process uncertainty. Identify parity, gains, regressions, and default/fallback policy; retain raw inputs/settings/build hashes.
-- [ ] Run relevant full core/frontend/fault gates and commit the compact report. No generality or sustained-serving claims beyond the measured protocol.
+- [x] Register and run E2 decode/prefill/sparse/dense with eager/Inductor, five rounds, 60 samples/three warmups; include original-build Sym, candidate, and candidate-build legacy control with matched Torch.
+- [x] Run representative E5 decode/sparse lifecycle including revisions and 1/2/4-caller bursts, three rounds, original resource/budget/freshness checks. Serialize GPU/build work and audit contamination.
+- [x] Report preparation/break-even/retention together with matched p50/p95 and independent-process uncertainty. Identify parity, gains, regressions, and default/fallback policy; retain raw inputs/settings/build hashes.
+- [x] Run relevant full core/frontend/fault gates and commit the compact report. No generality or sustained-serving claims beyond the measured protocol.
 
 ### Task 5: Independent review, public artifacts, and issue resolution
 

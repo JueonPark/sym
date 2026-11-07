@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "release": "https://github.com/JueonPark/sym/releases/tag/prepared-groups-issue264-2026-11-07-v1",
+  "selected_policy": "prepared-native",
+  "baseline_revision": "2617ba166f98a7476a5f472d829a573317fc0cfb",
+  "measured_runtime_revision": "a351b0f7f2ce0673145374a7a734217c1d7045bd",
+  "acceptance_harness_revision": "416c43b4888789ac2ddc58b25f2d606fad20a300",
+  "campaigns": {
+    "groups": {
+      "processes": 25,
+      "rows": 75,
+      "comparisons": 21,
+      "missing": []
+    },
+    "acceptance": {
+      "processes": 135,
+      "rows": 360,
+      "comparisons": 108,
+      "missing": []
+    }
+  },
+  "files": [
+    {
+      "path": "evidence/groups-analysis.json",
+      "sha256": "c6216fab83e7c1bddbfea7896f27396797607d59a6e65c1a4b1a0ed2c1fa7b4e",
+      "bytes": 255779
+    },
+    {
+      "path": "evidence/acceptance-analysis.json",
+      "sha256": "2cd1c6b21b03868866c7cbbf2b4b5372fac1ad465b685c2308935f4a2c17bbcf",
+      "bytes": 2008934
+    },
+    {
+      "path": "evidence/groups-v1/contract.json",
+      "sha256": "16ba96f4a31c0093369e9e47220323747f7477a2fb32ec3313a0fe87dbcbf29a",
+      "bytes": 29938
+    },
+    {
+      "path": "evidence/groups-v1/matrix.json",
+      "sha256": "241eec1b75cd46f86bc55d853adb60364128fbe8f9da8b60bd94b933dc207083",
+      "bytes": 4473
+    },
+    {
+      "path": "evidence/acceptance-v1/contract.json",
+      "sha256": "bca5f7946b90e969501f1b5cde6b43b06fc62a911f3f31cda0852af591b79445",
+      "bytes": 19631
+    },
+    {
+      "path": "evidence/acceptance-v1/matrix.json",
+      "sha256": "6d5b1d2a22dbd7ddba3a80795977b4382c1b56f009b10cb86f31b80ba6061873",
+      "bytes": 29051
+    },
+    {
+      "path": "evidence/e2-accounting-checks.json",
+      "sha256": "076235467934d6abb2dbf6f41153c7921b3c24d0d324af1463034f1bda41a66f",
+      "bytes": 5374
+    },
+    {
+      "path": "evidence/e5-retention-checks.json",
+      "sha256": "e66e6b4f3c282fde52917c12beef3fb3048e6975e089de058205f4f126b5bd22",
+      "bytes": 9390
+    }
+  ]
+}
