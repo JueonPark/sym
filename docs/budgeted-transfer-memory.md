@@ -16,13 +16,16 @@ conservative barrier can reduce overlap and increase latency.
 
 `reuse=False` isolates packing: outputs use ordinary Torch allocator storage,
 and the arena keeps only weak lifetime trackers. It adds no recycling barrier.
-With recycling enabled, native storage ownership is retained until reuse or
-close. On close, pending device work completes and surviving exported storage
-receives the original Torch allocator ownership. Outputs remain valid after
-the transfer owner or arena closes, including ordinary `record_stream()` use
-on work queued after close. Uncertain CUDA completion poisons and quarantines
-backing storage rather than freeing or reusing it; destruction does not retry
-the transfer. Quarantine can retain memory until process exit.
+With recycling enabled, the native owner retains the original Torch allocation.
+It checks both TensorImpl and Storage strong ownership, discounting a canonical
+Python wrapper only when Torch itself holds its sole Python reference. Storage
+handles held by callers therefore prevent reuse just like tensor aliases.
+The allocator DataPtr and StorageImpl remain unchanged throughout the lifetime;
+close completes pending device work and drops only the owner's reference.
+Concurrent consumers and later `record_stream()` calls use ordinary allocator
+semantics, including work queued after close. Uncertain CUDA completion poisons
+and quarantines backing storage rather than freeing or reusing it; destruction
+does not retry the transfer. Quarantine can retain memory until process exit.
 
 The arena never spills into an unbounded allocation. A group larger than its
 cap, or a cap exhausted by held aliases, raises `MemoryBudgetError` before a
@@ -32,7 +35,10 @@ not wait indefinitely for the caller to drop an alias. Actual CUDA OOMs and
 execution errors are propagated without replay.
 
 Callers must retain sources unchanged until transfer completion, and retain
-tensors needed by future raw-pointer operations. CUDA graph capture is rejected
+tensors needed by future raw-pointer operations. Weak storage handles are not
+ownership leases after the final strong consumer releases the storage. Exported
+storage is made non-resizable before publication so it cannot grow outside the
+arena's capacity. CUDA graph capture is rejected
 for arena allocations; graph replay is outside this contract. Inherited arena
 use after fork is rejected before touching locks or CUDA. CPU arenas are
 supported for ordinary dense storage but cannot be attached to a CUDA owner.
@@ -122,6 +128,15 @@ resources. These counters overlap Torch allocations and must not be summed
 into a physical peak. Native scratch, Torch allocated/reserved bytes, pinned
 snapshots, retained outputs and sampled device memory have different scopes.
 Zero warm native allocations alone does not establish lower memory use.
+
+| Storage | Owner and lifetime | Measurement scope |
+| --- | --- | --- |
+| Native staging/scratch | Transfer contexts retain buffers between calls; owner close drains and retires them | Native device/host/retained counters; direct CUDA allocation is outside Torch counters |
+| Packed weight outputs | Arena plus every strong tensor/storage alias; eligible for reuse only after external owners release it | Arena capacity overlaps Torch allocated bytes |
+| Explicit outputs and returned request outputs | Caller-owned tensors, which may survive transfer-owner closure | Torch allocated bytes; caller must include their retention in its allowance |
+| Torch cached blocks | Caching allocator, potentially retained after tensors die | Torch reserved bytes include active and cached allocations |
+| Pinned snapshots | Snapshot/checkpoint owners retain immutable host source images | Snapshot pinned bytes and host allocator counters have separate ownership scopes |
+| Context/library/compute/KV state | CUDA context, libraries and application tensors/workspaces | Physical samples and explicit workspace allowance; no exact sum from the other counters |
 
 See PyTorch's [CUDA memory and stream semantics](https://docs.pytorch.org/docs/stable/notes/cuda)
 and [memory snapshot scope](https://docs.pytorch.org/docs/stable/torch_cuda_memory).

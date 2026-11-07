@@ -20,6 +20,50 @@ def packed_bridge():
 
 
 @pytest.mark.gpu
+def test_packed_torch_preserves_per_member_staging_lifetime(cuda_device):
+    import weakref
+    from types import SimpleNamespace
+    from bench.issue266.policies import PackedTorch
+    previous = []
+    def dequant(q, scale, output, stream):
+        assert all(reference() is None for reference in previous), 'prior GPU staging remained live'
+        previous[:] = [weakref.ref(q), weakref.ref(scale)]
+        output.copy_((q.float() * scale[:, None]).half())
+        return output
+    images = {str(i): (torch.ones((8, 16), dtype=torch.int8).pin_memory(),
+                      torch.ones(8).pin_memory()) for i in range(4)}
+    producer = PackedTorch(images, dict(output_capacity=1024, recycle=False, slots=2,
+                           subgroup_members=None), SimpleNamespace(native=SimpleNamespace(dequant=dequant)))
+    try:
+        outputs = producer.submit(list(images)).wait()
+        assert all(torch.all(value == 1) for value in outputs)
+    finally:
+        producer.close()
+
+
+@pytest.mark.gpu
+def test_packed_torch_does_not_retain_completed_outputs_between_requests(cuda_device):
+    import weakref
+    from types import SimpleNamespace
+    from bench.issue266.policies import PackedTorch
+    def dequant(q, scale, output, stream):
+        output.copy_((q.float() * scale[:, None]).half())
+    images = {'weight': (torch.ones((8, 16), dtype=torch.int8).pin_memory(), torch.ones(8).pin_memory())}
+    producer = PackedTorch(images, dict(output_capacity=256, recycle=True, slots=2,
+                           subgroup_members=None), SimpleNamespace(native=SimpleNamespace(dequant=dequant)))
+    try:
+        completion = producer.submit(['weight'])
+        values = completion.wait()
+        reference = weakref.ref(values[0])
+        del values, completion
+        gc.collect()
+        assert reference() is None
+        assert producer.arena.stats()['live_bytes'] == 0
+    finally:
+        producer.close()
+
+
+@pytest.mark.gpu
 @pytest.mark.parametrize("prepared", [False, True])
 def test_fast_groups_pack_live_outputs_without_overwriting_aliases(compiler, cuda_device, prepared):
     arena = PackedOutputArena(cuda_device, max_bytes=2048)

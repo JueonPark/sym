@@ -96,9 +96,10 @@ class PackedOutputArena:
     """Bound packed output storage until its final Tensor alias is released.
 
     Transfer completion never releases a block. A native storage owner waits
-    for actual storage expiry and device completion before reuse. Closing hands
-    surviving tensors back to the ordinary Torch allocator, preserving later
-    record_stream calls. ``max_bytes`` covers this arena's allocations only.
+    until it alone retains the backing TensorImpl and storage, then waits for
+    device completion before reuse. Original allocator ownership remains intact
+    throughout; close only drops the owner's reference. ``max_bytes`` covers
+    this arena's allocations only. Exported storage capacity cannot be resized.
     """
 
     def __init__(self, device, *, max_bytes, reuse=True):

@@ -112,6 +112,78 @@ def test_packed_outputs_are_aligned_disjoint_and_preserve_dtype():
         assert arena.stats()["allocated_bytes"] == 768
 
 
+def test_native_close_preserves_retained_backing_and_exported_storage():
+    from reloc_torch.fast import _load_native_views
+    backing = torch.arange(256, dtype=torch.uint8)
+    pointer = backing.data_ptr()
+    owner = _load_native_views().PackedStorage(backing)
+    exported = owner.view()
+    owner.close()
+    assert backing.data_ptr() == pointer
+    assert torch.equal(backing, exported)
+
+
+def test_native_retained_backing_is_a_live_consumer_after_export_release():
+    from reloc_torch.fast import _load_native_views
+    backing = torch.empty(256, dtype=torch.uint8)
+    owner = _load_native_views().PackedStorage(backing)
+    exported = owner.view()
+    del exported
+    assert not owner.expired()
+    del backing
+    assert owner.expired()
+    owner.close()
+
+
+@pytest.mark.parametrize('reuse', [False, True])
+def test_exported_storage_cannot_grow_outside_the_arena_capacity(reuse):
+    from reloc_torch.memory import PackedOutputArena
+    with PackedOutputArena('cpu', max_bytes=256, reuse=reuse) as arena:
+        output, = arena.allocate([descriptor((16,))])
+        with pytest.raises(RuntimeError, match='resiz'):
+            output.untyped_storage().resize_(4096)
+        assert output.untyped_storage().nbytes() == 256
+
+
+def test_storage_handle_alone_prevents_reuse():
+    from reloc_torch.memory import MemoryBudgetError, PackedOutputArena
+    with PackedOutputArena('cpu', max_bytes=256) as arena:
+        output, = arena.allocate([descriptor((16,))])
+        storage = output.untyped_storage()
+        del output
+        with pytest.raises(MemoryBudgetError): arena.allocate([descriptor((16,))])
+        del storage
+        arena.allocate([descriptor((16,))])
+
+
+@pytest.mark.gpu
+def test_consumers_can_record_stream_and_continue_across_arena_close(cuda_device):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+    from reloc_torch.memory import PackedOutputArena
+    arena = PackedOutputArena(cuda_device, max_bytes=4096)
+    output, = arena.allocate([descriptor((1024,), device=str(cuda_device))])
+    output.fill_(7)
+    torch.cuda.synchronize()
+    started = Event()
+    def consume():
+        stream = torch.cuda.Stream(device=cuda_device)
+        with torch.cuda.stream(stream):
+            for i in range(100):
+                output.record_stream(stream)
+                actual = output.clone()
+                if i == 0: started.set()
+            stream.synchronize()
+        return actual
+    with ThreadPoolExecutor(1) as executor:
+        future = executor.submit(consume)
+        assert started.wait(10)
+        arena.close()
+        actual = future.result(timeout=20)
+    assert torch.equal(actual, torch.full_like(actual, 7))
+    assert torch.equal(output, actual)
+
+
 def test_arena_does_not_overwrite_detached_alias_after_tensor_release():
     from reloc_torch.memory import MemoryBudgetError, PackedOutputArena
     with PackedOutputArena("cpu", max_bytes=256) as arena:

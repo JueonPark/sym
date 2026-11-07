@@ -11,7 +11,7 @@ import torch
 from reloc_torch import CompilerClient, PreparedWireWeights
 from reloc_torch.fast import FastTransfers, FastWeights
 from bench.issue266.policies import configuration, install
-from bench.issue266.support import digest
+from bench.issue266.support import digest, executed_configuration
 
 
 def run(job, inputs, output):
@@ -28,6 +28,7 @@ def run(job, inputs, output):
     assert abs(baseline['free'] - reserve.after['free']) <= 16 << 20
     result = dict(budget=reserve.stats(), nvml_after_reservation=baseline)
     config, observations = configuration(job), {}
+    result['configuration'] = executed_configuration(job, config)
     module = SimpleNamespace(FastTransfers=FastTransfers, FastWeights=FastWeights,
                              TorchProducer=inputs.controls.TorchProducer)
     install(module, inputs, config, observations)
@@ -98,7 +99,7 @@ def run(job, inputs, output):
         trace = sampler.stop()
         warm = [r for r in trace['samples'] if result.get('warm_start_ms', float('inf')) <= r[0] <= result.get('warm_end_ms', 0)]
         result['physical_meter_valid'] = trace['observed_device_used_peak'] >= baseline['used'] - (16 << 20)
-        result['observed_warm_app_increment_peak'] = max((r[1] for r in warm), default=baseline['used']) - baseline['used']
+        result['observed_warm_app_increment_peak'] = max(r[1] for r in warm) - baseline['used'] if warm else None
         reserve.close()
         path = output.with_suffix('.memory.json.gz')
         with gzip.open(path, 'wt') as stream: json.dump(trace, stream)

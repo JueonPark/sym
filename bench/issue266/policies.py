@@ -1,7 +1,5 @@
 """Matched packed Torch/Sym producers; no changes to numerical workload code."""
-from collections import deque
 from contextlib import contextmanager
-from dataclasses import asdict
 import time
 
 import torch
@@ -17,36 +15,11 @@ def descriptor(q):
 
 
 def configuration(job):
+    from bench.issue266.support import policy_configuration
     started = time.perf_counter_ns()
-    kind = job['kind']
-    if kind == 'e4':
-        count, output, scratch, small = job['layers'], 24 * MIB, 16 * MIB, 8 * MIB
-        workspace = 128 * MIB + job['layers'] * job['context'] * 4096 + job['context'] * 1024 * 16 + 32 * job['context'] ** 2
-        available, safety, prefix = job['budget_mib'] * MIB, 32 * MIB, 8
-    elif kind == 'e5':
-        llm = job['case'] == 'llm_decode'
-        count, output, scratch, small = (4, 24 * MIB, 16 * MIB, 8 * MIB) if llm else (16, 8 * MIB, 8 * MIB, 6 * MIB)
-        # One 256 MiB aggregate transfer allowance; remaining physical capacity
-        # covers shared fixture, compute/KV, held request outputs and libraries.
-        available, workspace, safety, prefix = 256 * MIB // job['callers'], 0, 8 * MIB, 0
-    else:
-        count, output = 16, (8 * 64 * 2 if job['size'] == 'small' else 24 * MIB)
-        scratch, small = (2 * MIB, MIB) if job['size'] == 'small' else (16 * MIB, 8 * MIB)
-        available, workspace, safety, prefix = 2 * output + scratch + 8 * MIB, 0, 8 * MIB, 0
-    plan = plan_transfer_memory([output] * count, [scratch] * count,
-        available_bytes=available, workspace_bytes=workspace, safety_bytes=safety,
-        max_resident_groups=prefix, subgroup_scratch_bytes=[small] * count)
-    adaptive = job['policy'] == 'adaptive'
-    slots = plan.slots if adaptive else 2
-    native = plan.native_scratch_bytes if adaptive else (64 * MIB // job.get('callers', 1))
-    return dict(policy=job['policy'], plan=asdict(plan), plan_applied=adaptive,
-                planning_ms=(time.perf_counter_ns() - started) / 1e6,
-                contexts=plan.contexts if adaptive else 2, slots=slots,
-                native_scratch_per_context=native, subgroup_members=plan.subgroup_members if adaptive else None,
-                output_capacity=plan.output_bytes if adaptive else (slots + 1) * output,
-                resident_groups=plan.resident_groups if adaptive else
-                    (job['layers'] if job.get('placement') == 'resident' else 8 if job.get('placement') == 'partial' else 0),
-                packed=job['policy'] != 'fresh', recycle=job['policy'] in ('recycle', 'adaptive'))
+    result = policy_configuration(job, plan_transfer_memory)
+    result['planning_ms'] = (time.perf_counter_ns() - started) / 1e6
+    return result
 
 
 class TorchCompletion:
@@ -73,32 +46,31 @@ class TorchCompletion:
 class PackedTorch:
     def __init__(self, images, config, controls):
         self.images, self.config, self.native = images, config, controls.native
-        self.stream, self.pending = torch.cuda.Stream(), deque()
+        self.stream = torch.cuda.Stream()
         self.arena = PackedOutputArena('cuda:0', max_bytes=config['output_capacity'], reuse=config['recycle'])
         self.groups = self.members = self.payload = self.subgroup_waits = 0
 
     def submit(self, names, *, outputs=None, **options):
-        while self.pending and self.pending[0].done(): self.pending.popleft()
         names = tuple(names)
         sources = [self.images[n] for n in names]
         with torch.cuda.stream(self.stream):
             if outputs is None: outputs = self.arena.allocate([descriptor(q) for q, s in sources])
             if len(outputs) != len(sources): raise ValueError('output count')
-            temporaries = []
             cap = self.config['subgroup_members'] or len(sources)
             for index, ((q, scale), out) in enumerate(zip(sources, outputs)):
                 gpu_q, gpu_scale = q.to('cuda:0', non_blocking=True), scale.to('cuda:0', non_blocking=True)
                 self.native.dequant(gpu_q, gpu_scale, out, self.stream.cuda_stream)
-                temporaries.extend((gpu_q, gpu_scale))
                 if cap < len(sources) and (index + 1) % cap == 0:
                     self.stream.synchronize()
-                    temporaries.clear()
-                    gpu_q = gpu_scale = None
                     self.subgroup_waits += 1
+                # Match the original Torch control: release each GPU input
+                # after enqueue. The allocator safely reuses it on this same
+                # producer stream; retaining the whole group would confound
+                # output packing with a different staging lifetime.
+                del gpu_q, gpu_scale
             event = torch.cuda.Event()
             event.record()
-        completion = TorchCompletion(outputs, sources, temporaries, event)
-        self.pending.append(completion)
+        completion = TorchCompletion(outputs, sources, None, event)
         self.groups += 1
         self.members += len(names)
         self.payload += sum(q.numel() + 4 * s.numel() for q, s in sources)
@@ -112,7 +84,7 @@ class PackedTorch:
                     subgroup_waits=self.subgroup_waits, output_arena=self.arena.stats(), policy=self.config)
 
     def close(self):
-        while self.pending: self.pending.popleft().wait()
+        self.stream.synchronize()
         self.arena.close()
 
 

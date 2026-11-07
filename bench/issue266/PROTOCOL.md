@@ -43,7 +43,7 @@ every2seconds. Run no concurrent GPU tests, compilers or archive creation.
 Fresh arms use the candidate runtime with ordinary independent output
 allocations and existing bounded native scratch reuse. Packing adds one
 allocation per group without storage recycling or an extra retirement fence.
-Recycling adds storage-alias tracking and a conservative device completion
+Recycling adds strong storage/Tensor ownership tracking and a conservative device completion
 barrier before address reuse. Adaptive uses the same recycling path and the
 pure planner's selected capacities. CUDA errors are never retried. Native
 conversion kernels, compiler binaries and the Torch control's fused
@@ -52,7 +52,9 @@ dequantization kernel remain unchanged; the Torch storage bridge is rebuilt.
 Torch and Sym receive the same packed outputs, prefetch depth, resident prefix
 and single-member staging opportunity. Torch uses ordinary copies and the
 original kernel-only FP16 dequantizer into supplied views. Its completion
-retains sources and staging until the event completes. Single-member staging
+retains pinned sources until the event completes. GPU staging is released after
+each kernel enqueue for safe reuse on the same producer stream, preserving the
+fresh control's staging lifetime. Single-member staging
 waits before releasing a member's temporary input. Sym uses its normal
 validated submission/completion path. Full-group validation precedes any
 Sym subgroup launch.
@@ -114,7 +116,9 @@ phases and actual policy-stage OOMs. Oracle and reservation failures are
 invalid. The deployment physical window excludes the oracle phase.
 
 E5 retains eight predeclared inputs, three warm passes and30eight-request
-bursts. Reports include completed burst time per request, service/sojourn
+bursts. Per-caller construction, first request, all warmup requests and retirement
+have separate timings and sampler-relative phase boundaries. Retired arena
+statistics are recorded for both runtimes. Reports include completed burst time per request, service/sojourn
 p95, queue delay and sampled warm physical peak. The previous burst remains
 held and is checked bit-for-bit after the next burst; eight final outputs
 are checked again after all workers and snapshots close. These are finite
@@ -138,8 +142,12 @@ and cannot pass acceptance analysis. Existing pilot records remain available
 with their exclusion reasons.
 
 The standard-library analyzer requires complete, unique matrix membership,
-matching provenance, valid physical reservations, uncontaminated jobs,
-complete checked sample counts and retained-output checks. It verifies every
-trace checksum. It retains negative outcomes in grouped tables; a timing
+matching provenance, the qualified hardware/runtime/thread configuration,
+executed workload/policy settings, valid physical reservations, uncontaminated
+jobs, finite timings, complete request identities, lifecycle timings and
+retained-output checks. It verifies every trace checksum, ordered finite samples
+and actual observations inside the required phase windows, and reconstructs
+the recorded phase peaks. Missing observations never become zero memory use.
+It retains negative outcomes in grouped tables; a timing
 comparison with fewer than three successful rounds must say so. All raw
 records/traces and scoped counters are published through the Wiki artifact.

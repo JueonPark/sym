@@ -31,7 +31,8 @@ def main():
     module = importlib.import_module('bench.issue266.' + job['kind'])
     result = module.run(job, inputs, output)
     record = dict(job=job, result=result, provenance=manifest['provenance'], complete=True,
-                  environment=dict(python=sys.version, torch=torch.__version__, torch_cuda=torch.version.cuda,
+                  environment=dict(python=sys.version, python_version=list(sys.version_info[:3]),
+                    torch=torch.__version__, torch_cuda=torch.version.cuda,
                     gpu=torch.cuda.get_device_name(), capability=list(torch.cuda.get_device_capability()),
                     affinity=sorted(os.sched_getaffinity(0)), threads=torch.get_num_threads(),
                     interop_threads=torch.get_num_interop_threads(), packages=[pyreloc.__file__, reloc_torch.__file__]))

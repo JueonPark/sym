@@ -8,7 +8,6 @@
 #include <cuda_runtime.h>
 #endif
 
-#include <memory>
 #include <optional>
 #include <stdexcept>
 #ifdef _WIN32
@@ -28,11 +27,22 @@ int processId() {
 #endif
 }
 
+template <typename T>
+bool soleOwner(const T *value, size_t references) {
+  // Torch preserves a canonical Python wrapper while C++ owners exist. That
+  // wrapper contributes one intrusive reference even when no caller owns it.
+  // These methods run with the GIL; discount it only when its sole Python
+  // reference is Torch's preservation reference, never a caller's handle.
+  return references == 1 ||
+         (references == 2 && value->pyobj_slot()->has_unique_reference());
+}
+
 class PackedStorage {
   at::Tensor backing_;
-  std::optional<c10::weak_intrusive_ptr<c10::StorageImpl>> child_;
+  std::optional<c10::weak_intrusive_ptr<c10::StorageImpl>> exported_;
   int pid_ = processId();
   bool recycle_;
+  bool used_ = false;
   bool closed_ = false, poisoned_ = false;
   size_t barriers_ = 0;
 
@@ -48,7 +58,7 @@ class PackedStorage {
   }
 
   void synchronize() {
-    if (!backing_.is_cuda() || !child_)
+    if (!backing_.is_cuda() || !used_)
       return;
 #ifdef RELOC_ENABLE_CUDA
     int previous = 0;
@@ -92,6 +102,10 @@ public:
         (!backing_.device().is_cpu() && !backing_.is_cuda()))
       throw py::value_error(
           "backing must be a whole contiguous CPU/CUDA byte allocation");
+    // Establish immutable capacity before publishing views. Keep the original
+    // allocator DataPtr: ordinary Tensor operations and record_stream may read
+    // it concurrently, outside this owner's lock and Python's GIL.
+    backing_.storage().unsafeGetStorageImpl()->set_resizable(false);
   }
 
   ~PackedStorage() {
@@ -104,7 +118,15 @@ public:
 
   bool expired() const {
     checkProcess();
-    return !child_ || child_->expired();
+    if (!used_)
+      return true;
+    if (backing_.defined())
+      // Exported tensors have separate TensorImpls sharing this storage.
+      // Also count a caller retaining the original backing TensorImpl.
+      return soleOwner(backing_.unsafeGetTensorImpl(), backing_.use_count()) &&
+             soleOwner(backing_.storage().unsafeGetStorageImpl(),
+                       backing_.storage().use_count());
+    return !exported_ || exported_->expired();
   }
 
   py::object view() {
@@ -116,22 +138,17 @@ public:
     if (!recycle_) {
       // Packing alone uses the original allocator storage from the start.
       // Track it weakly for admission; no extra completion fence or retention.
-      child_ = backing_.storage().getWeakStorageImpl();
+      used_ = true;
+      exported_ = backing_.storage().getWeakStorageImpl();
       auto result = std::move(backing_);
       return py::reinterpret_steal<py::object>(THPVariable_Wrap(result));
     }
     synchronize();
-    auto parent = std::make_unique<c10::Storage>(backing_.storage());
-    c10::DataPtr pointer(
-        parent->mutable_data(), parent.get(),
-        [](void *value) { delete static_cast<c10::Storage *>(value); },
-        backing_.device());
-    parent.release();
-    c10::Storage storage(c10::Storage::use_byte_size_t(), backing_.numel(),
-                         std::move(pointer), nullptr, false);
-    child_ = storage.getWeakStorageImpl();
+    const auto &storage = backing_.storage();
+    exported_ = storage.getWeakStorageImpl();
     auto result = at::empty({0}, backing_.options());
     result.set_(storage, 0, {backing_.numel()}, {1});
+    used_ = true;
     return py::reinterpret_steal<py::object>(THPVariable_Wrap(result));
   }
 
@@ -144,16 +161,8 @@ public:
       return;
     }
     synchronize();
-    if (child_) {
-      if (auto live = child_->lock()) {
-        // Hand the allocator's ORIGINAL DataPtr to the exported storage. Future
-        // Tensor.record_stream calls then reach the caching allocator normally,
-        // including work enqueued after this arena owner has been destroyed.
-        c10::Storage destination(std::move(live));
-        destination.set_data_ptr(
-            backing_.storage().set_data_ptr(c10::DataPtr{}));
-      }
-    }
+    // Retire only this owner's reference. Published storage is never mutated;
+    // concurrent and future consumers retain ordinary allocator semantics.
     backing_ = at::Tensor();
     closed_ = true;
   }
