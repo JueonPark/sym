@@ -6,7 +6,7 @@ as trace evidence; a host interval coincident with GPU idle is not causal saving
 """
 import argparse
 from bisect import bisect_right
-from collections import defaultdict
+from collections import Counter, defaultdict
 import json
 from pathlib import Path
 import sqlite3
@@ -26,6 +26,11 @@ def duration(intervals): return sum(b-a for a,b in interval_union(intervals))
 
 def exclusive_segments(start,end,ranges):
     ranges=[(max(start,a),min(end,b),name) for a,b,name in ranges if b>start and a<end]
+    stack=[]
+    for a,b,name in sorted(ranges,key=lambda r:(r[0],-r[1])):
+        while stack and a>=stack[-1]:stack.pop()
+        if stack and b>stack[-1]:raise ValueError('crossing host ranges have ambiguous exclusive attribution')
+        stack.append(b)
     points=sorted({start,end,*[v for a,b,_ in ranges for v in (a,b)]})
     result=[]
     for a,b in zip(points,points[1:]):
@@ -46,6 +51,11 @@ def analyze_trace(path):
     for r in ranges: r['label']=r.get('text') or strings.get(r.get('textId'),'')
     roots=sorted((r for r in ranges if r['label'].startswith('request263/') and r['end'] is not None),key=lambda r:r['start'])
     if not roots: raise ValueError('no request263 NVTX ranges')
+    last_end={}
+    for r in roots:
+        if r['globalTid'] in last_end and r['start']<last_end[r['globalTid']]:
+            raise ValueError('overlapping request roots on one launch thread')
+        last_end[r['globalTid']]=r['end']
     by_tid=defaultdict(list)
     for r in ranges:
         if r['end'] is not None: by_tid[r['globalTid']].append(r)
@@ -91,6 +101,7 @@ def analyze_trace(path):
             exclusive[category]+=b-a
             idle_by_phase[category]+=b-a-duration([(max(a,c),min(b,d)) for c,d in device_intervals if d>a and c<b])
         own=[]
+        request_apis=[a for a in apis if a['globalTid']==tid and start<=a['start'] and a['end']<=end]
         groups=[r for r in inside if r['label'].startswith('group263/')]
         for index,a in enumerate(activities):
             if a['launch_tid']!=tid or not start<=a['launch_start']<end: continue
@@ -108,6 +119,8 @@ def analyze_trace(path):
             dependencies.append(dict(s,sync_label=enum.get(s['syncType'],'unknown'),wait_api=launch,record=record))
         output.append(dict(label=label,start_ns=start,end_ns=end,tid=tid,elapsed_ns=end-start,
             exclusive_ns=dict(exclusive),gpu_idle_by_host_phase_ns=dict(idle_by_phase),
+            cuda_api_counts=dict(Counter(a['table'].removeprefix('CUPTI_ACTIVITY_KIND_')+'/'+a['name'] for a in request_apis)),
+            cuda_api_union_ns=duration([(a['start'],a['end']) for a in request_apis]),
             assigned_gpu_ns=duration([(a['start'],a['end']) for a in own]),device_busy_ns=duration(device_intervals),
             assigned_gpu_by_kind_ns={kind:duration([(a['start'],a['end']) for a in own if a['kind']==kind]) for kind in ('KERNEL','MEMCPY','MEMSET')},
             groups=[dict(label=g['label'],start=g['start'],end=g['end']) for g in groups],

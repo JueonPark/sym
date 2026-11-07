@@ -80,6 +80,8 @@ def main():
         if output.exists():
             previous=json.loads(output.read_text())
             assert previous.get('complete') and previous.get('campaign_job')==job and previous.get('isolation',{}).get('valid'),f'incomplete existing job {name}'
+            if job['profile']:
+                assert all((args.output/(name+suffix)).is_file() for suffix in ('.nsys-rep','.sqlite')),f'incomplete trace export {name}'
             print(name,'already verified',flush=True);continue
         foreign=audit(set())
         if foreign:raise RuntimeError(f'foreign workload before {name}: {foreign}')
@@ -104,12 +106,12 @@ def main():
         save(audit_path,metadata)
         if process.returncode or metadata['observations']:raise RuntimeError(f'failed/contaminated job {name}; see {audit_path}')
         result=json.loads(output.read_text());assert result['complete'],name
-        result.update(campaign_job=job,isolation=dict(valid=True,audit=audit_path.name,interval_seconds=3),runner_revision=revision)
-        save(output,result)
         if job['profile']:
             with (args.output/(name+'.export.log')).open('w') as log:
                 subprocess.run([args.nsys,'export','--type','sqlite','--output',str(args.output/(name+'.sqlite')),
                     str(args.output/(name+'.nsys-rep'))],stdout=log,stderr=subprocess.STDOUT,check=True)
+        result.update(campaign_job=job,isolation=dict(valid=True,audit=audit_path.name,interval_seconds=3),runner_revision=revision)
+        save(output,result)
         print(name,'complete',round((metadata['finished_ns']-metadata['started_ns'])/1e9,1),'s',flush=True)
 
 

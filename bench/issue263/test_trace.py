@@ -77,3 +77,15 @@ def test_correlation_ids_are_scoped_to_process(tmp_path):
     a=analyze_trace(p)['requests'][0]
     assert a['assigned_gpu_ns']==35
     assert len(a['activities'])==1
+
+
+def test_crossing_host_ranges_are_not_silently_treated_as_nested():
+    with pytest.raises(ValueError,match='crossing'):
+        exclusive_segments(0,10,[(0,7,'a'),(5,10,'b')])
+
+
+def test_overlapping_root_requests_on_one_thread_are_rejected(tmp_path):
+    p=tmp_path/'trace.sqlite';fixture(p)
+    c=sqlite3.connect(p);c.execute("update NVTX_EVENTS set globalTid=? where text='request263/B'",((9<<24)+1,));c.commit();c.close()
+    with pytest.raises(ValueError,match='overlapping request'):
+        analyze_trace(p)

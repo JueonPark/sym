@@ -199,6 +199,7 @@ def trace_summary(path,out):
             activity_counts=sorted({len(r['activities']) for r in rows}),
             event_dependency_count=sum(d['record'] is not None for r in rows for d in r['dependencies']),
             representative_request=first['label'],
+            representative_cuda_api_counts=first['cuda_api_counts'],
             representative_activity_signature=[dict(kind=k[0],copy_kind=k[1],name=k[2],count=v) for k,v in sorted(signatures.items())],
             representative_copy_bytes=sum(a.get('bytes',0) for a in first['activities'] if a['kind']=='MEMCPY'),
             dependency_witnesses=witnesses))
