@@ -27,6 +27,7 @@ __all__ = (
     "CompiledRecipe",
     "UnsupportedRecipe",
     "RelocBackend",
+    "PreparedExecutionPolicy",
     "eager_transfers",
     "prepare_weights",
     "PreparedWeights",
@@ -48,6 +49,10 @@ __all__ = (
 
 
 def __getattr__(name):
+    if name == "PreparedExecutionPolicy":
+        from .automatic import PreparedExecutionPolicy
+        globals()[name] = PreparedExecutionPolicy
+        return PreparedExecutionPolicy
     if name == "PreparedGroup":
         from .prepared_group import PreparedGroup
         globals()[name] = PreparedGroup

@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "measured_runtime_revision": "09db6b4771fa509e8c4ead9057503c655f550fbe",
+  "baseline_revision": "ce0bbe3b2451737ec35765bb1051841f5d19fc3d",
+  "harness_revision": "975e854829a3ac0b564c707d0c8b38fdcd1485c0",
+  "selected_policy": "admit_64k",
+  "default_enabled": false,
+  "release": "automatic-prepared-issue265-2026-11-07-v1",
+  "campaigns": {
+    "selection": {
+      "jobs": 48,
+      "contract_sha256": "fdd1dbfb0fed90a78a8cb00f76faa0a942ed768d613aadbff66ff55789af3b06",
+      "analysis_sha256": "511ca38a9280646465b9bf282ab631649ba9fe6156b6b8e81d16153ea1ef589d"
+    },
+    "e3": {
+      "jobs": 96,
+      "contract_sha256": "142ac2a14d077b47599ebfb439c2a5080ed0a25664cfea6daf6a6b824bde22f5",
+      "analysis_sha256": "fd66b89964b8fae14f358a9f7826466cdd0ca2646d499434976c4d2cb60664b6"
+    },
+    "heldout": {
+      "jobs": 48,
+      "contract_sha256": "be523fd2fcd8512feb8cf11cc7dde8c220385611e2a01446ffae11da2a6b282e",
+      "analysis_sha256": "04fde94f56103d315657980bd1da218af36f6e202a4c1b982a7e4932eb82824e"
+    }
+  }
+}

@@ -116,6 +116,7 @@ class RelocBackend:
         compute_backend="eager",
         inductor_options=None,
         placement=None,
+        prepared_execution=False,
     ):
         if compute_backend not in ("eager", "inductor"):
             raise ValueError("compute_backend must be 'eager' or 'inductor'")
@@ -133,6 +134,15 @@ class RelocBackend:
             if runtime is not None:
                 raise ValueError("custom runtime owns its placement policy")
         self._placement = placement
+        from .automatic import normalize_policy
+        self._prepared_execution = normalize_policy(prepared_execution)
+        if runtime is not None and self._prepared_execution is not None:
+            raise ValueError("custom runtime owns its prepared execution policy")
+        if isinstance(runtime, TransportAdapter) and runtime._prepared is not None:
+            raise ValueError(
+                "prepared execution requires a backend-owned adapter; "
+                "share TransferResources across backends instead"
+            )
         if transfer_resources is _UNSPECIFIED_RESOURCES:
             transfer_resources = AUTO if runtime is None else None
         if runtime is not None and (transfer_resources is not None or transfer_options is not None):
@@ -171,6 +181,7 @@ class RelocBackend:
                     transfer_resources=self._transfer_resources,
                     transfer_options=self._transfer_options,
                     placement=self._placement,
+                    prepared_execution=self._prepared_execution or False,
                 )
             return self._runtime
 
@@ -214,6 +225,14 @@ class RelocBackend:
         result["transfer_resources"] = (
             runtime.resource_stats() if isinstance(runtime, TransportAdapter) else None
         )
+        prepared = runtime.prepared_stats() if isinstance(runtime, TransportAdapter) else None
+        result["prepared_execution"] = prepared
+        if prepared is not None:
+            native = prepared['native']
+            result['typed_executions'] += native['typed_executions']
+            result['typed_payload_bytes'] += native['typed_payload_bytes']
+            for row, count in native['typed_dispatches'].items():
+                result['dispatches'][row] = result['dispatches'].get(row, 0) + count
         return result
 
     def close(self):

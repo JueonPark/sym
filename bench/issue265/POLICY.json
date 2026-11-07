@@ -1,0 +1,28 @@
+{
+  "selected": "admit_64k",
+  "policy": {
+    "max_entries": 32,
+    "max_parameter_bytes": 262144,
+    "min_bytes": 65536,
+    "min_reuses": 1,
+    "row_policy": "device"
+  },
+  "backend_default_enabled": false,
+  "decision": "Lowest geometric mean repeated-sequence ratio to Torch across four selection cases and two process rounds; opt-in because all aggregate ratios exceed Torch.",
+  "criterion": "Equal weight for every case/process; final 40 of 50 requests, no E3 or held-out data.",
+  "scores_geomean_ratio_to_torch": {
+    "always_device": 4.072777578583923,
+    "always_cpu": 3.609496176645473,
+    "admit_4k": 3.1215268714961955,
+    "admit_64k": 2.9934577809706235
+  },
+  "selection_contract_sha256": "fdd1dbfb0fed90a78a8cb00f76faa0a942ed768d613aadbff66ff55789af3b06",
+  "selection_analysis_sha256": "511ca38a9280646465b9bf282ab631649ba9fe6156b6b8e81d16153ea1ef589d",
+  "runtime_revision": "09db6b4771fa509e8c4ead9057503c655f550fbe",
+  "limitations": [
+    "Two selection rounds are exploratory, not a strong uncertainty estimate.",
+    "Admission uses source bytes; a large indexed source with a small output can still be admitted.",
+    "Every new live parameter revision must independently earn reuse; fallback speedups are not native kernel speedups.",
+    "row_policy=cpu controls typed rows; layout-only prepared groups still use device layout."
+  ]
+}
