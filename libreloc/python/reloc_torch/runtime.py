@@ -387,7 +387,10 @@ class TransportAdapter:
 
     MODULE = f"{__package__}.transport"
 
-    def __init__(self, *, transfer_resources=None, transfer_options=None, placement=None):
+    def __init__(self, *, transfer_resources=None, transfer_options=None, placement=None, prepared_execution=False):
+        from .automatic import AutomaticPreparedExecution, normalize_policy
+        policy = normalize_policy(prepared_execution)
+        self._prepared = AutomaticPreparedExecution(policy) if policy is not None else None
         self._transfer_options = _transfer_configuration(transfer_resources, transfer_options)
         self._owns_resources = transfer_resources is AUTO
         self.placement = placement
@@ -435,8 +438,22 @@ class TransportAdapter:
             resources = self._resources if self._owns_resources else None
         # Native close can wait with the GIL released. No Python owner lock is
         # held, so in-flight work and stats can make progress while it drains.
-        if resources is not None:
-            resources.close()
+        try:
+            if self._prepared is not None:
+                self._prepared.close()
+        finally:
+            if resources is not None:
+                resources.close()
+
+    def _prepared_resources(self):
+        with self._lock:
+            self._require_open()
+            if self._owns_resources and self._resources is None:
+                self._resources = TransferResources()
+            return self._resources
+
+    def prepared_stats(self):
+        return None if self._prepared is None else self._prepared.stats()
 
     @property
     def available(self):
@@ -470,6 +487,12 @@ class TransportAdapter:
 
         if not self.available:
             raise UnsupportedRecipe("runtime_unavailable", self.unavailable_reason)
+        if self._prepared is not None:
+            request = self._prepared.prepare(self, compiled, src, device, non_blocking=non_blocking,
+                parameters=parameters, index=index, implementation=implementation)
+            if request is not None:
+                return PreparedCall(compiled, src, dict(request.bindings), None,
+                                    request.destination, non_blocking, request=request)
         if getattr(compiled, "typed", False) or index is not None:
             # C4: typed recipes run through R3's dispatch bridge; parameters
             # are CPU tensors bound by declared name and snapshotted there.
@@ -507,6 +530,12 @@ class TransportAdapter:
 
     def execute(self, call):
         self._check_process()
+        if self._prepared is not None:
+            from .automatic import _Invocation
+            if isinstance(call.request, _Invocation):
+                self._require_open()
+                call.recheck()
+                return self._prepared.execute(call.request)
         typed = getattr(call.compiled, "typed", False) or getattr(call.request, 'index', None) is not None
         with self._lock:
             self._require_open()

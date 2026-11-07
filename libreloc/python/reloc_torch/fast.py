@@ -652,7 +652,6 @@ class FastTransfers:
                  max_scratch_bytes=64 << 20, n_buffers=2, chunk_size=None, contexts=2,
                  prepared_groups=True, report_mode="native", max_prepared_groups=64, resources=None):
         import torch
-        from .compiler import CompilerClient
         if not pyreloc.cuda_enabled or not torch.cuda.is_available():
             raise RuntimeError("fast transfers require a CUDA-capable runtime")
         device = torch.device(device)
@@ -687,7 +686,7 @@ class FastTransfers:
         self.gather_threads, self.pinning, self.n_buffers = gather_threads, pinning, n_buffers
         self.chunk_size = 0 if chunk_size is None else chunk_size
         self.max_scratch_bytes = max_scratch_bytes
-        self._compiler = compiler if compiler is not None else CompilerClient.from_environment()
+        self._compiler = compiler
         self._compiled = {}
         self._pid, self._lock = os.getpid(), RLock()
         self._closed = False
@@ -774,9 +773,10 @@ class FastTransfers:
         return False
 
     def stats(self):
-        self._check_open()
+        self._check_process()
         with self._lock:
-            self._check_open()
+            if self._closed:
+                raise RuntimeError("fast transfers are closed")
             totals = dict(self._totals, dispatches=dict(self._totals["dispatches"]))
             native = self._group_counters.stats()
             for key in ("groups", "logical_transfers", "payload_bytes"):
@@ -817,6 +817,9 @@ class FastTransfers:
         with self._lock:
             compiled = self._compiled.get(key)
             if compiled is None:
+                if self._compiler is None:
+                    from .compiler import CompilerClient
+                    self._compiler = CompilerClient.from_environment()
                 compiled = self._compiled[key] = self._compiler.compile(recipe)
         return compiled
 
