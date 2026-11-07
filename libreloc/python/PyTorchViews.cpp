@@ -158,7 +158,7 @@ class PreparedTensorGroup {
         !tensor.sizes().equals(metadata.shape) ||
         !tensor.strides().equals(metadata.strides))
       throw py::value_error(std::string(what) +
-                            " metadata differs from prepared group");
+                            " metadata differs from prepared program");
     return tensor;
   }
 

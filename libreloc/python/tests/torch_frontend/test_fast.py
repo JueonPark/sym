@@ -320,9 +320,11 @@ def test_wait_after_done_records_every_consumer_stream(fast, cuda_device, monkey
 @pytest.mark.parametrize('method', ['wait', 'wait_stream'])
 def test_completion_records_cuda_outputs_and_preserves_explicit_stream(monkeypatch, host, polled, method):
     from types import SimpleNamespace
+    from threading import RLock
     from reloc_torch.fast import FastCompletion
     recorded, reports = [], []
-    owner = SimpleNamespace(device=torch.device('cuda:0'), _record_group=reports.append, _retain=lambda c: None)
+    owner = SimpleNamespace(device=torch.device('cuda:0'), _record_group=reports.append, _retain=lambda c: None,
+                            _check_process=lambda: None, _lock=RLock(), report_mode='eager', _eager_report_accesses=0)
     native = SimpleNamespace(query=lambda: True, wait=lambda: None, wait_stream=lambda stream: None)
     device_output = SimpleNamespace(is_cuda=True, record_stream=recorded.append)
 

@@ -34,10 +34,10 @@
 
 **Interfaces:** `prepareReusableDispatchGroup(entries)` seeds invariant views/spans/report skeletons; `rebindDispatchGroup(group, bindings)` takes compact allocation base/capacity/offset pairs, validates atomically, and resets invocation state. Native `PreparedTensorGroup(members)` exposes `prepare(sources, outputs)` and `rebind(group, sources, outputs)` with identity and metadata guards. `GroupCounters.capture(group)` returns `GroupReportSnapshot`; `snapshot.report` lazily builds the existing schema; `counters.stats()` returns compact aggregates and materialization counts.
 
-- [ ] Write low-level tests for binder presence, valid source/offset replacement, bad shape/stride/dtype/alias/capacity rejection with unchanged group, cross-binder rejection, reusable-state bounds, and pending/failed-slot guards. Confirm missing-API/behavior failures on baseline.
-- [ ] Implement compact core binding validation and explicit reusable initialization without adding skeleton-copy work to legacy group construction. Poison group state on execution/completion failure.
-- [ ] Implement the libtorch binder and immutable native report snapshots/counters. Validate same-width output dtype and plain/inference tensor requirements.
-- [ ] Build isolated `reloc_runtime`, `pyreloc_ext`, `pyreloc_torch_ext`, compiler/test/fault targets. Run new low-level tests, core Dispatch/Transfer tests, and existing group tests; commit after passing.
+- [x] Write low-level tests for binder presence, valid source/offset replacement, bad shape/stride/dtype/alias/capacity rejection with unchanged group, cross-binder rejection, reusable-state bounds, and pending/failed-slot guards. Confirm missing-API/behavior failures on baseline.
+- [x] Implement compact core binding validation and explicit reusable initialization without adding skeleton-copy work to legacy group construction. Poison group state on execution/completion failure.
+- [x] Implement the libtorch binder and immutable native report snapshots/counters. Validate same-width output dtype and plain/inference tensor requirements.
+- [x] Build isolated `reloc_runtime`, `pyreloc_ext`, `pyreloc_torch_ext`, compiler/test/fault targets. Run new low-level tests, core Dispatch/Transfer tests, and existing group tests; commit after passing.
 
 ### Task 2: PreparedGroup lifecycle and fast-path integration
 
@@ -45,10 +45,10 @@
 
 **Interfaces:** `FastTransfers.prepare_group(programs) -> PreparedGroup`; `PreparedGroup.submit(sources, outputs=None, ...) -> FastCompletion`; `PreparedGroup.close()`. `FastTransfers(..., prepared_groups=True, report_mode='native', max_prepared_groups=64)` retains legacy/eager switches. `FastCompletion.report` preserves the existing schema lazily; `stats()['prepared_groups']` reports constructions/rebinds/slots/cache counts and `stats()['report_materializations']` reports detailed conversion count.
 
-- [ ] Add failing tests for same-address mutations, fresh values/outputs, held completions/reports across reuses/close, shape/stride/offset/output errors, source/parameter revisions including in flight, concurrent callers, eviction, close/failure/fork, and no-bridge/one-shot fallback.
-- [ ] Implement bounded slots, owner locking, idempotent retirement, independent report snapshots, and cache eviction. Snapshot replacement invalidates affected implicit cache entries; explicit handles retain their chosen revision.
-- [ ] Connect FastWeights/KV calls through the same owner path and preserve eager-report/legacy controls. Keep structural, shape, and snapshot caches distinct.
-- [ ] Run new tests plus fast, wire_weights, fast_ops, group, async transfers, resources/context/fault suites. Check no warmed native resource growth and zero retained resources after close; commit.
+- [x] Add failing tests for same-address mutations, fresh values/outputs, held completions/reports across reuses/close, shape/stride/offset/output errors, source/parameter revisions including in flight, concurrent callers, eviction, close/failure/fork, and no-bridge/one-shot fallback.
+- [x] Implement bounded slots, owner locking, idempotent retirement, independent report snapshots, and cache eviction. Snapshot replacement invalidates affected implicit cache entries; explicit handles retain their chosen revision.
+- [x] Connect FastWeights/KV calls through the same owner path and preserve eager-report/legacy controls. Keep structural, shape, and snapshot caches distinct.
+- [x] Run new tests plus fast, wire_weights, fast_ops, group, async transfers, resources/context/fault suites. Check no warmed native resource growth and zero retained resources after close; commit.
 
 ### Task 3: Focused costs and qualification harness
 

@@ -8,9 +8,9 @@ module binds a recipe to one source *shape signature* once (symbols,
 parameters, native dispatch template and destination descriptor) and then
 executes each call through a single native entry point.
 
-What stays per call: the source tensor must match the prepared signature
-(shape, strides, dtype, device type) and the native validator still proves
-that the declared views fit the plan before anything launches. Parameters
+What stays per call: live source/output metadata and storage must match the
+prepared signature and fit the validated views. Bounded reusable group
+slots retain programs and descriptor vectors between successful transfers. Parameters
 (scales, zero points) are snapshotted when the program is prepared; a caller
 that changes them prepares a new program. Values are never cached: every
 call reads the live source and writes a fresh output.
@@ -32,7 +32,8 @@ are thin conveniences over groups for the offload workloads.
 """
 from __future__ import annotations
 
-from collections import deque
+from collections import OrderedDict, deque
+from copy import deepcopy
 import os
 from threading import RLock
 from weakref import WeakSet
@@ -510,52 +511,88 @@ class PooledProgram:
 class FastCompletion:
     """One submitted group; outputs are handed out by wait()/wait_stream()."""
 
-    __slots__ = ("_owner", "_native", "_outputs", "_group", "_host", "_done")
+    __slots__ = ("_owner", "_native", "_outputs", "_group", "_host", "_done",
+                 "_prepared", "_snapshot", "_error")
 
     def __init__(self, owner, native, outputs, group, host):
         self._owner, self._native, self._outputs, self._group, self._host = owner, native, outputs, group, host
         self._done = False
+        self._prepared = self._snapshot = self._error = None
 
     @property
     def report(self):
-        return dict(self._group.report) if self._done else None
+        self._owner._check_process()
+        with self._owner._lock:
+            if not self._done:
+                return None
+            if self._owner.report_mode == "native":
+                return self._snapshot.report
+            self._owner._eager_report_accesses += 1
+            return deepcopy(self._snapshot)
 
     def done(self):
-        if self._done:
+        self._owner._check_process()
+        with self._owner._lock:
+            self._raise_error()
+            if not self._done:
+                try:
+                    if not self._native.query():
+                        return False
+                    self._finish()
+                except BaseException as error:
+                    self._fail(error)
+                    raise
             return True
-        if self._native.query():
-            self._finish()
-            return True
-        return False
 
     def wait(self):
         """Host completion; CPU outputs are readable and sources may change afterwards."""
+        self._owner._check_process()
+        with self._owner._lock:
+            self._wait_locked()
+            self._record_outputs()
+            return self._outputs
+
+    def _wait_locked(self):
+        self._raise_error()
         if not self._done:
-            self._native.wait()
-            self._finish()
-        self._record_outputs()
-        return self._outputs
-
-    def wait_stream(self, stream=None):
-        """GPU-side dependency only (H2D groups): the current stream waits for the transfer.
-
-        The completion stays registered with its owner until the native work
-        finished, so dropping this object never turns into a host wait; the
-        owner retires it on a later submission or at close().
-        """
-        import torch
-        if self._host:
-            if not self._done:
+            try:
                 self._native.wait()
                 self._finish()
-        else:
-            if stream is None:
-                stream = torch.cuda.current_stream(self._owner.device)
-            if not self._done:
-                self._native.wait_stream(stream.cuda_stream)
-                self._owner._retain(self)
-        self._record_outputs(stream)
-        return self._outputs
+            except BaseException as error:
+                self._fail(error)
+                raise
+
+    def wait_stream(self, stream=None):
+        """Order the consumer stream after H2D; host-complete groups with CPU outputs."""
+        import torch
+        self._owner._check_process()
+        with self._owner._lock:
+            self._raise_error()
+            if self._host:
+                self._wait_locked()
+            else:
+                if stream is None:
+                    stream = torch.cuda.current_stream(self._owner.device)
+                if not self._done:
+                    try:
+                        self._native.wait_stream(stream.cuda_stream)
+                    except BaseException as error:
+                        self._fail(error)
+                        raise
+                    self._owner._retain(self)
+            self._record_outputs(stream)
+            return self._outputs
+
+    def _raise_error(self):
+        if self._error is not None:
+            raise self._error
+
+    def _fail(self, error):
+        self._error = error
+        if self._prepared is not None:
+            self._prepared._release(self, self._group, failed=True)
+            self._prepared = None
+        # The native completion/owner token retains unsafe buffers if needed.
 
     def _record_outputs(self, stream=None):
         # Transfer completion and consumer lifetime are independent, including
@@ -568,9 +605,17 @@ class FastCompletion:
                 tensor.record_stream(stream)
 
     def _finish(self):
+        if self._owner.report_mode == "native":
+            self._snapshot = self._owner._group_counters.capture(self._group)
+        else:
+            self._snapshot = self._group.report
+            self._owner._record_group(self._snapshot)
         self._done = True
-        self._owner._record_group(self._group.report)
         self._native = None
+        if self._prepared is not None:
+            self._prepared._release(self, self._group)
+            self._prepared = None
+        self._group = None
 
 
 class FastTransfers:
@@ -579,10 +624,18 @@ class FastTransfers:
     ``contexts`` independent native contexts let that many groups be in flight
     at once (each owns a stream and a share of the scratch budget); one
     context serializes submissions. Use as a context manager or call close().
+
+    ``prepared_groups`` enables the bounded implicit structural cache
+    (``max_prepared_groups`` handles, at most ``contexts`` slots each).
+    ``prepare_group`` creates an explicit handle. ``report_mode='native'``
+    folds compact counters at completion and converts detailed reports only
+    on access; ``'eager'`` and ``prepared_groups=False`` retain comparison
+    paths. Current source values and fresh output allocation are unchanged.
     """
 
     def __init__(self, device="cuda:0", *, compiler=None, gather_threads=8, pinning="pinned",
-                 max_scratch_bytes=64 << 20, n_buffers=2, chunk_size=None, contexts=2):
+                 max_scratch_bytes=64 << 20, n_buffers=2, chunk_size=None, contexts=2,
+                 prepared_groups=True, report_mode="native", max_prepared_groups=64):
         import torch
         from .compiler import CompilerClient
         if not pyreloc.cuda_enabled or not torch.cuda.is_available():
@@ -592,13 +645,25 @@ class FastTransfers:
             raise ValueError("fast transfers require a CUDA device")
         self.device = torch.device("cuda", torch.cuda.current_device() if device.index is None else device.index)
         for name, value in (("gather_threads", gather_threads), ("contexts", contexts), ("n_buffers", n_buffers),
-                            ("max_scratch_bytes", max_scratch_bytes)):
+                            ("max_scratch_bytes", max_scratch_bytes), ("max_prepared_groups", max_prepared_groups)):
             if type(value) is not int or value <= 0:
                 raise ValueError(f"{name} must be a positive integer")
         if pinning not in ("pinned", "pageable"):
             raise ValueError("pinning must be pinned or pageable")
         if chunk_size is not None and (type(chunk_size) is not int or chunk_size <= 0):
             raise ValueError("chunk_size must be a positive integer or None")
+        if type(prepared_groups) is not bool:
+            raise ValueError("prepared_groups must be a bool")
+        if report_mode not in ("native", "eager"):
+            raise ValueError("report_mode must be native or eager")
+        self.prepared_groups, self.report_mode = prepared_groups, report_mode
+        self.contexts, self.max_prepared_groups = contexts, max_prepared_groups
+        self._group_counters = pyreloc.GroupCounters()
+        self._eager_report_accesses = 0
+        self._prepared_cache = OrderedDict()
+        self._prepared_handles = WeakSet()
+        self._prepared_counts = dict(handles_created=0, cache_hits=0, cache_misses=0, evictions=0,
+                                     group_constructions=0, rebinds=0, view_descriptors=0)
         self.gather_threads, self.pinning, self.n_buffers = gather_threads, pinning, n_buffers
         self.chunk_size = 0 if chunk_size is None else chunk_size
         self.max_scratch_bytes = max_scratch_bytes
@@ -618,9 +683,12 @@ class FastTransfers:
         self.max_inflight = 8
 
     # -- lifecycle -------------------------------------------------------
-    def _check_open(self):
+    def _check_process(self):
         if os.getpid() != self._pid:
             raise RuntimeError("fast transfers belong to another process")
+
+    def _check_open(self):
+        self._check_process()
         if self._closed:
             raise RuntimeError("fast transfers are closed")
 
@@ -645,6 +713,7 @@ class FastTransfers:
             self._inflight.popleft().wait()
 
     def close(self):
+        self._check_process()
         with self._lock:
             if self._closed:
                 return
@@ -652,10 +721,25 @@ class FastTransfers:
             for registration in tuple(self._registrations):
                 registration.release()
             self._registrations.clear()
+            error = None
             try:
-                self._retire(block=True)
+                for handle in tuple(self._prepared_handles):
+                    try:
+                        handle.close()
+                    except BaseException as exc:
+                        if error is None:
+                            error = exc
+                self._prepared_cache.clear()
+                while self._inflight:
+                    try:
+                        self._inflight.popleft().wait()
+                    except BaseException as exc:
+                        if error is None:
+                            error = exc
             finally:
                 self._resources.close()
+            if error is not None:
+                raise error
 
     def __enter__(self):
         self._check_open()
@@ -667,8 +751,24 @@ class FastTransfers:
 
     def stats(self):
         self._check_open()
-        return dict(self._totals, dispatches=dict(self._totals["dispatches"]),
-                    resources=self._resources.stats()["typed"])
+        with self._lock:
+            self._check_open()
+            totals = dict(self._totals, dispatches=dict(self._totals["dispatches"]))
+            native = self._group_counters.stats()
+            for key in ("groups", "logical_transfers", "payload_bytes"):
+                totals[key] += native[key]
+            for key, value in native["dispatches"].items():
+                totals["dispatches"][key] = totals["dispatches"].get(key, 0) + value
+            prepared = dict(self._prepared_counts, cached_handles=len(self._prepared_cache), live_slots=0)
+            for handle in self._prepared_handles:
+                prepared["live_slots"] += handle._slots
+                for key, value in handle._binder.stats().items():
+                    prepared[key] += value
+            totals["prepared_groups"] = prepared
+            totals["report_materializations"] = (native["report_materializations"] + self._totals["groups"]
+                                                  + self._eager_report_accesses)
+            totals["resources"] = self._resources.stats()["typed"]
+            return totals
 
     def _record(self, report):
         self._totals["calls"] += 1
@@ -747,11 +847,17 @@ class FastTransfers:
         return self.submit([(member, source)], outputs=[out], gather_threads=gather_threads, extra_owners=extra,
                            chunked_members=True)
 
-    def _submit_native(self, native, sources, outs, extra, gather_threads, *, host, chunked_members=False,
-                       device_layout=False):
-        """Submit an already prepared native group (outputs allocated on the private stream)."""
+    def _submit_native(self, native, sources, outs, extra, gather_threads, **options):
+        self._check_open()
+        with self._lock:
+            self._check_open()
+            self._retire()
+            return self._launch_group(native, sources, outs, extra, gather_threads, **options)
+
+    def _launch_group(self, native, sources, outs, extra, gather_threads, *, host, chunked_members=False,
+                      device_layout=False):
+        """Launch while holding the owner lock; outputs were allocated on its stream."""
         import torch
-        self._retire()
         if host:
             self._stream.wait_stream(torch.cuda.current_stream(self.device))
         try:
@@ -766,50 +872,87 @@ class FastTransfers:
         return FastCompletion(self, completion, list(outs), native, host)
 
     # -- groups ----------------------------------------------------------
+    def prepare_group(self, programs):
+        """Prepare immutable members for repeated, checked tensor bindings."""
+        from .prepared_group import PreparedGroup
+        self._check_open()
+        with self._lock:
+            self._check_open()
+            if _native_views is None:
+                raise RuntimeError("prepared groups require the native Torch bridge")
+            return PreparedGroup(self, programs, _native_views)
+
+    def _invalidate_program(self, program):
+        # Caller holds the owner lock. A snapshot lock must not be held here:
+        # closing an evicted handle may wait for its in-flight transfer.
+        for key in tuple(self._prepared_cache):
+            if program in key:
+                self._prepared_cache.pop(key).close()
+                self._prepared_counts["evictions"] += 1
+
     def submit(self, items, *, outputs=None, device_layout=False, gather_threads=None, pin_outputs=True,
                extra_owners=(), chunked_members=False):
-        """Submit [(program, source), ...] as one group; returns a FastCompletion.
+        """Submit [(program, source), ...], allocating fresh outputs unless supplied.
 
-        H2D groups order after nothing (CPU sources are ready); D2H groups
-        order after the caller's current stream. Outputs are allocated here
-        unless ``outputs`` supplies them.
+        The bounded structural cache reuses immutable programs, never tensor
+        values. One-shot producers and builds without the Torch bridge use
+        the original construction path.
         """
-        import torch
         self._check_open()
-        self._retire()
-        items = list(items)
-        if not 1 <= len(items) <= 256:
-            raise ValueError("a group holds between 1 and 256 transfers")
+        with self._lock:
+            self._check_open()
+            self._retire()
+            items = tuple(items)
+            if not 1 <= len(items) <= 256:
+                raise ValueError("a group holds between 1 and 256 transfers")
+            programs = tuple(p for p, _ in items)
+            options = dict(outputs=outputs, device_layout=device_layout, gather_threads=gather_threads,
+                           pin_outputs=pin_outputs, extra_owners=extra_owners, chunked_members=chunked_members)
+            if self.prepared_groups and _native_views is not None and all(
+                    isinstance(p, (TypedProgram, LayoutProgram)) for p in programs):
+                handle = self._prepared_cache.get(programs)
+                if handle is None:
+                    self._prepared_counts["cache_misses"] += 1
+                    if len(self._prepared_cache) >= self.max_prepared_groups:
+                        _, evicted = self._prepared_cache.popitem(last=False)
+                        evicted.close()
+                        self._prepared_counts["evictions"] += 1
+                    handle = self._prepared_cache[programs] = self.prepare_group(programs)
+                else:
+                    self._prepared_counts["cache_hits"] += 1
+                    self._prepared_cache.move_to_end(programs)
+                return handle._submit_locked((source for _, source in items), **options)
+            return self._submit_legacy(items, **options)
+
+    def _submit_legacy(self, items, *, outputs, device_layout, gather_threads, pin_outputs,
+                       extra_owners, chunked_members):
+        import torch
         sources, outs, entries = [], [], []
         host = False
         native_views = _native_views is not None
+        if outputs is not None:
+            outputs = tuple(outputs)
+            if len(outputs) != len(items):
+                raise ValueError("one output per program is required")
         with torch.cuda.stream(self._stream):
             for position, (program, source) in enumerate(items):
                 if not isinstance(program, (TypedProgram, LayoutProgram, _OneShot)):
                     raise TypeError("group members are typed or layout programs")
+                if not isinstance(program, _OneShot) and program.owner is not self:
+                    raise ValueError("program belongs to a different owner")
                 program.check(source)
                 out = program.allocate(pin=pin_outputs) if outputs is None else outputs[position]
                 host |= program.direction == "d2h"
                 sources.append(source)
                 outs.append(out)
-                if native_views:
-                    entries.append(program.tensor_entry(source, out))
-                else:
-                    entries.append(program.group_entry(source, out))
-        if host:
-            self._stream.wait_stream(torch.cuda.current_stream(self.device))
+                entries.append(program.tensor_entry(source, out) if native_views else program.group_entry(source, out))
         try:
             native = (_native_views.group_from_tensors(entries) if native_views
                       else pyreloc.prepare_dispatch_group(entries))
-            completion = pyreloc.submit_dispatch_group(
-                native, caller_stream=self._stream.cuda_stream,
-                gather_threads=self.gather_threads if gather_threads is None else gather_threads,
-                pinning=self.pinning, max_scratch_bytes=self.max_scratch_bytes,
-                resources=self.native, owners=(tuple(sources), tuple(outs), tuple(extra_owners)),
-                device_layout=device_layout, n_buffers=self.n_buffers, chunked_members=chunked_members)
         except pyreloc.TransferError as error:
             raise RuntimeError(f"transfer group failed: {error}") from error
-        return FastCompletion(self, completion, outs, native, host)
+        return self._launch_group(native, sources, outs, extra_owners, gather_threads, host=host,
+                                  device_layout=device_layout, chunked_members=chunked_members)
 
 
 class FastPrefetch:
@@ -978,19 +1121,27 @@ class FastWeights:
         self._entries = {}
 
     def _items(self, names):
-        items = []
-        for name, (template, source) in zip(names, self.weights.fast_entries(names)):
-            entry = self._entries.get(name)
-            if entry is None or entry[1] is not source:
-                # A re-prepared snapshot is a new source object; rebuild its member.
-                entry = self._entries[name] = (_WireEntry(self.owner, template, source,
-                                                          getattr(self.weights, 'output_dtype', 'float32')),
-                                               source)
-            items.append(entry)
-        return items
+        self.owner._check_open()
+        with self.owner._lock:
+            self.owner._check_open()
+            names = tuple(names)
+            items = []
+            # fast_entries releases its snapshot lock before any eviction waits.
+            for name, (template, source) in zip(names, self.weights.fast_entries(names)):
+                entry = self._entries.get(name)
+                if entry is None or entry[1] is not source:
+                    if entry is not None:
+                        self.owner._invalidate_program(entry[0])
+                    entry = self._entries[name] = (_WireEntry(self.owner, template, source,
+                                                              getattr(self.weights, 'output_dtype', 'float32')),
+                                                   source)
+                items.append(entry)
+            return items
 
     def submit(self, names):
-        return self.owner.submit(self._items(names), gather_threads=1)
+        self.owner._check_open()
+        with self.owner._lock:
+            return self.owner.submit(self._items(names), gather_threads=1)
 
     def load_many(self, names):
         return self.submit(names).wait()
