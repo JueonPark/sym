@@ -1,5 +1,9 @@
 Evidence paths below refer to the [versioned Wiki artifact](https://github.com/JueonPark/sym/wiki/Artifacts-Issue-264), publicly available without authentication.
 
+This is the historical review record. Access-related rulings below describe the
+repository at the original publication time; the repository and Wiki artifacts
+are now public, and current download instructions are on the Wiki.
+
 # Issue 264 review disposition
 
 One independent whole-branch review covered baseline `2617ba1` through `9eb1152`. See `review-final.md` for the original report and independent checks. No second reviewer or review loop was used.

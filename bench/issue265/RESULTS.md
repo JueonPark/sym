@@ -40,7 +40,7 @@ All percentages below are mean process-paired reductions; positive means faster.
 Brackets are 95% process-bootstrap intervals (10,000 resamples, seed 265). Three
 process pairs provide weak uncertainty evidence. Requests within a process are
 not treated as independent samples. All individual effects and unfavorable
-comparisons remain in the release analysis. The maximum number of additional
+comparisons remain in the archived analysis. The maximum number of additional
 Dynamo callbacks after the first cycle was **0** across E3 and held-out
 arms. That compile count is separate from execution latency or preparation.
 
