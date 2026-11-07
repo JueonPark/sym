@@ -1,4 +1,4 @@
-Evidence paths below refer to the [versioned release](https://github.com/JueonPark/sym/releases/tag/prepared-groups-issue264-2026-11-07-v1), available to authorized repository readers.
+Evidence paths below refer to the [versioned Wiki artifact](https://github.com/JueonPark/sym/wiki/Artifacts-Issue-264), publicly available without authentication.
 
 # Issue 264 review disposition
 

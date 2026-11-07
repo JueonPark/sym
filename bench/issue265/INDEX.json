@@ -5,7 +5,6 @@
   "harness_revision": "975e854829a3ac0b564c707d0c8b38fdcd1485c0",
   "selected_policy": "admit_64k",
   "default_enabled": false,
-  "release": "automatic-prepared-issue265-2026-11-07-v1",
   "campaigns": {
     "selection": {
       "jobs": 48,
@@ -22,5 +21,7 @@
       "contract_sha256": "be523fd2fcd8512feb8cf11cc7dde8c220385611e2a01446ffae11da2a6b282e",
       "analysis_sha256": "04fde94f56103d315657980bd1da218af36f6e202a4c1b982a7e4932eb82824e"
     }
-  }
+  },
+  "artifact": "automatic-prepared-issue265-2026-11-07-v1",
+  "wiki": "https://github.com/JueonPark/sym/wiki/Artifacts-Issue-265"
 }

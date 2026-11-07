@@ -12,6 +12,13 @@ standalone `libreloc` runtime does not depend on MLIR, LLVM, or PyTorch.
 The project also provides symbolic tensor types and shape inference for
 MLIR developers.
 
+## Experiment artifacts
+
+The [Artifacts Wiki](https://github.com/JueonPark/sym/wiki/Artifacts) is the canonical
+catalog for the November E1–E5 experiments and follow-up qualification. It provides
+complete data packages, reports, checksums and reproduction instructions. Experiment
+artifacts are hosted in the Wiki; GitHub Releases are reserved for software versions.
+
 ## Installation
 
 For a CPU installation on **Linux x86_64**, you need Git, uv, a C++17 compiler,

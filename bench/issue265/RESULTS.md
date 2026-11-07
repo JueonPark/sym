@@ -16,13 +16,13 @@ Native/compiler binaries are identical. [Protocol](PROTOCOL.md),
 [frozen policy and selection hashes](POLICY.json), [machine-readable index](INDEX.json),
 and [runtime contract](../../docs/automatic-prepared-execution.md) define scope.
 Raw records, exact runtime/source snapshots and CPU-only reanalysis are in the
-[versioned release](https://github.com/JueonPark/sym/releases/tag/automatic-prepared-issue265-2026-11-07-v1).
-Repository read access is required for this private repository's release.
+[versioned Wiki artifact](https://github.com/JueonPark/sym/wiki/Artifacts-Issue-265).
+The Wiki artifact is public and can be downloaded without authentication.
 
 Final review added a constructor guard rejecting externally supplied prepared
 adapters, whose global counters could contaminate backend-local diagnostics.
 Resource sharing through independently owned adapters remains supported and
-tested. This guard does not change the measured execution path; the release
+tested. This guard does not change the measured execution path; the Wiki artifact
 preserves the exact measured candidate and identifies the final reviewed runtime
 separately.
 
