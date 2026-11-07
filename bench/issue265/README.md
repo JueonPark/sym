@@ -6,9 +6,9 @@ Production code contains no workload recipes or names. See
 [the frozen protocol](PROTOCOL.md), [results](RESULTS.md), and [evidence index](INDEX.json).
 
 Inputs are the immutable `sym_experiments_261104` directory from the
-[E1–E5 release](https://github.com/JueonPark/sym/releases/tag/experiments-2026-11-04-v1).
-Use the baseline and candidate runtime trees packaged with this issue's evidence
-release, or build both revisions with the same native/compiler configuration.
+[E1–E5 Wiki artifact](https://github.com/JueonPark/sym/wiki/Artifacts-Experiments-2026-11-04).
+Use the baseline and candidate runtime trees packaged with this issue's Wiki
+artifact, or build both revisions with the same native/compiler configuration.
 Both trees must provide `python/`, `libreloc/libreloc_runtime.so`, the native Torch
 bridge and `sym/tools/{sym-opt,sym-reloc-export}`. Use their matching Python/Torch
 ABI. Paths are explicit; no author's home directory is required.

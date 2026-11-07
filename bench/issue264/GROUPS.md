@@ -46,4 +46,4 @@ Whole-process median RSS is roughly 826–925 MiB across all policies/cases and 
 
 The new-build legacy control is slower than the frozen baseline, especially for small groups. This exposes the cost of locking/lifetime changes instead of attributing all differences to reusable structure. Native report accounting alone does not remove that entire small-group penalty. Full policy tables and all unfavorable effects are retained in the raw analysis.
 
-See [protocol](PROTOCOL.md) and [reproduction entry point](README.md). See [final E2/E5 results](RESULTS.md) and the [versioned evidence release](https://github.com/JueonPark/sym/releases/tag/prepared-groups-issue264-2026-11-07-v1) for raw results and checksum-verified build/input provenance.
+See [protocol](PROTOCOL.md) and [reproduction entry point](README.md). See [final E2/E5 results](RESULTS.md) and the [versioned Wiki artifact](https://github.com/JueonPark/sym/wiki/Artifacts-Issue-264) for raw results and checksum-verified build/input provenance.
