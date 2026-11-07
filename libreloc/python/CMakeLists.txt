@@ -51,7 +51,7 @@ if(RELOC_ENABLE_TORCH_EXT)
   execute_process(
     COMMAND ${Python_EXECUTABLE} -c "import torch; print(int(torch._C._GLIBCXX_USE_CXX11_ABI), end='')"
     OUTPUT_VARIABLE RELOC_TORCH_CXX11_ABI)
-  pybind11_add_module(pyreloc_torch_ext MODULE PyTorchViews.cpp)
+  pybind11_add_module(pyreloc_torch_ext MODULE PyTorchViews.cpp PyTorchStorage.cpp)
   # Torch ships its own pybind11; the helper must see the project's pybind11
   # first so its types live in the same registry as _pyreloc's.
   target_include_directories(pyreloc_torch_ext BEFORE PRIVATE ${pybind11_INCLUDE_DIRS})
