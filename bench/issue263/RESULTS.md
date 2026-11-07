@@ -54,9 +54,7 @@ The following **instrumented** round-1 warm medians are diagnostic. The report c
 
 Report processing is more exposed during decode and MoE, while more of prefill's report work overlaps GPU activity. This supports the hypothesis; the unprofiled bypass supplies the causal estimate. We do not subtract profiled GPU durations from unprofiled model latency or claim all GPU-idle host time is removable.
 
-![Decode diagnostic timeline](figures/decode.svg)
-
-![Prefill diagnostic timeline](figures/prefill.svg)
+Diagnostic timelines are retained in the published artifact snapshot: [decode](https://github.com/JueonPark/sym/blob/profile-issue263-2026-11-07-v1/bench/issue263/figures/decode.svg) and [prefill](https://github.com/JueonPark/sym/blob/profile-issue263-2026-11-07-v1/bench/issue263/figures/prefill.svg).
 
 Figures select the request nearest the within-path median in trace round 1. Purple is host consumer wall time, including launch overhead/waits; it is not an on-CPU utilization measurement. All streams are retained in the raw Nsight/SQLite files.
 
@@ -131,7 +129,7 @@ This supports the planner work in [#271](https://github.com/JueonPark/sym/issues
 
 | #263 criterion | Evidence |
 |---|---|
-| Completed-request timelines and dependency chains without double counting | 23 raw Nsight/SQLite traces, request/thread/group correlation, event-record/wait witnesses, exclusive host phases, GPU unions, and the figures above |
+| Completed-request timelines and dependency chains without double counting | 23 raw Nsight/SQLite traces, request/thread/group correlation, event-record/wait witnesses, exclusive host phases, GPU unions, and the linked timelines above |
 | Controlled removable-cost estimates with uncertainty | Separate unprofiled `baseline`, `no_report`, `no_check`, and `both` processes; five E2 and three E5 rounds; all per-process pairs and bootstrap definitions |
 | Parity target distinguished from measured costs; follow-ups prioritized | E2 parity/effect table, direct burst-control table, and the prioritized residual work |
 | Raw traces/settings/revisions, p50/p95, and unexplained residuals retained | `campaign/`, `summary.json`, `matched-trace-checks.json`, `final-input-verification.json`, protocol, source snapshot, runtime files, and checksums in the release |
