@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""Export a diagnostic request timeline from the correlated trace JSON."""
+"""Plot a request timeline from correlated trace JSON (requires matplotlib)."""
 import argparse
 import gzip
-import html
 import json
 from pathlib import Path
 
@@ -13,30 +12,29 @@ COLORS={'consumer':'#8064a2','native_submission':'#4c78a8','native_group_prepara
 
 
 def render(row,path):
-    start,end=row['start_ns'],row['end_ns'];width=1400;left=190;plot=width-left-20
-    streams=sorted({a['streamId'] for a in row['activities']});lanes=['Host exclusive']+[f'CUDA stream {s}' for s in streams]
-    height=165+42*len(lanes)
-    parts=[f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
-        '<rect width="100%" height="100%" fill="white"/>',
-        '<style>text{font:13px sans-serif;fill:#222} .title{font-size:16px;font-weight:bold}</style>',
-        f'<text x="15" y="25" class="title">{html.escape(row["label"])}</text>',
-        '<text x="15" y="48">Instrumented diagnostic; host/GPU intervals overlap. Width is elapsed time, not attributable savings.</text>']
-    def x(t):return left+plot*(t-start)/(end-start)
-    def rect(a,b,y,color,title):
-        parts.append(f'<rect x="{x(a):.3f}" y="{y}" width="{max(.5,x(b)-x(a)):.3f}" height="23" fill="{color}"><title>{html.escape(title)}</title></rect>')
-    for i,label in enumerate(lanes):
-        y=80+42*i;parts.append(f'<text x="15" y="{y+16}">{label}</text>')
-        parts.append(f'<line x1="{left}" x2="{width-20}" y1="{y+25}" y2="{y+25}" stroke="#ddd"/>')
-    for p in row['phases']:rect(p['start'],p['end'],80,COLORS.get(p['category'],'#999'),p['category'])
-    for a in row['activities']:
-        y=80+42*(1+streams.index(a['streamId']))
-        rect(a['start'],a['end'],y,COLORS[a['kind']],f'{a["name"]}; {a.get("group")}; correlation {a["correlationId"]}')
-    axis=80+42*len(lanes)
-    for i in range(6):
-        t=start+(end-start)*i/5
-        parts.append(f'<text x="{x(t):.1f}" y="{axis+20}" text-anchor="middle">{(t-start)/1e6:.2f} ms</text>')
-    parts.append(f'<text x="15" y="{axis+48}">GPU: blue kernel, orange copy, green memset. Host: red completion report; purple consumer; gray other phases.</text>')
-    parts.append('</svg>');Path(path).write_text('\n'.join(parts)+'\n')
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Patch
+    start,end=row['start_ns'],row['end_ns']
+    streams=sorted({a['streamId'] for a in row['activities']})
+    labels=['Host exclusive']+[f'CUDA stream {s}' for s in streams]
+    fig,ax=plt.subplots(figsize=(14,max(3,1.5+.45*len(labels))))
+    def bar(a,b,lane,color):
+        ax.broken_barh([((a-start)/1e6,(b-a)/1e6)],(lane-.35,.7),facecolors=color,edgecolors='none')
+    for phase in row['phases']:
+        bar(phase['start'],phase['end'],0,COLORS.get(phase['category'],'#999999'))
+    for activity in row['activities']:
+        bar(activity['start'],activity['end'],1+streams.index(activity['streamId']),COLORS[activity['kind']])
+    ax.set_yticks(range(len(labels)),labels);ax.invert_yaxis()
+    ax.set_xlim(0,(end-start)/1e6);ax.set_xlabel('Elapsed time within instrumented request (ms)')
+    ax.set_title(row['label'],fontsize=10,loc='left');ax.grid(axis='x',alpha=.2)
+    ax.legend(handles=[Patch(color=COLORS[k],label=label) for k,label in (
+        ('consumer','Host consumer'),('completion_report','Host completion report'),
+        ('KERNEL','GPU kernel'),('MEMCPY','GPU copy'),('MEMSET','GPU memset'))],
+        loc='upper center',bbox_to_anchor=(.5,-.22),ncol=5,fontsize=8,frameon=False)
+    fig.text(.01,.01,'Diagnostic tracing adds overhead. Host and GPU intervals overlap; these widths are not attributable savings.',fontsize=8)
+    fig.tight_layout(rect=(0,.08,1,1));fig.savefig(path,bbox_inches='tight');plt.close(fig)
 
 
 def main():

@@ -14,6 +14,13 @@ from bench.issue227.run import audit
 from bench.issue263.support import digest,save
 
 
+def clean_environment(inherited):
+    # Nsight stores the launch environment in its report. Keep only the small
+    # OS/tool-discovery set, then supply every experiment setting below.
+    keep=('HOME','USER','LOGNAME','PATH','SHELL','LANG','LC_ALL','LC_CTYPE','TZ','TMPDIR')
+    return {key:inherited[key] for key in keep if key in inherited}
+
+
 def matrix():
     jobs=[]
     def add(name,kind,extra,round=1,variant='baseline',mode='off',profile=False,accepted=True):
@@ -62,7 +69,7 @@ def main():
     jobs=matrix();manifest=args.output/'matrix.json'
     if manifest.exists():assert json.loads(manifest.read_text())==jobs,'matrix changed after freeze'
     else:save(manifest,jobs)
-    env=dict(os.environ,PYTHONPATH=str(args.build/'python'),LD_LIBRARY_PATH=str(args.build/'libreloc'),
+    env=dict(clean_environment(os.environ),PYTHONPATH=str(args.build/'python'),LD_LIBRARY_PATH=str(args.build/'libreloc'),
         CUDA_VISIBLE_DEVICES=args.device,OMP_NUM_THREADS='8',MKL_NUM_THREADS='8',OMP_WAIT_POLICY='PASSIVE',
         GOMP_SPINCOUNT='0',TORCHINDUCTOR_COMPILE_THREADS='1')
     source={p.name:digest(p) for p in Path(__file__).parent.glob('*.py')}

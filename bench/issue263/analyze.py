@@ -51,6 +51,8 @@ def burst_metrics(x):
 
 def collect(directory,*,partial=False):
     matrix=json.loads((directory/'matrix.json').read_text());records=[];missing=[];input_hashes={}
+    measurement_sources=None;frozen_inputs=None
+    measured_names=('support.py','instrument.py','interventions.py','models.py','e5.py','lifecycle.py','concurrency.py')
     for job in matrix:
         path=directory/(job['name']+'.json')
         if not path.exists():missing.append(job['name']);continue
@@ -58,12 +60,25 @@ def collect(directory,*,partial=False):
         if not x.get('complete') or not x.get('isolation',{}).get('valid'):
             missing.append(job['name']);continue
         assert x['campaign_job']==job and not x['metadata']['baseline_hash_mismatches'],job['name']
+        measured={name:x['metadata']['harness_sha256'][name] for name in measured_names}
+        inputs=(x['metadata']['runtime_sha256'],x['metadata']['artifact_sha256'])
+        if measurement_sources is None:measurement_sources=measured;frozen_inputs=inputs
+        assert measured==measurement_sources and inputs==frozen_inputs,'measurement sources changed'
+        assert bool(x['host_phases'])==(job['mode']!='off'),'instrumentation mode mismatch'
+        if job['profile']:
+            assert (directory/(job['name']+'.nsys-rep')).is_file(),job['name']
+            assert (directory/(job['name']+'.sqlite')).is_file(),job['name']
         audit=json.loads((directory/x['isolation']['audit']).read_text())
         assert audit['returncode']==0 and not audit['observations'],job['name']
         c=x['configuration'];kind=job['kind']
         base=dict(file=path.name,kind=kind,round=job['round'],variant=job['variant'],instrument=job['mode'],profile=job['profile'],accepted=job['accepted'])
         if kind=='models':
+            assert set(x['cases'])==set(c['cases'])=={'llm_decode','llm_prefill','moe_sparse','moe_dense'},'case coverage'
+            assert set(c['computes'])=={'eager','inductor'} and c['warmup']==3
+            assert c['samples']==(3 if job['profile'] else 60)
             for case,row in x['cases'].items():
+                assert {(a['factors']['runtime'],a['factors']['compute']) for a in row['arms'].values()}=={
+                    ('sym','eager'),('torch','eager'),('sym','inductor'),('torch','inductor')},'arm coverage'
                 assert row['warm_compile_callbacks']==0
                 assert row['native_after_close']['retained_bytes']==row['native_after_close']['live_bytes']==0
                 for arm in row['arms'].values():
@@ -160,14 +175,15 @@ def trace_summary(path,out):
     summaries=[]
     for key,rows in groups.items():
         categories={c for r in rows for c in r['exclusive_ns']}
-        first=rows[0]
+        median_elapsed=statistics.median(r['elapsed_ns'] for r in rows)
+        first=min(rows,key=lambda r:abs(r['elapsed_ns']-median_elapsed))
         signatures=Counter((a['kind'],a.get('copyKind'),a['name']) for a in first['activities'])
         witnesses=[]
         for d in first['dependencies']:
             record=d['record']
             if record is None or record['streamId']==d['streamId']:continue
             producer=[a for a in first['activities'] if a['streamId']==record['streamId'] and a['launch_start']<=record['api_start']]
-            consumer=[a for a in first['activities'] if a['streamId']==d['streamId'] and a['start']>=d['end'] and a['kind']=='KERNEL']
+            consumer=[a for a in first['activities'] if a['streamId']==d['streamId'] and a['start']>=d['end'] and a['kind']=='KERNEL' and a['group'] is None]
             if not producer or not consumer:continue
             last=max(producer,key=lambda a:a['launch_start']);following=min(consumer,key=lambda a:a['start'])
             if last['group'] is None:continue

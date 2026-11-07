@@ -40,6 +40,6 @@ The runner serializes jobs, rotates arm order, assigns fresh Inductor caches, an
 - `lifecycle.py` and `concurrency.py` execute the frozen E5 programs through `e5.py`; their numerical, revision, physical-budget, and held-output checks are retained.
 - `trace.py` assigns GPU work by process-scoped CUDA correlation ID and launch thread, not temporal containment. It keeps event-record/wait evidence, group IDs, streams, host-exclusive phases, and interval unions.
 - `paired.py` bootstraps independent process pairs. `analyze.py` retains per-process p50/p95 and all raw records; request samples are not treated as independent process replicates.
-- `timeline.py` exports an SVG for a selected request from a compressed trace-analysis JSON. The raw `.nsys-rep` and SQLite remain the authoritative interactive trace.
+- `timeline.py` uses matplotlib (an optional reporting dependency) to export an SVG or PNG for a selected request from a compressed trace-analysis JSON. The raw `.nsys-rep` and SQLite remain the authoritative interactive trace.
 
 Host phases and GPU intervals overlap. Their durations must not be added, and host time coincident with GPU idle is not automatically removable. Native CPU internals remain opaque because the unchanged runtime was built without native NVTX. Sampled physical-memory peaks are lower bounds; Python live blocks are net counts, Torch allocation requests can reuse cached storage, and native counters have a different scope. None forms an additive memory decomposition.

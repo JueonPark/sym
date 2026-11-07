@@ -17,3 +17,17 @@ def test_lifecycle_uses_accounted_envelope_not_oracle_wall_time():
     assert m['full120_accounted_ms']==430
     assert m['warm_p50_ms']==3 and m['warm_p95_ms']==3
     assert m['shape_first_ms']==5 and m['scale_first_ms']==7
+
+
+def test_complete_flag_cannot_hide_a_missing_model_case(tmp_path):
+    import json
+    from bench.issue263.analyze import collect
+    job=dict(name='e2',kind='models',round=1,variant='baseline',mode='off',profile=False,accepted=True)
+    names=('support.py','instrument.py','interventions.py','models.py','e5.py','lifecycle.py','concurrency.py')
+    x=dict(complete=True,isolation=dict(valid=True,audit='audit.json'),campaign_job=job,host_phases=[],
+        metadata=dict(baseline_hash_mismatches=[],harness_sha256=dict.fromkeys(names,'hash'),runtime_sha256={},artifact_sha256={}),
+        configuration=dict(samples=60,warmup=3,computes=['eager','inductor'],cases=['llm_decode','llm_prefill','moe_sparse','moe_dense']),cases={})
+    (tmp_path/'matrix.json').write_text(json.dumps([job]))
+    (tmp_path/'e2.json').write_text(json.dumps(x))
+    (tmp_path/'audit.json').write_text(json.dumps(dict(returncode=0,observations=[])))
+    with pytest.raises(AssertionError,match='case coverage'):collect(tmp_path)
