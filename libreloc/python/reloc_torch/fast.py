@@ -147,6 +147,21 @@ class TypedProgram(_Program):
 
     __slots__ = ("bound", "template", "selection", "parameter_bytes")
 
+    @classmethod
+    def _from_template(cls, owner, compiled, source, bindings, bound, template, parameter_bytes):
+        """Internal lowering of an already validated compiler specialization.
+
+        The automatic adapter owns live operand guards and revision checks.
+        It invokes the group directly, so no extra custom-op registration is
+        needed. Native binding still checks every source/output view.
+        """
+        program = cls.__new__(cls)
+        program._init_common(owner, compiled, source, bindings)
+        program.bound, program.template = bound, template
+        program.selection = dict(template.selection)
+        program.parameter_bytes = parameter_bytes
+        return program
+
     def __init__(self, owner, compiled, source, *, parameters=None, implementation="", policy="auto",
                  calibration=None):
         if not getattr(compiled, "typed", False) or compiled.indexed:
@@ -635,7 +650,7 @@ class FastTransfers:
 
     def __init__(self, device="cuda:0", *, compiler=None, gather_threads=8, pinning="pinned",
                  max_scratch_bytes=64 << 20, n_buffers=2, chunk_size=None, contexts=2,
-                 prepared_groups=True, report_mode="native", max_prepared_groups=64):
+                 prepared_groups=True, report_mode="native", max_prepared_groups=64, resources=None):
         import torch
         from .compiler import CompilerClient
         if not pyreloc.cuda_enabled or not torch.cuda.is_available():
@@ -656,6 +671,11 @@ class FastTransfers:
             raise ValueError("prepared_groups must be a bool")
         if report_mode not in ("native", "eager"):
             raise ValueError("report_mode must be native or eager")
+        if resources is not None:
+            if not isinstance(resources, TransferResources):
+                raise TypeError("resources must be a TransferResources owner or None")
+            if resources.closed:
+                raise RuntimeError("transfer resources are closed")
         self.prepared_groups, self.report_mode = prepared_groups, report_mode
         self.contexts, self.max_prepared_groups = contexts, max_prepared_groups
         self._group_counters = pyreloc.GroupCounters()
@@ -672,7 +692,8 @@ class FastTransfers:
         self._pid, self._lock = os.getpid(), RLock()
         self._closed = False
         self._registrations = WeakSet()
-        self._resources = TransferResources(
+        self._owns_resources = resources is None
+        self._resources = resources if resources is not None else TransferResources(
             max_typed_retained_bytes=max_scratch_bytes * contexts, max_typed_live_bytes=max_scratch_bytes * contexts,
             max_typed_background_workers=max(1, gather_threads - 1) * contexts, max_typed_streams=contexts,
             max_typed_contexts=contexts, max_typed_contexts_per_device=contexts)
@@ -691,6 +712,8 @@ class FastTransfers:
         self._check_process()
         if self._closed:
             raise RuntimeError("fast transfers are closed")
+        if self._resources.closed:
+            raise RuntimeError("transfer resources are closed")
 
     @property
     def native(self):
@@ -737,7 +760,8 @@ class FastTransfers:
                         if error is None:
                             error = exc
             finally:
-                self._resources.close()
+                if self._owns_resources:
+                    self._resources.close()
             if error is not None:
                 raise error
 
