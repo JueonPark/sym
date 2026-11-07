@@ -27,7 +27,8 @@ releases the handle. A stale captured handle raises an error at execution.
   type) and, for typed recipes, to **parameter values** snapshotted at
   preparation. Different shapes need different programs; changed parameters
   need a new program. Values are never cached: every call reads the live
-  source and writes a fresh output.
+  source. Outputs are fresh by default; optional packed arenas recycle storage
+  only after all old aliases expire and device work completes.
 - The native validator still proves that the declared views fit the plan
   before anything launches; a tensor of another shape, stride or dtype is
   rejected (`ValueError`/`RuntimeError`), never silently reinterpreted.
@@ -91,6 +92,14 @@ Eviction and close drain active transfers and preserve returned outputs.
 Owner locking serializes structural state changes and completion accounting;
 native contexts continue to govern transfer overlap. Forked use is rejected
 before touching inherited locks.
+
+For opt-in output packing, bounded lifetime reuse, subgroup staging and physical
+capacity estimates, see [budgeted transfer memory](budgeted-transfer-memory.md).
+`FastTransfers(output_arena=...)` applies to automatically allocated groups;
+`FastWeights(output_arena=..., max_group_members=..., max_prefetch_slots=...)`
+can scope the policy to weights while sharing the native owner with KV work.
+Both borrow their arena. An output's final alias, rather than transfer
+completion, determines when its storage may be recycled.
 
 `report_mode="native"` folds aggregate counters in C++ and materializes the
 existing detailed schema only when `completion.report` is accessed after
