@@ -9,7 +9,7 @@ import sys
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from bench.issue227.run import audit
+from bench.issue266.isolation import audit
 from bench.issue266.support import ROOT, digest, matrix, provenance, save
 
 
@@ -36,7 +36,7 @@ def exclude_contaminated(directory, job):
 
 def wait_idle(directory, allowed):
     quiet = None
-    print('Waiting for 60 consecutive seconds without foreign build/GPU work', flush=True)
+    print('Waiting for 60 consecutive seconds without foreign CPU/build/GPU work', flush=True)
     while True:
         busy = audit(allowed)
         now = time.monotonic()

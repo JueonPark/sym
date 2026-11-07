@@ -241,6 +241,13 @@ def summarize(records):
         row = dict(key)
         row['outcomes'] = dict(Counter(r['result']['outcome'] for r in values))
         row['selected_policy'] = policy_configuration(row)
+        negatives = [r['result'] for r in values if r['result']['outcome'] != 'success']
+        row['negative_phases'] = dict(Counter(r.get('oom_phase', r.get('admission_phase')) for r in negatives))
+        if row['kind'] == 'e4':
+            for outcome in ('oom', 'admission'):
+                peaks = [r['observed_application_device_peak_above_initial_context'] / (1 << 20)
+                         for r in negatives if r['outcome'] == outcome]
+                if peaks: row[outcome + '_physical_peak_mib'] = statistics.median(peaks)
         successes = [r['result'] for r in values if r['result']['outcome'] == 'success']
         row['rounds'] = len(values)
         if successes:
@@ -303,8 +310,12 @@ def markdown_tables(analysis):
     for kind in ('e4', 'e5', 'groups'):
         rows = [r for r in analysis['rows'] if r['kind'] == kind]
         lines += ['## ' + kind.upper() + ': completed timing and physical memory', '']
-        table(rows, [('Success/OOM/admission', 'outcomes'), ('Median ms', 'median_ms'),
-                     ('P95 ms', 'p95_ms'), ('Physical MiB', 'physical_peak_mib')])
+        columns = [('Success/OOM/admission', 'outcomes'), ('Median ms', 'median_ms'),
+                   ('P95 ms', 'p95_ms'), ('Success physical MiB', 'physical_peak_mib')]
+        if kind == 'e4':
+            columns += [('OOM physical MiB', 'oom_physical_peak_mib'),
+                        ('Admission physical MiB', 'admission_physical_peak_mib')]
+        table(rows, columns)
         lines += ['### Preparation and retirement', '']
         columns = [('Plan ms', 'planning_ms'), ('Snapshot/preparation ms', 'preparation_ms')]
         if kind == 'e5':

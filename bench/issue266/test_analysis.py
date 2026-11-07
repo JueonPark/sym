@@ -230,3 +230,30 @@ def test_runner_retries_interference_but_keeps_clean_oom(tmp_path, monkeypatch):
         record = json.loads(path.read_text())
         assert record['result']['outcome'] == 'oom'
         assert record['isolation']['foreign_busy_processes'] == []
+
+
+def test_e4_oom_keeps_observed_peak_and_failure_phase_without_latency():
+    from bench.issue266.analyze import summarize
+    job = matrix()[0]
+    records = [dict(job=dict(job, round=i), result=dict(outcome='oom', oom_phase='residency_start',
+        observed_application_device_peak_above_initial_context=peak << 20))
+        for i, peak in enumerate((480, 500, 490), 1)]
+    row, = summarize(records)
+    assert row['outcomes'] == {'oom': 3}
+    assert row['negative_phases'] == {'residency_start': 3}
+    assert row['oom_physical_peak_mib'] == 490
+    assert 'median_ms' not in row and 'physical_peak_mib' not in row
+
+
+def test_cpu_audit_catches_simulations_and_recent_activity_but_excludes_own_tree():
+    from bench.issue266.isolation import cpu_busy
+    # pid -> parent, state, name, CPU ticks, process start ticks.
+    current = {10: (1, 'R', 'runner', 900, 100), 11: (10, 'R', 'worker', 900, 100),
+               20: (1, 'R', 'gem5.fast', 900, 100), 21: (1, 'S', 'service', 200, 0),
+               22: (1, 'T', 'stopped', 900, 100), 23: (1, 'R', 'short-query', 50, 950)}
+    previous = (8., {pid: (*value[:3], value[3] - (150 if pid == 21 else 190), value[4])
+                     for pid, value in current.items()})
+    assert cpu_busy(current, previous, {10}, now=10., tick_rate=100) == [(20, 'CPU:gem5.fast'), (21, 'CPU:service')]
+    # On the first audit, lifetime activity already catches the long-running
+    # simulation; the previously idle service is caught by the next delta.
+    assert cpu_busy(current, None, {10}, now=10., tick_rate=100) == [(20, 'CPU:gem5.fast')]
