@@ -12,12 +12,12 @@ def analyzer():
 def row():
     job=next(j for j in contract.jobs() if j['kind']=='model')
     return job,dict(job=job,protocol=contract.protocol(job),environment=contract.expected_environment(job),
-        outcome='success',warmups=5,checks=30,retained_checks=30,held_after_close=1,
+        outcome='success',cache_checks=256,cache_requests=8,warmups=5,checks=30,retained_checks=30,held_after_close=1,
         completed_ms=[1.]*30,submission_ms=[.9]*30,preparation_ms=3.,first_ms=2.,
         warmup_ms=5.,retirement_ms=.2,compile_before=4,compile_after=4,
         replay_before=[],replay_after=[],warm_start_ms=10.,warm_end_ms=40.,
         phases=[dict(name=n,start_ms=a,end_ms=b) for n,a,b in
-            [('fixture',0.,1.),('prepare',1.,4.),('first',4.,6.),('warmup',6.,10.),('warm',10.,40.),('retirement',40.,41.)]],
+            [('fixture',0.,1.),('prepare',1.,4.),('first',4.,6.),('warmup',6.,10.),('warm',10.,40.),('cache_audit',40.,41.),('retirement',41.,42.)]],
         torch_memory=dict(allocated=100,max_allocated=200,reserved=300,max_reserved=400),
         input_sha256=['0'*64]*8,transfer_before={},transfer_after={},lowering=[],
         compile_ms=2.,compiler_graphs=[])
@@ -120,3 +120,11 @@ def test_generated_evidence_hashes(tmp_path):
     with pytest.raises(ValueError):analyzer().validate_files(tmp_path,row)
     row=dict(profile=dict(file='missing.gz',sha256='0'*64))
     with pytest.raises((ValueError,FileNotFoundError)):analyzer().validate_files(tmp_path,row)
+
+
+@pytest.mark.parametrize('change',['cache_checks','cache_requests'])
+def test_model_requires_real_decoder_cache_audit(change):
+    job,data=row();data.update(cache_checks=256,cache_requests=8)
+    analyzer().validate_record(data,job)
+    data[change]=0
+    with pytest.raises(ValueError):analyzer().validate_record(data,job)

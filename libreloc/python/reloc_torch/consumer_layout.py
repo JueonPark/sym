@@ -44,6 +44,23 @@ def _effect_reason(graph):
     """Unknown calls may mutate aliases even without a tensor argument."""
     import operator
     import torch
+    from . import compat
+    def trusted(value):
+        if isinstance(value, torch.fx.Node):
+            value = compat.graph_value(value)
+            if value is None:
+                return False
+        if compat.is_tensor(value):
+            return compat.is_fake_tensor(value) or compat.is_plain_tensor_or_parameter(value)
+        if type(value) in (tuple, list, torch.Size, torch.fx.immutable_collections.immutable_list):
+            return all(trusted(v) for v in value)
+        if type(value) in (dict, torch.fx.immutable_collections.immutable_dict):
+            return all(trusted(k) and trusted(v) for k,v in value.items())
+        if type(value) is slice:
+            return all(trusted(v) for v in (value.start,value.stop,value.step))
+        return value is None or type(value) in (bool,int,float,complex,str,torch.dtype,
+            torch.device,torch.layout,torch.memory_format)
+
     f = torch.nn.functional
     functions = {operator.getitem, operator.add, operator.sub, operator.mul,
         operator.truediv, operator.floordiv, operator.mod, operator.pow, operator.matmul, operator.invert, getattr,
@@ -55,6 +72,13 @@ def _effect_reason(graph):
         'size','dim','numel','to','float','half','bfloat16','t','softmax','tril',
         'masked_fill','unsqueeze','squeeze','flatten','detach'}
     for node in graph.nodes:
+        if node.op == 'get_attr':
+            return 'opaque_operator'  # A Python property may have hidden effects.
+        if node.op in ('call_function','call_method'):
+            if node.kwargs.get('out') is not None:
+                return 'graph_mutation'
+            if not trusted(node.args) or not trusted(node.kwargs):
+                return 'opaque_operand'
         if node.op == 'call_function':
             schema = getattr(node.target, '_schema', None)
             if schema is not None:
@@ -64,8 +88,12 @@ def _effect_reason(graph):
                     return 'opaque_operator'
             elif node.target not in functions:
                 return 'opaque_operator'
-        elif node.op == 'call_method' and node.target not in methods:
-            return 'graph_mutation' if str(node.target).endswith('_') else 'opaque_operator'
+        elif node.op == 'call_method':
+            receiver = compat.graph_value(node.args[0]) if node.args and isinstance(node.args[0],torch.fx.Node) else None
+            if not compat.is_tensor(receiver):
+                return 'opaque_operand'
+            if node.target not in methods:
+                return 'graph_mutation' if str(node.target).endswith('_') else 'opaque_operator'
         elif node.op == 'call_module':
             return 'opaque_operator'
     return None

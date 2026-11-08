@@ -93,6 +93,7 @@ class Worker:
                 past=tuple(t.transpose(0,1).contiguous() for t in past)
             return original(x,past,weights)
         fn=wire_layer if job['variant'] in ('materialized','lowered') else original
+        self.decoder_reference=fn
         self.functions=tuple(self.state.compile(f) for f in
             (fn,inputs.e2.legacy.models.embed,inputs.e2.legacy.models.logits))
         if job['replay']:
@@ -110,6 +111,30 @@ class Worker:
             out=self.fn();submit=(time.perf_counter_ns()-start)/1e6
             self.stream.synchronize();completed=(time.perf_counter_ns()-start)/1e6
         return out,completed,submit
+    def audit_caches(self,values):
+        # Run after all timings: identical actual region inputs and compute
+        # backend, with only the private-copy rule disabled in the reference.
+        reference=CompileState(self.torch,self.job['compute'],False)
+        original=self.functions
+        checks=0
+        try:
+            baseline=reference.compile(self.decoder_reference)
+            def checked(*args):
+                nonlocal checks
+                actual=original[0](*args)
+                expected=baseline(*args)
+                for a,b in zip(actual[1],expected[1]):
+                    assert a.shape==b.shape and a.stride()==b.stride()
+                    assert self.torch.equal(a.view(self.torch.int16),b.view(self.torch.int16))
+                    checks+=1
+                return actual
+            self.functions=(checked,*original[1:])
+            for value in values:self.request(value)
+            return dict(cache_checks=checks,cache_requests=len(values),
+                        cache_reference_compiles=reference.callbacks)
+        finally:
+            self.functions=original;reference.close()
+
     def freeze(self):
         for region in self.regions:region.freeze()
     def replay_stats(self):return [r.owner.stats() for r in self.regions]
@@ -182,6 +207,8 @@ def run(args,job,result,inputs,torch,elapsed):
                 for kind,code in graph.items():
                     p=args.output.parent/'graphs'/f'{i}-{kind}.py';p.parent.mkdir(exist_ok=True);p.write_text(code)
                     result['compiler_graphs'].append(dict(file=str(p.relative_to(args.output.parent)),sha256=contract.sha(p)))
+            start=begin('cache_audit');result.update(worker.audit_caches(values))
+            result['cache_audit_ms']=end('cache_audit',start)
             if args.profile:
                 from bench.issue269.worker import profile
                 profile(args,result,torch,lambda:worker.request(values[0]))

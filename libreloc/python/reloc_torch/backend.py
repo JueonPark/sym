@@ -68,8 +68,9 @@ class GraphCallable:
         return tuple(registration.handle for registration in self._registrations)
 
     def __call__(self, *args, **kwargs):
-        if self._executor is not None:
+        if self._backend is not None:
             self._backend._require_open()
+        if self._executor is not None:
             _require_inference()
             self._backend.diagnostics.increment("inductor_executions")
             return self._executor(*args, **kwargs)
@@ -350,7 +351,8 @@ class RelocBackend:
                 raise
             self.diagnostics.increment("inductor_compiles")
             return GraphCallable(gm, rewritten, registrations, executor=executor, backend=self)
-        return GraphCallable(gm, rewritten, registrations)
+        return GraphCallable(gm, rewritten, registrations,
+                             backend=self if layout_graph is not gm else None)
 
     def _rewrite(self, gm, candidates):
         from torch.fx import GraphModule

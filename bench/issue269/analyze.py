@@ -22,6 +22,7 @@ def validate_record(row,job):
         require(bool(row.get('error')) and row.get('phase') in
                 ('fixture','prepare','first','warmup','warm'),'OOM provenance')
         return
+    require(row['cache_requests']==8 and row['cache_checks']==8*4*contract.CASES[job['case']][1]*2,'decoder cache audit')
     require(row['warmups']==5,'warmups changed')
     require(row['checks']==30 and row['retained_checks']==30 and row['held_after_close']==1,'correctness counts')
     for key in ('completed_ms','submission_ms'):
@@ -34,7 +35,7 @@ def validate_record(row,job):
     require(len(row['input_sha256'])==8,'input membership')
     require(all(len(s)==64 and all(c in '0123456789abcdef' for c in s) for s in row['input_sha256']), 'input digest')
     phases=row['phases']
-    require([p['name'] for p in phases]==['fixture','prepare','first','warmup','warm','retirement'],'phase membership')
+    require([p['name'] for p in phases]==['fixture','prepare','first','warmup','warm','cache_audit','retirement'],'phase membership')
     previous=0.
     for p in phases:
         finite(p['start_ms'],'phase start');finite(p['end_ms'],'phase end')

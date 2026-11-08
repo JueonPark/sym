@@ -199,3 +199,63 @@ def test_dynamo_attention_consumer_sees_identical_cache(wire):
         assert backend.stats()['consumer_layout']['selected'] == 1
         for a,b in zip(result,expected): assert torch.equal(a,b)
     finally: backend.close()
+
+
+@pytest.mark.parametrize('kind',['out','method','getitem','getattr'])
+def test_high_level_calls_cannot_hide_source_mutation(wire,kind):
+    import operator
+    new=torch.zeros(4,1,8,device=wire.device,dtype=wire.dtype)
+    gm=capture(append,wire,new)
+    source=next(n for n in gm.graph.nodes if n.op=='placeholder')
+    clone=copies(gm)[0]
+    class Opaque:
+        def mutate(self):wire.zero_();return 0
+        def clone(self):return self.mutate()
+        def __getitem__(self,key):return self.mutate()
+        @property
+        def value(self):return self.mutate()
+    if kind!='out':
+        with gm.graph.inserting_before(source):opaque=gm.graph.placeholder('opaque')
+    with gm.graph.inserting_after(clone):
+        if kind=='out':gm.graph.call_function(torch.zeros,(tuple(wire.shape),),{'out':source})
+        elif kind=='method':gm.graph.call_method('clone',(opaque,))
+        elif kind=='getitem':gm.graph.call_function(operator.getitem,(opaque,0))
+        else:gm.graph.call_function(getattr,(opaque,'value'))
+    gm.recompile()
+    lowered,rows=module().lower_consumer_layout(gm)
+    assert lowered is gm and not any(r.selected for r in rows)
+    wire.fill_(1)
+    result=lowered(wire,new) if kind=='out' else lowered(Opaque(),wire,new)
+    assert torch.equal(result[:,:7],torch.ones_like(result[:,:7]))
+    assert torch.count_nonzero(wire)==0
+
+
+def test_eager_layout_only_graph_rejects_execution_after_close(wire):
+    from reloc_torch import RelocBackend
+    new=torch.zeros(4,1,8,device=wire.device,dtype=wire.dtype)
+    backend=RelocBackend(consumer_layout=True)
+    compiled=backend(capture(append,wire,new),(wire,new))
+    assert backend.stats()['consumer_layout']['selected']==1
+    assert torch.equal(compiled(wire,new),append(wire,new))
+    backend.close()
+    with pytest.raises(RuntimeError,match='closed'):compiled(wire,new)
+
+
+def test_unrelated_tensor_subclass_operand_cannot_hide_mutation(wire):
+    new=torch.zeros(4,1,8,device=wire.device,dtype=wire.dtype)
+    gm=capture(append,wire,new);source=next(n for n in gm.graph.nodes if n.op=='placeholder')
+    class OpaqueTensor(torch.Tensor):
+        @classmethod
+        def __torch_function__(cls,func,types,args=(),kwargs=None):
+            if func is torch.clone:wire.zero_()
+            return super().__torch_function__(func,types,args,kwargs or {})
+    value=torch.ones(1,device=wire.device).as_subclass(OpaqueTensor)
+    with gm.graph.inserting_before(source):opaque=gm.graph.placeholder('opaque')
+    opaque.meta['val']=value
+    with gm.graph.inserting_after(copies(gm)[0]):gm.graph.call_function(torch.clone,(opaque,))
+    gm.recompile()
+    lowered,rows=module().lower_consumer_layout(gm)
+    assert lowered is gm and not any(r.selected for r in rows)
+    wire.fill_(1);result=lowered(value,wire,new)
+    assert torch.equal(result[:,:7],torch.ones_like(result[:,:7]))
+    assert torch.count_nonzero(wire)==0

@@ -86,3 +86,9 @@ its KV helpers. Copied outputs remain valid after helper/owner close.
 Partial submission failures fence already submitted work and poison the helper;
 no automatic retry can duplicate work. Explicit close reports cleanup failures.
 Active forward AD/torch.func, tensor subclasses and training inputs are rejected.
+
+The purity gate rejects `out=` writes, unknown operands/receivers, tensor
+subclasses and attribute access that could hide a Python side effect. This can
+exclude otherwise safe graphs; it preserves the original graph rather than
+assuming purity. A rewritten eager callable, like an Inductor callable, rejects
+execution after its backend closes.

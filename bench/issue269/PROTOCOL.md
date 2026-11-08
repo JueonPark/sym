@@ -102,3 +102,11 @@ report preparation without claiming independent cold-start comparisons. Rotate
 variant order each round and clear inactive Torch cache between preparations.
 Measure100 complete requests and100 separate consumer/transfer intervals per
 successful row. Preserve actual allocation OOMs as outcomes.
+
+Every successful model arm also performs an untimed, post-measurement cache
+boundary audit over all eight inputs. Each actual decoder invocation is compared
+to a materialized reference with identical arguments and the same compute backend.
+Check both returned caches bitwise and require256 checks for decode or64 for
+prefill. Audit compilation/allocation occurs after warm memory snapshots and is
+reported as a separate phase; it cannot warm the measured first call. This is
+not a bitwise comparison between eager and Inductor arithmetic.
