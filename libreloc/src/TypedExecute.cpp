@@ -154,6 +154,7 @@ struct WalkState {
   uint32_t widthFrom;
   uint32_t widthTo;
   std::vector<int64_t> lo; // pad lo per coalesced axis
+  detail::StageRun stageRun;
   bool narrowRun = false;
   bool bufferedRun = false;
   int64_t destinationOrigin = 0; // global element offset of this local window
@@ -233,7 +234,7 @@ void walk(WalkState &state, size_t depth, int64_t iBegin, int64_t iEnd,
     }
     if (state.bufferedRun) {
       const int64_t offset = dstOff + iBegin + state.lo[depth];
-      detail::stages(state.program, state.range.from, state.range.to,
+      detail::stages(state.program, state.stageRun,
                      state.src + (srcOff + iBegin) * state.widthFrom,
                      state.dst +
                          (offset - state.destinationOrigin) * state.widthTo,
@@ -827,6 +828,7 @@ executeHostWindow(const Program &program, uint32_t from, uint32_t to,
                   widthTo,
                   std::vector<int64_t>(layout.extents.size(), 0)};
   state.destinationOrigin = origin;
+  state.stageRun = detail::prepareStageRun(program, from, to);
   for (uint32_t k = from; k < to; ++k)
     if (program.stages[k].perChannel)
       state.range.needsCoordinates = true;
@@ -873,10 +875,10 @@ executeHostWindow(const Program &program, uint32_t from, uint32_t to,
   auto work = [&](int64_t first, int64_t last) {
     reloc::detail::TraceRange trace("reloc.typed.transform.work", chunkIndex);
     if (runs)
-      detail::stridedRuns(program, from, to, state.src, state.dst,
+      detail::stridedRuns(program, state.stageRun, state.src, state.dst,
                           begin + first, begin + last, origin, narrowCast);
     else if (tiled)
-      detail::transpose(program, from, to, state.src, state.dst,
+      detail::transpose(program, state.stageRun, state.src, state.dst,
                         begin + first * detail::kTypedTile,
                         std::min(end, begin + last * detail::kTypedTile),
                         origin, state.lo[0], state.lo[1]);
