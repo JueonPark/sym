@@ -1,0 +1,240 @@
+"""Strict saved-data analysis. Standard library only; no GPU or local artifacts."""
+import argparse
+import gzip
+import json
+import math
+from pathlib import Path
+import statistics
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from bench.issue268 import contract
+
+
+def require(condition, message):
+    if not condition: raise ValueError(message)
+
+
+def finite(value, name):
+    require(type(value) in (int, float) and math.isfinite(value) and value >= 0, name)
+
+
+def membership(actual, expected):
+    require(len(actual) == len(set(actual)) and set(actual) == set(expected), 'matrix membership')
+
+
+def validate_audit(row):
+    require(row['exit_code'] == 0 and not row['foreign_busy_processes'], 'failed/contaminated run')
+    require(row['observations'] > 0, 'missing audit observations')
+    require(row['preflight']['quiet_seconds'] >= 60 and row['preflight']['quiet_observations'] >= 20,
+            'missing measured quiet interval')
+
+
+def memory_peak(samples, start, end):
+    last = -1.
+    warm = []
+    for row in samples:
+        require(len(row) == 3, 'memory schema')
+        for value in row: finite(value, 'memory value')
+        require(row[0] > last, 'unordered memory observations')
+        last = row[0]
+        if start <= row[0] <= end: warm.append(row[1])
+    require(bool(warm), 'no warm physical memory observations')
+    return max(warm)
+
+
+def validate_record(row, job):
+    require(row['job'] == job, 'job changed')
+    require(row['protocol'] == contract.protocol(job), 'controls changed')
+    require(row['environment'] == contract.expected_environment(job), 'environment changed')
+    require(row['outcome'] in ('success', 'oom'), 'unknown outcome')
+    if row['outcome'] == 'oom':
+        require(bool(row['error']) and row['phase'] in ('prepare', 'first', 'warmup', 'warm'), 'OOM provenance')
+        return
+    count = 60 if job['kind'] == 'e2' else 240
+    require(row['checks'] == count and row['retained_checks'] == count, 'correctness counts')
+    require(row['held_after_close'] == (1 if job['kind'] == 'e2' else 8), 'retirement checks')
+    for name in ('completed_ms', 'submission_ms'):
+        require(len(row[name]) == (60 if job['kind'] == 'e2' else 30), 'timing membership')
+        for value in row[name]: finite(value, name)
+    for value in row['warmup_ms']: finite(value, 'warmup cost')
+    for name in ('first_ms', 'preparation_ms', 'retirement_ms', 'warm_start_ms', 'warm_end_ms'):
+        finite(row[name], name)
+    require(row['warm_end_ms'] > row['warm_start_ms'], 'empty warm interval')
+    memory = row['torch_memory']
+    require(memory['max_allocated'] >= memory['allocated'] >= 0 and
+            memory['max_reserved'] >= memory['reserved'] >= memory['allocated'], 'Torch memory bounds')
+    before, after = row['replay_before'], row['replay_after']
+    require(len(before) == len(after), 'region count changed')
+    for old, new in zip(before, after):
+        require(old['captures'] == new['captures'], 'capture during frozen serving')
+        require(new['frozen'] and 0 <= new['retained_bytes'] <= new['max_bytes'], 'replay budget/freeze')
+        if job['mode'] != 'on': require(new['replays'] == 0, 'graphs enabled in control')
+    if job['kind'] == 'e5':
+        requests = row['requests']
+        membership([(r['batch'], r['ordinal']) for r in requests], [(b, i) for b in range(30) for i in range(8)])
+        for request in requests:
+            require(request['caller'] == request['ordinal'] % job['callers'], 'caller mapping')
+            for key in ('service_ms', 'queue_ms', 'sojourn_ms'): finite(request[key], key)
+        require(row['budget']['requested_free_budget'] == 1024 << 20, 'physical budget changed')
+        require((1024 << 20) - (16 << 20) <= row['budget']['after']['free'] <= 1024 << 20,
+                'physical budget not achieved')
+
+
+def percentile(values, q):
+    return sorted(values)[max(0, math.ceil(len(values) * q) - 1)]
+
+
+def summarize(row, physical_peak):
+    job = row['job']
+    result = job | dict(outcome=row['outcome'])
+    if row['outcome'] != 'success': return result | dict(error=row['error'], phase=row['phase'])
+    scale = 8 if job['kind'] == 'e5' else 1
+    warm = statistics.median(row['completed_ms']) / scale
+    setup=math.fsum([row['preparation_ms'], row['first_ms'], *row['warmup_ms']])
+    baseline=row.get('nvml_after_reservation', row['initial_nvml'])['used']
+    return result | dict(setup_ms=setup, p50_ms=warm, p95_ms=percentile(row['completed_ms'], .95)/scale,
+        submission_p50_ms=statistics.median(row['submission_ms'])/scale,
+        service_p95_ms=percentile([r['service_ms'] for r in row.get('requests', [])], .95) if job['kind']=='e5' else None,
+        sojourn_p95_ms=percentile([r['sojourn_ms'] for r in row.get('requests', [])], .95) if job['kind']=='e5' else None,
+        preparation_ms=row['preparation_ms'], first_ms=row['first_ms'], retirement_ms=row['retirement_ms'],
+        capture_ms=math.fsum(r.get('capture_ms', 0) for r in row['replay_after']),
+        retained_bytes=sum(r['retained_bytes'] for r in row['replay_after']),
+        pool_reserved_bytes=sum(r.get('pool_reserved_bytes', 0) for r in row['replay_after']),
+        physical_peak_bytes=physical_peak, app_increment_peak_bytes=physical_peak-baseline, torch_memory=row['torch_memory'],
+        total_ms={str(n): setup + n*warm for n in (1,100,1000)},
+        fallbacks={k: sum(r.get('fallbacks', {}).get(k,0) for r in row['replay_after'])
+                   for k in sorted({k for r in row['replay_after'] for k in r.get('fallbacks', {})})})
+
+
+def analyze(root):
+    manifest = json.loads((root / 'manifest.json').read_text())
+    require(manifest['qualification'], 'pilot is not qualification')
+    expected = contract.jobs()
+    require(manifest['jobs'] == expected, 'matrix definition changed')
+    membership(list(manifest['records']), [j['id'] for j in expected])
+    rows = []
+    for job in expected:
+        saved = manifest['records'][job['id']]
+        def read(name, digest):
+            path = root / saved[name]
+            require(contract.sha(path) == saved[digest], 'record checksum')
+            return json.loads(path.read_text())
+        record = read('path', 'sha256'); audit = read('audit_path', 'audit_sha256')
+        validate_audit(audit); validate_record(record, job)
+        require(record['provenance'] == manifest['provenance'], 'provenance mismatch')
+        trace_path = root / saved['path']; trace_path = trace_path.parent / record['memory']['file']
+        require(contract.sha(trace_path) == record['memory']['sha256'], 'trace checksum')
+        trace = json.loads(gzip.decompress(trace_path.read_bytes()))
+        peak = memory_peak(trace['samples'], record['warm_start_ms'], record['warm_end_ms']) if record['outcome']=='success' else None
+        rows.append(summarize(record, peak))
+    for excluded in manifest['excluded']:
+        for name, digest in excluded['files'].items():
+            require(contract.sha(root / excluded['path'] / name) == digest, 'excluded evidence changed')
+    return rows
+
+
+def validate_micro(record):
+    require(record['qualification'], 'pilot supplement')
+    require(record['compute'] in ('eager', 'inductor') and record['round'] in (1, 2, 3), 'supplement identity')
+    require(record['environment'] == contract.expected_environment(dict(callers=1)), 'supplement environment')
+    validate_audit(record['audit'] | dict(exit_code=0, preflight=record['preflight']))
+    membership([(r['scenario'], r['mode']) for r in record['rows']],
+               [(s, m) for s in ('stable', 'varying', 'pressure') for m in contract.MODES])
+    for row in record['rows']:
+        require(row['checks'] == row['retained_checks'] == 100, 'supplement correctness')
+        for name in ('completed_ms', 'submission_ms'):
+            require(len(row[name]) == 100, 'supplement timings')
+            for value in row[name]: finite(value, name)
+        for name in ('preparation_ms', 'first_ms', 'warm_start_ms', 'warm_end_ms'): finite(row[name], name)
+        require(row['warm_end_ms'] > row['warm_start_ms'], 'supplement warm interval')
+        if row['mode'] != 'plain':
+            before, after = row['before'], row['after']
+            require(before['captures'] == after['captures'] and after['frozen'], 'warm supplement capture')
+            require(0 <= after['retained_bytes'] <= after['max_bytes'], 'supplement budget')
+            require(row['closed']['closed'] and row['closed']['retained_bytes'] == 0, 'supplement retirement')
+            if row['mode'] == 'off': require(after['replays'] == 0, 'supplement control replays')
+
+
+def supplements(root):
+    manifest = json.loads((root / 'manifest.json').read_text())
+    rows = []
+    for compute in ('eager', 'inductor'):
+        for round_ in (1, 2, 3):
+            directory = root / 'supplements' / f'{compute}-r{round_}'
+            record = json.loads((directory / 'record.json').read_text())
+            validate_micro(record)
+            require(record['compute'] == compute and record['round'] == round_, 'supplement membership')
+            require(record['provenance'] == manifest['provenance'], 'supplement provenance')
+            trace_path = directory / record['memory']['file']
+            require(contract.sha(trace_path) == record['memory']['sha256'], 'supplement memory checksum')
+            trace = json.loads(gzip.decompress(trace_path.read_bytes()))
+            for row in record['rows']:
+                peak = memory_peak(trace['samples'], row['warm_start_ms'], row['warm_end_ms'])
+                if round_ == 1 and row['scenario'] == 'stable' and row['mode'] in ('off', 'on'):
+                    profile = row['profile']
+                    require(contract.sha(directory / profile['file']) == profile['sha256'], 'profile checksum')
+                    events = json.loads(gzip.decompress((directory / profile['file']).read_bytes()))['traceEvents']
+                    counts = profile['counts']
+                    for name in ('cudaGraphLaunch', 'cudaLaunchKernel', 'cuLaunchKernel', 'cudaLaunchKernelExC'):
+                        require(counts[name] == sum(e.get('name') == name for e in events), 'profile counts')
+                    require(counts['gpu_kernel_events'] == sum(e.get('cat') == 'kernel' for e in events) > 0,
+                            'missing GPU profiling')
+                    require(counts['cudaGraphLaunch'] == (10 if row['mode'] == 'on' else 0), 'profile graph launches')
+                after = row['after'] or {}
+                rows.append(dict(compute=compute, round=round_, scenario=row['scenario'], mode=row['mode'],
+                    p50_ms=statistics.median(row['completed_ms']), p95_ms=percentile(row['completed_ms'], .95),
+                    submission_p50_ms=statistics.median(row['submission_ms']), preparation_ms=row['preparation_ms'],
+                    first_ms=row['first_ms'], retained_bytes=after.get('retained_bytes', 0),
+                    pool_reserved_bytes=after.get('pool_reserved_bytes', 0), physical_peak_bytes=peak,
+                    fallbacks=after.get('fallbacks', {}), profile=row.get('profile')))
+    return rows
+
+
+def comparisons(rows):
+    fields = ('kind', 'case', 'compute', 'callers')
+    groups = sorted({tuple(r[k] for k in fields) for r in rows})
+    result = []
+    for key in groups:
+        members = [r for r in rows if tuple(r[k] for k in fields) == key]
+        def arm(runtime, mode):
+            selected = [r for r in members if r['runtime'] == runtime and r['mode'] == mode]
+            require(len(selected) == 3, 'three-round arm membership')
+            successful = [r for r in selected if r['outcome'] == 'success']
+            if len(successful) != 3: return dict(successful_rounds=len(successful))
+            return dict(successful_rounds=3, **{k: statistics.median(r[k] for r in successful) for k in
+                        ('p50_ms', 'p95_ms', 'setup_ms', 'retained_bytes', 'app_increment_peak_bytes')})
+        summary = {f'{rt}_{mode}': arm(rt, mode) for rt in ('torch', 'sym') for mode in contract.MODES}
+        relative = {}
+        for rt in ('torch', 'sym'):
+            on = summary[f'{rt}_on']
+            for control in ('plain', 'off'):
+                off = summary[f'{rt}_{control}']
+                if min(on['successful_rounds'], off['successful_rounds']) == 3:
+                    saving = off['p50_ms'] - on['p50_ms']
+                    relative[f'{rt}_on_vs_{control}'] = dict(speedup=off['p50_ms']/on['p50_ms'],
+                        break_even_reuses=max(0, math.ceil((on['setup_ms']-off['setup_ms'])/saving)) if saving > 0 else None)
+        for mode in contract.MODES:
+            sym, torch = summary[f'sym_{mode}'], summary[f'torch_{mode}']
+            if min(sym['successful_rounds'], torch['successful_rounds']) == 3:
+                relative[f'sym_vs_torch_{mode}'] = dict(speedup=torch['p50_ms']/sym['p50_ms'])
+        result.append(dict(zip(fields, key)) | dict(arms=summary, comparisons=relative))
+    return result
+
+
+def main():
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('root',type=Path); parser.add_argument('--output',type=Path,required=True)
+    args=parser.parse_args(); rows=analyze(args.root)
+    contract.save(args.output, rows)
+    contract.save(args.output.with_name('comparisons.json'), comparisons(rows))
+    contract.save(args.output.with_name('supplements.json'), supplements(args.root))
+    table=['# Issue 268 per-round measurements', '', '| Experiment | Case | Compute | Callers | Round | Runtime | Mode | p50 ms | p95 ms | Outcome |',
+           '|---|---|---|---:|---:|---|---|---:|---:|---|']
+    for r in rows:
+        table.append('| '+' | '.join(str(r.get(k, '—')) if k not in ('p50_ms','p95_ms') else f"{r[k]:.6f}" if k in r else '—'
+                     for k in ('kind','case','compute','callers','round','runtime','mode','p50_ms','p95_ms','outcome'))+' |')
+    args.output.with_suffix('.md').write_text('\n'.join(table)+'\n')
+
+
+if __name__=='__main__': main()
