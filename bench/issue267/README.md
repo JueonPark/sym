@@ -21,3 +21,6 @@ Qualification passes all 36 processes and 93,600 timed output checks. Read
 [review disposition](REVIEW.md). The [public Wiki artifact](https://github.com/JueonPark/sym/wiki/Artifacts-Issue-267)
 provides exact source/runtimes, complete raw data and anonymous verification.
 `INDEX.json` pins the analysis hashes and source identities.
+Canonical byte-identical JSON reanalysis uses CPython 3.10.12. Python 3.14
+reproduces the rendered tables exactly but changes last-bit derived-cost JSON
+values; the Wiki package preserves that comparison and the interpreter pin.

@@ -232,3 +232,9 @@ excluded evidence, profiles, build/test/CI records and standard-library-only
 verification/reanalysis instructions. No experiment Release or source SVG is
 used. This work is part of #261, #270, #272 and #274; it does not claim the
 handwritten DLRM producer as an automatic-codegen result.
+
+Canonical JSON hashes use CPython 3.10.12. A Python 3.14 replay changes 411
+last-bit derived-cost fields while reproducing all rendered table bytes
+exactly; that alternate replay is preserved in the artifact. Use the pinned
+interpreter for byte-identical JSON verification. Raw measurements, acceptance
+and reported comparisons are unchanged.

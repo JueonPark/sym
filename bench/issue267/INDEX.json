@@ -23,5 +23,6 @@
   "tables_sha256": "ed02a49cb19443f08ea4ce74be955cad3450dbd809ad864133502bd915f0bae2",
   "artifact_id": "chains-issue267-2026-11-08-v1",
   "wiki": "https://github.com/JueonPark/sym/wiki/Artifacts-Issue-267",
-  "manifest": "https://raw.githubusercontent.com/wiki/JueonPark/sym/artifacts/chains-issue267-2026-11-08-v1/manifest.json"
+  "manifest": "https://raw.githubusercontent.com/wiki/JueonPark/sym/artifacts/chains-issue267-2026-11-08-v1/manifest.json",
+  "canonical_analysis_python": "CPython 3.10.12"
 }
