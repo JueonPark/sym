@@ -41,6 +41,10 @@ value and structure is guarded. Replaced tensor addresses are supported by
 refreshing every input. Unsupported metadata/devices or exhausted shape/slot
 capacity runs the original callable. Every such reason is visible in `stats()`.
 Grad-enabled execution raises. Autocast executes the original callable.
+Named tensors, on Torch builds exposing that API, use the original callable.
+The settings signature includes precision/reduction controls, deterministic
+warning policy, BLAS/linalg preferences, cuDNN selection and SDPA backend order.
+If Torch cannot expose a consistent settings signature, execution falls back.
 
 Prepare only while GPU activity in the process is quiescent, as required by
 [PyTorch CUDA Graph capture](https://docs.pytorch.org/docs/2.14/notes/cuda.html#cuda-graphs).
@@ -60,6 +64,9 @@ poison the owner, without retrying a possibly submitted request.
 when changing the callable's immutable revision; prepare/freeze again in a
 quiescent phase. Parameter tensor changes need no invalidation. `close()` retires
 slots and forbids later calls. Owners cannot be reused after fork.
+Use explicit close or a context manager to retire storage and surface cleanup
+errors. Normal garbage collection also waits for in-flight slots before release;
+this finalizer can block, and skips CUDA cleanup in a forked child.
 
 ## Memory and costs
 
