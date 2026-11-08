@@ -426,3 +426,10 @@ y = x.to("cuda")          # no backend, no scope: ordinary PyTorch transfer
 - Ada validation of the CUDA build (this host is Turing); multi-GPU tested on
   four devices here.
 - R4 collects the combined evidence and the disposition of historical issues.
+
+## GPU consumer replay
+
+See [explicit GPU-region replay](gpu-replay.md) for bounded static slots, refreshed
+parameters, held-output copies, preparation/freeze and memory accounting. This
+opt-in boundary composes with prepared transfers; native transfers remain outside
+CUDA capture.
