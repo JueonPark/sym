@@ -120,8 +120,30 @@ bool readZeroPoints(const BoundParameter &param, std::vector<int32_t> &out,
   return true;
 }
 
-/// Write `count` copies of the low `width` bytes of `bits`.
+template <uint32_t Width>
+void fillFixedPattern(uint8_t *dst, uint64_t bits, int64_t count) {
+  uint8_t pattern[Width];
+  for (uint32_t b = 0; b < Width; ++b)
+    pattern[b] = static_cast<uint8_t>(bits >> (8 * b));
+  // Constant-sized memcpy permits vector stores without alignment or
+  // type-punning assumptions about the caller's external tensor storage.
+  for (int64_t i = 0; i < count; ++i)
+    std::memcpy(dst + i * Width, pattern, Width);
+}
+
+/// Write `count` copies of the low `width` bytes of `bits`. Retain the full
+/// fill pass and its entry-stage semantics; only the store loop changes.
 void fillPattern(uint8_t *dst, uint64_t bits, uint32_t width, int64_t count) {
+  switch (width) {
+  case 1:
+    return fillFixedPattern<1>(dst, bits, count);
+  case 2:
+    return fillFixedPattern<2>(dst, bits, count);
+  case 4:
+    return fillFixedPattern<4>(dst, bits, count);
+  case 8:
+    return fillFixedPattern<8>(dst, bits, count);
+  }
   uint8_t pattern[8];
   for (uint32_t b = 0; b < width; ++b)
     pattern[b] = static_cast<uint8_t>(bits >> (8 * b));
@@ -489,7 +511,9 @@ HostKernel hostKernel(const Program &p, uint32_t from, uint32_t to) {
   if (l.extents.size() == 2 && l.srcStrides[0] == 1 &&
       l.srcStrides[1] == l.extents[0] && l.dstStrides[1] == 1 &&
       l.dstStrides[0] >= l.extents[1])
-    return HostKernel::TiledTranspose;
+    return l.extents[1] <= detail::kTypedTile && l.dstStrides[0] == l.extents[1]
+               ? HostKernel::TiledTransposeRuns
+               : HostKernel::TiledTranspose;
   if (l.extents.size() == 3 && l.padRegions.empty() && l.srcStrides[2] == 1 &&
       l.dstStrides[2] == 1 && l.extents[2] >= 8)
     return HostKernel::StridedRuns;
@@ -513,6 +537,8 @@ const char *hostKernelName(HostKernel kernel) {
     return "contiguous_stages";
   case HostKernel::TiledTranspose:
     return "tiled_transpose";
+  case HostKernel::TiledTransposeRuns:
+    return "tiled_transpose_runs";
   case HostKernel::IndexedRows:
     return "indexed_rows";
   case HostKernel::StridedRuns:
@@ -843,7 +869,8 @@ executeHostWindow(const Program &program, uint32_t from, uint32_t to,
     innerSpan += (layout.extents[k] - 1) * layout.dstStrides[k];
   const bool rowsDisjoint = layout.dstStrides.front() >= innerSpan + 1;
 
-  const bool tiled = kernel == HostKernel::TiledTranspose;
+  const bool tiled = kernel == HostKernel::TiledTranspose ||
+                     kernel == HostKernel::TiledTransposeRuns;
   const bool runs = kernel == HostKernel::StridedRuns;
   const bool narrowCast =
       to == from + 1 &&

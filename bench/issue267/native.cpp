@@ -4,6 +4,9 @@
 #include "reloc/TypedExecute.h"
 #include "reloc/Execute.h"
 #include "TransferInternal.h"
+#ifdef RELOC_BENCH_STAGE_KERNELS
+#include "TypedStageKernels.h"
+#endif
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
@@ -74,6 +77,25 @@ struct Runner {
       out.emplace_back(p.typed?reloc::typed::hostKernelName(reloc::typed::hostKernel(*p.typed,0,p.typed->stages.size())):"layout_gather");
     return out;
   }
+  py::list stage_metadata() const {
+    py::list result;
+    for (const auto& step : programs) {
+      py::dict value;
+      value["eligible_kind"] = step.typed ? "legacy" : "layout_only";
+      value["descriptor_bytes"] = 0;
+#ifdef RELOC_BENCH_STAGE_KERNELS
+      if (step.typed) {
+        const auto run = reloc::typed::detail::prepareStageRun(
+            *step.typed, 0, step.typed->stages.size());
+        value["eligible_kind"] = reloc::typed::detail::stageRunName(run);
+        value["descriptor_bytes"] = sizeof(run);
+        value["round_trips"] = run.roundTrips;
+      }
+#endif
+      result.append(value);
+    }
+    return result;
+  }
   // Compiler-free, fixed-family address arithmetic. F16C specifies RNE,
   // preserves the intermediate f16 rounding, and emits no approximate math.
   void manual(const std::string& family, py::array src, py::array dst,
@@ -128,5 +150,6 @@ PYBIND11_MODULE(_folding_native,m) {
   py::module_::import("pyreloc");
   py::class_<Runner>(m,"Runner")
     .def(py::init<const std::vector<py::object>&,unsigned>())
-    .def("run",&Runner::run).def("kernels",&Runner::kernels).def("manual",&Runner::manual);
+    .def("run",&Runner::run).def("kernels",&Runner::kernels).def("manual",&Runner::manual)
+    .def("stage_metadata",&Runner::stage_metadata);
 }

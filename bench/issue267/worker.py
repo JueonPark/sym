@@ -158,6 +158,8 @@ def one_case(args, specification):
                 h2d_copies_per_call=1, source_bytes=case.source.nbytes, wire_bytes=wire.nbytes,
                 materialized_boundaries=len(inter), intermediate_bytes=sum(t.nbytes for t in inter),
                 kernels={'sym_unfused': unfused.kernels(), 'sym_folded': folded.kernels()},
+                stage_metadata={'sym_unfused': unfused.stage_metadata(),
+                                'sym_folded': folded.stage_metadata()},
                 preparation=preparation, cache_before=cache_before, cache_after=cache_inventory(args.cache),
                 runtime_shape_code_cache_bytes=0, consumer_batch=32 if activation is not None else None)
 

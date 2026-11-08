@@ -12,6 +12,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--runtime', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--specialized', action='store_true')
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     library = args.runtime.resolve() / 'libreloc'
@@ -21,6 +22,8 @@ def main():
         '-I' + pybind11.get_include(), '-I' + sysconfig.get_paths()['include'],
         '-L' + str(library), '-lreloc_runtime', '-Wl,-rpath,' + str(library),
         '-o', str(args.output / ('_folding_native' + sysconfig.get_config_var('EXT_SUFFIX')))]
+    if args.specialized:
+        command.insert(1, '-DRELOC_BENCH_STAGE_KERNELS=1')
     print(' '.join(command), flush=True)
     subprocess.run(command, check=True)
 

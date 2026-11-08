@@ -202,6 +202,15 @@ void transpose(const Program &p, const StageRun &run, const uint8_t *src,
         transposeTile<2>(source, tile, rows, cols, layout.srcStrides[1]);
       else
         transposeTile<1>(source, tile, rows, cols, layout.srcStrides[1]);
+      if (cols == columns && layout.dstStrides[0] == columns && innerLo == 0) {
+        // The tile is already contiguous in both staging and output. One
+        // run removes per-row dispatch/copies. stages() still splits at
+        // logical channel boundaries, which may lie inside this tile.
+        const int64_t offset = (r + outerLo) * columns;
+        stages(p, run, tile, dst + (offset - origin) * outWidth, rows * columns,
+               offset);
+        continue;
+      }
       for (int64_t row = 0; row < rows; ++row) {
         const int64_t offset =
             (r + row + outerLo) * layout.dstStrides[0] + c + innerLo;

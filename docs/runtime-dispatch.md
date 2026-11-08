@@ -72,8 +72,10 @@ report's `host_kernel` identifies the selected family:
 | Family | Qualification and execution |
 | --- | --- |
 | `contiguous_cast` | Unit inner source/destination strides, single f32→f16 cast; existing runtime-qualified SIMD conversion, including scalar tails. |
-| `contiguous_stages` | Unit inner strides; blocks of at most 256 elements retain every intermediate value in typed stack buffers. |
+| `contiguous_stages` | Unit inner strides; eligible ordered casts/dequantization execute in registers, other stages use typed blocks of at most 256 elements. |
 | `tiled_transpose` | Dense rank-two source transpose, unit inner destination stride, optional result padding; 32×32 tiles, shared AVX2 32-bit transpose, constant-width 8/16-bit traversal, then contiguous value stages. |
+| `tiled_transpose_runs` | Dense transpose with at most 32 output columns and physically adjacent output rows. A whole tile becomes one stage run; logical channel boundaries still split the run. This also handles rank-three permutations coalesced to such a matrix. |
+| `strided_runs` | Pad-free rank-three layout with unit inner strides on both sides; existing contiguous conversions and source-oriented traversal. |
 | `indexed_rows` | Existing checked indexed-row copy/conversion path. |
 | `generic` | Other strides or channel expressions; checked coordinate and scalar-stage evaluation. |
 | `direct_dense` / `not_applicable` | Direct upload bypasses host work / no CPU layout or value stages. |
@@ -84,6 +86,22 @@ There are no global ISA flags. Widening preserves the scalar reference's
 NaN bit patterns; dequantize/cast chains retain both roundings. External
 buffers may be unaligned. Tiles use global logical padding coordinates and
 chunk-local destination storage.
+
+Ordered f32/f16 cast chains, optionally preceded by s8→f32 dequantization,
+are classified once per execution range into a bounded `StageRun`. Six
+ahead-of-time AVX2/F16C loop variants keep intermediate values in registers;
+portable scalar execution and scalar tails preserve the same stages. Every
+half conversion remains, including repeated roundtrips, and dequantization
+performs a binary32 multiply before narrowing. Initial half widening restores
+the reference's signaling-NaN payload bits. BF16, quantize and unsupported
+channel expressions retain the existing qualified fallback. This is automatic
+plan-driven kernel specialization, not arbitrary machine-code generation.
+
+Short-row tile batching removes per-row stage calls and buffer copies when
+the output strides prove adjacency; it does not change the tile's logical
+coordinates. Padding still performs its full stage-correct fill pass before
+valid elements are written. Fixed-width stores remove dynamic per-element
+`memcpy` calls from that fill; the pass itself is not eliminated.
 
 Specialized per-channel stages require a proved logical result coordinate,
 valid parameter bounds, and a channel block at least as long as the inner
@@ -99,8 +117,13 @@ worker; direct contiguous casts and indexed rows use the 1 MiB gather
 floor. Tiny windows execute inline, while compute-heavy generic evaluation
 keeps its existing row partitioning. Retained pools keep their configured
 capacity; unused workers sleep. These are bounded ahead-of-time kernels:
-less than 8 KiB of scratch per worker, no shape-specific generated code or
-code cache. [Issue #226 measurements](../bench/issue226/README.md) separate
+less than 8 KiB of tile/value arrays per worker, plus scalar frame overhead,
+no shape-specific generated code or code cache. The stage descriptor has
+constant size and is local to the call. The source compiler and its bounded
+frontend artifact caches are unchanged. Empty and nondense source descriptors
+remain rejected before native execution; the compiler frontend retains its
+existing Torch fallback for these inputs.
+[Issue #226 measurements](../bench/issue226/README.md) separate
 isolated kernel and completed-call performance.
 
 ## Capability table
