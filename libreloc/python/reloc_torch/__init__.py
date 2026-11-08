@@ -30,6 +30,7 @@ __all__ = (
     "GPUReplay",
     "GPUReplayPolicy",
     "ConsumerLayoutPolicy",
+    "PackedWireRestore",
     "ConsumerLayoutDecision",
     "lower_consumer_layout",
     "PreparedExecutionPolicy",
@@ -58,7 +59,7 @@ __all__ = (
 
 
 def __getattr__(name):
-    if name in {"ConsumerLayoutPolicy", "ConsumerLayoutDecision", "lower_consumer_layout"}:
+    if name in {"ConsumerLayoutPolicy", "ConsumerLayoutDecision", "lower_consumer_layout", "PackedWireRestore"}:
         from . import consumer_layout
         value = getattr(consumer_layout, name)
         globals()[name] = value

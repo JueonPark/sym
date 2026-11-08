@@ -175,3 +175,150 @@ def lower_consumer_layout(gm, example_inputs=None, *, policy=None):
     graph.graph.lint()
     graph.recompile()
     return graph, tuple(decisions)
+
+
+class PackedWireRestore:
+    """Explicit fresh CPU→CUDA wire copies; no layout or value conversion.
+
+    Dense adjacent pinned views share one copy. Other compatible dense inputs
+    use separate copies. Inputs must not be mutated until drain/completion.
+    max_bytes bounds one request's logical output allocation, not total device
+    memory or caller-held outputs; max_inflight bounds retained source groups.
+    """
+    def __init__(self, device, *, max_bytes=128 << 20, max_inflight=8):
+        import os
+        import torch
+        from collections import deque
+        from threading import RLock
+        for value, name in ((max_bytes, 'max_bytes'), (max_inflight, 'max_inflight')):
+            if type(value) is not int or value <= 0:
+                raise ValueError(f'{name} must be a positive integer')
+        device = torch.device(device)
+        if device.type != 'cuda':
+            raise ValueError('wire restore requires a CUDA destination')
+        self.device = torch.device('cuda', torch.cuda.current_device() if device.index is None else device.index)
+        self.max_bytes, self.max_inflight = max_bytes, max_inflight
+        self._pid, self._lock = os.getpid(), RLock()
+        self._pending, self._failed = deque(), []
+        self._closed = self._poisoned = False
+        self._counts = dict(copy_calls=0, payload_bytes=0, packed_groups=0,
+                            separate_groups=0, allocation_requests=0, peak_request_bytes=0)
+
+    def _process(self):
+        import os
+        if os.getpid() != self._pid:
+            raise RuntimeError('wire restore belongs to another process')
+
+    def _retire(self, block=False):
+        while self._pending and (block or self._pending[0][0].query()):
+            if block:
+                self._pending[0][0].synchronize()
+            self._pending.popleft()
+        if block:
+            while self._failed:
+                self._failed[0][0].synchronize()
+                self._failed.pop(0)
+
+    def restore(self, stored):
+        import torch
+        from .memory import MemoryBudgetError
+        self._process()
+        with self._lock, torch.cuda.device(self.device), torch.no_grad():
+            if self._closed or self._poisoned:
+                raise RuntimeError('wire restore is closed or poisoned')
+            if torch.autograd.forward_ad._current_level >= 0 or torch._C._are_functorch_transforms_active():
+                raise ValueError('wire restore does not support active transforms')
+            if not isinstance(stored, (tuple, list)):
+                raise TypeError('stored must be a list or tuple of dense CPU tensors')
+            values = tuple(stored)
+            total = 0
+            for tensor in values:
+                if (type(tensor) is not torch.Tensor or tensor.device.type != 'cpu'
+                        or tensor.layout != torch.strided or tensor.is_nested or tensor.is_quantized
+                        or tensor.dim() != 3 or not tensor.is_contiguous()
+                        or any(d <= 0 for d in tensor.shape)
+                        or tensor.dtype not in (torch.float16, torch.bfloat16, torch.float32)
+                        or tensor.requires_grad or tensor.is_conj() or tensor.is_neg()):
+                    raise ValueError('wire inputs must be plain dense rank3 CPU floating tensors without gradients')
+                if tensor.dtype != values[0].dtype:
+                    raise ValueError('wire inputs must have the same dtype')
+                if ((tensor.storage_offset() + tensor.numel()) * tensor.element_size()
+                        > tensor.untyped_storage().nbytes()):
+                    raise ValueError('wire input exceeds backing storage')
+                total += tensor.numel() * tensor.element_size()
+            if total > self.max_bytes:
+                raise MemoryBudgetError('wire request exceeds its logical allocation budget')
+            if not values:
+                return []
+            self._retire()
+            while len(self._pending) >= self.max_inflight:
+                self._pending[0][0].synchronize()
+                self._pending.popleft()
+            first = values[0]
+            count = first.numel()
+            packed = all(t.is_pinned() and t.shape == first.shape
+                and t.untyped_storage().data_ptr() == first.untyped_storage().data_ptr()
+                and t.storage_offset() == first.storage_offset() + i * count
+                for i, t in enumerate(values))
+            if packed:
+                # All members were bounds-checked before constructing this view.
+                host = torch.as_strided(first, (len(values), *first.shape),
+                    (count, *first.stride()), storage_offset=first.storage_offset())
+                block = torch.empty(host.shape, device=self.device, dtype=first.dtype)
+                outputs = list(block.unbind(0))
+                copies = [(block, host)]
+            else:
+                outputs = [torch.empty(t.shape, device=self.device, dtype=t.dtype) for t in values]
+                copies = list(zip(outputs, values))
+            stream = torch.cuda.current_stream(self.device)
+            event = torch.cuda.Event()
+            try:
+                for target, source in copies:
+                    target.copy_(source, non_blocking=True)
+                    self._counts['copy_calls'] += 1
+                    self._counts['payload_bytes'] += source.numel() * source.element_size()
+                event.record(stream)
+            except BaseException:
+                # Quarantine references before attempting a fence. A normal
+                # submission error drains already-enqueued work; a failed fence
+                # leaves references owned for an explicit close retry.
+                self._poisoned = True
+                self._failed.append((stream, values, outputs))
+                self._retire(block=True)
+                raise
+            self._pending.append((event, values, total))
+            self._counts['packed_groups' if packed else 'separate_groups'] += 1
+            self._counts['allocation_requests'] += len(copies)
+            self._counts['peak_request_bytes'] = max(total, self._counts['peak_request_bytes'])
+            return outputs
+
+    def drain(self):
+        self._process()
+        with self._lock:
+            self._retire(block=True)
+
+    def close(self):
+        self._process()
+        with self._lock:
+            self._closed = True
+            self._retire(block=True)
+
+    def stats(self):
+        self._process()
+        with self._lock:
+            storages = {t.untyped_storage().data_ptr(): t.untyped_storage().nbytes()
+                for _, values, _ in self._pending for t in values}
+            return dict(self._counts, closed=self._closed, poisoned=self._poisoned,
+                pending_groups=len(self._pending),
+                pending_host_bytes=sum(row[2] for row in self._pending),
+                pending_host_storage_bytes=sum(storages.values()),
+                failed_groups=len(self._failed), max_bytes=self.max_bytes,
+                max_inflight=self.max_inflight)
+
+    def __del__(self):
+        import os
+        if getattr(self, '_pid', None) == os.getpid():
+            try:
+                self.close()
+            except Exception:
+                pass  # Explicit close reports cleanup failures.

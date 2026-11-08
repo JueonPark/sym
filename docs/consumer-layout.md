@@ -49,3 +49,40 @@ Reference contracts: [Torch cat](https://docs.pytorch.org/docs/2.14/generated/to
 and [FX graph rewriting](https://docs.pytorch.org/docs/2.14/fx.html). Exact removed
 work, compiled behavior and numerical guarantees are verified by the qualification
 rather than inferred from these API descriptions.
+
+
+## Explicit wire restore
+
+`KVCacheSwap.restore_wire(stored)` returns fresh dense CUDA `[S,H,D]` tensors.
+It is a separate, explicitly selected representation: ordinary `restore` still
+returns materialized `[H,S,D]`. A transparent consumer can transpose the wire view
+and let the qualified cat rule eliminate its private copy. The method checks the
+declared KV dtype/head dimensions before submission.
+
+`PackedWireRestore(device, max_bytes=128<<20, max_inflight=8)` exposes the same
+copy helper to independent controls. It accepts ordinary dense rank-three CPU
+FP32/FP16/BF16 tensors of one dtype without gradients. Adjacent pinned views of
+one storage use one packed H2D copy; other legal dense inputs use separate copies.
+All inputs are checked and all outputs allocated before copies begin. Every call
+reads fresh values and returns independently owned output storage. Nothing is
+prepacked, quantized or numerically converted by this helper.
+
+The KV-owned helper inherits `contexts * max_scratch_bytes` as its per-request
+logical output limit and `max_inflight` as its pending source-group limit. This
+is a separate admission bound, not pooled native scratch, a combined physical
+quota or a cap on caller-held outputs. Stats distinguish logical payload/pending
+bytes, referenced host storage and allocation requests. These scopes overlap.
+A rejected request raises `MemoryBudgetError` before any transfer; applications
+can select their original materialized path when its own contract permits it.
+
+Copies use the current stream on the selected device. The helper retains host
+sources until completion; callers must not modify them until `drain()` or other
+copy completion synchronization. Normal Torch stream rules apply to returned
+tensors: another consumer stream must wait and record tensor use on that stream.
+`drain()` waits pending copies; `close()` also rejects future work. Dropped helpers
+fence pending copies in the owning process. FastTransfers.close owns cleanup of
+its KV helpers. Copied outputs remain valid after helper/owner close.
+
+Partial submission failures fence already submitted work and poison the helper;
+no automatic retry can duplicate work. Explicit close reports cleanup failures.
+Active forward AD/torch.func, tensor subclasses and training inputs are rejected.

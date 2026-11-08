@@ -684,6 +684,7 @@ class FastTransfers:
         self._eager_report_accesses = 0
         self._prepared_cache = OrderedDict()
         self._prepared_handles = WeakSet()
+        self._wire_restores = WeakSet()
         self._prepared_counts = dict(handles_created=0, cache_hits=0, cache_misses=0, evictions=0,
                                      group_constructions=0, rebinds=0, view_descriptors=0)
         self.gather_threads, self.pinning, self.n_buffers = gather_threads, pinning, n_buffers
@@ -748,7 +749,7 @@ class FastTransfers:
             self._registrations.clear()
             error = None
             try:
-                for handle in tuple(self._prepared_handles):
+                for handle in (*tuple(self._wire_restores), *tuple(self._prepared_handles)):
                     try:
                         handle.close()
                     except BaseException as exc:
@@ -781,6 +782,7 @@ class FastTransfers:
             if self._closed:
                 raise RuntimeError("fast transfers are closed")
             totals = dict(self._totals, dispatches=dict(self._totals["dispatches"]))
+            totals["wire_restore"] = [owner.stats() for owner in self._wire_restores]
             native = self._group_counters.stats()
             for key in ("groups", "logical_transfers", "payload_bytes"):
                 totals[key] += native[key]
@@ -1119,6 +1121,7 @@ class KVCacheSwap:
         self._restore_recipe = Recipe(spec(stored), (Transpose((1, 0, 2)),), spec(cache), "h2d")
         self._programs = {}
         self._inflight = deque()
+        self._wire_restore = None
 
     def _program(self, recipe, tensor):
         key = (recipe is self._evict_recipe, tensor.shape)
@@ -1168,8 +1171,33 @@ class KVCacheSwap:
         self._inflight.append(completion)
         return outputs
 
+    def restore_wire(self, stored):
+        """Restore fresh dense [S,H,D] wire tensors for a qualified consumer.
+
+        The caller explicitly selects this representation. Existing restore()
+        keeps its [H,S,D] materialization. Both paths preserve the same values.
+        """
+        import torch
+        from .consumer_layout import PackedWireRestore
+        self.owner._check_open()
+        if not isinstance(stored, (tuple, list)):
+            raise TypeError("stored must be a list or tuple of cache tensors")
+        if any(type(t) is not torch.Tensor or t.dtype != self.dtype or t.dim() != 3
+               or tuple(t.shape[1:]) != (self.heads, self.head_dim) for t in stored):
+            raise ValueError("wire tensors do not match the declared KV dtype/head layout")
+        with self.owner._lock:
+            self.owner._check_open()
+            if self._wire_restore is None:
+                self._wire_restore = PackedWireRestore(self.owner.device,
+                    max_bytes=self.owner.contexts * self.owner.max_scratch_bytes,
+                    max_inflight=self.owner.max_inflight)
+                self.owner._wire_restores.add(self._wire_restore)
+            return self._wire_restore.restore(stored)
+
     def drain(self):
         self._retire(block=True)
+        if self._wire_restore is not None:
+            self._wire_restore.drain()
 
 
 def _check_output_arena(arena, device):
