@@ -27,6 +27,8 @@ __all__ = (
     "CompiledRecipe",
     "UnsupportedRecipe",
     "RelocBackend",
+    "GPUReplay",
+    "GPUReplayPolicy",
     "PreparedExecutionPolicy",
     "eager_transfers",
     "prepare_weights",
@@ -53,6 +55,11 @@ __all__ = (
 
 
 def __getattr__(name):
+    if name in {"GPUReplay", "GPUReplayPolicy"}:
+        from . import gpu_replay
+        value = getattr(gpu_replay, name)
+        globals()[name] = value
+        return value
     if name in {"PackedOutputArena", "MemoryBudgetError", "TransferMemoryPlan", "plan_transfer_memory"}:
         from . import memory
         value = getattr(memory, name)
