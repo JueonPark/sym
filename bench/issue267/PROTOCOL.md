@@ -42,12 +42,19 @@ interop1, passive OpenMP waits and one Inductor compilation worker are fixed.
 Every process has a fresh Inductor disk cache. Baseline/candidate shared-library
 paths are checked against `/proc/self/maps`. The existing compiler is unchanged;
 its binary hash is pinned alongside the two host runtimes.
+Each runtime separately records the source revision used to build its binaries;
+the common measurement-source inventory is not the old runtime's build source.
 
 Records retain source compile/bind/native preparation, common allocation, first
-producer, warmup costs, every sample, plan sizes, intermediate bytes and per-case
+completed call, warmup costs, every sample, plan sizes, intermediate bytes and per-case
 Inductor cache file/byte growth. The AOT runtime creates no per-shape executable
 code/cache. Amortized totals must name their request count and included setup;
-Inductor lazy compilation is already included in its first producer call.
+Inductor lazy compilation is included in its first completed call. Derived
+Total(N) is shared allocation + arm-specific compile/bind/setup/storage + first
+completed call + (N−1)×warm median. Warmup costs are retained separately and are
+excluded from this amortization model. Unfused intermediate-buffer allocation is
+charged only to that arm. CPU input generation and CUDA context initialization
+are shared preconditions, not included setup costs.
 Analytical traffic and observed elapsed time do not measure DRAM bandwidth.
 
 Debugger stack samples and before/after stage/copy operation counts support

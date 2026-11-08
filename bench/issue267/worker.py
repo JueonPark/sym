@@ -14,7 +14,7 @@ from _folding_native import Runner
 from cases import make_case
 from test_controls import equal_bits
 import contract
-from evidence import provenance, cache_inventory
+from evidence import provenance, cache_inventory, environment
 
 ROOT = Path(__file__).resolve().parent
 REPO = ROOT.parents[1]
@@ -57,11 +57,13 @@ def one_case(args, specification):
     start = time.perf_counter_ns()
     wire = torch.empty(case.shapes[-1], dtype=getattr(torch, case.dtypes[-1]), pin_memory=True)
     gpu = torch.empty_like(wire, device='cuda:0')
+    fused_arrays = [array(case.source), array(wire)]
+    allocation_ms = (time.perf_counter_ns() - start) / 1e6
+    start = time.perf_counter_ns()
     inter = [torch.empty(s, dtype=getattr(torch, d))
              for s, d in zip(case.shapes[1:-1], case.dtypes[1:-1])]
-    arrays = [array(t) for t in [case.source, *inter, wire]]
-    fused_arrays = [arrays[0], arrays[-1]]
-    allocation_ms = (time.perf_counter_ns() - start) / 1e6
+    arrays = [fused_arrays[0], *[array(t) for t in inter], fused_arrays[-1]]
+    unfused_storage_ms = (time.perf_counter_ns() - start) / 1e6
     client = CompilerClient.from_environment()
     bounds, parts = [], []
     for i, recipe in enumerate(case.parts):
@@ -72,18 +74,19 @@ def one_case(args, specification):
     unfused, unfused_prepare = clock(lambda: Runner(bounds, job['threads']))
     folded, folded_prepare = clock(lambda: Runner([bound], job['threads']))
     manual, manual_prepare = clock(lambda: Runner([], job['threads']))
+    scales = case.scales.numpy()
     functions = {'sym_unfused': lambda: unfused.run(arrays),
                  'sym_folded': lambda: folded.run(fused_arrays),
                  'torch_eager': lambda: wire.copy_(case.reference(case.source))}
     if 'manual_fused' in contract.arms(specification):
         functions['manual_fused'] = lambda: manual.manual(case.family, arrays[0], arrays[-1],
-                                                         case.scales.numpy(), case.n, case.m)
+                                                         scales, case.n, case.m)
     torch._dynamo.reset()
 
     def into(source, destination):
         return destination.copy_(case.reference(source))
 
-    compiled = torch.compile(into, backend='inductor', fullgraph=True, dynamic=False)
+    compiled, compiled_prepare = clock(lambda: torch.compile(into, backend='inductor', fullgraph=True, dynamic=False))
     functions['torch_inductor'] = lambda: compiled(case.source, wire)
     active_arms = contract.arms(specification)
     cache_before = cache_inventory(args.cache)
@@ -112,15 +115,20 @@ def one_case(args, specification):
     shift = job['round'] % len(active_arms)
     first_order = active_arms[shift:] + active_arms[:shift]
     for arm in first_order:
-        _, elapsed = clock(functions[arm])
+        result, elapsed = clock(lambda: completed(functions[arm]))
         equal_bits(wire, expected)
-        paths[arm]['first_producer_ms'] = elapsed
+        equal_bits(gpu.cpu(), expected)
+        if activation is not None:
+            first_expected = consume(expected.cuda()).clone()
+            equal_bits(result.cpu(), first_expected.cpu())
+        paths[arm]['first_completed_ms'] = elapsed
         start = time.perf_counter_ns()
         for _ in range(contract.WARMUP):
             completed(functions[arm])
         paths[arm]['warmup_total_ms'] = (time.perf_counter_ns() - start) / 1e6
         equal_bits(gpu.cpu(), expected)
     checks = 0
+    consumer_checks = 0
     for mode in contract.modes(job['suite']):
         for arm in active_arms:
             paths[arm][mode] = {'samples_ms': []}
@@ -140,20 +148,23 @@ def one_case(args, specification):
                     equal_bits(gpu.cpu(), expected)
                     if consumer_expected is not None:
                         equal_bits(result.cpu(), consumer_expected.cpu())
+                        consumer_checks += 1
                 paths[arm][mode]['samples_ms'].append(elapsed)
                 checks += 1
     preparation = {
         'common_allocation_ms': allocation_ms,
         'sym_unfused': dict(compile_ms=sum(p['compile_ms'] for p in parts),
-                            bind_ms=sum(p['bind_ms'] for p in parts), native_ms=unfused_prepare),
+                            bind_ms=sum(p['bind_ms'] for p in parts), native_ms=unfused_prepare,
+                            storage_ms=unfused_storage_ms, plan_bytes=sum(p['plan_bytes'] for p in parts)),
         'sym_folded': dict(compile_ms=folded_facts['compile_ms'],
-                          bind_ms=folded_facts['bind_ms'], native_ms=folded_prepare),
-        'manual_fused': dict(compile_ms=0., bind_ms=0., native_ms=manual_prepare),
-        'torch_eager': dict(compile_ms=0., bind_ms=0., native_ms=0.),
-        'torch_inductor': dict(compile_ms=0., bind_ms=0., native_ms=0.),
-        'inductor_note': 'Lazy compilation is included in first_producer_ms, with a fresh per-process cache.',
+                          bind_ms=folded_facts['bind_ms'], native_ms=folded_prepare,
+                          storage_ms=0., plan_bytes=folded_facts['plan_bytes']),
+        'manual_fused': dict(compile_ms=0., bind_ms=0., native_ms=manual_prepare,storage_ms=0.,plan_bytes=0),
+        'torch_eager': dict(compile_ms=0., bind_ms=0., native_ms=0.,storage_ms=0.,plan_bytes=0),
+        'torch_inductor': dict(compile_ms=0., bind_ms=0., native_ms=compiled_prepare,storage_ms=0.,plan_bytes=0),
+        'inductor_note': 'Lazy compilation is included in first_completed_ms, with a fresh per-process cache.',
         'parts': parts, 'folded': folded_facts}
-    return dict(case=specification, checks=checks, input_sha256=initial_input,
+    return dict(case=specification, checks=checks, consumer_checks=consumer_checks, input_sha256=initial_input,
                 oracle_sha256=initial_oracle, scale_sha256=digest(case.scales), paths=paths,
                 h2d_copies_per_call=1, source_bytes=case.source.nbytes, wire_bytes=wire.nbytes,
                 materialized_boundaries=len(inter), intermediate_bytes=sum(t.nbytes for t in inter),
@@ -188,7 +199,7 @@ def main():
                   affinity=sorted(os.sched_getaffinity(0)), torch_threads=torch.get_num_threads(),
                   interop_threads=torch.get_num_interop_threads(),
                   emulate_precision_casts=torch._inductor.config.emulate_precision_casts,
-                  torch=torch.__version__, python=os.sys.version, gpu=torch.cuda.get_device_name(0),
+                  environment=environment(torch), tf32=torch.backends.cuda.matmul.allow_tf32,
                   provenance=provenance(REPO, args.runtime_root, Path(os.environ['SYM_RELOC_EXPORT'])),
                   cases={})
     with torch.no_grad():

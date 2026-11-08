@@ -69,7 +69,7 @@ def test_heldout_chains_match_independent_eager_expression(family,outer):
     runner.run([case.source.numpy(),out.numpy()])
     equal_bits(out,case.reference(case.source))
 
-@pytest.mark.parametrize('family',FAMILIES)
+@pytest.mark.parametrize('family',FAMILIES+['roundtrip7','bf16_roundtrip','dequant_roundtrip','quant_roundtrip'])
 def test_inductor_preserves_exceptional_values(family):
     torch._dynamo.reset()
     torch._inductor.config.emulate_precision_casts=True

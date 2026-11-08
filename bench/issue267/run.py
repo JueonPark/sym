@@ -51,7 +51,11 @@ def main():
         parser.error('unknown or duplicate job')
     args.output.mkdir(parents=True, exist_ok=True)
     manifest_path = args.output / 'manifest.json'
+    environment = json.loads(subprocess.check_output([sys.executable, '-c',
+        'import json,torch; from bench.issue267.evidence import environment; print(json.dumps(environment(torch)))'],
+        cwd=REPO, text=True))
     current = dict(schema=1, qualification=not args.pilot, jobs=selected,
+                   environment=environment,
                    provenance={name: provenance(REPO, root, args.compiler) for name, root in roots.items()})
     if manifest_path.exists():
         manifest = json.loads(manifest_path.read_text())

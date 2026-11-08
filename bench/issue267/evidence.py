@@ -1,6 +1,13 @@
 """Content-address the code and binaries actually used by a measurement."""
 import hashlib
 from pathlib import Path
+import platform
+import sys
+
+
+def environment(torch):
+    return dict(torch=torch.__version__, python=sys.version, platform=platform.platform(),
+                gpu=torch.cuda.get_device_name(0))
 
 
 def sha(path):
@@ -25,7 +32,8 @@ def provenance(repo, runtime, compiler):
         for path in (runtime / directory).rglob('*'):
             if path.is_file() and path.suffix in ('.py', '.so') and '__pycache__' not in path.parts:
                 files[str(path.relative_to(runtime))] = sha(path)
-    return dict(source=source, runtime=files, compiler=sha(compiler))
+    return dict(source=source, runtime=files, compiler=sha(compiler),
+                runtime_source_revision=(runtime / 'SOURCE_REVISION').read_text().strip())
 
 
 def cache_inventory(directory):

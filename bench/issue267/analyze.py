@@ -26,8 +26,11 @@ def validate_membership(jobs):
     require(jobs == contract.jobs(), 'campaign membership differs from frozen grid')
 
 
-def validate_record(record, job, provenance):
+def validate_record(record, job, provenance, environment):
     require(record['job'] == job, 'job identity')
+    require(record['complete'] is True, 'incomplete process record')
+    require(record['environment'] == environment, 'environment mismatch')
+    require(record['tf32'] is False, 'TF32 contract')
     require(record['provenance'] == provenance, 'source/runtime provenance')
     require(record['samples'] == contract.SAMPLES and record['warmup'] == contract.WARMUP,
             'sample/warmup contract')
@@ -44,16 +47,45 @@ def validate_record(record, job, provenance):
         modes = contract.modes(job['suite'])
         require(row['checks'] == len(row['paths']) * len(modes) * contract.SAMPLES,
                 'timed correctness checks')
+        consumer = job['suite'] == 'consumer'
+        require(row['consumer_checks'] == (len(row['paths']) * contract.SAMPLES if consumer else 0),
+                'consumer correctness checks')
+        require(row['consumer_batch'] == (32 if consumer else None), 'consumer batch')
         require(row['h2d_copies_per_call'] == 1, 'H2D contract')
-        for name in ('input_sha256', 'oracle_sha256'):
+        for name in ('input_sha256', 'oracle_sha256', 'scale_sha256'):
             require(len(row[name]) == 64 and all(c in '0123456789abcdef' for c in row[name]),
                     'input/oracle provenance')
         for arm, results in row['paths'].items():
+            for name in ('first_completed_ms', 'warmup_total_ms'):
+                require(math.isfinite(results[name]) and results[name] > 0, 'invalid first/warmup cost')
+            for name in ('compile_ms', 'bind_ms', 'native_ms', 'storage_ms'):
+                value = row['preparation'][arm][name]
+                require(math.isfinite(value) and value >= 0, 'invalid preparation cost')
+            require(isinstance(row['preparation'][arm]['plan_bytes'], int)
+                    and row['preparation'][arm]['plan_bytes'] >= 0, 'invalid plan size')
             for mode in modes:
                 samples = results[mode]['samples_ms']
                 require(len(samples) == contract.SAMPLES, 'sample membership')
                 require(all(isinstance(v, (int, float)) and math.isfinite(v) and v > 0
                             for v in samples), 'invalid timing sample')
+        common = row['preparation']['common_allocation_ms']
+        require(math.isfinite(common) and common >= 0, 'invalid common allocation cost')
+        require(row['runtime_shape_code_cache_bytes'] == 0, 'unexpected shape code cache')
+        for name in ('cache_before', 'cache_after'):
+            cache = row[name]
+            require(set(cache) == {'files', 'bytes', 'generated_files', 'generated_bytes'}, 'cache fields')
+            require(all(isinstance(v, int) and v >= 0 for v in cache.values()), 'invalid cache counters')
+            require(cache['generated_files'] <= cache['files'] and cache['generated_bytes'] <= cache['bytes'],
+                    'inconsistent cache counters')
+
+
+def total_cost(row, arm, mode, requests):
+    require(mode != 'producer' and requests >= 1, 'total requires completed requests')
+    prepare = row['preparation'][arm]
+    setup = row['preparation']['common_allocation_ms'] + sum(
+        prepare[k] for k in ('compile_ms', 'bind_ms', 'native_ms', 'storage_ms'))
+    return (setup + row['paths'][arm]['first_completed_ms'] + (requests - 1) *
+            statistics.median(row['paths'][arm][mode]['samples_ms']))
 
 
 def percentile(values, q):
@@ -77,7 +109,7 @@ def analyze(directory):
         require(audit['exit_code'] == 0 and not audit['foreign_busy_processes'],
                 'failed or contaminated job')
         require(audit['job'] == job and audit['observations'] >= 1, 'missing process audit')
-        validate_record(record, job, manifest['provenance'][job['runtime']])
+        validate_record(record, job, manifest['provenance'][job['runtime']], manifest['environment'])
         for key, row in record['cases'].items():
             checks += row['checks']
             for arm, values in row['paths'].items():
@@ -86,21 +118,33 @@ def analyze(directory):
                     observations.setdefault(index, []).append({
                         'round': job['round'], 'p50_ms': statistics.median(values[mode]['samples_ms']),
                         'p95_ms': percentile(values[mode]['samples_ms'], .95),
-                        'input_sha256': row['input_sha256'], 'oracle_sha256': row['oracle_sha256']})
+                        'input_sha256': row['input_sha256'], 'oracle_sha256': row['oracle_sha256'],
+                        'scale_sha256': row['scale_sha256'], 'preparation': row['preparation'][arm],
+                        'common_allocation_ms': row['preparation']['common_allocation_ms'],
+                        'first_completed_ms': values['first_completed_ms'], 'warmup_total_ms': values['warmup_total_ms'],
+                        'cache_generated_bytes': row['cache_after']['generated_bytes'] - row['cache_before']['generated_bytes'],
+                        'cache_generated_files': row['cache_after']['generated_files'] - row['cache_before']['generated_files'],
+                        'total_ms': {str(n): total_cost(row, arm, mode, n) for n in (1, 100, 1000)}
+                                    if mode != 'producer' else None})
     rows = []
     for index, values in sorted(observations.items()):
         require(sorted(v['round'] for v in values) == [1, 2, 3], 'round membership')
-        require(len({(v['input_sha256'], v['oracle_sha256']) for v in values}) == 1,
+        require(len({(v['input_sha256'], v['oracle_sha256'], v['scale_sha256']) for v in values}) == 1,
                 'different round inputs')
         suite, case, threads, runtime, arm, mode = index
         rows.append(dict(suite=suite, case=case, threads=threads, runtime=runtime, arm=arm,
                          mode=mode, median_ms=statistics.median(v['p50_ms'] for v in values),
-                         p95_ms=statistics.median(v['p95_ms'] for v in values), rounds=values))
+                         p95_ms=statistics.median(v['p95_ms'] for v in values), rounds=values,
+                         first_completed_ms=statistics.median(v['first_completed_ms'] for v in values),
+                         preparation_ms=statistics.median(v['common_allocation_ms'] + sum(v['preparation'][name]
+                             for name in ('compile_ms','bind_ms','native_ms','storage_ms')) for v in values),
+                         total_ms={str(n): statistics.median(v['total_ms'][str(n)] for v in values)
+                                   for n in (1,100,1000)} if mode != 'producer' else None))
     # Both runtime processes must consume identical data and oracles.
     paired = {}
     for row in rows:
         key = (row['suite'], row['case'], row['threads'], row['arm'], row['mode'])
-        value = (row['rounds'][0]['input_sha256'], row['rounds'][0]['oracle_sha256'])
+        value = tuple(row['rounds'][0][k] for k in ('input_sha256','oracle_sha256','scale_sha256'))
         require(key not in paired or paired[key] == value, 'runtime input mismatch')
         paired[key] = value
     result = dict(accepted=True, jobs=len(manifest['jobs']), checks=checks, rows=rows)
@@ -111,6 +155,12 @@ def analyze(directory):
              '| --- | --- | ---: | --- | --- | --- | ---: | ---: |']
     lines += [f"| {r['suite']} | {r['case']} | {r['threads']} | {r['runtime']} | {r['arm']} | {r['mode']} | {r['median_ms']:.6f} | {r['p95_ms']:.6f} |"
               for r in rows]
+    lines += ['', '## Setup, first completed call and amortized totals', '',
+              'Total(N) = shared allocation + arm-specific compile/bind/setup/storage + first completed call + (N−1)×warm median. Warmup runs used to estimate steady state are reported separately in raw data and excluded from this derived total. Medians are computed from complete per-process sums. All times are ms.', '',
+              '| Suite | Case | Workers | Runtime | Arm | Preparation | First completed | Total(1) | Total(100) | Total(1000) |',
+              '| --- | --- | ---: | --- | --- | ---: | ---: | ---: | ---: | ---: |']
+    lines += [f"| {r['suite']} | {r['case']} | {r['threads']} | {r['runtime']} | {r['arm']} | {r['preparation_ms']:.3f} | {r['first_completed_ms']:.3f} | {r['total_ms']['1']:.3f} | {r['total_ms']['100']:.3f} | {r['total_ms']['1000']:.3f} |"
+              for r in rows if r['mode'] != 'producer']
     (directory / 'tables.md').write_text('\n'.join(lines) + '\n')
     return dict(accepted=True, jobs=result['jobs'], checks=checks, rows=len(rows))
 
