@@ -95,6 +95,17 @@ def percentile(values, q):
     return values[low] + (values[min(low + 1, len(values) - 1)] - values[low]) * (position - low)
 
 
+def validate_audit(audit, job):
+    require(audit['exit_code'] == 0 and not audit['foreign_busy_processes'],
+            'failed or contaminated job')
+    require(audit['job'] == job and audit['observations'] >= 1, 'missing process audit')
+    preflight = audit.get('preflight', {})
+    quiet = preflight.get('quiet_seconds', -1)
+    require(isinstance(quiet, (int, float)) and math.isfinite(quiet)
+            and quiet >= contract.QUIET_SECONDS, 'missing or insufficient clean cooldown')
+    require(preflight.get('quiet_observations', 0) >= 2, 'unobserved clean cooldown')
+
+
 def analyze(directory):
     manifest = json.loads((directory / 'manifest.json').read_text())
     validate_membership(manifest['jobs'])
@@ -106,9 +117,7 @@ def analyze(directory):
         saved = manifest['records'][job['id']]
         record = read_checked(directory / saved['path'], saved['sha256'])
         audit = read_checked(directory / saved['audit_path'], saved['audit_sha256'])
-        require(audit['exit_code'] == 0 and not audit['foreign_busy_processes'],
-                'failed or contaminated job')
-        require(audit['job'] == job and audit['observations'] >= 1, 'missing process audit')
+        validate_audit(audit, job)
         validate_record(record, job, manifest['provenance'][job['runtime']], manifest['environment'])
         for key, row in record['cases'].items():
             checks += row['checks']

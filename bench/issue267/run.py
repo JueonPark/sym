@@ -17,18 +17,24 @@ import contract
 from evidence import provenance, sha
 
 
-def wait_for_idle(wait):
+def wait_for_idle(wait, *, qualification=False):
     quiet_since = None
+    quiet_observations = 0
+    required_seconds = contract.QUIET_SECONDS if qualification or wait else 0
     while True:
         foreign = audit({os.getpid()})
         if foreign:
             quiet_since = None
+            quiet_observations = 0
             if not wait:
                 raise RuntimeError(f'foreign activity: {foreign}')
-        elif quiet_since is None:
-            quiet_since = time.monotonic()
-        if quiet_since is not None and (not wait or time.monotonic() - quiet_since >= 60):
-            return
+        else:
+            if quiet_since is None:
+                quiet_since = time.monotonic()
+            quiet_observations += 1
+        if quiet_since is not None and time.monotonic() - quiet_since >= required_seconds:
+            return dict(quiet_seconds=time.monotonic() - quiet_since,
+                        quiet_observations=quiet_observations)
         print('waiting for quiet host', foreign, flush=True)
         time.sleep(3)
 
@@ -70,7 +76,7 @@ def main():
             assert sha(args.output / saved['audit_path']) == saved['audit_sha256']
             continue
         while True:
-            wait_for_idle(args.wait_for_idle)
+            preflight = wait_for_idle(args.wait_for_idle, qualification=not args.pilot)
             runtime = roots[job['runtime']]
             target = args.output / job['id']
             target.mkdir()  # Refuse an unrecorded partial run; preserve it for inspection.
@@ -101,6 +107,7 @@ def main():
                         os.killpg(child.pid, signal.SIGTERM)
                         child.wait()
             checked = dict(job=job, command=command, exit_code=child.returncode,
+                           preflight=preflight,
                            observations=observations, audit_interval_seconds=3,
                            foreign_busy_processes=sorted(set(seen)),
                            wall_seconds=time.monotonic() - start)

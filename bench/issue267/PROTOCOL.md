@@ -70,5 +70,8 @@ audits. Jobs execute serially, with no concurrent builds or profiling. Contamina
 attempts are preserved with hashes before an idle retry; clean results are never
 repeated based on their timings. Unexpected worker failures stop the campaign.
 The analyzer rejects altered membership, provenance, settings and output counts.
+Qualification always enforces and records the clean cooldown, even without
+`--wait-for-idle`; that option permits waiting/retrying when foreign activity is
+detected. Analysis rejects missing, insufficient or unobserved cooldown records.
 All regressions, fallbacks and losses remain in the final tables. Three rounds
 on one machine do not establish universal speedups or statistical generality.

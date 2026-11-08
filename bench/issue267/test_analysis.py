@@ -108,3 +108,42 @@ def test_checksum_changes_are_rejected(tmp_path):
     path.write_text('{"value":2}\n')
     with pytest.raises(ValueError, match='checksum'):
         analyze.read_checked(path, digest)
+
+
+@pytest.mark.parametrize('change', ['missing', 'short', 'nonfinite', 'unobserved',
+                                    'foreign', 'failed', 'job'])
+def test_qualification_requires_observed_cooldown(change):
+    job = contract.jobs()[0]
+    audit = dict(job=job, exit_code=0, observations=3, foreign_busy_processes=[],
+                 preflight=dict(quiet_seconds=60.01, quiet_observations=21))
+    analyze.validate_audit(audit, job)
+    if change == 'missing': audit.pop('preflight')
+    elif change == 'short': audit['preflight']['quiet_seconds'] = 59.99
+    elif change == 'nonfinite': audit['preflight']['quiet_seconds'] = float('nan')
+    elif change == 'unobserved': audit['preflight']['quiet_observations'] = 1
+    elif change == 'foreign': audit['foreign_busy_processes'] = [[999, 'foreign build']]
+    elif change == 'failed': audit['exit_code'] = 1
+    else: audit['job'] = contract.jobs()[1]
+    with pytest.raises(ValueError):
+        analyze.validate_audit(audit, job)
+
+
+def test_qualification_waits_without_optional_retry_flag(monkeypatch):
+    from bench.issue267 import run
+    elapsed = [0.]
+    monkeypatch.setattr(run.time, 'monotonic', lambda: elapsed[0])
+    monkeypatch.setattr(run.time, 'sleep', lambda seconds: elapsed.__setitem__(0, elapsed[0] + seconds))
+    monkeypatch.setattr(run, 'audit', lambda allowed: [])
+    result = run.wait_for_idle(False, qualification=True)
+    assert elapsed[0] >= 60 and result['quiet_seconds'] >= 60
+    assert result['quiet_observations'] >= 2
+
+
+def test_foreign_activity_restarts_the_clean_interval(monkeypatch):
+    from bench.issue267 import run
+    elapsed = [0.]
+    monkeypatch.setattr(run.time, 'monotonic', lambda: elapsed[0])
+    monkeypatch.setattr(run.time, 'sleep', lambda seconds: elapsed.__setitem__(0, elapsed[0] + seconds))
+    monkeypatch.setattr(run, 'audit', lambda allowed: [(999, 'foreign build')] if elapsed[0] == 6 else [])
+    result = run.wait_for_idle(True, qualification=True)
+    assert elapsed[0] >= 69 and result['quiet_seconds'] == 60

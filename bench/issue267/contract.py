@@ -7,6 +7,7 @@ AFFINITY = (4, 5, 6, 7, 20, 21, 22, 23)
 SAMPLES = 30
 WARMUP = 5
 ROUNDS = 3
+QUIET_SECONDS = 60
 
 
 def case_key(case):
