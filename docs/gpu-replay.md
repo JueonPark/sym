@@ -33,15 +33,24 @@ module/closure state, RNG, tensor mutation, CPU side effects, CPU transfers or
 host synchronization is supported inside a region. Input mutation detected in
 warmup excludes the bucket. This guard is not a proof of purity. Mutable routing
 and in-place accumulation belong outside the boundary. Output leaves must be
-CUDA tensors; outputs are independent copies, with no input/output alias promise.
+CUDA tensors in builtin tuple/list/dict containers with scalar dictionary keys.
+Admitted slot outputs are independent copies, with no input/output alias promise.
+An excluded output structure uses the original callable and its output semantics.
+The callable operates on tensor values; it must not inspect Python identities,
+storage aliases/pointers or autograd history of the copied arguments.
 
-Arguments may be builtin pytrees of ordinary contiguous, nonempty CUDA tensors
-on the owner's device and immutable scalars. Each shape, dtype, stride, scalar
+Arguments may be builtin tuple/list/dict trees of ordinary contiguous, nonempty
+CUDA tensors on the owner's device and immutable scalars. Dictionary keys must
+be scalar None/bool/int/float/string values. Cycles, custom pytree contexts, tensor
+subclasses, named tensors, sparse/nested layouts and active forward-AD/torch.func
+transforms are explicitly rejected: their hidden storage is outside this API.
+Parameters and nonleaf tensors requiring backward gradients are accepted under
+no-grad/inference mode; stable copies are detached from their autograd history.
+Each shape, dtype, stride, scalar
 value and structure is guarded. Replaced tensor addresses are supported by
 refreshing every input. Unsupported metadata/devices or exhausted shape/slot
 capacity runs the original callable. Every such reason is visible in `stats()`.
 Grad-enabled execution raises. Autocast executes the original callable.
-Named tensors, on Torch builds exposing that API, use the original callable.
 The settings signature includes precision/reduction controls, deterministic
 warning policy, BLAS/linalg preferences, cuDNN selection and SDPA backend order.
 If Torch cannot expose a consistent settings signature, execution falls back.

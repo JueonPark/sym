@@ -23,8 +23,12 @@ implementer: this directly matches the existing model GPU function boundaries.
 configures `GPUReplay(function, policy=..., device='cuda:0')`. Calls accept nested
 Tensor/None/bool/int/float/string positional and keyword arguments. All tensors
 must be nonempty dense contiguous ordinary CUDA tensors on the declared device.
-Nonmatching metadata/device, unsupported arguments, bucket exhaustion, busy slots
-and memory admission failures use the original callable and record the reason.
+Nonmatching dense metadata/device, bucket exhaustion, busy slots and memory
+admission failures use the original callable and record the reason. A review-led
+eligibility clarification rejects opaque/custom/cyclic containers, nonscalar
+dictionary keys, tensor subclasses, named/sparse/nested tensors and active
+forward-AD/torch.func contexts. These can hide storage outside ordinary tensor
+leaves, so they cannot share this owner accounting or fallback lifetime contract.
 The function must be a pure, deterministic, functional GPU region: all mutable
 parameters/state are explicit arguments; no mutation, RNG, host side effects,
 CPU transfers, host synchronization or captured mutable closure/module state.

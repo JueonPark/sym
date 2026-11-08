@@ -14,6 +14,28 @@ import time
 _CAPTURE_LOCK = threading.RLock()
 
 
+def _builtin_tree(value, torch, ancestors=None):
+    """TreeSpec context must never hide tensors or opaque owned resources."""
+    if isinstance(value, torch.Tensor) or value is None or type(value) in (bool, int, float, str):
+        return True
+    if type(value) not in (tuple, list, dict):
+        return False
+    if ancestors is None:
+        ancestors = set()
+    identity = id(value)
+    if identity in ancestors:
+        return False
+    ancestors.add(identity)
+    try:
+        if type(value) is dict:
+            if any(key is not None and type(key) not in (bool, int, float, str) for key in value):
+                return False
+            value = value.values()
+        return all(_builtin_tree(item, torch, ancestors) for item in value)
+    finally:
+        ancestors.remove(identity)
+
+
 def _compute_settings(torch):
     """Guard arithmetic and backend selection, including optional newer controls."""
     cuda, cudnn = torch.backends.cuda, torch.backends.cudnn
@@ -138,18 +160,27 @@ class GPUReplay:
         from torch.utils._pytree import tree_flatten
         if torch.is_grad_enabled():
             raise RuntimeError('GPU replay requires torch.no_grad() or torch.inference_mode()')
+        if (torch.autograd.forward_ad._current_level >= 0
+                or torch._C._are_functorch_transforms_active()):
+            raise RuntimeError('GPU replay does not support forward AD or active torch.func transforms')
+        if not _builtin_tree((args, kwargs), torch):
+            raise TypeError('GPU replay requires builtin containers with scalar dictionary keys')
+        flat, spec = tree_flatten((args, kwargs))
+        for value in flat:
+            if isinstance(value, torch.Tensor):
+                if (type(value) not in (torch.Tensor, torch.nn.Parameter)
+                        or value.layout != torch.strided or value.is_nested):
+                    raise TypeError('GPU replay accepts ordinary dense strided tensors only')
+                if any(name is not None for name in getattr(value, 'names', ())):
+                    raise TypeError('GPU replay does not support named tensors')
         if torch.is_autocast_enabled('cuda'):
             return None, None, None, 'autocast'
-        flat, spec = tree_flatten((args, kwargs))
         key, tensors = [], 0
         for value in flat:
             if isinstance(value, torch.Tensor):
-                if type(value) not in (torch.Tensor, torch.nn.Parameter):
-                    return None, None, None, 'tensor_subclass'
-                if (value.device != self.device or value.layout != torch.strided
+                if (value.device != self.device
                         or not value.is_contiguous() or not value.numel()
-                        or value.is_conj() or value.is_neg() or value.is_quantized
-                        or any(name is not None for name in getattr(value, 'names', ()))):
+                        or value.is_conj() or value.is_neg() or value.is_quantized):
                     return None, None, None, 'metadata'
                 key.append(('tensor', tuple(value.shape), tuple(value.stride()), value.dtype))
                 tensors += 1
@@ -183,7 +214,7 @@ class GPUReplay:
         stream = torch.cuda.Stream(device=self.device)
         stream.wait_stream(torch.cuda.current_stream(self.device))
         try:
-            with torch.cuda.stream(stream), torch.inference_mode(False):
+            with torch.cuda.stream(stream), torch.inference_mode(False), torch.no_grad():
                 slot.inputs = [x.clone() if isinstance(x, torch.Tensor) else x for x in flat]
             args, kwargs = tree_unflatten(slot.inputs, spec)
             versions = [x._version for x in slot.inputs if isinstance(x, torch.Tensor)]
@@ -196,8 +227,12 @@ class GPUReplay:
             if versions != [x._version for x in slot.inputs if isinstance(x, torch.Tensor)]:
                 slot.close()
                 return None, 'input_mutation'
+            if not _builtin_tree(warm, torch):
+                slot.close()
+                return None, 'output_structure'
             outputs = tree_flatten(warm)[0]
-            if not outputs or any(not isinstance(x, torch.Tensor) or x.device != self.device for x in outputs):
+            if not outputs or any(type(x) not in (torch.Tensor, torch.nn.Parameter)
+                                  or x.device != self.device for x in outputs):
                 slot.close()
                 return None, 'output_metadata'
             del warm, outputs
