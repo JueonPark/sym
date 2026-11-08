@@ -101,6 +101,10 @@ Supplemental membership is eager/Inductor × three rounds, each with stable,
 varying-shape and 1 MiB owner-budget scenarios × plain/off/on, 100 checked warm calls
 per row. Separate ten-call diagnostic traces are enabled in round 1. Supplemental
 processes each have their own 60-second quiet gate and continuous audit.
+Within each supplemental process, mode/scenario rows reset Dynamo but share an
+Inductor disk cache. Their preparation/first costs are therefore not independent
+cold-process costs. Varying shapes first reach the compiled callable during the
+timed sweep; its distribution includes shape-change compilation penalties.
 
 Separate model diagnostics run ten completed requests with profiling for E2
 decode eager Sym and sparse MoE Inductor Torch, off/on, plus E5 decode Inductor

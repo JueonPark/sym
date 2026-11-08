@@ -335,3 +335,87 @@ def test_explicit_code_revision_invalidation_keeps_old_outputs(cuda_device):
         new = owner(x)
         torch.testing.assert_close(new, torch.full_like(x, -6))
         torch.testing.assert_close(old, torch.full_like(x, 3))
+
+
+@pytest.mark.gpu
+@pytest.mark.parametrize('setting', ['matmul_precision', 'fp16_accumulation', 'fp16_split_k',
+                                    'bf16_split_k', 'math_sdp_reduction', 'sdp_priority',
+                                    'deterministic_warn_only', 'sdp_overrideable'])
+def test_changed_precision_and_selection_policy_falls_back(cuda_device, setting):
+    from contextlib import ExitStack
+    with ExitStack() as restore:
+        if setting == 'matmul_precision':
+            prior = torch.get_float32_matmul_precision()
+            restore.callback(torch.set_float32_matmul_precision, prior)
+            torch.set_float32_matmul_precision('high')
+            change = lambda: torch.set_float32_matmul_precision('medium')
+        elif setting == 'fp16_accumulation':
+            flags = torch.backends.cuda.matmul
+            prior = flags.allow_fp16_accumulation
+            restore.callback(setattr, flags, 'allow_fp16_accumulation', prior)
+            change = lambda: setattr(flags, 'allow_fp16_accumulation', not prior)
+        elif setting in ('fp16_split_k', 'bf16_split_k'):
+            flags = torch.backends.cuda.matmul
+            name = 'allow_' + setting[:4] + '_reduced_precision_reduction'
+            prior = (getattr(flags, name), getattr(flags, name + '_split_k'))
+            restore.callback(setattr, flags, name, prior)
+            setattr(flags, name, (False, True))
+            change = lambda: setattr(flags, name, (False, False))
+        elif setting == 'math_sdp_reduction':
+            flags = torch.backends.cuda
+            prior = flags.fp16_bf16_reduction_math_sdp_allowed()
+            restore.callback(flags.allow_fp16_bf16_reduction_math_sdp, prior)
+            change = lambda: flags.allow_fp16_bf16_reduction_math_sdp(not prior)
+        elif setting == 'sdp_priority':
+            prior = torch._C._get_sdp_priority_order()
+            restore.callback(torch._C._set_sdp_priority_order, prior)
+            change = lambda: torch._C._set_sdp_priority_order(list(reversed(prior)))
+        elif setting == 'sdp_overrideable':
+            prior = torch._C._get_overrideable_sdp_enabled()
+            restore.callback(torch._C._set_sdp_use_overrideable, prior)
+            change = lambda: torch._C._set_sdp_use_overrideable(not prior)
+        else:
+            prior = (torch.are_deterministic_algorithms_enabled(),
+                     torch.is_deterministic_algorithms_warn_only_enabled())
+            restore.callback(torch.use_deterministic_algorithms, prior[0], warn_only=prior[1])
+            torch.use_deterministic_algorithms(True, warn_only=False)
+            change = lambda: torch.use_deterministic_algorithms(True, warn_only=True)
+        with torch.no_grad(), replay(lambda x: x @ x) as owner:
+            x = torch.eye(4, device=cuda_device)
+            owner.prepare(x).freeze()
+            change()
+            torch.testing.assert_close(owner(x), x @ x)
+            assert owner.stats()['replays'] == 0
+            assert owner.stats()['fallbacks']['frozen_shape'] == 1
+
+
+@pytest.mark.gpu
+@pytest.mark.skipif(not hasattr(torch.Tensor, 'refine_names'), reason='Torch build has no named tensors')
+def test_named_axes_use_original_callable(cuda_device):
+    with torch.no_grad(), replay(lambda x: x.sum('N')) as owner:
+        x = torch.tensor([[1., 2.], [3., 4.]], device=cuda_device).refine_names('N', 'M')
+        owner.prepare(x).freeze()
+        renamed = x.rename('M', 'N')
+        torch.testing.assert_close(owner(renamed).rename(None), renamed.sum('N').rename(None))
+        assert owner.stats()['captures'] == 0
+        assert owner.stats()['fallbacks']['metadata'] == 1
+
+
+@pytest.mark.gpu
+@pytest.mark.parametrize('enabled', [False, True])
+def test_garbage_collection_retires_inflight_replay(cuda_device, enabled):
+    import weakref
+    with torch.no_grad():
+        x = torch.ones(8192, device=cuda_device)
+        owner = replay(lambda x: x + 3, enabled=enabled)
+        owner.prepare(x).freeze()
+        consumer = torch.cuda.Stream()
+        consumer.wait_stream(torch.cuda.current_stream())
+        with torch.cuda.stream(consumer):
+            torch.cuda._sleep(100_000_000)
+            output = owner(x)
+        reference = weakref.ref(owner)
+        del owner
+        assert reference() is None
+        assert consumer.query(), 'owner destruction must retire in-flight private storage'
+        torch.testing.assert_close(output, torch.full_like(x, 4))

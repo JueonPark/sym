@@ -14,6 +14,38 @@ import time
 _CAPTURE_LOCK = threading.RLock()
 
 
+def _compute_settings(torch):
+    """Guard arithmetic and backend selection, including optional newer controls."""
+    cuda, cudnn = torch.backends.cuda, torch.backends.cudnn
+
+    def value(owner, name):
+        result = getattr(owner, name, None)
+        return result() if callable(result) else result
+
+    return (
+        torch.is_inference_mode_enabled(), torch.are_deterministic_algorithms_enabled(),
+        torch.is_deterministic_algorithms_warn_only_enabled(),
+        torch.get_default_dtype(), str(torch.get_default_device()),
+        torch.get_float32_matmul_precision(),
+        tuple(value(cuda.matmul, name) for name in (
+            'allow_tf32', 'allow_fp16_reduced_precision_reduction',
+            'allow_bf16_reduced_precision_reduction', 'allow_fp16_accumulation',
+            'allow_fp16_reduced_precision_reduction_split_k',
+            'allow_bf16_reduced_precision_reduction_split_k',
+            'prefer_cublaslt_grouped_gemm', 'fp32_precision')),
+        tuple(value(cuda, name) for name in (
+            'flash_sdp_enabled', 'mem_efficient_sdp_enabled', 'math_sdp_enabled',
+            'cudnn_sdp_enabled', 'fp16_bf16_reduction_math_sdp_allowed',
+            'preferred_blas_library', 'preferred_linalg_library')),
+        tuple(value(cudnn, name) for name in (
+            'enabled', 'benchmark', 'benchmark_limit', 'deterministic',
+            'allow_tf32', 'fp32_precision', 'depthwise_kernel')),
+        value(getattr(cudnn, 'conv', None), 'fp32_precision'),
+        tuple(value(torch._C, '_get_sdp_priority_order') or ()),
+        value(torch._C, '_get_overrideable_sdp_enabled'),
+    )
+
+
 @dataclass(frozen=True)
 class GPUReplayPolicy:
     enabled: bool = True
@@ -116,7 +148,8 @@ class GPUReplay:
                     return None, None, None, 'tensor_subclass'
                 if (value.device != self.device or value.layout != torch.strided
                         or not value.is_contiguous() or not value.numel()
-                        or value.is_conj() or value.is_neg() or value.is_quantized):
+                        or value.is_conj() or value.is_neg() or value.is_quantized
+                        or any(name is not None for name in getattr(value, 'names', ()))):
                     return None, None, None, 'metadata'
                 key.append(('tensor', tuple(value.shape), tuple(value.stride()), value.dtype))
                 tensors += 1
@@ -128,15 +161,12 @@ class GPUReplay:
                 return None, None, None, 'argument'
         if not tensors:
             return None, None, None, 'no_tensors'
-        settings = (torch.is_inference_mode_enabled(), torch.are_deterministic_algorithms_enabled(),
-                    torch.get_default_dtype(), str(torch.get_default_device()),
-                    torch.backends.cudnn.enabled, torch.backends.cudnn.benchmark,
-                    torch.backends.cudnn.deterministic,
-                    torch.backends.cuda.flash_sdp_enabled(), torch.backends.cuda.mem_efficient_sdp_enabled(),
-                    torch.backends.cuda.math_sdp_enabled(), torch.backends.cuda.cudnn_sdp_enabled(),
-                    torch.backends.cuda.matmul.allow_tf32, torch.backends.cudnn.allow_tf32,
-                    torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction,
-                    torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction)
+        try:
+            settings = _compute_settings(torch)
+        except RuntimeError:
+            # Some Torch versions reject querying mixed old/new precision APIs.
+            # Preserve ordinary execution when its ambient policy cannot be keyed.
+            return None, None, None, 'compute_settings'
         return (spec, tuple(key), settings), flat, spec, None
 
     def _retained(self):
@@ -350,3 +380,13 @@ class GPUReplay:
 
     def __exit__(self, *exc):
         self.close()
+
+    def __del__(self):
+        try:
+            if getattr(self, '_pid', None) == os.getpid():
+                self.close()
+        except Exception:
+            # Partial construction, interpreter teardown, or an already failed
+            # CUDA context cannot be reported from a finalizer. Explicit close
+            # remains the deterministic way to surface retirement errors.
+            pass
