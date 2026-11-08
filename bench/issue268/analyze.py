@@ -61,6 +61,9 @@ def validate_record(row, job):
     for name in ('first_ms', 'preparation_ms', 'retirement_ms', 'warm_start_ms', 'warm_end_ms'):
         finite(row[name], name)
     require(row['warm_end_ms'] > row['warm_start_ms'], 'empty warm interval')
+    require(len(row['compile_before']) == len(row['compile_after']) == job['callers'], 'compile owner count')
+    require(all(a['compile_callbacks'] == b['compile_callbacks']
+                for a,b in zip(row['compile_before'],row['compile_after'])), 'warm compile callback')
     memory = row['torch_memory']
     require(memory['max_allocated'] >= memory['allocated'] >= 0 and
             memory['max_reserved'] >= memory['reserved'] >= memory['allocated'], 'Torch memory bounds')
@@ -114,6 +117,7 @@ def analyze(root):
     require(manifest['jobs'] == expected, 'matrix definition changed')
     membership(list(manifest['records']), [j['id'] for j in expected])
     rows = []
+    input_identities = {}
     for job in expected:
         saved = manifest['records'][job['id']]
         def read(name, digest):
@@ -123,6 +127,10 @@ def analyze(root):
         record = read('path', 'sha256'); audit = read('audit_path', 'audit_sha256')
         validate_audit(audit); validate_record(record, job)
         require(record['provenance'] == manifest['provenance'], 'provenance mismatch')
+        identity = (job['kind'], job['case'])
+        require(len(record['input_sha256']) == (1 if job['kind'] == 'e2' else 8), 'input membership')
+        require(record['input_sha256'] == input_identities.setdefault(identity, record['input_sha256']),
+                'different inputs across matched arms/rounds')
         trace_path = root / saved['path']; trace_path = trace_path.parent / record['memory']['file']
         require(contract.sha(trace_path) == record['memory']['sha256'], 'trace checksum')
         trace = json.loads(gzip.decompress(trace_path.read_bytes()))

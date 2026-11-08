@@ -11,6 +11,7 @@ def record():
                 outcome='success', checks=60, retained_checks=60, held_after_close=1,
                 completed_ms=[1.] * 60, submission_ms=[.5] * 60,
                 first_ms=5., preparation_ms=2., retirement_ms=.2, warmup_ms=[3.], initial_nvml={'used': 10},
+                compile_before=[{'compile_callbacks':0}], compile_after=[{'compile_callbacks':0}], input_sha256=['frozen'],
                 warm_start_ms=10., warm_end_ms=80.,
                 replay_before=[dict(captures=2, replays=3, frozen=True, retained_bytes=1024, max_bytes=4096)],
                 replay_after=[dict(captures=2, replays=63, frozen=True, retained_bytes=1024, max_bytes=4096)],
@@ -151,3 +152,8 @@ def test_runner_restarts_quiet_interval_after_interference(monkeypatch):
     observed=run.quiet(True,False)
     assert now[0]>=90.
     assert observed['quiet_seconds']>=60.
+
+
+def test_reject_warm_inductor_recompile():
+    value=record();value['compile_before']=[{'compile_callbacks':1}];value['compile_after']=[{'compile_callbacks':2}]
+    with pytest.raises(ValueError,match='compile'):validate(value)
