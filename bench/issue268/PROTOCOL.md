@@ -9,9 +9,9 @@ functions, grouped KV and whole-request two-slot prefetch are identical.
 Three rounds. E2: decode, prefill, sparse MoE, dense MoE × eager/Inductor.
 E5: original decode/sparse MoE × 1/2/4 callers × eager, plus 1-caller Inductor.
 Each cell compares Torch/Sym × unwrapped/slots-off/replay-on: six arms, each in a
-fresh process. Mode blocks rotate by round; Torch precedes Sym within each
-block in every round. This residual within-pair order is a limitation of the
-Sym-relative comparison. This is48cells and288arm processes.
+fresh process. Mode blocks rotate by round, and runtime order reverses in
+round2, so every mode includes both Torch-first and Sym-first observations.
+This is48cells and288arm processes.
 The entire six-arm cell follows a measured 60-second quiet interval; continuous
 process-tree GPU/build/CPU audits cover every arm. Rejected contaminated attempts
 remain checksummed and cannot count as evidence. No timing retries for losses.
@@ -63,10 +63,13 @@ Private pool reservation and input payload count toward it; capture transient,
 output copies, original transfer storage, allocator/context and library memory
 are measured separately. Real OOM outcomes remain losses, not missing cells.
 
-Per-arm2ms NVML traces cover fixture/oracle, setup, first, warm and retirement.
-Only the warm interval has explicit trace boundaries. Its peak is reconstructed
-separately from the whole-process peak, which includes oracle/preparation.
-Individual cold-phase physical peaks are not isolated by this harness. Torch allocated/reserved peaks and replay
+Per-arm2ms NVML traces cover fixture/oracle, snapshot preparation, worker
+preparation, first requests, warmup, warm execution and retirement. Saved phase
+boundaries reconstruct observed peaks separately from the whole-process peak.
+An interval shorter than the sampling period may have no observation; report
+its peak as missing, never zero. All sampled peaks are lower bounds. First
+request peaks include capture/compilation rather than isolating CUDA capture
+from every other first-request allocation. Torch allocated/reserved peaks and replay
 owner inputs/private pools are separate, overlapping scopes and are never added
 to NVML. The physical reserve precedes fixture/oracle creation, matching E5. Common oracle work precedes deployment measurement.
 Preparation, first request (including compilation/capture), warmup and retirement
@@ -103,3 +106,9 @@ Separate model diagnostics run ten completed requests with profiling for E2
 decode eager Sym and sparse MoE Inductor Torch, off/on, plus E5 decode Inductor
 Sym. They are marked pilot/diagnostic and never enter acceptance timings. Their
 traces retain kernel-name multisets and launch API counts.
+
+The pre-fix campaign is preserved as excluded evidence after a temporary-input
+lifetime defect was reproduced in graph fallback. The final runtime records
+input use on the consumer stream for both replay and fallback, and all arms
+are remeasured. The same restart adds runtime-order counterbalancing and explicit
+phase markers; no timing outcome was used to select retained arms.

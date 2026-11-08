@@ -61,12 +61,14 @@ def main():
                             max_buckets=2,max_bytes=(1<<20) if scenario=='pressure' else 32<<20))
                     x=torch.ones(1024,device='cuda:0'); p=torch.full_like(x,.5)
                     row=dict(scenario=scenario,mode=mode,completed_ms=[],submission_ms=[],checks=0,retained_checks=0)
-                    start=time.perf_counter_ns()
+                    row['prepare_start_ms']=elapsed(); start=time.perf_counter_ns()
                     if owner is not None: owner.prepare(x,p).freeze()
                     torch.cuda.synchronize(); row['preparation_ms']=(time.perf_counter_ns()-start)/1e6
+                    row['prepare_end_ms']=elapsed()
                     call=owner if owner is not None else fn
-                    start=time.perf_counter_ns(); first=call(x,p); torch.cuda.synchronize()
+                    row['first_start_ms']=elapsed(); start=time.perf_counter_ns(); first=call(x,p); torch.cuda.synchronize()
                     row['first_ms']=(time.perf_counter_ns()-start)/1e6
+                    row['first_end_ms']=elapsed()
                     torch.testing.assert_close(first,kernel(x,p),rtol=2e-5,atol=2e-5)
                     for _ in range(5): call(x,p)
                     torch.cuda.synchronize(); torch.cuda.reset_peak_memory_stats()

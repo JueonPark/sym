@@ -13,6 +13,9 @@ def record():
                 first_ms=5., preparation_ms=2., retirement_ms=.2, warmup_ms=[3.], initial_nvml={'used': 10},
                 compile_before=[{'compile_callbacks':0}], compile_after=[{'compile_callbacks':0}], input_sha256=['frozen'],
                 warm_start_ms=10., warm_end_ms=80.,
+                phases=[dict(name=name,start_ms=start,end_ms=end,**({'caller':0} if name in ('worker_prepare','first','warmup') else {}))
+                        for name,start,end in [('fixture',0.,.1),('snapshot',.1,.2),('worker_prepare',.2,.3),
+                                               ('first',.3,5.3),('warmup',5.3,8.3),('warm',10.,80.),('retirement',80.,81.)]],
                 replay_before=[dict(captures=2, replays=3, frozen=True, retained_bytes=1024, max_bytes=4096)],
                 replay_after=[dict(captures=2, replays=63, frozen=True, retained_bytes=1024, max_bytes=4096)],
                 torch_memory=dict(allocated=1024, reserved=2048, max_allocated=4096, max_reserved=4096),
@@ -115,6 +118,7 @@ def micro_record():
                  frozen=True,retained_bytes=1024,max_bytes=4096,fallbacks={})
             rows.append(dict(scenario=scenario,mode=mode,checks=100,retained_checks=100,
                 completed_ms=[1.]*100,submission_ms=[.5]*100,preparation_ms=3.,first_ms=2.,
+                prepare_start_ms=0.,prepare_end_ms=3.,first_start_ms=3.,first_end_ms=5.,
                 warm_start_ms=10.,warm_end_ms=50.,before=copy.deepcopy(stats),after=stats,
                 closed=None if mode=='plain' else dict(retained_bytes=0,closed=True)))
     return dict(qualification=True,compute='eager',round=2,rows=rows,
@@ -181,3 +185,24 @@ def test_parent_win_requires_each_round_below_both_controls():
 def test_summary_counts_only_warm_replays():
     from bench.issue268.analyze import summarize
     assert summarize(record(),120)['warm_replays']==60
+
+
+def test_runtime_order_is_counterbalanced_for_every_mode():
+    from bench.issue268.contract import arms,cells
+    selected=[c for c in cells() if c['kind']=='e2' and c['case']=='llm_decode' and c['compute']=='eager']
+    for mode in ('plain','off','on'):
+        orders={tuple(j['runtime'] for j in arms(c) if j['mode']==mode) for c in selected}
+        assert orders=={('torch','sym'),('sym','torch')}
+
+
+def test_phase_peaks_preserve_unsampled_intervals():
+    from bench.issue268.analyze import phase_peaks
+    rows=phase_peaks([[1.,100,20],[5.,120,20],[11.,200,30]],
+                     [dict(name='first',start_ms=2.,end_ms=3.),dict(name='warm',start_ms=4.,end_ms=6.)])
+    assert rows[0]['observations']==0 and rows[0]['peak_bytes'] is None
+    assert rows[1]['observations']==1 and rows[1]['peak_bytes']==120
+
+
+def test_reject_missing_first_phase_boundary():
+    value=record();value['phases']=[p for p in value['phases'] if p['name']!='first']
+    with pytest.raises(ValueError,match='phase'):validate(value)

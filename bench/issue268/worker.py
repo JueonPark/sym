@@ -36,7 +36,7 @@ def main():
     inputs.e2.legacy.COMPUTE_DTYPE='float16'
     torch.cuda.init(); torch.manual_seed(225)
     result=dict(job=job, protocol=contract.protocol(job), environment=contract.environment(torch,job),
-                provenance=contract.provenance(args.runtime,args.artifact,Path(os.environ['SYM_RELOC_EXPORT'])))
+                phases=[], provenance=contract.provenance(args.runtime,args.artifact,Path(os.environ['SYM_RELOC_EXPORT'])))
     if args.pilot: result['pilot']=True
     # Materialize the runtime context before NVML baseline/reservation, as E5 does.
     result["cuda_context_baseline_free_total"]=torch.cuda.mem_get_info()
@@ -109,6 +109,7 @@ def main():
         return inputs.workload.cpu_result(out)
 
     result['phase']='fixture'
+    fixture_start=elapsed()
     try:
         with torch.no_grad():
             if job['kind']=='e2':
@@ -127,9 +128,11 @@ def main():
             torch.cuda.synchronize()
             result['input_sha256']=[hashlib.sha256(x.cpu().numpy().tobytes()).hexdigest() for x in values]
             result['sizes']=core.sizes
-        result['phase']='prepare'; start=time.perf_counter_ns()
+        result['phases'].append(dict(name='fixture',start_ms=fixture_start,end_ms=elapsed()))
+        result['phase']='prepare'; phase_start=elapsed(); start=time.perf_counter_ns()
         with torch.no_grad(): snapshots=inputs.workload.Snapshots(core,job['runtime'])
         result['snapshot_ms']=(time.perf_counter_ns()-start)/1e6
+        result['phases'].append(dict(name='snapshot',start_ms=phase_start,end_ms=elapsed()))
         preparations=[]; first=[]; warmups=[]; warmup_counts=[]
         for i in range(job['callers']):
             executor=ThreadPoolExecutor(1); executors.append(executor)
@@ -137,16 +140,20 @@ def main():
                 span=8//job['callers']; os.sched_setaffinity(0,contract.CALLER_CPUS[i*span:(i+1)*span])
                 torch.cuda.set_device(0)
                 with torch.no_grad():
-                    start=time.perf_counter_ns(); worker=Worker(core,snapshots)
+                    phase_start=elapsed(); start=time.perf_counter_ns(); worker=Worker(core,snapshots)
                     workers.append(worker); preparations.append((time.perf_counter_ns()-start)/1e6)
-                    result['phase']='first'; out,cost=worker.request(values[i if job['kind']=='e5' else 0])
+                    result['phases'].append(dict(name='worker_prepare',caller=i,start_ms=phase_start,end_ms=elapsed()))
+                    result['phase']='first'; phase_start=elapsed()
+                    out,cost=worker.request(values[i if job['kind']=='e5' else 0])
+                    result['phases'].append(dict(name='first',caller=i,start_ms=phase_start,end_ms=elapsed()))
                     first.append(cost); check(out,references[i if job['kind']=='e5' else 0])
-                    result['phase']='warmup'; start=time.perf_counter_ns(); warmup_count=0
+                    result['phase']='warmup'; phase_start=elapsed(); start=time.perf_counter_ns(); warmup_count=0
                     for _ in range(5 if job['kind']=='e2' else 3):
                         for ordinal in range(i,len(values),job['callers']):
                             out,_=worker.request(values[ordinal]); check(out,references[ordinal])
                             warmup_count+=1
                     warmups.append((time.perf_counter_ns()-start)/1e6)
+                    result['phases'].append(dict(name='warmup',caller=i,start_ms=phase_start,end_ms=elapsed()))
                     warmup_counts.append(warmup_count)
                     for region in worker.regions: region.freeze()
                 return worker
@@ -191,6 +198,7 @@ def main():
                     record['max_abs_error']=check(out,references[record['ordinal']]); result['checks']+=1
                     result['requests'].append(record); previous.append((out,cpu(out)))
         result['warm_end_ms']=elapsed()
+        result['phases'].append(dict(name='warm',start_ms=result['warm_start_ms'],end_ms=result['warm_end_ms']))
         result['torch_memory']=inputs.memory.torch_stats(torch)
         result['replay_after']=replay_stats()
         result['compile_after']=[w.state.stats() for w in workers]
@@ -215,10 +223,11 @@ def main():
             compressed.write_bytes(gzip.compress(trace_path.read_bytes())); trace_path.unlink()
             result['profile']=dict(file=compressed.name,sha256=contract.sha(compressed),counts=counts,
                                    gpu_kernels=kernels,requests=10,scope='separate diagnostic; timings excluded')
-        start=time.perf_counter_ns()
+        phase_start=elapsed(); start=time.perf_counter_ns()
         for executor,worker in zip(executors,workers): executor.submit(worker.close).result()
         snapshots.close(); snapshots=None
         result['retirement_ms']=(time.perf_counter_ns()-start)/1e6
+        result['phases'].append(dict(name='retirement',start_ms=phase_start,end_ms=elapsed()))
         for held,ref in previous: exact(held,ref); result['retained_checks']+=1
         result['held_after_close']=len(previous)
         result['replay_closed']=replay_stats()

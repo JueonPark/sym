@@ -305,3 +305,33 @@ def test_fallback_preserves_temporary_input_on_another_stream(cuda_device):
         torch.cuda.synchronize()
         torch.testing.assert_close(output, torch.full_like(output, 10.))
         assert owner.stats()['fallbacks']['memory_budget'] == 1
+
+
+@pytest.mark.gpu
+def test_close_waits_for_inflight_output_copy(cuda_device):
+    with torch.no_grad():
+        owner = replay(lambda x: x * 2)
+        x = torch.ones(16, device=cuda_device)
+        owner.prepare(x).freeze()
+        consumer = torch.cuda.Stream()
+        with torch.cuda.stream(consumer):
+            torch.cuda._sleep(30_000_000)
+            output = owner(x + 1)
+        owner.close()
+        assert consumer.query()
+        torch.testing.assert_close(output, torch.full_like(output, 4.))
+        assert owner.stats()['retained_bytes'] == 0
+
+
+@pytest.mark.gpu
+def test_explicit_code_revision_invalidation_keeps_old_outputs(cuda_device):
+    with torch.no_grad(), replay(lambda x: x + 2) as owner:
+        x = torch.ones(16, device=cuda_device)
+        owner.prepare(x).freeze()
+        old = owner(x)
+        owner.invalidate()
+        owner.function = lambda x: x - 7
+        owner.prepare(x).freeze()
+        new = owner(x)
+        torch.testing.assert_close(new, torch.full_like(x, -6))
+        torch.testing.assert_close(old, torch.full_like(x, 3))

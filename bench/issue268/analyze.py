@@ -1,5 +1,6 @@
 """Strict saved-data analysis. Standard library only; no GPU or local artifacts."""
 import argparse
+import bisect
 import gzip
 import json
 import math
@@ -43,6 +44,30 @@ def memory_peak(samples, start, end):
     return max(warm)
 
 
+def phase_peaks(samples, phases):
+    times=[r[0] for r in samples]
+    result=[]
+    for phase in phases:
+        selected=samples[bisect.bisect_left(times,phase['start_ms']):bisect.bisect_right(times,phase['end_ms'])]
+        result.append(phase | dict(observations=len(selected),peak_bytes=max(r[1] for r in selected) if selected else None))
+    return result
+
+
+def validate_phases(row, job):
+    phases=row['phases']
+    expected=[(name,None) for name in ('fixture','snapshot','warm','retirement')]
+    expected += [(name,i) for i in range(job['callers']) for name in ('worker_prepare','first','warmup')]
+    actual=[(p['name'],p.get('caller')) for p in phases]
+    require(len(actual)==len(set(actual)) and set(actual)==set(expected),'phase membership')
+    previous=0.
+    for phase in phases:
+        finite(phase['start_ms'],'phase start');finite(phase['end_ms'],'phase end')
+        require(previous<=phase['start_ms']<phase['end_ms'],'phase ordering')
+        previous=phase['end_ms']
+        if phase['name']=='warm':
+            require(phase['start_ms']==row['warm_start_ms'] and phase['end_ms']==row['warm_end_ms'],'warm phase mismatch')
+
+
 def validate_record(row, job):
     require(row['job'] == job, 'job changed')
     require(row['protocol'] == contract.protocol(job), 'controls changed')
@@ -53,6 +78,7 @@ def validate_record(row, job):
         return
     require(row['warmup_requests_per_caller'] == [row['protocol']['warmup_requests_per_caller']]*job['callers'],
             'executed warmup count')
+    validate_phases(row, job)
     count = 60 if job['kind'] == 'e2' else 240
     require(row['checks'] == count and row['retained_checks'] == count, 'correctness counts')
     require(row['held_after_close'] == (1 if job['kind'] == 'e2' else 8), 'retirement checks')
@@ -144,7 +170,8 @@ def analyze(root):
         require(bool(trace['samples']), 'missing physical memory trace')
         rows.append(summarize(record, peak) | dict(
             whole_process_peak_bytes=max(r[1] for r in trace['samples']),
-            whole_process_rss_peak_bytes=max(r[2] for r in trace['samples'])))
+            whole_process_rss_peak_bytes=max(r[2] for r in trace['samples']),
+            phase_memory=phase_peaks(trace['samples'],record['phases'])))
     for excluded in manifest['excluded']:
         for name, digest in excluded['files'].items():
             require(contract.sha(root / excluded['path'] / name) == digest, 'excluded evidence changed')
@@ -164,6 +191,8 @@ def validate_micro(record):
             require(len(row[name]) == 100, 'supplement timings')
             for value in row[name]: finite(value, name)
         for name in ('preparation_ms', 'first_ms', 'warm_start_ms', 'warm_end_ms'): finite(row[name], name)
+        require(0<=row['prepare_start_ms']<row['prepare_end_ms']<=row['first_start_ms']<row['first_end_ms']<=row['warm_start_ms'],
+                'supplement cold phase boundaries')
         require(row['warm_end_ms'] > row['warm_start_ms'], 'supplement warm interval')
         if row['mode'] != 'plain':
             before, after = row['before'], row['after']
@@ -201,10 +230,14 @@ def supplements(root):
                 after = row['after'] or {}
                 rows.append(dict(compute=compute, round=round_, scenario=row['scenario'], mode=row['mode'],
                     p50_ms=statistics.median(row['completed_ms']), p95_ms=percentile(row['completed_ms'], .95),
+                    max_ms=max(row['completed_ms']), total_warm_ms=math.fsum(row['completed_ms']),
                     submission_p50_ms=statistics.median(row['submission_ms']), preparation_ms=row['preparation_ms'],
                     first_ms=row['first_ms'], retained_bytes=after.get('retained_bytes', 0),
                     pool_reserved_bytes=after.get('pool_reserved_bytes', 0), physical_peak_bytes=peak,
-                    fallbacks=after.get('fallbacks', {}), profile=row.get('profile')))
+                    fallbacks=after.get('fallbacks', {}), profile=row.get('profile'),
+                    phase_memory=phase_peaks(trace['samples'],[dict(name=name,start_ms=row[start],end_ms=row[end])
+                        for name,start,end in (('prepare','prepare_start_ms','prepare_end_ms'),
+                                              ('first','first_start_ms','first_end_ms'),('warm','warm_start_ms','warm_end_ms'))])))
     return rows
 
 

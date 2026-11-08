@@ -24,7 +24,8 @@ def cells():
 
 
 def arms(cell):
-    choices = [(rt, mode) for mode in MODES for rt in ('torch', 'sym')]
+    runtimes = ('sym', 'torch') if cell['round'] % 2 == 0 else ('torch', 'sym')
+    choices = [(rt, mode) for mode in MODES for rt in runtimes]
     shift = cell['round'] * 2 % len(choices)
     return [cell | dict(runtime=rt, mode=mode, id=cell['id'] + '-' + rt + '-' + mode)
             for rt, mode in choices[shift:] + choices[:shift]]
