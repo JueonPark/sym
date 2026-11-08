@@ -281,3 +281,27 @@ def test_changed_cudnn_policy_uses_guarded_fallback(cuda_device):
             assert owner.stats()['fallbacks']['frozen_shape'] == 1
     finally:
         torch.backends.cudnn.benchmark = prior
+
+
+@pytest.mark.gpu
+def test_fallback_preserves_temporary_input_on_another_stream(cuda_device):
+    with torch.no_grad(), replay(lambda x: x + 1, max_bytes=1) as owner:
+        producer, consumer = torch.cuda.Stream(), torch.cuda.Stream()
+        # Load the add/fill kernels before the delayed-stream lifetime check.
+        warm = torch.full((16384,), 9., device=cuda_device) + 1
+        torch.cuda.synchronize()
+        del warm
+        with torch.cuda.stream(producer):
+            value = torch.full((16384,), 9., device=cuda_device)
+        with torch.cuda.stream(consumer):
+            consumer.wait_stream(producer)
+            torch.cuda._sleep(100_000_000)
+            output = owner(value)
+        del value
+        # Reuse the producer's allocation while the consumer is delayed. The
+        # wrapper must register its use even when graph admission falls back.
+        with torch.cuda.stream(producer):
+            replacement = torch.full((16384,), -100., device=cuda_device)
+        torch.cuda.synchronize()
+        torch.testing.assert_close(output, torch.full_like(output, 10.))
+        assert owner.stats()['fallbacks']['memory_budget'] == 1

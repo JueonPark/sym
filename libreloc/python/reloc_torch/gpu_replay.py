@@ -256,7 +256,7 @@ class GPUReplay:
 
     def __call__(self, *args, **kwargs):
         import torch
-        from torch.utils._pytree import tree_map, tree_unflatten
+        from torch.utils._pytree import tree_flatten, tree_map, tree_unflatten
         self._open()
         with self._lock:
             self._open()
@@ -269,6 +269,12 @@ class GPUReplay:
                     reason = 'busy_slots'
             if reason:
                 self._fallbacks[reason] += 1
+                # A fallback kernel still consumes temporary inputs on the
+                # caller's stream. Register those uses before Python releases
+                # its arguments, including metadata/device/budget exclusions.
+                for value in tree_flatten((args, kwargs))[0]:
+                    if type(value) in (torch.Tensor, torch.nn.Parameter) and value.is_cuda:
+                        value.record_stream(torch.cuda.current_stream(value.device))
                 return self.function(*args, **kwargs)
             with torch.cuda.device(self.device):
                 stream = torch.cuda.current_stream(self.device)
