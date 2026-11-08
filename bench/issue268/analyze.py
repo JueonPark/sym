@@ -99,6 +99,10 @@ def summarize(row, physical_peak):
     setup=math.fsum([row['preparation_ms'], row['first_ms'], *row['warmup_ms']])
     baseline=row.get('nvml_after_reservation', row['initial_nvml'])['used']
     return result | dict(setup_ms=setup, p50_ms=warm, p95_ms=percentile(row['completed_ms'], .95)/scale,
+        warm_replays=sum(b['replays']-a['replays'] for a,b in zip(row['replay_before'],row['replay_after'])),
+        warm_fallbacks={k:sum(b.get('fallbacks',{}).get(k,0)-a.get('fallbacks',{}).get(k,0)
+                             for a,b in zip(row['replay_before'],row['replay_after']))
+                        for k in sorted({k for b in row['replay_after'] for k in b.get('fallbacks',{})})},
         submission_p50_ms=statistics.median(row['submission_ms'])/scale,
         service_p95_ms=percentile([r['service_ms'] for r in row.get('requests', [])], .95) if job['kind']=='e5' else None,
         sojourn_p95_ms=percentile([r['sojourn_ms'] for r in row.get('requests', [])], .95) if job['kind']=='e5' else None,
@@ -212,7 +216,8 @@ def comparisons(rows):
             require(len(selected) == 3, 'three-round arm membership')
             successful = [r for r in selected if r['outcome'] == 'success']
             if len(successful) != 3: return dict(successful_rounds=len(successful))
-            return dict(successful_rounds=3, **{k: statistics.median(r[k] for r in successful) for k in
+            return dict(successful_rounds=3, replay_active_rounds=sum(r['warm_replays']>0 for r in successful),
+                        **{k: statistics.median(r[k] for r in successful) for k in
                         ('p50_ms', 'p95_ms', 'setup_ms', 'retained_bytes', 'app_increment_peak_bytes')})
         summary = {f'{rt}_{mode}': arm(rt, mode) for rt in ('torch', 'sym') for mode in contract.MODES}
         relative = {}

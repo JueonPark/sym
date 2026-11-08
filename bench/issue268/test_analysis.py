@@ -176,3 +176,8 @@ def test_parent_win_requires_each_round_below_both_controls():
     assert values['eager']['passed'] is False
     assert values['eager']['rounds_passed']==2
     assert values['inductor']['passed'] is True
+
+
+def test_summary_counts_only_warm_replays():
+    from bench.issue268.analyze import summarize
+    assert summarize(record(),120)['warm_replays']==60
