@@ -129,6 +129,11 @@ class GPUReplay:
         if not tensors:
             return None, None, None, 'no_tensors'
         settings = (torch.is_inference_mode_enabled(), torch.are_deterministic_algorithms_enabled(),
+                    torch.get_default_dtype(), str(torch.get_default_device()),
+                    torch.backends.cudnn.enabled, torch.backends.cudnn.benchmark,
+                    torch.backends.cudnn.deterministic,
+                    torch.backends.cuda.flash_sdp_enabled(), torch.backends.cuda.mem_efficient_sdp_enabled(),
+                    torch.backends.cuda.math_sdp_enabled(), torch.backends.cuda.cudnn_sdp_enabled(),
                     torch.backends.cuda.matmul.allow_tf32, torch.backends.cudnn.allow_tf32,
                     torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction,
                     torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction)

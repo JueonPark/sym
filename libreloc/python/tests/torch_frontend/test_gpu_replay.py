@@ -251,3 +251,33 @@ def test_device_change_never_reuses_graph(cuda_device):
         torch.testing.assert_close(owner(x), x + 1)
         assert owner.stats()['replays'] == 0
         assert owner.stats()['fallbacks']['metadata'] == 1
+
+
+@pytest.mark.gpu
+def test_changed_default_dtype_does_not_replay_stale_output(cuda_device):
+    prior = torch.get_default_dtype()
+    try:
+        torch.set_default_dtype(torch.float32)
+        with torch.no_grad(), replay(lambda x: torch.ones_like(x, dtype=torch.get_default_dtype())) as owner:
+            x = torch.ones(4, device=cuda_device)
+            owner.prepare(x).freeze()
+            torch.set_default_dtype(torch.float64)
+            actual = owner(x)
+            assert actual.dtype == torch.float64
+            assert owner.stats()['fallbacks']['frozen_shape'] == 1
+    finally:
+        torch.set_default_dtype(prior)
+
+
+@pytest.mark.gpu
+def test_changed_cudnn_policy_uses_guarded_fallback(cuda_device):
+    prior = torch.backends.cudnn.benchmark
+    try:
+        with torch.no_grad(), replay(lambda x: x + 2) as owner:
+            x = torch.ones(4, device=cuda_device)
+            owner.prepare(x).freeze()
+            torch.backends.cudnn.benchmark = not prior
+            torch.testing.assert_close(owner(x), x + 2)
+            assert owner.stats()['fallbacks']['frozen_shape'] == 1
+    finally:
+        torch.backends.cudnn.benchmark = prior
