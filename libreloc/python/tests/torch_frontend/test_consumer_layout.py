@@ -127,12 +127,18 @@ def test_backend_is_opt_in_and_preserves_graph_and_training_fallback(wire):
         assert torch.equal(differentiable.grad, torch.ones_like(differentiable))
 
 
+def fake_contiguous(value):
+    # Tensor.contiguous checks CUDA build support before fake dispatch in the
+    # CPU-only wheel. Trace the identical materializing clone IR directly.
+    return torch.ops.aten.clone.default(value,memory_format=torch.contiguous_format)
+
+
 def test_cpu_only_fake_cuda_rule_and_rank_two_permutation():
     from torch._subclasses.fake_tensor import FakeTensorMode
     with FakeTensorMode():
         x = torch.empty(5, 3, device='cuda', dtype=torch.float16)
         y = torch.empty(3, 2, device='cuda', dtype=torch.float16)
-        gm = make_fx(lambda a,b: torch.cat((a.permute(1,0).contiguous(),b),1))(x,y)
+        gm = make_fx(lambda a,b: torch.cat((fake_contiguous(a.permute(1,0)),b),1))(x,y)
     original = str(gm.graph)
     lowered, rows = module().lower_consumer_layout(gm,(x,y))
     assert rows[0].selected and rows[0].eliminated_bytes == 30
@@ -143,7 +149,7 @@ def test_cpu_only_missing_metadata_preserves_original():
     from torch._subclasses.fake_tensor import FakeTensorMode
     with FakeTensorMode():
         x = torch.empty(5,3,device='cuda');y = torch.empty(3,2,device='cuda')
-        gm = make_fx(lambda a,b:torch.cat((a.t().contiguous(),b),1))(x,y)
+        gm = make_fx(lambda a,b:torch.cat((fake_contiguous(a.t()),b),1))(x,y)
     for n in gm.graph.nodes:
         if n.target is torch.ops.aten.cat.default: n.meta.clear()
     lowered, rows = module().lower_consumer_layout(gm,(x,y))
@@ -155,7 +161,7 @@ def test_cpu_only_unknown_call_cannot_hide_mutation():
     def opaque(): raise AssertionError('compiler must not execute opaque Python')
     with FakeTensorMode():
         x = torch.empty(5,3,device='cuda');y = torch.empty(3,2,device='cuda')
-        gm = make_fx(lambda a,b:torch.cat((a.t().contiguous(),b),1))(x,y)
+        gm = make_fx(lambda a,b:torch.cat((fake_contiguous(a.t()),b),1))(x,y)
     clone = copies(gm)[0]
     with gm.graph.inserting_after(clone): gm.graph.call_function(opaque,())
     gm.recompile()
