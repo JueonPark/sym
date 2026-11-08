@@ -167,3 +167,87 @@ def test_process_guard_precedes_locks_and_cuda(cuda_device, monkeypatch):
     for action in (owner.stats, owner.close, owner.freeze, owner.invalidate):
         with pytest.raises(RuntimeError, match='process'):
             action()
+
+
+@pytest.mark.gpu
+def test_backend_owned_region_after_automatic_transfer(compiler, cuda_device):
+    from reloc_torch import RelocBackend, GPUReplayPolicy, PreparedExecutionPolicy
+    backend = RelocBackend(compiler=compiler, prepared_execution=PreparedExecutionPolicy(min_bytes=0, min_reuses=0))
+    transfer = torch.compile(lambda x: x.t().contiguous().to(cuda_device, torch.float16), backend=backend, fullgraph=True)
+    try:
+        with torch.no_grad():
+            x = torch.arange(12.).reshape(3, 4)
+            device = transfer(x)
+            region = backend.prepare_gpu_region(lambda y, p: y * p, device,
+                         torch.full_like(device, 2), policy=GPUReplayPolicy(slots=1))
+            region.freeze()
+            old = region(device, torch.full_like(device, 3))
+            result = region(transfer(x + 10), torch.full_like(device, 4))
+            torch.testing.assert_close(result.cpu(), ((x + 10).t() * 4).half())
+            torch.testing.assert_close(old.cpu(), (x.t() * 3).half())
+            stats = backend.stats()
+            assert stats['prepared_execution']['executions'] == 2
+            assert stats['gpu_replay'][0]['replays'] > 0
+        backend.close()
+        torch.testing.assert_close(old.cpu(), (x.t() * 3).half())
+        with torch.no_grad(), pytest.raises(RuntimeError, match='closed'):
+            region(device, device)
+    finally:
+        backend.close()
+
+
+@pytest.mark.gpu
+def test_backend_failed_region_creation_has_no_retained_owner(cuda_device):
+    from reloc_torch import RelocBackend
+    backend = RelocBackend()
+    try:
+        def invalid(x):
+            raise ValueError('invalid region')
+        with torch.no_grad(), pytest.raises(ValueError, match='invalid region'):
+            backend.prepare_gpu_region(invalid, torch.ones(4, device=cuda_device))
+        assert backend.stats()['gpu_replay'] == []
+    finally:
+        backend.close()
+
+
+@pytest.mark.gpu
+def test_replay_execution_failure_poisoned_without_fallback(cuda_device, monkeypatch):
+    def fail(graph):
+        raise RuntimeError('injected driver submission failure')
+    with torch.no_grad(), replay(lambda x: x + 1) as owner:
+        x = torch.ones(4, device=cuda_device)
+        owner.prepare(x)
+        monkeypatch.setattr(torch.cuda.CUDAGraph, 'replay', fail)
+        with pytest.raises(RuntimeError, match='driver submission'):
+            owner(x)
+        assert owner.stats()['poisoned']
+        assert owner.stats()['fallbacks'] == {}
+        with pytest.raises(RuntimeError, match='poisoned'):
+            owner(x)
+
+
+@pytest.mark.gpu
+def test_inference_mode_and_changed_math_settings(cuda_device):
+    with torch.inference_mode(), replay(lambda x: x * 2) as owner:
+        x = torch.ones(8, device=cuda_device)
+        owner.prepare(x).freeze()
+        torch.testing.assert_close(owner(x + 3), torch.full_like(x, 8))
+        prior = torch.backends.cuda.matmul.allow_tf32
+        try:
+            torch.backends.cuda.matmul.allow_tf32 = not prior
+            torch.testing.assert_close(owner(x), x * 2)
+            assert owner.stats()['fallbacks']['frozen_shape'] == 1
+        finally:
+            torch.backends.cuda.matmul.allow_tf32 = prior
+
+
+@pytest.mark.gpu
+def test_device_change_never_reuses_graph(cuda_device):
+    if torch.cuda.device_count() < 2:
+        pytest.skip('requires second GPU')
+    with torch.no_grad(), replay(lambda x: x + 1) as owner:
+        owner.prepare(torch.ones(4, device=cuda_device))
+        x = torch.ones(4, device='cuda:1')
+        torch.testing.assert_close(owner(x), x + 1)
+        assert owner.stats()['replays'] == 0
+        assert owner.stats()['fallbacks']['metadata'] == 1

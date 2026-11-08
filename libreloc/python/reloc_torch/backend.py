@@ -159,6 +159,7 @@ class RelocBackend:
         self.diagnostics = Diagnostics()
         self._cache = ArtifactCache(cache_capacity)
         self._live = weakref.WeakKeyDictionary()
+        self._gpu_regions = []
         self._lock = threading.RLock()
         self._replaced = 0
         self._closed = False
@@ -213,8 +214,10 @@ class RelocBackend:
             result["replaced_regions"] = self._replaced
             result["live_handles"] = len(self._live)
             runtime = self._runtime
+            regions = tuple(self._gpu_regions)
             result["closed"] = self._closed
             result["compute_backend"] = self._compute_backend
+        result["gpu_replay"] = [region.stats() for region in regions]
         result["cache_entries"] = len(self._cache)
         result["cache_rejections"] = self._cache.rejections
         if self._placement is not None:
@@ -235,6 +238,26 @@ class RelocBackend:
                 result['dispatches'][row] = result['dispatches'].get(row, 0) + count
         return result
 
+    def prepare_gpu_region(self, function, *example_args, policy=None, device=None, **example_kwargs):
+        """Own an explicit pure GPU region downstream of prepared transfers.
+
+        Mutable weights/state must be arguments. Prepare additional buckets on
+        the returned owner, then freeze it before concurrent serving. Whole
+        native-transfer graphs remain ineligible for Inductor CUDA capture.
+        """
+        from .gpu_replay import GPUReplay
+        self._require_open()
+        with self._lock:
+            self._require_open()
+            region = GPUReplay(function, policy=policy, device=device)
+            try:
+                region.prepare(*example_args, **example_kwargs)
+            except BaseException:
+                region.close()
+                raise
+            self._gpu_regions.append(region)
+            return region
+
     def close(self):
         self._check_process()
         with self._lock:
@@ -243,6 +266,9 @@ class RelocBackend:
             live = list(self._live.items())
             self._live.clear()
             runtime = self._runtime if self._owns_runtime else None
+            regions = tuple(self._gpu_regions)
+        for region in regions:
+            region.close()
         for registration, entry in live:
             entry.close()
             registration.release()
