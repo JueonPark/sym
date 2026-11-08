@@ -141,7 +141,10 @@ def analyze(root):
         require(contract.sha(trace_path) == record['memory']['sha256'], 'trace checksum')
         trace = json.loads(gzip.decompress(trace_path.read_bytes()))
         peak = memory_peak(trace['samples'], record['warm_start_ms'], record['warm_end_ms']) if record['outcome']=='success' else None
-        rows.append(summarize(record, peak))
+        require(bool(trace['samples']), 'missing physical memory trace')
+        rows.append(summarize(record, peak) | dict(
+            whole_process_peak_bytes=max(r[1] for r in trace['samples']),
+            whole_process_rss_peak_bytes=max(r[2] for r in trace['samples'])))
     for excluded in manifest['excluded']:
         for name, digest in excluded['files'].items():
             require(contract.sha(root / excluded['path'] / name) == digest, 'excluded evidence changed')
