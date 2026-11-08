@@ -162,3 +162,17 @@ def test_reject_warm_inductor_recompile():
 def test_reject_too_few_executed_warmups():
     value=record();value['warmup_requests_per_caller']=[3]
     with pytest.raises(ValueError,match='warmup'):validate(value)
+
+
+def test_parent_win_requires_each_round_below_both_controls():
+    from bench.issue268.analyze import parent_targets
+    rows=[]
+    for round_ in (1,2,3):
+        for runtime,compute,value in (('torch','eager',10.),('torch','inductor',8.),
+                ('sym','eager',7.5 if round_<3 else 7.7),('sym','inductor',7.4)):
+            rows.append(dict(kind='e2',case='llm_decode',callers=1,mode='on',runtime=runtime,
+                             compute=compute,round=round_,outcome='success',p50_ms=value))
+    values={r['compute']:r for r in parent_targets(rows)}
+    assert values['eager']['passed'] is False
+    assert values['eager']['rounds_passed']==2
+    assert values['inductor']['passed'] is True

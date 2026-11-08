@@ -232,12 +232,35 @@ def comparisons(rows):
     return result
 
 
+def parent_targets(rows):
+    """Parent #247: 5% below BOTH matched controls in EVERY independent round."""
+    result=[]
+    identities=sorted({(r['case'],r['compute'],r['mode']) for r in rows
+                       if r['kind']=='e2' and r['runtime']=='sym'})
+    for case,compute,mode in identities:
+        outcomes=[]
+        for round_ in (1,2,3):
+            candidates=[r for r in rows if r['kind']=='e2' and r['case']==case and
+                        r['mode']==mode and r['round']==round_ and r['outcome']=='success']
+            sym=[r for r in candidates if r['runtime']=='sym' and r['compute']==compute]
+            controls=[r for r in candidates if r['runtime']=='torch']
+            available=len(sym)==1 and len(controls)==2 and {r['compute'] for r in controls}=={'eager','inductor'}
+            threshold=.95*min(r['p50_ms'] for r in controls) if available else None
+            outcomes.append(dict(round=round_,threshold_ms=threshold,
+                sym_p50_ms=sym[0]['p50_ms'] if sym else None,
+                passed=bool(available and sym[0]['p50_ms']<=threshold)))
+        result.append(dict(case=case,compute=compute,mode=mode,rounds=outcomes,
+                           passed=all(r['passed'] for r in outcomes),rounds_passed=sum(r['passed'] for r in outcomes)))
+    return result
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('root',type=Path); parser.add_argument('--output',type=Path,required=True)
     args=parser.parse_args(); rows=analyze(args.root)
     contract.save(args.output, rows)
     contract.save(args.output.with_name('comparisons.json'), comparisons(rows))
+    contract.save(args.output.with_name('parent-targets.json'), parent_targets(rows))
     contract.save(args.output.with_name('supplements.json'), supplements(args.root))
     table=['# Issue 268 per-round measurements', '', '| Experiment | Case | Compute | Callers | Round | Runtime | Mode | p50 ms | p95 ms | Outcome |',
            '|---|---|---|---:|---:|---|---|---:|---:|---|']
