@@ -19,6 +19,7 @@ add_library(reloc_runtime SHARED
   src/TypedValue.cpp
   src/TypedExecute.cpp
   src/TypedKernels.cpp
+  src/TypedStageKernels.cpp
   src/Dispatch.cpp
   src/DispatchResources.cpp
   src/DispatchResourcePool.cpp
@@ -41,6 +42,15 @@ add_library(reloc_runtime SHARED
 )
 
 target_compile_features(reloc_runtime PUBLIC cxx_std_17)
+
+# Ordered stage specialization must not contract or reassociate arithmetic.
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  set_source_files_properties(src/TypedStageKernels.cpp PROPERTIES
+    COMPILE_OPTIONS "-ffp-contract=off;-fno-fast-math")
+elseif(MSVC)
+  set_source_files_properties(src/TypedStageKernels.cpp PROPERTIES
+    COMPILE_OPTIONS "/fp:strict")
+endif()
 
 target_include_directories(reloc_runtime PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

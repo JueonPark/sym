@@ -136,7 +136,10 @@ enum class HostKernel {
   /// Rank-3 pad-free layouts whose innermost axis is contiguous on both
   /// sides: every (outer, middle) pair is one SIMD run, iterated so that the
   /// source side streams sequentially (the strided side is the write side).
-  StridedRuns
+  StridedRuns,
+  /// A dense transpose with short, physically adjacent output rows. The
+  /// whole gathered tile is one value-stage run, including channel splits.
+  TiledTransposeRuns
 };
 /// Pure plan/range qualification. Complex channel expressions retain the
 /// generic checked walker. No code generation or shape cache is involved.

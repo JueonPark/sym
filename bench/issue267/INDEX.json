@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "issue": 267,
+  "pr": 280,
+  "accepted": true,
+  "jobs": 36,
+  "cases": 336,
+  "timed_output_checks": 93600,
+  "consumer_output_checks": 3600,
+  "excluded_attempts": 0,
+  "measurement_revision": "18e12e30218a736bdbec121300f1eac97af9498a",
+  "runtime_source_revisions": {
+    "baseline": "c5085cd9f5fc3f2c105cc62098b80019f6d6d698",
+    "candidate": "3c008646a9521c0a8148f8b07ada9e260854c839"
+  },
+  "environment": {
+    "torch": "2.14.0+cu126",
+    "python": "3.14.7 (main, Sep  1 2026, 14:18:09) [Clang 22.1.3 ]",
+    "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.35",
+    "gpu": "NVIDIA GeForce RTX 2080 Ti"
+  },
+  "analysis_sha256": "6d158bb9e0480de2f0278ba1cd48dc035a1a96a72877c7b0aa414ad51b2dd59d",
+  "tables_sha256": "ed02a49cb19443f08ea4ce74be955cad3450dbd809ad864133502bd915f0bae2",
+  "artifact_id": "chains-issue267-2026-11-08-v1",
+  "wiki": "https://github.com/JueonPark/sym/wiki/Artifacts-Issue-267",
+  "manifest": "https://raw.githubusercontent.com/wiki/JueonPark/sym/artifacts/chains-issue267-2026-11-08-v1/manifest.json",
+  "canonical_analysis_python": "CPython 3.10.12"
+}

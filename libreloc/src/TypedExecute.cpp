@@ -120,8 +120,30 @@ bool readZeroPoints(const BoundParameter &param, std::vector<int32_t> &out,
   return true;
 }
 
-/// Write `count` copies of the low `width` bytes of `bits`.
+template <uint32_t Width>
+void fillFixedPattern(uint8_t *dst, uint64_t bits, int64_t count) {
+  uint8_t pattern[Width];
+  for (uint32_t b = 0; b < Width; ++b)
+    pattern[b] = static_cast<uint8_t>(bits >> (8 * b));
+  // Constant-sized memcpy permits vector stores without alignment or
+  // type-punning assumptions about the caller's external tensor storage.
+  for (int64_t i = 0; i < count; ++i)
+    std::memcpy(dst + i * Width, pattern, Width);
+}
+
+/// Write `count` copies of the low `width` bytes of `bits`. Retain the full
+/// fill pass and its entry-stage semantics; only the store loop changes.
 void fillPattern(uint8_t *dst, uint64_t bits, uint32_t width, int64_t count) {
+  switch (width) {
+  case 1:
+    return fillFixedPattern<1>(dst, bits, count);
+  case 2:
+    return fillFixedPattern<2>(dst, bits, count);
+  case 4:
+    return fillFixedPattern<4>(dst, bits, count);
+  case 8:
+    return fillFixedPattern<8>(dst, bits, count);
+  }
   uint8_t pattern[8];
   for (uint32_t b = 0; b < width; ++b)
     pattern[b] = static_cast<uint8_t>(bits >> (8 * b));
@@ -154,6 +176,7 @@ struct WalkState {
   uint32_t widthFrom;
   uint32_t widthTo;
   std::vector<int64_t> lo; // pad lo per coalesced axis
+  detail::StageRun stageRun;
   bool narrowRun = false;
   bool bufferedRun = false;
   int64_t destinationOrigin = 0; // global element offset of this local window
@@ -233,7 +256,7 @@ void walk(WalkState &state, size_t depth, int64_t iBegin, int64_t iEnd,
     }
     if (state.bufferedRun) {
       const int64_t offset = dstOff + iBegin + state.lo[depth];
-      detail::stages(state.program, state.range.from, state.range.to,
+      detail::stages(state.program, state.stageRun,
                      state.src + (srcOff + iBegin) * state.widthFrom,
                      state.dst +
                          (offset - state.destinationOrigin) * state.widthTo,
@@ -488,7 +511,9 @@ HostKernel hostKernel(const Program &p, uint32_t from, uint32_t to) {
   if (l.extents.size() == 2 && l.srcStrides[0] == 1 &&
       l.srcStrides[1] == l.extents[0] && l.dstStrides[1] == 1 &&
       l.dstStrides[0] >= l.extents[1])
-    return HostKernel::TiledTranspose;
+    return l.extents[1] <= detail::kTypedTile && l.dstStrides[0] == l.extents[1]
+               ? HostKernel::TiledTransposeRuns
+               : HostKernel::TiledTranspose;
   if (l.extents.size() == 3 && l.padRegions.empty() && l.srcStrides[2] == 1 &&
       l.dstStrides[2] == 1 && l.extents[2] >= 8)
     return HostKernel::StridedRuns;
@@ -512,6 +537,8 @@ const char *hostKernelName(HostKernel kernel) {
     return "contiguous_stages";
   case HostKernel::TiledTranspose:
     return "tiled_transpose";
+  case HostKernel::TiledTransposeRuns:
+    return "tiled_transpose_runs";
   case HostKernel::IndexedRows:
     return "indexed_rows";
   case HostKernel::StridedRuns:
@@ -827,6 +854,7 @@ executeHostWindow(const Program &program, uint32_t from, uint32_t to,
                   widthTo,
                   std::vector<int64_t>(layout.extents.size(), 0)};
   state.destinationOrigin = origin;
+  state.stageRun = detail::prepareStageRun(program, from, to);
   for (uint32_t k = from; k < to; ++k)
     if (program.stages[k].perChannel)
       state.range.needsCoordinates = true;
@@ -841,7 +869,8 @@ executeHostWindow(const Program &program, uint32_t from, uint32_t to,
     innerSpan += (layout.extents[k] - 1) * layout.dstStrides[k];
   const bool rowsDisjoint = layout.dstStrides.front() >= innerSpan + 1;
 
-  const bool tiled = kernel == HostKernel::TiledTranspose;
+  const bool tiled = kernel == HostKernel::TiledTranspose ||
+                     kernel == HostKernel::TiledTransposeRuns;
   const bool runs = kernel == HostKernel::StridedRuns;
   const bool narrowCast =
       to == from + 1 &&
@@ -873,10 +902,10 @@ executeHostWindow(const Program &program, uint32_t from, uint32_t to,
   auto work = [&](int64_t first, int64_t last) {
     reloc::detail::TraceRange trace("reloc.typed.transform.work", chunkIndex);
     if (runs)
-      detail::stridedRuns(program, from, to, state.src, state.dst,
+      detail::stridedRuns(program, state.stageRun, state.src, state.dst,
                           begin + first, begin + last, origin, narrowCast);
     else if (tiled)
-      detail::transpose(program, from, to, state.src, state.dst,
+      detail::transpose(program, state.stageRun, state.src, state.dst,
                         begin + first * detail::kTypedTile,
                         std::min(end, begin + last * detail::kTypedTile),
                         origin, state.lo[0], state.lo[1]);

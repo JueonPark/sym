@@ -2,6 +2,7 @@
 #ifndef RELOC_SRC_TYPEDKERNELS_H
 #define RELOC_SRC_TYPEDKERNELS_H
 
+#include "TypedStageKernels.h"
 #include "reloc/TypedExecute.h"
 
 namespace reloc::typed::detail {
@@ -17,11 +18,11 @@ bool simpleChannels(const Program &, uint32_t from, uint32_t to,
 
 // Contiguous input/output, potentially unaligned. Bounded stack buffers keep
 // every intermediate rounding without a full tensor or shape-specific code.
-void stages(const Program &, uint32_t from, uint32_t to, const uint8_t *src,
-            uint8_t *dst, int64_t count, int64_t destinationOffset);
+void stages(const Program &, const StageRun &, const uint8_t *src, uint8_t *dst,
+            int64_t count, int64_t destinationOffset);
 
 // Dense matrix transpose, with optional output padding and chunk-local dst.
-void transpose(const Program &, uint32_t from, uint32_t to, const uint8_t *src,
+void transpose(const Program &, const StageRun &, const uint8_t *src,
                uint8_t *dst, int64_t first, int64_t last, int64_t origin,
                int64_t outerLo, int64_t innerLo);
 
@@ -29,8 +30,8 @@ void transpose(const Program &, uint32_t from, uint32_t to, const uint8_t *src,
 /// contiguous inner run per (outer, middle) coordinate for outer rows
 /// [first, last). `origin` is the destination element offset of `dst`.
 /// `narrowCast` selects the direct f32 -> f16 conversion for a single cast.
-void stridedRuns(const Program &p, uint32_t from, uint32_t to,
-                 const uint8_t *src, uint8_t *dst, int64_t first, int64_t last,
-                 int64_t origin, bool narrowCast);
+void stridedRuns(const Program &p, const StageRun &stages, const uint8_t *src,
+                 uint8_t *dst, int64_t first, int64_t last, int64_t origin,
+                 bool narrowCast);
 } // namespace reloc::typed::detail
 #endif

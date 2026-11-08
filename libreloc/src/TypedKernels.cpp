@@ -144,8 +144,11 @@ bool simpleChannels(const Program &p, uint32_t from, uint32_t to,
   return true;
 }
 
-void stages(const Program &p, uint32_t from, uint32_t to, const uint8_t *src,
+void stages(const Program &p, const StageRun &run, const uint8_t *src,
             uint8_t *dst, int64_t count, int64_t offset) {
+  if (runStageRun(p, run, src, dst, count, offset))
+    return;
+  const uint32_t from = run.from, to = run.to;
   const uint32_t inWidth = widthAt(p, from), outWidth = widthAt(p, to);
   if (from == to) {
     std::memcpy(dst, src, count * inWidth);
@@ -179,10 +182,11 @@ void stages(const Program &p, uint32_t from, uint32_t to, const uint8_t *src,
   }
 }
 
-void transpose(const Program &p, uint32_t from, uint32_t to, const uint8_t *src,
+void transpose(const Program &p, const StageRun &run, const uint8_t *src,
                uint8_t *dst, int64_t first, int64_t last, int64_t origin,
                int64_t outerLo, int64_t innerLo) {
   const auto &layout = p.plan.layout;
+  const uint32_t from = run.from, to = run.to;
   const int64_t columns = layout.extents[1];
   const uint32_t inWidth = widthAt(p, from), outWidth = widthAt(p, to);
   alignas(64) uint8_t tile[kTypedTile * kTypedTile * 4];
@@ -198,19 +202,29 @@ void transpose(const Program &p, uint32_t from, uint32_t to, const uint8_t *src,
         transposeTile<2>(source, tile, rows, cols, layout.srcStrides[1]);
       else
         transposeTile<1>(source, tile, rows, cols, layout.srcStrides[1]);
+      if (cols == columns && layout.dstStrides[0] == columns && innerLo == 0) {
+        // The tile is already contiguous in both staging and output. One
+        // run removes per-row dispatch/copies. stages() still splits at
+        // logical channel boundaries, which may lie inside this tile.
+        const int64_t offset = (r + outerLo) * columns;
+        stages(p, run, tile, dst + (offset - origin) * outWidth, rows * columns,
+               offset);
+        continue;
+      }
       for (int64_t row = 0; row < rows; ++row) {
         const int64_t offset =
             (r + row + outerLo) * layout.dstStrides[0] + c + innerLo;
-        stages(p, from, to, tile + row * cols * inWidth,
+        stages(p, run, tile + row * cols * inWidth,
                dst + (offset - origin) * outWidth, cols, offset);
       }
     }
   }
 }
-void stridedRuns(const Program &p, uint32_t from, uint32_t to,
-                 const uint8_t *src, uint8_t *dst, int64_t first, int64_t last,
-                 int64_t origin, bool narrowCast) {
+void stridedRuns(const Program &p, const StageRun &stageRun, const uint8_t *src,
+                 uint8_t *dst, int64_t first, int64_t last, int64_t origin,
+                 bool narrowCast) {
   const auto &l = p.plan.layout;
+  const uint32_t from = stageRun.from, to = stageRun.to;
   const int64_t middle = l.extents[1], run = l.extents[2];
   const int64_t ss0 = l.srcStrides[0], ss1 = l.srcStrides[1];
   const int64_t ds0 = l.dstStrides[0], ds1 = l.dstStrides[1];
@@ -225,7 +239,7 @@ void stridedRuns(const Program &p, uint32_t from, uint32_t to,
                            reinterpret_cast<uint16_t *>(d), run);
       return;
     }
-    stages(p, from, to, s, d, run, offset);
+    stages(p, stageRun, s, d, run, offset);
   };
   if (ss1 <= ss0) {
     // Source rows are contiguous along the middle axis (or identity).

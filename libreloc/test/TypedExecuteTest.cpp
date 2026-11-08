@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "reloc/TypedExecute.h"
+#include "../src/TypedStageKernels.h"
 
 #include "TypedGoldens.h"
 #include "reloc/Decode.h"
@@ -574,7 +575,8 @@ TEST(TypedExecute, TiledNarrowingOddShapesUnalignedAndChunkWindows) {
     auto p = matrixProgram(
         mustPrepare(mustBind(typed_goldens::kCastPadHex, {})), rows, columns);
     ASSERT_EQ(reloc::typed::hostKernel(p, 0, 1),
-              reloc::typed::HostKernel::TiledTranspose);
+              columns <= 32 ? reloc::typed::HostKernel::TiledTransposeRuns
+                            : reloc::typed::HostKernel::TiledTranspose);
     std::vector<float> input(rows * columns);
     for (auto &x : input) {
       const uint32_t bits = random();
@@ -696,6 +698,205 @@ TEST(TypedExecute,
   // (d0 mod 2) wraps on the third row: the last scale must not be used.
   EXPECT_EQ(valuesOf<int8_t>(run(complex, 0, 1, bytesOf(x))),
             (std::vector<int8_t>{1, 4, 4, 10, 3, 6}));
+}
+
+Program castChainProgram(int rounds, int64_t count) {
+  auto p = matrixProgram(mustPrepare(mustBind(typed_goldens::kCastPadHex, {})),
+                         1, count);
+  p.plan.layout.srcStrides = {count, 1};
+  p.plan.layout.dstStrides = {count, 1};
+  auto narrow = p.stages.front();
+  auto widen = narrow;
+  widen.input = narrow.output;
+  widen.output = narrow.input;
+  widen.policy = reloc::NumericPolicyKind::Exact;
+  p.stages.clear();
+  for (int i = 0; i < rounds; ++i) {
+    p.stages.push_back(narrow);
+    p.stages.push_back(widen);
+  }
+  p.plan.layout.elementSize = 4;
+  p.plan.layout.totalBytes = count * 4;
+  return p;
+}
+
+TEST(TypedExecute, RegisterChainsKeepEveryRoundingAndUnalignedTail) {
+  const int64_t count = 269;
+  const std::vector<uint32_t> witnesses = {
+      0x33800000, 0x33000000, 0x33400000, 0x38800000, 0x477fe000,
+      0x477ff000, 0x3f801000, 0x80000000, 0xff800000, 0x7fc12345,
+      0xff812345, 0x3f803001, 0x00000001};
+  for (int rounds : {1, 2, 4, 7}) {
+    auto p = castChainProgram(rounds, count);
+    EXPECT_STREQ(
+        reloc::typed::detail::stageRunName(
+            reloc::typed::detail::prepareStageRun(p, 0, p.stages.size())),
+        "register_cast_chain");
+    std::vector<uint32_t> input(count), expected(count);
+    for (int64_t i = 0; i < count; ++i) {
+      input[i] = witnesses[i % witnesses.size()];
+      float value = floatOf(input[i]);
+      for (int j = 0; j < rounds; ++j)
+        value = reloc::quant::widenF16F32(reloc::quant::narrowF32F16(value));
+      expected[i] = bitsOf(value);
+    }
+    for (int offset : {0, 1, 3}) {
+      std::vector<uint8_t> src(count * 4 + 8, 0xa5), dst(count * 4 + 8, 0xb6);
+      std::memcpy(src.data() + offset, input.data(), count * 4);
+      ASSERT_FALSE(reloc::typed::executeHost(
+          p, 0, p.stages.size(), src.data() + offset, dst.data() + offset));
+      EXPECT_EQ(std::memcmp(dst.data() + offset, expected.data(), count * 4),
+                0);
+      EXPECT_TRUE(std::all_of(dst.begin(), dst.begin() + offset,
+                              [](uint8_t b) { return b == 0xb6; }));
+      EXPECT_TRUE(std::all_of(dst.begin() + offset + count * 4, dst.end(),
+                              [](uint8_t b) { return b == 0xb6; }));
+    }
+  }
+}
+
+TEST(TypedExecute, RegisterStageCutsPreserveEveryHalfRepresentation) {
+  auto p = castChainProgram(2, 65536);
+  std::vector<uint16_t> source(65536);
+  for (int i = 0; i < 65536; ++i)
+    source[i] = i;
+  for (uint32_t to : {2u, 3u, 4u}) {
+    EXPECT_STREQ(reloc::typed::detail::stageRunName(
+                     reloc::typed::detail::prepareStageRun(p, 1, to)),
+                 "register_cast_chain");
+    auto output = run(p, 1, to, bytesOf(source));
+    for (int i = 0; i < 65536; ++i) {
+      float widened = reloc::quant::widenF16F32(source[i]);
+      if (to == 2)
+        EXPECT_EQ(valuesOf<uint32_t>(std::vector<uint8_t>(
+                      output.begin() + i * 4, output.begin() + (i + 1) * 4))[0],
+                  bitsOf(widened));
+      else if (to == 3) {
+        uint16_t actual;
+        std::memcpy(&actual, output.data() + i * 2, 2);
+        EXPECT_EQ(actual, reloc::quant::narrowF32F16(widened));
+      } else {
+        uint32_t actual;
+        std::memcpy(&actual, output.data() + i * 4, 4);
+        EXPECT_EQ(actual, bitsOf(reloc::quant::widenF16F32(
+                              reloc::quant::narrowF32F16(widened))));
+      }
+    }
+  }
+}
+
+TEST(TypedExecute, RegisterDequantKeepsBinary32BeforeHalfAndChannelBoundaries) {
+  auto p = matrixProgram(
+      mustPrepare(mustBind(typed_goldens::kDequantCastHex, {})), 13, 37);
+  auto &stage = p.stages[0];
+  stage.perChannel = stage.channelIsDim = true;
+  stage.channelDim = 0;
+  stage.channelLength = 13;
+  stage.scale.resize(13);
+  stage.zeroPoint.resize(13);
+  for (int i = 0; i < 13; ++i) {
+    stage.scale[i] = i % 3 == 0 ? 0x1.001002p-4f : (i + 1) * 0.0137f;
+    stage.zeroPoint[i] = i % 2 ? -128 : 127;
+  }
+  EXPECT_STREQ(reloc::typed::detail::stageRunName(
+                   reloc::typed::detail::prepareStageRun(p, 0, 2)),
+               "register_dequant_cast_chain");
+  std::vector<int8_t> src(13 * 37);
+  std::vector<uint16_t> out(src.size());
+  for (size_t i = 0; i < src.size(); ++i)
+    src[i] = static_cast<int8_t>(i);
+  ASSERT_FALSE(reloc::typed::executeHost(p, 0, 2, src.data(), out.data()));
+  for (int r = 0; r < 13; ++r)
+    for (int c = 0; c < 37; ++c)
+      EXPECT_EQ(out[r * 37 + c],
+                reloc::quant::narrowF32F16(oracleDequantize(
+                    src[c * 13 + r], stage.zeroPoint[r], stage.scale[r])));
+  stage.channelIsDim = false;
+  EXPECT_STREQ(reloc::typed::detail::stageRunName(
+                   reloc::typed::detail::prepareStageRun(p, 0, 2)),
+               "buffered");
+  auto quantized =
+      mustPrepare(mustBind(typed_goldens::kQuantDequantSymHex, {{"N", 17}}));
+  EXPECT_STREQ(reloc::typed::detail::stageRunName(
+                   reloc::typed::detail::prepareStageRun(quantized, 0, 2)),
+               "buffered");
+}
+
+TEST(TypedExecute, ShortTransposeRowsBatchWithoutLosingTailsOrChunkOrigins) {
+  reloc::GatherPool pool(8);
+  for (const auto &[rows, columns] :
+       std::vector<std::pair<int64_t, int64_t>>{{1, 3},
+                                                {17, 5},
+                                                {65, 8},
+                                                {129, 17},
+                                                {65, 31},
+                                                {67, 32},
+                                                {8193, 8}}) {
+    auto p = matrixProgram(castChainProgram(2, rows * columns), rows, columns);
+    EXPECT_STREQ(
+        reloc::typed::hostKernelName(reloc::typed::hostKernel(p, 0, 4)),
+        "tiled_transpose_runs");
+    std::vector<float> input(rows * columns);
+    std::vector<uint32_t> expected(input.size());
+    for (size_t i = 0; i < input.size(); ++i)
+      input[i] = (static_cast<int>(i % 129) - 64) * .0137f;
+    for (int64_t r = 0; r < rows; ++r)
+      for (int64_t c = 0; c < columns; ++c)
+        expected[r * columns + c] = bitsOf(reloc::quant::widenF16F32(
+            reloc::quant::narrowF32F16(input[c * rows + r])));
+    std::vector<uint8_t> unaligned(input.size() * 4 + 1);
+    std::memcpy(unaligned.data() + 1, input.data(), input.size() * 4);
+    auto schedule = reloc::planChunks(p.plan.layout, 2, columns * 4 * 37);
+    for (const auto &chunk : schedule.chunks) {
+      std::vector<uint8_t> output(chunk.bytes + 4, 0xab);
+      ASSERT_FALSE(reloc::typed::executeHostChunk(
+          p, 0, 4, unaligned.data() + 1, output.data() + 3, chunk, &pool));
+      EXPECT_EQ(std::memcmp(output.data() + 3,
+                            reinterpret_cast<const uint8_t *>(expected.data()) +
+                                chunk.byteOffset,
+                            chunk.bytes),
+                0);
+      EXPECT_EQ(output[0], 0xab);
+      EXPECT_EQ(output[1], 0xab);
+      EXPECT_EQ(output[2], 0xab);
+      EXPECT_EQ(output.back(), 0xab);
+    }
+    EXPECT_EQ(valuesOf<uint32_t>(run(p, 0, 4, bytesOf(input), 8)), expected);
+  }
+}
+
+TEST(TypedExecute, BatchedShortRowsPreserveLogicalChannelCoordinates) {
+  auto p = matrixProgram(
+      mustPrepare(mustBind(typed_goldens::kDequantCastHex, {})), 69, 5);
+  auto &stage = p.stages[0];
+  stage.perChannel = stage.channelIsDim = true;
+  stage.channelDim = 0;
+  stage.channelLength = 69;
+  stage.scale.resize(69);
+  stage.zeroPoint.resize(69);
+  for (int i = 0; i < 69; ++i) {
+    stage.scale[i] = (i + 1) * .0137f;
+    stage.zeroPoint[i] = i % 2 ? 127 : -128;
+  }
+  EXPECT_STREQ(reloc::typed::hostKernelName(reloc::typed::hostKernel(p, 0, 2)),
+               "tiled_transpose_runs");
+  std::vector<int8_t> input(69 * 5);
+  for (size_t i = 0; i < input.size(); ++i)
+    input[i] = static_cast<int8_t>(i * 17);
+  auto output = valuesOf<uint16_t>(run(p, 0, 2, bytesOf(input), 3));
+  for (int r = 0; r < 69; ++r)
+    for (int c = 0; c < 5; ++c)
+      EXPECT_EQ(output[r * 5 + c],
+                reloc::quant::narrowF32F16(oracleDequantize(
+                    input[c * 69 + r], stage.zeroPoint[r], stage.scale[r])));
+  // A padded row is not physically contiguous with the next valid row.
+  p.plan.layout.dstStrides[0] = 8;
+  EXPECT_STREQ(reloc::typed::hostKernelName(reloc::typed::hostKernel(p, 0, 2)),
+               "tiled_transpose");
+  // A gapped source does not qualify as the dense transpose family.
+  p.plan.layout.srcStrides[1] = 70;
+  EXPECT_STREQ(reloc::typed::hostKernelName(reloc::typed::hostKernel(p, 0, 2)),
+               "generic");
 }
 
 } // namespace
