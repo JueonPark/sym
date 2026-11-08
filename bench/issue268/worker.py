@@ -130,7 +130,7 @@ def main():
         result['phase']='prepare'; start=time.perf_counter_ns()
         with torch.no_grad(): snapshots=inputs.workload.Snapshots(core,job['runtime'])
         result['snapshot_ms']=(time.perf_counter_ns()-start)/1e6
-        preparations=[]; first=[]; warmups=[]
+        preparations=[]; first=[]; warmups=[]; warmup_counts=[]
         for i in range(job['callers']):
             executor=ThreadPoolExecutor(1); executors.append(executor)
             def initialize(i=i):
@@ -141,16 +141,19 @@ def main():
                     workers.append(worker); preparations.append((time.perf_counter_ns()-start)/1e6)
                     result['phase']='first'; out,cost=worker.request(values[i if job['kind']=='e5' else 0])
                     first.append(cost); check(out,references[i if job['kind']=='e5' else 0])
-                    result['phase']='warmup'; start=time.perf_counter_ns()
-                    for _ in range(3):
+                    result['phase']='warmup'; start=time.perf_counter_ns(); warmup_count=0
+                    for _ in range(5 if job['kind']=='e2' else 3):
                         for ordinal in range(i,len(values),job['callers']):
                             out,_=worker.request(values[ordinal]); check(out,references[ordinal])
+                            warmup_count+=1
                     warmups.append((time.perf_counter_ns()-start)/1e6)
+                    warmup_counts.append(warmup_count)
                     for region in worker.regions: region.freeze()
                 return worker
             executor.submit(initialize).result()
         result.update(preparation_ms=result['snapshot_ms']+sum(preparations), first_ms=sum(first),
                       worker_prepare_ms=preparations,worker_first_ms=first,warmup_ms=warmups,
+                      warmup_requests_per_caller=warmup_counts,
                       replay_before=replay_stats(), compile_before=[w.state.stats() for w in workers])
         torch.cuda.synchronize(); torch.cuda.reset_peak_memory_stats()
         result['phase']='warm'; result['warm_start_ms']=elapsed()

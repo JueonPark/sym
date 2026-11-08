@@ -36,7 +36,8 @@ def jobs():
 
 def protocol(job):
     return dict(dtype='float16', kernel='native', grouping='grouped', prefetch='whole',
-                slots=2, tf32=False, samples=60 if job['kind'] == 'e2' else 30)
+                slots=2, tf32=False, samples=60 if job['kind'] == 'e2' else 30,
+                warmup_requests_per_caller=5 if job['kind']=='e2' else 24//job['callers'])
 
 
 def environment(torch, job):

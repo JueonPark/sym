@@ -15,7 +15,10 @@ process-tree GPU/build/CPU audits cover every arm. Rejected contaminated attempt
 remain checksummed and cannot count as evidence. No timing retries for losses.
 Fresh independent Inductor disk caches per arm keep compilation costs visible.
 
-E2 uses original fixed seed225 inputs, 3 warm and 60 timed completed requests.
+E2 uses original fixed seed225 inputs, 5 warm and 60 timed completed requests. The earlier E2 protocol used3;
+this common increase satisfies the parent #247 minimum. The early18-arm run
+is retained as excluded protocol-development evidence and never analyzed as
+acceptance. E5 retains its original3passes, at least6warm requests per caller.
 E5 uses original eight changing inputs, 3 warm passes and 30 eight-request bursts,
 persistent callers, round-robin queues and previous-burst retention. Ordinary
 model outputs use the original exact token/routing check and FP16 rtol/atol .02.

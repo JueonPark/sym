@@ -51,6 +51,8 @@ def validate_record(row, job):
     if row['outcome'] == 'oom':
         require(bool(row['error']) and row['phase'] in ('prepare', 'first', 'warmup', 'warm'), 'OOM provenance')
         return
+    require(row['warmup_requests_per_caller'] == [row['protocol']['warmup_requests_per_caller']]*job['callers'],
+            'executed warmup count')
     count = 60 if job['kind'] == 'e2' else 240
     require(row['checks'] == count and row['retained_checks'] == count, 'correctness counts')
     require(row['held_after_close'] == (1 if job['kind'] == 'e2' else 8), 'retirement checks')

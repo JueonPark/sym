@@ -7,8 +7,8 @@ def record():
     return dict(job=dict(kind='e2', case='llm_decode', compute='eager', callers=1,
                         round=1, runtime='sym', mode='on', id='fixture'),
                 protocol=dict(dtype='float16', kernel='native', grouping='grouped',
-                    prefetch='whole', slots=2, tf32=False, samples=60),
-                outcome='success', checks=60, retained_checks=60, held_after_close=1,
+                    prefetch='whole', slots=2, tf32=False, samples=60, warmup_requests_per_caller=5),
+                warmup_requests_per_caller=[5], outcome='success', checks=60, retained_checks=60, held_after_close=1,
                 completed_ms=[1.] * 60, submission_ms=[.5] * 60,
                 first_ms=5., preparation_ms=2., retirement_ms=.2, warmup_ms=[3.], initial_nvml={'used': 10},
                 compile_before=[{'compile_callbacks':0}], compile_after=[{'compile_callbacks':0}], input_sha256=['frozen'],
@@ -157,3 +157,8 @@ def test_runner_restarts_quiet_interval_after_interference(monkeypatch):
 def test_reject_warm_inductor_recompile():
     value=record();value['compile_before']=[{'compile_callbacks':1}];value['compile_after']=[{'compile_callbacks':2}]
     with pytest.raises(ValueError,match='compile'):validate(value)
+
+
+def test_reject_too_few_executed_warmups():
+    value=record();value['warmup_requests_per_caller']=[3]
+    with pytest.raises(ValueError,match='warmup'):validate(value)
