@@ -29,31 +29,31 @@
 **Files:** Create `libreloc/python/reloc_torch/gpu_replay.py` and `libreloc/python/tests/torch_frontend/test_gpu_replay.py`; modify package exports.
 **Interfaces:** Produces `GPUReplayPolicy`, `GPUReplay(function, *, policy=None, device=None)` with `prepare`, `freeze`, `invalidate`, `stats`, `close`, context manager and callable.
 
-- [ ] Write tests for fresh parameters/addresses, held views, bucket/slot limits, low budget, failed capture, streams, retirement, inference guard and settings fallback.
-- [ ] Run `bash /home/jueonpark/sym-issue268-20261108/test.sh -q libreloc/python/tests/torch_frontend/test_gpu_replay.py`; expected missing implementation failures.
-- [ ] Implement validated policy, exact metadata keys, static input copies, graph capture and pool accounting, cloned outputs, events and bounded fallback. Detect input mutation in warmup and retain exclusion reason. Capture failures are recoverable only after safe cleanup; runtime failures poison owner.
-- [ ] Run the same test command; expected pass. Commit runtime/tests.
+- [x] Write tests for fresh parameters/addresses, held views, bucket/slot limits, low budget, failed capture, streams, retirement, inference guard and settings fallback.
+- [x] Run `bash /home/jueonpark/sym-issue268-20261108/test.sh -q libreloc/python/tests/torch_frontend/test_gpu_replay.py`; expected missing implementation failures.
+- [x] Implement validated policy, exact metadata keys, static input copies, graph capture and pool accounting, cloned outputs, events and bounded fallback. Detect input mutation in warmup and retain exclusion reason. Capture failures are recoverable only after safe cleanup; runtime failures poison owner.
+- [x] Run the same test command; expected pass. Commit runtime/tests.
 
 ### Task 2: Prepared backend integration and documented contract
 
 **Files:** Modify `libreloc/python/reloc_torch/backend.py`, replay tests and `libreloc/python/README.md`.
 **Interfaces:** Consumes Task1; produces backend-owned `prepare_gpu_region(function, *example_args, policy=None, device=None, **example_kwargs)`. It prepares slots and returns wrapper; user freezes after all example buckets. Backend stats/close include wrappers.
 
-- [ ] Write a failing GPU test using automatically prepared CPU→GPU transformation followed by owned GPU replay; verify changed source values, held result and close. Add process mismatch/failed creation cleanup tests.
-- [ ] Run replay test file; expected new failures.
-- [ ] Implement integration without weakening whole-graph capture guard; document pure boundary, preparation, explicit mutable state, budgeting and fallback.
-- [ ] Run replay tests and full Python suite with existing native runtime; expected pass or explicitly reported existing skips. Commit integration/docs.
+- [x] Write a failing GPU test using automatically prepared CPU→GPU transformation followed by owned GPU replay; verify changed source values, held result and close. Add process mismatch/failed creation cleanup tests.
+- [x] Run replay test file; expected new failures.
+- [x] Implement integration without weakening whole-graph capture guard; document pure boundary, preparation, explicit mutable state, budgeting and fallback.
+- [x] Run replay tests and full Python suite with existing native runtime; expected pass or explicitly reported existing skips. Commit integration/docs.
 
 ### Task 3: Reproducible qualification and analysis
 
 **Files:** Create `bench/issue268/` protocol, worker, runner, analyzer and analyzer tests; results/review/README.
 **Interfaces:** Uses Task1 at unchanged original E2/E5 GPU boundaries; immutable job IDs and hashed input/runtime source inventories; stdlib saved-data reproduction.
 
-- [ ] Define exact matrix and schema before acceptance. Write failing analyzer tests for missing/duplicate cases, mismatched kernel/settings, wrong counts, bad provenance, contamination and missing cooldown/memory observations.
-- [ ] Run analyzer tests, then implement strict analyzer and isolated runner.
-- [ ] Run correctness pilots, fix observed defects with regression tests. Freeze measurement source and matrix.
-- [ ] Execute three-round E2/E5 campaign with equal wrapper/storage opportunity; preserve shape/budget failures. Profile launches separately. Report capture/first/submission/completed p50/p95, retained/peak memory and break-even; retain negative results.
-- [ ] Run analyzer tests and reproduce reports from raw artifacts; expected complete matrix and exact tables. Commit harness/results.
+- [x] Define exact matrix and schema before acceptance. Write failing analyzer tests for missing/duplicate cases, mismatched kernel/settings, wrong counts, bad provenance, contamination and missing cooldown/memory observations.
+- [x] Run analyzer tests, then implement strict analyzer and isolated runner.
+- [x] Run correctness pilots, fix observed defects with regression tests. Freeze measurement source and matrix.
+- [x] Execute three-round E2/E5 campaign with equal wrapper/storage opportunity; preserve shape/budget failures. Profile launches separately. Report capture/first/submission/completed p50/p95, retained/peak memory and break-even; retain negative results.
+- [x] Run analyzer tests and reproduce reports from raw artifacts; expected complete matrix and exact tables. Commit harness/results.
 
 ### Task 4: Independent review and delivery
 

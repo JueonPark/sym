@@ -2,7 +2,10 @@
 
 This campaign compares original E2/E5 workloads on the merged #267 native runtime
 with explicit GPU consumer regions. Read [PROTOCOL.md](PROTOCOL.md) before running.
-See [the public API contract](../../docs/gpu-replay.md).
+See [the public API contract](../../docs/gpu-replay.md), [results](RESULTS.md),
+[all tables](TABLES.md) and [review disposition](REVIEW.md).
+The [public Wiki package](https://github.com/JueonPark/sym/wiki/Artifacts-Issue-268)
+contains exact sources, runtime, raw evidence and portable reproduction scripts.
 
 The main campaign contains 48 cells / 288 fresh-process arms over three rounds.
 Each cell compares Torch/Sym × unwrapped/slots-off/replay-on. Six supplemental

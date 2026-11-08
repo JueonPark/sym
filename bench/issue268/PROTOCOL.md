@@ -41,8 +41,8 @@ all three modes; report absolute replay gains separately from Sym-relative gains
 During preparation, a device completion fence precedes every region preparation
 to drain producer/prefetch work before capture; these fences remain in first/
 warmup costs and never appear in frozen serving. Prepare every encountered bucket
-during sequential warmup, including all eight
-E5 inputs for each caller, then freeze before concurrent serving. All slots are
+during sequential warmup, including each caller's assigned subset of the eight
+E5 inputs, then freeze before concurrent serving. All slots are
 prepared, including slots not reached by sequential requests. Shape growth after
 freeze falls back. Preserve bucket, busy-slot, mutation and budget exclusions.
 
