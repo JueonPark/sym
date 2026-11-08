@@ -29,6 +29,9 @@ __all__ = (
     "RelocBackend",
     "GPUReplay",
     "GPUReplayPolicy",
+    "ConsumerLayoutPolicy",
+    "ConsumerLayoutDecision",
+    "lower_consumer_layout",
     "PreparedExecutionPolicy",
     "eager_transfers",
     "prepare_weights",
@@ -55,6 +58,11 @@ __all__ = (
 
 
 def __getattr__(name):
+    if name in {"ConsumerLayoutPolicy", "ConsumerLayoutDecision", "lower_consumer_layout"}:
+        from . import consumer_layout
+        value = getattr(consumer_layout, name)
+        globals()[name] = value
+        return value
     if name in {"GPUReplay", "GPUReplayPolicy"}:
         from . import gpu_replay
         value = getattr(gpu_replay, name)

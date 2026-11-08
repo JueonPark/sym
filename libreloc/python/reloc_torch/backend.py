@@ -117,11 +117,15 @@ class RelocBackend:
         inductor_options=None,
         placement=None,
         prepared_execution=False,
+        consumer_layout=False,
     ):
         if compute_backend not in ("eager", "inductor"):
             raise ValueError("compute_backend must be 'eager' or 'inductor'")
         if inductor_options is not None and compute_backend != "inductor":
             raise ValueError("inductor_options requires compute_backend='inductor'")
+        from .consumer_layout import normalize_policy as normalize_consumer_policy
+        self._consumer_layout = normalize_consumer_policy(consumer_layout)
+        self._consumer_decisions = []
         self._compute_backend = compute_backend
         self._inductor_options = dict(inductor_options or {})
         if self._inductor_options.get("triton.cudagraphs"):
@@ -218,6 +222,11 @@ class RelocBackend:
             result["closed"] = self._closed
             result["compute_backend"] = self._compute_backend
         result["gpu_replay"] = [region.stats() for region in regions]
+        from dataclasses import asdict
+        with self._lock:
+            decisions = tuple(self._consumer_decisions)
+        result["consumer_layout"] = dict(selected=sum(d.selected for d in decisions),
+            decisions=[asdict(d) for d in decisions])
         result["cache_entries"] = len(self._cache)
         result["cache_rejections"] = self._cache.rejections
         if self._placement is not None:
@@ -312,10 +321,16 @@ class RelocBackend:
         if _needs_autograd(tuple(example_inputs or ())):
             self.diagnostics.record_exclusion("requires_grad")
             return GraphCallable(gm, None, ())
-        report = self.importer(gm, example_inputs)
+        layout_graph = gm
+        if self._consumer_layout is not None:
+            from .consumer_layout import lower_consumer_layout
+            layout_graph, decisions = lower_consumer_layout(gm, example_inputs, policy=self._consumer_layout)
+            with self._lock:
+                self._consumer_decisions.extend(decisions)
+        report = self.importer(layout_graph, example_inputs)
         for exclusion in report.exclusions:
             self.diagnostics.record_exclusion(exclusion.reason)
-        rewritten, registrations = self._rewrite(gm, report.candidates)
+        rewritten, registrations = self._rewrite(layout_graph, report.candidates)
         if self._compute_backend == "inductor":
             try:
                 # Inductor/AOT may mutate their input graph. Keep both our
