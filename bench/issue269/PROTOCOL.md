@@ -110,3 +110,9 @@ Check both returned caches bitwise and require 256 checks for decode or 64 for
 prefill. Audit compilation/allocation occurs after warm memory snapshots and is
 reported as a separate phase; it cannot warm the measured first call. This is
 not a bitwise comparison between eager and Inductor arithmetic.
+
+Isolated restore intervals include the inverse conversion in the native arm;
+the materialized/lowered arms measure the shared raw H2D helper. Consumer
+intervals include dispatch and completion fencing: pure cat for native, inverse
+copies plus cat for materialized, and strided cat for lowered. These stage
+boundaries differ by representation and are not additive model phases.

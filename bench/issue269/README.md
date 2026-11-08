@@ -5,6 +5,17 @@ concatenation. Read the [API contract](../../docs/consumer-layout.md) and
 [frozen protocol](PROTOCOL.md). Both Torch and Sym receive the same opportunity;
 Inductor may already remove the materialization without this rule.
 
+| Variant | Restore boundary | Consumer region | Compiler rule |
+|---|---|---|---|
+| `native` | H2D plus batched inverse permutation | Ordinary cat and decoder | Off |
+| `materialized` | Shared raw H2D copy | Explicit inverse copies, cat and decoder | Off; Inductor has its ordinary fusion opportunity |
+| `lowered` | Same raw H2D copy | Guarded permutation views feed fresh cat | On |
+| `resident` | Weights/caches already on GPU | Original decoder | Off; separate deployment policy |
+
+The transparent materialized path is a compiler-opportunity control. Its eager
+inverse copies are separate kernels; the deployed native control already batches
+them. Compare the candidate with both, and with the fastest observed alternative.
+
 The declared campaign has 162 model arms and six supplemental processes over
 three rounds. Each model arm starts in a fresh process with a fresh compiler
 cache. Each supplement process runs all five shapes and three variants; its

@@ -65,6 +65,7 @@ def summarize(row,physical_peak):
         compile_ms=row['compile_ms'],retirement_ms=row['retirement_ms'],setup_ms=setup,
         total_ms={str(n):setup+n*warm for n in (1,100,1000)},physical_peak_bytes=physical_peak,
         torch_memory=row['torch_memory'],lowering=row['lowering'],transfer_after=row['transfer_after'],
+        replay_after=row['replay_after'],cache_checks=row['cache_checks'],cache_requests=row['cache_requests'],
         warm_replays=sum(b['replays']-a['replays'] for a,b in zip(row['replay_before'],row['replay_after'])),
         retained_replay_bytes=sum(r['retained_bytes'] for r in row['replay_after']),
         capture_ms=math.fsum(r.get('capture_ms',0) for r in row['replay_after']))

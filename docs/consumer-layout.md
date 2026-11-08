@@ -34,7 +34,9 @@ are outside qualification; the backend retains its original autograd fallback.
 for a compiler/planner and returns the graph and immutable decisions. Each row
 records eligibility, selection/reason, source/materialization/consumer node names,
 removed logical allocation bytes and twice those bytes for the eliminated copy's
-read/write traffic. These estimates do not predict latency or physical peaks.
+read/write traffic. An already-contiguous view reports zero saved bytes and is
+excluded as `already_contiguous`; a real clone still allocates. These estimates
+do not predict latency or physical peaks.
 Direct compiler users must maintain valid metadata/guards; Dynamo supplies runtime
 specialization guards when using the backend. The pass never executes real inputs
 or edits the supplied graph. Backend stats expose decisions as plain records.
@@ -87,7 +89,7 @@ Partial submission failures fence already submitted work and poison the helper;
 no automatic retry can duplicate work. Explicit close reports cleanup failures.
 Active forward AD/torch.func, tensor subclasses and training inputs are rejected.
 
-The purity gate rejects `out=` writes, unknown operands/receivers, tensor
+The purity gate rejects `out=` writes, unknown operands/receivers, custom tensor
 subclasses and attribute access that could hide a Python side effect. This can
 exclude otherwise safe graphs; it preserves the original graph rather than
 assuming purity. A rewritten eager callable, like an Inductor callable, rejects
