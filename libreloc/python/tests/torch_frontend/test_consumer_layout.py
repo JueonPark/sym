@@ -187,7 +187,9 @@ def test_dynamo_attention_consumer_sees_identical_cache(wire):
     q = torch.randn(4,1,8,device=wire.device,dtype=wire.dtype)
     def consume(x,y,q):
         cache = torch.cat((x.transpose(0,1).contiguous(),y),1)
-        return q @ cache.transpose(1,2), cache
+        mask = torch.ones(1,cache.shape[1],device=x.device,dtype=torch.bool).tril(cache.shape[1]-1)
+        scores = (q @ cache.transpose(1,2)).masked_fill(~mask, -float("inf"))
+        return scores.softmax(-1), cache
     backend = RelocBackend(consumer_layout=True)
     try:
         compiled = torch.compile(consume,backend=backend,fullgraph=True,dynamic=False)

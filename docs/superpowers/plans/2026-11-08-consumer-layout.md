@@ -29,18 +29,18 @@
 **Files:** `libreloc/python/reloc_torch/consumer_layout.py`, `backend.py`, `__init__.py`; `libreloc/python/tests/torch_frontend/test_consumer_layout.py`; `docs/consumer-layout.md`.
 **Interfaces:** `ConsumerLayoutPolicy(min_saved_bytes=0)`; `lower_consumer_layout(gm, example_inputs, *, policy=None) -> (GraphModule, tuple[ConsumerLayoutDecision,...])`; immutable decisions expose node/source/users, eligible/selected/reason, eliminated_bytes/read_write_bytes. `RelocBackend(consumer_layout=False|policy)` reports decisions without retaining tensor references.
 
-- [ ] Write GPU/FX tests: rank2/3 permutations→copy→cat removed; fresh values/NaN payloads/signed zeros and held outputs exact; source graph untouched; threshold/default off; same dtype/contiguous cat output.
-- [ ] Add exclusions: visible/alias/mixed/CPU consumers; mutation before cat through source alias; noncontiguous/symbolic metadata; channel gather/pad/cast; unsupported cat out; backend close/autograd behavior. Dense positive-offset packed inputs must optimize correctly.
-- [ ] Run new test file and observe missing-feature failure. Implement rule and backend integration; run focused and existing backend tests, then full Python suite. Commit.
+- [x] Write GPU/FX tests: rank2/3 permutations→copy→cat removed; fresh values/NaN payloads/signed zeros and held outputs exact; source graph untouched; threshold/default off; same dtype/contiguous cat output.
+- [x] Add exclusions: visible/alias/mixed/CPU consumers; mutation before cat through source alias; noncontiguous/symbolic metadata; channel gather/pad/cast; unsupported cat out; backend close/autograd behavior. Dense positive-offset packed inputs must optimize correctly.
+- [x] Run new test file and observe missing-feature failure. Implement rule and backend integration; run focused and existing backend tests, then full Python suite. Commit.
 
 ### Task 2: Explicit wire restore and ownership
 
 **Files:** `consumer_layout.py`, `fast.py`, focused tests and API docs.
 **Interfaces:** `PackedWireRestore(device)` with `restore(stored)`, `drain()`, `close()`, `stats()`; `KVCacheSwap.restore_wire(stored)` owns helper and drain. Equal helper available to Torch controls. Returns fresh dense [S,H,D] tensors, with one packed copy for adjacent pinned views.
 
-- [ ] Test changing wire inputs, offsets/shared storage, grouped/safe separate copies, wrong dtype/rank/device/layout, held outputs after reuse/close, producer→consumer stream and temporary host input lifetime; existing restore still yields original layout.
-- [ ] Observe failures, implement all preflight before submission and completion-retained host references; handle partial error by fencing submitted work before release. Validate current owning process/device; close idempotent.
-- [ ] Run focused wire/fast tests and full Python suite. Commit.
+- [x] Test changing wire inputs, offsets/shared storage, grouped/safe separate copies, wrong dtype/rank/device/layout, held outputs after reuse/close, producer→consumer stream and temporary host input lifetime; existing restore still yields original layout.
+- [x] Observe failures, implement all preflight before submission and completion-retained host references; handle partial error by fencing submitted work before release. Validate current owning process/device; close idempotent.
+- [x] Run focused wire/fast tests and full Python suite. Commit.
 
 ### Task 3: Qualification harness, diagnostics and complete evidence
 

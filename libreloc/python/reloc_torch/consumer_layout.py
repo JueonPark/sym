@@ -46,7 +46,7 @@ def _effect_reason(graph):
     import torch
     f = torch.nn.functional
     functions = {operator.getitem, operator.add, operator.sub, operator.mul,
-        operator.truediv, operator.floordiv, operator.mod, operator.pow, operator.matmul, getattr,
+        operator.truediv, operator.floordiv, operator.mod, operator.pow, operator.matmul, operator.invert, getattr,
         torch.cat, torch.concat, torch.concatenate, torch.permute, torch.transpose,
         torch.clone, torch.split, torch.ones, torch.zeros, torch.empty,
         torch.ones_like, torch.zeros_like, f.linear, f.layer_norm, f.gelu,
