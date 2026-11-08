@@ -9,7 +9,9 @@ functions, grouped KV and whole-request two-slot prefetch are identical.
 Three rounds. E2: decode, prefill, sparse MoE, dense MoE × eager/Inductor.
 E5: original decode/sparse MoE × 1/2/4 callers × eager, plus 1-caller Inductor.
 Each cell compares Torch/Sym × unwrapped/slots-off/replay-on: six arms, each in a
-fresh process, rotated by round. This is 48 cells and 288 arm processes.
+fresh process. Mode blocks rotate by round; Torch precedes Sym within each
+block in every round. This residual within-pair order is a limitation of the
+Sym-relative comparison. This is48cells and288arm processes.
 The entire six-arm cell follows a measured 60-second quiet interval; continuous
 process-tree GPU/build/CPU audits cover every arm. Rejected contaminated attempts
 remain checksummed and cannot count as evidence. No timing retries for losses.
@@ -61,8 +63,10 @@ Private pool reservation and input payload count toward it; capture transient,
 output copies, original transfer storage, allocator/context and library memory
 are measured separately. Real OOM outcomes remain losses, not missing cells.
 
-Per-arm 2ms NVML traces cover setup, first, warm and retirement. Saved boundaries
-allow reconstruction of phase peaks. Torch allocated/reserved peaks and replay
+Per-arm2ms NVML traces cover fixture/oracle, setup, first, warm and retirement.
+Only the warm interval has explicit trace boundaries. Its peak is reconstructed
+separately from the whole-process peak, which includes oracle/preparation.
+Individual cold-phase physical peaks are not isolated by this harness. Torch allocated/reserved peaks and replay
 owner inputs/private pools are separate, overlapping scopes and are never added
 to NVML. The physical reserve precedes fixture/oracle creation, matching E5. Common oracle work precedes deployment measurement.
 Preparation, first request (including compilation/capture), warmup and retirement
