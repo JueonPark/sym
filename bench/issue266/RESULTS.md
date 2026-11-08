@@ -40,7 +40,10 @@ Three rounds do not establish statistical significance or cross-platform general
 
 ## E4: the failing 512 MiB partial-residency case
 
-L32/context512, eight resident layers, 512 MiB free budget:
+L32/context512, eight resident layers, 512 MiB free budget. The packed,
+recycle and adaptive arms also use packed resident preload; fresh uses the
+original preload. Their E4 difference therefore includes both output packing
+and preload strategy. E5/groups isolate packing without resident preload.
 
 | Runtime | Policy | Success | Median ms | P95 ms | Deployment MiB | Torch reserved MiB | Native device retained MiB |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -53,7 +56,7 @@ L32/context512, eight resident layers, 512 MiB free budget:
 | sym | recycle | 3/3 | 38.52 | 41.43 | 484 | 390.00 | 30.82 |
 | sym | adaptive | 3/3 | 48.27 | 51.36 | 444 | 366.00 | 17.04 |
 
-Sym fresh fails on its first request in all three rounds. Packing alone recovers
+Sym fresh fails on its first request in all three rounds. Packing with packed resident preload recovers
 3/3 at 484 MiB and 39.54 ms; recycling keeps the same sampled peak at 38.52 ms.
 Adaptive selects one slot/context instead of two, reducing the output window
 from 72 to 48 MiB and native retained device scratch from 30.82 to 17.04 MiB.
@@ -141,7 +144,7 @@ recycling, and fall to 86 MiB with adaptive depth. Delivery time increases
 from 1.477 to 1.605 ms. Matched adaptive Torch uses 90 MiB and takes 1.470 ms.
 The small Sym group increases from 0.260 to 0.474 ms with no sampled memory
 reduction (24 MiB throughout). The conservative device barrier on recycling
-and the extra allocation/planning machinery are not free.
+and the extra allocation/ownership machinery are not free.
 
 The large fixed-depth group cases create eight native device buffers during
 the timed loop: their serial warmup did not activate the second context.
