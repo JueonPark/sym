@@ -1,0 +1,13 @@
+{
+  "baseline": "2617ba166f98a7476a5f472d829a573317fc0cfb",
+  "repository_sha256": {
+    "bench/beat_torch/compare.py": "5baadd0415ff64861d5c73ed7c752835ef474806533506b8ade863f12ffb07a8",
+    "bench/issue225/models.py": "dba399eaf82ab8892fb2f805113269e17088c719f2817ea7f79af5171d93fa69",
+    "bench/issue224/prepared_wire.py": "05bd81ebe0d6a9f2bf3d7c417ec67d859c30e1b61e8ccce19372ff548fae422c",
+    "bench/issue223/model_prefetch.py": "84db3c16bfb020a82ba35c8cacfb056a70fde2e180ac02a60af8390b1929da3b",
+    "bench/issue221/typed_pipeline.py": "6b6206ed7730ac7aed1820c03f08ee7fe4dec20afabe49f11e4bca36d607a519",
+    "libreloc/python/examples/workloads/common.py": "38b9087fc1fda0680457bcc304d66c716a9c62d07ca5b10276f89b9822bf6eb9",
+    "libreloc/python/examples/workloads/llm_offload.py": "1fe0735b2dded1c7b700da73be453fbe1156e1e601db9cd21d2cbe05723b6a8f",
+    "libreloc/python/examples/workloads/moe_experts.py": "53f80fb561ea602c7acf11515e40be12a1a0942a711d21596f15decbb2484e28"
+  }
+}

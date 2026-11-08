@@ -33,6 +33,8 @@
 
 namespace py = pybind11;
 
+void bindPackedStorage(py::module_ &module);
+
 namespace {
 
 [[noreturn]] void raise(const reloc::TransferError &error) {
@@ -526,6 +528,7 @@ py::object dequantS8F32(const py::object &q, const py::object &scale,
 PYBIND11_MODULE(_pyreloc_torch, m) {
   py::module_::import("pyreloc._pyreloc"); // registers the returned types
   m.doc() = "libtorch-backed request builders for reloc_torch.fast";
+  bindPackedStorage(m);
   py::class_<PreparedTensorGroup>(m, "PreparedTensorGroup")
       .def(py::init<const std::vector<PreparedMember> &>(), py::arg("members"))
       .def("prepare", &PreparedTensorGroup::prepare, py::arg("sources"),

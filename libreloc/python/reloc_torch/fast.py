@@ -650,7 +650,8 @@ class FastTransfers:
 
     def __init__(self, device="cuda:0", *, compiler=None, gather_threads=8, pinning="pinned",
                  max_scratch_bytes=64 << 20, n_buffers=2, chunk_size=None, contexts=2,
-                 prepared_groups=True, report_mode="native", max_prepared_groups=64, resources=None):
+                 prepared_groups=True, report_mode="native", max_prepared_groups=64, resources=None,
+                 output_arena=None):
         import torch
         if not pyreloc.cuda_enabled or not torch.cuda.is_available():
             raise RuntimeError("fast transfers require a CUDA-capable runtime")
@@ -658,6 +659,8 @@ class FastTransfers:
         if device.type != "cuda":
             raise ValueError("fast transfers require a CUDA device")
         self.device = torch.device("cuda", torch.cuda.current_device() if device.index is None else device.index)
+        _check_output_arena(output_arena, self.device)
+        self.output_arena = output_arena
         for name, value in (("gather_threads", gather_threads), ("contexts", contexts), ("n_buffers", n_buffers),
                             ("max_scratch_bytes", max_scratch_bytes), ("max_prepared_groups", max_prepared_groups)):
             if type(value) is not int or value <= 0:
@@ -792,7 +795,14 @@ class FastTransfers:
             totals["report_materializations"] = (native["report_materializations"] + self._totals["groups"]
                                                   + self._eager_report_accesses)
             totals["resources"] = self._resources.stats()["typed"]
+            totals["output_arena"] = None if self.output_arena is None else self.output_arena.stats()
             return totals
+
+    def _allocate_outputs(self, programs, *, pin_outputs=True):
+        """Caller holds the owner lock and selects the allocation stream."""
+        if self.output_arena is not None:
+            return self.output_arena.allocate([p.destination for p in programs])
+        return [p.allocate(pin=pin_outputs) for p in programs]
 
     def _record(self, report):
         self._totals["calls"] += 1
@@ -962,13 +972,16 @@ class FastTransfers:
             if len(outputs) != len(items):
                 raise ValueError("one output per program is required")
         with torch.cuda.stream(self._stream):
-            for position, (program, source) in enumerate(items):
+            for program, source in items:
                 if not isinstance(program, (TypedProgram, LayoutProgram, _OneShot)):
                     raise TypeError("group members are typed or layout programs")
                 if not isinstance(program, _OneShot) and program.owner is not self:
                     raise ValueError("program belongs to a different owner")
                 program.check(source)
-                out = program.allocate(pin=pin_outputs) if outputs is None else outputs[position]
+            if outputs is None:
+                outputs = self._allocate_outputs([p for p, _ in items], pin_outputs=pin_outputs)
+            for position, (program, source) in enumerate(items):
+                out = outputs[position]
                 host |= program.direction == "d2h"
                 sources.append(source)
                 outs.append(out)
@@ -991,13 +1004,17 @@ class FastPrefetch:
     """
 
     def __init__(self, owner, groups, *, slots=2, device_layout=False, gather_threads=None):
+        if type(slots) is not int or slots < 1:
+            raise ValueError("prefetch slots must be a positive integer")
         self._owner, self._groups = owner, iter(groups)
         self._slots, self._device_layout, self._threads = slots, device_layout, gather_threads
         self._pending, self._consumed = deque(), deque()
+        self._deferred, self._has_deferred = None, False
         self._closed = False
         self._fill(limit=1)
 
     def _fill(self, limit=None, block=True):
+        from .memory import MemoryBudgetError
         # In flight = submitted and not yet host-complete, whether or not the
         # consumer already enqueued its use. Retire finished ones cheaply;
         # block on the oldest only when every slot is taken and `block` allows
@@ -1012,13 +1029,26 @@ class FastPrefetch:
                     return
                 self._consumed.popleft().wait()
                 continue
+            if self._has_deferred:
+                items = self._deferred
+            else:
+                try:
+                    items = next(self._groups)
+                except StopIteration:
+                    self._groups = None
+                    return
             try:
-                items = next(self._groups)
-            except StopIteration:
-                self._groups = None
-                return
-            self._pending.append(self._owner.submit(items, device_layout=self._device_layout,
-                                                    gather_threads=self._threads))
+                completion = self._owner.submit(items, device_layout=self._device_layout,
+                                                gather_threads=self._threads)
+            except MemoryBudgetError:
+                self._deferred, self._has_deferred = items, True
+                # Only speculation can be deferred. Never wait indefinitely on
+                # a caller-held alias or replay a possibly launched transfer.
+                if not block or self._pending:
+                    return
+                raise
+            self._deferred, self._has_deferred = None, False
+            self._pending.append(completion)
 
     def __iter__(self):
         return self
@@ -1042,6 +1072,8 @@ class FastPrefetch:
         if self._closed:
             return
         self._closed = True
+        self._groups = self._deferred = None
+        self._has_deferred = False
         for queue in (self._pending, self._consumed):
             while queue:
                 queue.popleft().wait()
@@ -1140,11 +1172,56 @@ class KVCacheSwap:
         self._retire(block=True)
 
 
+def _check_output_arena(arena, device):
+    if arena is None:
+        return
+    from .memory import PackedOutputArena
+    if not isinstance(arena, PackedOutputArena):
+        raise TypeError("output_arena must be a PackedOutputArena or None")
+    if arena.device != device:
+        raise ValueError("output arena and transfer owner must use the same device")
+    if arena.stats()["closed"]:
+        raise RuntimeError("output arena is closed")
+
+
+class _WeightCompletion:
+    """One logical weight group executed as bounded native subgroups."""
+    def __init__(self, completions, outputs):
+        self._completions, self._outputs = completions, outputs
+
+    def done(self):
+        return all([completion.done() for completion in self._completions])
+
+    def wait(self):
+        for completion in self._completions:
+            completion.wait()
+        return self._outputs
+
+    def wait_stream(self, stream=None):
+        for completion in self._completions:
+            completion.wait_stream(stream)
+        return self._outputs
+
+    @property
+    def report(self):
+        reports = [completion.report for completion in self._completions]
+        return None if any(report is None for report in reports) else dict(subgroups=reports)
+
+
 class FastWeights:
     """Low-overhead grouped loads over PreparedWireWeights snapshots."""
 
-    def __init__(self, owner, weights):
+    def __init__(self, owner, weights, *, output_arena=None, max_group_members=None, max_prefetch_slots=None):
+        owner._check_open()
+        _check_output_arena(output_arena, owner.device)
+        for name, value, bound in (("max_group_members", max_group_members, 256),
+                                    ("max_prefetch_slots", max_prefetch_slots, 8)):
+            if value is not None and (type(value) is not int or not 1 <= value <= bound):
+                raise ValueError(f"{name} must be an integer in [1, {bound}] or None")
         self.owner, self.weights = owner, weights
+        self.output_arena = output_arena
+        self.max_group_members, self.max_prefetch_slots = max_group_members, max_prefetch_slots
+        self._memory_counts = dict(subgroup_validations=0, subgroups_submitted=0)
         self._entries = {}
 
     def _items(self, names):
@@ -1165,17 +1242,72 @@ class FastWeights:
                 items.append(entry)
             return items
 
-    def submit(self, names):
+    def submit(self, names, *, outputs=None, device_layout=False, gather_threads=1):
+        import torch
+        if device_layout or gather_threads not in (None, 1):
+            raise ValueError("prepared weights use their validated row with one gather thread")
         self.owner._check_open()
         with self.owner._lock:
-            return self.owner.submit(self._items(names), gather_threads=1)
+            items = self._items(names)
+            if not 1 <= len(items) <= 256:
+                raise ValueError("a group holds between 1 and 256 transfers")
+            split = self.max_group_members is not None and len(items) > self.max_group_members
+            if outputs is not None:
+                outputs = list(outputs)
+                if len(outputs) != len(items):
+                    raise ValueError("one output per weight is required")
+            elif self.output_arena is not None or split:
+                self.owner._retire()
+                with torch.cuda.stream(self.owner._stream):
+                    outputs = (self.output_arena.allocate([p.destination for p, _ in items])
+                               if self.output_arena is not None else
+                               self.owner._allocate_outputs([p for p, _ in items]))
+            if not split:
+                return self.owner.submit(items, outputs=outputs, gather_threads=1)
+            # Cross-subgroup aliases and metadata must be rejected before ANY
+            # member launches. Submissions still repeat their normal validators.
+            try:
+                if _native_views is not None:
+                    _native_views.group_from_tensors([p.tensor_entry(source, out)
+                                                      for (p, source), out in zip(items, outputs)])
+                else:
+                    pyreloc.prepare_dispatch_group([p.group_entry(source, out)
+                                                    for (p, source), out in zip(items, outputs)])
+            except pyreloc.TransferError as error:
+                raise RuntimeError(f"weight group preflight failed: {error}") from error
+            self._memory_counts["subgroup_validations"] += 1
+            completions = []
+            try:
+                for offset in range(0, len(items), self.max_group_members):
+                    stop = offset + self.max_group_members
+                    completions.append(self.owner.submit(items[offset:stop], outputs=outputs[offset:stop],
+                                                         gather_threads=1))
+                    self._memory_counts["subgroups_submitted"] += 1
+            except BaseException:
+                for completion in completions:
+                    try:
+                        completion.wait()
+                    except BaseException:
+                        pass  # The native owner quarantines uncertain completion.
+                raise
+            return _WeightCompletion(completions, outputs)
 
     def load_many(self, names):
         return self.submit(names).wait()
 
     def prefetch(self, name_groups, *, slots=2):
-        return FastPrefetch(self.owner, (self._items(names) for names in name_groups), slots=slots,
-                            gather_threads=1)
+        if type(slots) is not int or slots < 1:
+            raise ValueError("prefetch slots must be a positive integer")
+        depth = slots if self.max_prefetch_slots is None else min(slots, self.max_prefetch_slots)
+        return FastPrefetch(self, name_groups, slots=depth, gather_threads=1)
+
+    def stats(self):
+        self.owner._check_process()
+        with self.owner._lock:
+            arena = self.output_arena if self.output_arena is not None else self.owner.output_arena
+            return dict(self._memory_counts, max_group_members=self.max_group_members,
+                        max_prefetch_slots=self.max_prefetch_slots,
+                        output_arena=None if arena is None else arena.stats())
 
 
 class _WireEntry(TypedProgram):

@@ -78,7 +78,7 @@ class PreparedGroup:
             self._active[0].wait()
         with torch.cuda.stream(self._owner._stream):
             if outputs is None:
-                outputs = [p.allocate(pin=pin_outputs) for p in self._programs]
+                outputs = self._owner._allocate_outputs(self._programs, pin_outputs=pin_outputs)
         native = self._free.pop() if self._free else None
         try:
             if native is None:

@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "issue": 266,
+  "pull_request": 279,
+  "artifact_id": "memory-issue266-2026-11-08-v1",
+  "wiki": "https://github.com/JueonPark/sym/wiki/Artifacts-Issue-266",
+  "download_manifest": "https://raw.githubusercontent.com/wiki/JueonPark/sym/artifacts/memory-issue266-2026-11-08-v1/manifest.json",
+  "measurement_revision": "119bd7f587213967c1c3fd770dd6a71dcd14cc33",
+  "jobs": 360,
+  "outcomes": {
+    "success": 336,
+    "oom": 24
+  },
+  "excluded_contaminated_attempts": 0,
+  "analysis_sha256": "1b72b8138d08eb3ba43b32f765a21bf5edaed1903e35718ad353cb3aed4d4f09",
+  "tables_sha256": "be9c41a9c368ffb82514a63ce6473a4aff4a6a980995cb4700e0c632a31799b7",
+  "measurement_source_files": 72,
+  "runtime_files": 53,
+  "runtime_overlay_files": 5,
+  "qualified_environment": "RTX2080Ti/Python3.14.7/Torch2.14.0+cu126/GPU0/CPUs4-7,20-23",
+  "dependencies": [
+    "experiments-2026-11-04-v1",
+    "automatic-prepared-issue265-2026-11-07-v1"
+  ]
+}

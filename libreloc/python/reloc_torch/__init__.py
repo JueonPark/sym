@@ -45,10 +45,19 @@ __all__ = (
     "PreparedGroup",
     "FastWeights",
     "KVCacheSwap",
+    "PackedOutputArena",
+    "MemoryBudgetError",
+    "TransferMemoryPlan",
+    "plan_transfer_memory",
 )
 
 
 def __getattr__(name):
+    if name in {"PackedOutputArena", "MemoryBudgetError", "TransferMemoryPlan", "plan_transfer_memory"}:
+        from . import memory
+        value = getattr(memory, name)
+        globals()[name] = value
+        return value
     if name == "PreparedExecutionPolicy":
         from .automatic import PreparedExecutionPolicy
         globals()[name] = PreparedExecutionPolicy
