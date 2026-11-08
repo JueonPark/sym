@@ -21,11 +21,15 @@ chains/outer extents without an existing manual implementation omit that control
 explicitly. Each arm writes the same pinned final wire and submits one identical
 H2D copy to the same preallocated device output. No placement/pipeline advantage
 is enabled. `emulate_precision_casts=True` preserves Inductor's intermediate casts.
+The original manual roundtrip control uses one F32→F16→F32 pair for all
+roundtrip lengths, exploiting idempotence under the checked value contract.
+Sym retains each requested numerical stage. Longer-roundtrip manual gaps thus
+also include this algebraic simplification advantage.
 
 Each case has five warmups and 30 samples per mode. Inputs change by negation
 before every sample; arm order rotates. Every timed result is checked outside
-timing: exact non-NaN bits and NaN classification. Preparation/first calls and
-warmups are also checked. BF16 intermediate native buffers are exposed as opaque
+timing: exact non-NaN bits and NaN classification. Each first completed call
+and the final transferred warmup output are also checked. BF16 intermediate native buffers are exposed as opaque
 uint16 arrays, preserving their original bits.
 
 Main/heldout modes are producer-only and completed producer+H2D+device
@@ -42,8 +46,10 @@ interop1, passive OpenMP waits and one Inductor compilation worker are fixed.
 Every process has a fresh Inductor disk cache. Baseline/candidate shared-library
 paths are checked against `/proc/self/maps`. The existing compiler is unchanged;
 its binary hash is pinned alongside the two host runtimes.
-Each runtime separately records the source revision used to build its binaries;
-the common measurement-source inventory is not the old runtime's build source.
+Each runtime separately records the source revision used to build its native
+runtime library. Benchmark helpers come from the frozen measurement-source
+inventory, which is not the old runtime library's build source. All loaded
+runtime/helper files have independent content hashes.
 
 Records retain source compile/bind/native preparation, common allocation, first
 completed call, warmup costs, every sample, plan sizes, intermediate bytes and per-case

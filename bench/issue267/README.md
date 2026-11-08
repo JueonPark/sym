@@ -16,4 +16,8 @@ Saved-data analysis uses only the standard library:
 python3 -X utf8 -B -S bench/issue267/analyze.py /path/to/complete-campaign
 ```
 
-No accepted results or public artifact have been published yet.
+Qualification passes all 36 processes and 93,600 timed output checks. Read
+[results and limitations](RESULTS.md), [all tables](TABLES.md), and
+[review disposition](REVIEW.md). The [public Wiki artifact](https://github.com/JueonPark/sym/wiki/Artifacts-Issue-267)
+provides exact source/runtimes, complete raw data and anonymous verification.
+`INDEX.json` pins the analysis hashes and source identities.
