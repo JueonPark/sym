@@ -106,7 +106,7 @@ def validate_record(row, job):
         membership([(r['batch'], r['ordinal']) for r in requests], [(b, i) for b in range(30) for i in range(8)])
         for request in requests:
             require(request['caller'] == request['ordinal'] % job['callers'], 'caller mapping')
-            for key in ('service_ms', 'queue_ms', 'sojourn_ms'): finite(request[key], key)
+            for key in ('service_ms', 'queue_ms', 'sojourn_ms', 'cpu_submission_ms'): finite(request[key], key)
         require(row['budget']['requested_free_budget'] == 1024 << 20, 'physical budget changed')
         require((1024 << 20) - (16 << 20) <= row['budget']['after']['free'] <= 1024 << 20,
                 'physical budget not achieved')
@@ -130,9 +130,13 @@ def summarize(row, physical_peak):
                              for a,b in zip(row['replay_before'],row['replay_after']))
                         for k in sorted({k for b in row['replay_after'] for k in b.get('fallbacks',{})})},
         submission_p50_ms=statistics.median(row['submission_ms'])/scale,
+        request_submission_p50_ms=statistics.median([r['cpu_submission_ms'] for r in row['requests']]) if job['kind']=='e5' else None,
+        request_submission_p95_ms=percentile([r['cpu_submission_ms'] for r in row['requests']], .95) if job['kind']=='e5' else None,
+        queue_p95_ms=percentile([r['queue_ms'] for r in row['requests']], .95) if job['kind']=='e5' else None,
         service_p95_ms=percentile([r['service_ms'] for r in row.get('requests', [])], .95) if job['kind']=='e5' else None,
         sojourn_p95_ms=percentile([r['sojourn_ms'] for r in row.get('requests', [])], .95) if job['kind']=='e5' else None,
-        preparation_ms=row['preparation_ms'], first_ms=row['first_ms'], retirement_ms=row['retirement_ms'],
+        preparation_ms=row['preparation_ms'], first_ms=row['first_ms'], warmup_ms=math.fsum(row['warmup_ms']), retirement_ms=row['retirement_ms'],
+        capture_warmup_ms=math.fsum(r.get('warmup_ms', 0) for r in row['replay_after']),
         capture_ms=math.fsum(r.get('capture_ms', 0) for r in row['replay_after']),
         retained_bytes=sum(r['retained_bytes'] for r in row['replay_after']),
         pool_reserved_bytes=sum(r.get('pool_reserved_bytes', 0) for r in row['replay_after']),

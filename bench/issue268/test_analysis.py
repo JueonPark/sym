@@ -206,3 +206,15 @@ def test_phase_peaks_preserve_unsampled_intervals():
 def test_reject_missing_first_phase_boundary():
     value=record();value['phases']=[p for p in value['phases'] if p['name']!='first']
     with pytest.raises(ValueError,match='phase'):validate(value)
+
+
+def test_concurrent_summary_separates_queue_enqueue_from_device_submission():
+    from bench.issue268.analyze import summarize
+    value=record(); value['job']=value['job'] | dict(kind='e5')
+    value['requests']=[dict(service_ms=8.,queue_ms=3.,sojourn_ms=11.,cpu_submission_ms=7.)]
+    summary=summarize(value,120)
+    assert summary['submission_p50_ms']==.5/8  # Queue enqueue per burst/request.
+    assert summary['request_submission_p50_ms']==7.
+    assert summary['request_submission_p95_ms']==7.
+    assert summary['queue_p95_ms']==3.
+    assert summary['warmup_ms']==3.
