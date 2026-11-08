@@ -259,3 +259,25 @@ def test_unrelated_tensor_subclass_operand_cannot_hide_mutation(wire):
     wire.fill_(1);result=lowered(value,wire,new)
     assert torch.equal(result[:,:7],torch.ones_like(result[:,:7]))
     assert torch.count_nonzero(wire)==0
+
+
+@pytest.mark.parametrize('method',['contiguous','clone'])
+def test_noop_contiguous_does_not_claim_saved_allocation(method):
+    from torch._subclasses.fake_tensor import FakeTensorMode
+    with FakeTensorMode():
+        x=torch.empty(7,4,8,device='cuda',dtype=torch.float16)
+        y=torch.empty(7,1,8,device='cuda',dtype=torch.float16)
+        graph=torch.fx.Graph();a=graph.placeholder('a');b=graph.placeholder('b')
+        a.meta['val']=x;b.meta['val']=y
+        first=graph.call_method('transpose',(a,0,1));first.meta['val']=x.transpose(0,1)
+        second=graph.call_method('transpose',(first,0,1));second.meta['val']=x
+        material=graph.call_method(method,(second,)) if method=='contiguous' else graph.call_function(torch.clone,(second,))
+        material.meta['val']=x.clone()
+        cat=graph.call_function(torch.cat,((material,b),1));cat.meta['val']=torch.cat((x,y),1)
+        graph.output(cat);gm=torch.fx.GraphModule({},graph)
+    lowered,rows=module().lower_consumer_layout(gm,policy=module().ConsumerLayoutPolicy(min_saved_bytes=1))
+    if method=='contiguous':
+        assert lowered is gm and not rows[0].selected
+        assert rows[0].eliminated_bytes==rows[0].read_write_bytes==0
+    else:
+        assert rows[0].selected and rows[0].eliminated_bytes==x.numel()*x.element_size()

@@ -139,6 +139,8 @@ def _candidate(node):
     # A source offset may point into a packed buffer. No pointer arithmetic is
     # emitted: Torch's view and cat operators retain their normal bounds/aliasing.
     amount = value.numel() * value.element_size()
+    if (node.target == 'contiguous' or node.target is torch.ops.aten.contiguous.default) and _dense(compat.graph_value(view)):
+        return source, 0, 'already_contiguous'
     if not node.users:
         return source, amount, 'no_consumer'
     for user in node.users:
