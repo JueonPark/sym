@@ -1,5 +1,9 @@
 # Budgeted output lifetimes and prefetch (#266)
 
+**Qualified:** 360 jobs, 336 successes and 24 retained actual OOMs.
+[Results and limitations](RESULTS.md) · [Complete tables](TABLES.md) ·
+[Versioned Wiki artifact](https://github.com/JueonPark/sym/wiki/Artifacts-Issue-266)
+
 This qualification covers packed output ownership, bounded reuse, physical
 capacity estimates and prefetch/subgroup selection. Read the
 [runtime contract](../../docs/budgeted-transfer-memory.md) and
