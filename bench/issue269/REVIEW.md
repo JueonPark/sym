@@ -1,9 +1,10 @@
 # Review and validation disposition (#269)
 
-The independent whole-change review is continuing through evidence qualification.
-The source review is complete; four findings were addressed in one executor fix
-pass. Final performance/artifact assessment is pending. No second source review
-of fixes is claimed.
+The independent whole-change source and evidence assessments are complete; four
+source findings were addressed in one executor fix pass. No new material evidence
+or reporting issue was found. Public-download verification remains the final
+publication gate and is recorded in the [Wiki receipt](https://github.com/JueonPark/sym/wiki/Artifacts-Issue-269).
+No second source review of fixes is claimed.
 
 ## Findings and verification
 
@@ -42,6 +43,31 @@ materializing clone IR directly; five CPU-only checks and all 28 CUDA rule tests
 passed. This changed test construction only; frozen runtime/measurement hashes
 remain unchanged. All seven GitHub checks pass on `9f7265a`.
 
+## Completed evidence assessment
+
+All 168 qualification processes completed: 162 successful model arms and 90
+supplementary rows, including six actual native-path pressure OOMs. The strict
+analyzer passed; its 30 regression tests also pass. The reviewer independently
+recomputed all four analysis JSON files, matching the saved results exactly,
+and reproduced both Markdown reports. None of the 24 parent targets or eight
+lowered regimes against the strongest Torch alternative qualifies.
+
+The reviewer independently parsed all 27 compressed profiler traces and matched
+kernel counts, positive CUDA allocation events/bytes, and H2D bytes against the
+profile summary. Eager lowering removes 24 kernels relative to transparent
+copies, but only three relative to native batched conversion. Inductor shows no
+additional kernel/allocation saving. Both transparent materialized and lowered
+paths fit the pressure budget, so that capacity result is not unique to lowering.
+Slower eager consumer cases remain reported.
+
+Every model arm passed eight complete cache-audit requests: 256 exact cache
+checks for decode or 64 for prefill. All 36 lowered decode arms selected six
+static decisions; prefill and controls selected none. Qualification audits
+contain zero exclusions and at least 62.69 observed quiet seconds per group,
+with no foreign activity. The 17 accepted diagnostic jobs are separate from
+timing; their 12 contaminated attempts remain preserved. Frozen qualification
+and diagnostic provenance match, including the executed source hashes.
+
 ## Scope judgments
 
 - Inverse KV layout is the selected first consumer target. Dequantization inside
@@ -61,6 +87,6 @@ remain unchanged. All seven GitHub checks pass on `9f7265a`.
   wait for copy completion before changing source bytes, as the API specifies.
 
 The single independent source/harness review began before the long frozen
-campaign to avoid measuring known defects. Its final assessment will incorporate
-complete data, strongest-control comparisons and public artifact verification.
-There are no deferred minor findings at this stage.
+campaign to avoid measuring known defects. The same reviewer completed the
+evidence assessment and will assess the public-download verification receipt.
+There are no deferred minor findings.

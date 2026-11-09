@@ -47,16 +47,16 @@
 **Files:** `bench/issue269/{contract,worker,run,analyze,test_analysis}.py`, protocol/README/report/tables.
 **Interfaces:** Frozen matrix and inventories; materialized/native, optimized-materialized and lowered variants; resident and matched replay subsets. Records keep actual eligibility, allocation/copy/kernel evidence, cold/warm costs and numerical checks.
 
-- [ ] Declare exact matrix/protocol; analyzer regressions reject missing/duplicate data, unequal settings/provenance, bad correctness, contamination, missing cooldown or physical samples. Observe failure then implement strict analysis.
-- [ ] Build transparent wire decoder wrapper around unchanged original model functions; equal lowering available to both runtimes. Run pilots on canonical/held-out/mixed-fallback/low-budget shapes. Keep every excluded attempt and fix observed defects with regressions.
-- [ ] Freeze source/runtime; run all fresh-process rounds serially under isolation, no concurrent test/build/profile. Run separate launch/allocation diagnostics and complete numerical/ownership checks.
-- [ ] Reproduce reports from raw data, run analyzer tests, report setup/compile/first/p50/p95/memory/break-even and parent target passes or misses. Commit.
+- [x] Declare exact matrix/protocol; analyzer regressions reject missing/duplicate data, unequal settings/provenance, bad correctness, contamination, missing cooldown or physical samples. Observe failure then implement strict analysis.
+- [x] Build transparent wire decoder wrapper around unchanged original model functions; equal lowering available to both runtimes. Run pilots on canonical/held-out/mixed-fallback/low-budget shapes. Keep every excluded attempt and fix observed defects with regressions.
+- [x] Freeze source/runtime; run all fresh-process rounds serially under isolation, no concurrent test/build/profile. Run separate launch/allocation diagnostics and complete numerical/ownership checks.
+- [x] Reproduce reports from raw data, run analyzer tests, report setup/compile/first/p50/p95/memory/break-even and parent target passes or misses. Commit.
 
 ### Task 4: Independent review and public delivery
 
 **Files:** REVIEW/report corrections, immutable Wiki package and receipts.
 **Interfaces:** Whole branch against3a62084; one independent most-capable reviewer; public checksummed artifact; closing PR.
 
-- [ ] Dispatch one independent whole-change review, address Important/Critical with regressions and whole-suite verification; ledger scope rulings/deferred minors.
+- [x] Dispatch one independent whole-change review, address Important/Critical with regressions and whole-suite verification; ledger scope rulings/deferred minors.
 - [ ] Publish Wiki evidence; anonymous download, inventory, exact stdlib reanalysis and relocated functional verification.
 - [ ] Push English PR linking #269/#251; verify CI, no SVG/generated binaries in source diff, original checkout clean and automatic closing linkage. Preserve worktree, never merge/close manually.

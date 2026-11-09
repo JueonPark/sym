@@ -5,6 +5,12 @@ concatenation. Read the [API contract](../../docs/consumer-layout.md) and
 [frozen protocol](PROTOCOL.md). Both Torch and Sym receive the same opportunity;
 Inductor may already remove the materialization without this rule.
 
+The completed three-round campaign establishes **no qualified end-to-end Sym
+performance win**: zero of 24 parent targets pass. All 162 model arms completed;
+the 90 supplementary rows retain six actual native-path memory-pressure OOMs.
+See [results](RESULTS.md), [complete tables](TABLES.md), [review disposition](REVIEW.md)
+and the [public artifact](https://github.com/JueonPark/sym/wiki/Artifacts-Issue-269).
+
 | Variant | Restore boundary | Consumer region | Compiler rule |
 |---|---|---|---|
 | `native` | H2D plus batched inverse permutation | Ordinary cat and decoder | Off |
