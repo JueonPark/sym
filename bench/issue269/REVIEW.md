@@ -1,9 +1,9 @@
 # Review and validation disposition (#269)
 
-The independent whole-change source and evidence assessments are complete; four
-source findings were addressed in one executor fix pass. No new material evidence
-or reporting issue was found. Public-download verification remains the final
-publication gate and is recorded in the [Wiki receipt](https://github.com/JueonPark/sym/wiki/Artifacts-Issue-269).
+The independent whole-change source, evidence and public-artifact assessments are
+complete; four source findings were addressed in one executor fix pass. No material
+findings remain. Public-download verification is recorded in the
+[Wiki receipt](https://github.com/JueonPark/sym/wiki/Artifacts-Issue-269).
 No second source review of fixes is claimed.
 
 ## Findings and verification
@@ -68,6 +68,24 @@ with no foreign activity. The 17 accepted diagnostic jobs are separate from
 timing; their 12 contaminated attempts remain preserved. Frozen qualification
 and diagnostic provenance match, including the executed source hashes.
 
+## Public artifact verification
+
+The anonymous 217,212,575-byte download matches archive SHA-256
+`65a412945300825929c82022620ebbee88cd2449a7882439b95761d655ac52f9`.
+All 46,036 inventoried files verify. Four analysis JSON files, the profile summary,
+and both reports reproduce byte-for-byte. The relocated runtime passed 39 tests
+with one expected skip; loaded Python modules and native libraries belong to the
+extracted package. The initial external launcher's interpreter-path error and
+successful correction remain in the public logs; no packaged source changed.
+
+The same reviewer independently retrieved and hash-verified all 13 receipt evidence
+files, checked the downloaded archive checksum/size, reran the package inventory
+verification, and matched the seven reproduced files to the receipt. No material
+artifact finding remains. The final recommendation permits delivery after the
+CI/PR mechanical gate, retaining the default-off setting and negative performance
+conclusion. The immutable package preserves source/report revision `fc2c1bf` and
+executed revision `510889b`; subsequent source changes record delivery status only.
+
 ## Scope judgments
 
 - Inverse KV layout is the selected first consumer target. Dequantization inside
@@ -88,5 +106,4 @@ and diagnostic provenance match, including the executed source hashes.
 
 The single independent source/harness review began before the long frozen
 campaign to avoid measuring known defects. The same reviewer completed the
-evidence assessment and will assess the public-download verification receipt.
-There are no deferred minor findings.
+evidence and public-download assessments. There are no deferred minor findings.

@@ -58,5 +58,5 @@
 **Interfaces:** Whole branch against3a62084; one independent most-capable reviewer; public checksummed artifact; closing PR.
 
 - [x] Dispatch one independent whole-change review, address Important/Critical with regressions and whole-suite verification; ledger scope rulings/deferred minors.
-- [ ] Publish Wiki evidence; anonymous download, inventory, exact stdlib reanalysis and relocated functional verification.
-- [ ] Push English PR linking #269/#251; verify CI, no SVG/generated binaries in source diff, original checkout clean and automatic closing linkage. Preserve worktree, never merge/close manually.
+- [x] Publish Wiki evidence; anonymous download, inventory, exact stdlib reanalysis and relocated functional verification.
+- [x] Push English PR linking #269/#251; verify CI, no SVG/generated binaries in source diff, original checkout clean and automatic closing linkage. Preserve worktree, never merge/close manually.
