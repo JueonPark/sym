@@ -2,7 +2,9 @@
 
 This directory contains the benchmark-only investigation of [#263](https://github.com/JueonPark/sym/issues/263). It compares Sym with the matched Torch control using the frozen FP16 E2/E5 workloads. The production runtime remains at `2617ba166f98a7476a5f472d829a573317fc0cfb`.
 
-**The 150-process campaign is complete.** Read the [results and limitations](RESULTS.md), [compact result index](result-index.json), and [public artifact release](https://github.com/JueonPark/sym/releases/tag/profile-issue263-2026-11-07-v1). Pilot timings are excluded from acceptance.
+**The 150-process campaign is complete.** Read the [results and limitations](RESULTS.md) and [public Wiki artifact](https://github.com/JueonPark/sym/wiki/Artifacts-Issue-263). Pilot timings are excluded from acceptance.
+
+The generated result index is preserved in the Wiki artifact at `source/bench/issue263/result-index.json`. It is not an input to the harness or its tests, so it is distributed with the experimental evidence rather than tracked in this source directory.
 
 ## What the experiment changes
 
@@ -14,7 +16,7 @@ This directory contains the benchmark-only investigation of [#263](https://githu
 
 ## Reproduce
 
-Download and verify the [frozen E1–E5 artifact](https://github.com/JueonPark/sym/releases/tag/experiments-2026-11-04-v1). Its native helper and the published runtime hashes correspond to the recorded Python 3.14 / Torch 2.14 / CUDA 12.6 environment. Preserve the extracted artifact unchanged. The new release also bundles the verified runtime under `runtime/`. Use a Git checkout of the release tag for new runs (benchmark provenance reads the Git revision); the bundled `source/` supports offline inspection and reanalysis. Supply explicit paths to the frozen input artifact, runtime build, Python interpreter, Nsight executable, and an empty output directory:
+Download and verify the [frozen E1–E5 artifact](https://github.com/JueonPark/sym/wiki/Artifacts-Experiments-2026-11-04). Its native helper and the published runtime hashes correspond to the recorded Python 3.14 / Torch 2.14 / CUDA 12.6 environment. Preserve the extracted artifact unchanged. The [issue #263 Wiki artifact](https://github.com/JueonPark/sym/wiki/Artifacts-Issue-263) also bundles the verified runtime under `runtime/`. Use a Git checkout of the retained `profile-issue263-2026-11-07-v1` source tag for new runs (benchmark provenance reads the Git revision); the bundled `source/` supports offline inspection and reanalysis. Supply explicit paths to the frozen input artifact, runtime build, Python interpreter, Nsight executable, and an empty output directory:
 
 ```sh
 python3 bench/issue263/run.py \

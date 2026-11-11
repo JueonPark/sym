@@ -4,7 +4,7 @@ Report materialization/accounting is a measurable Sym cost on the consumer-launc
 
 The result is workload dependent. In E5, report bypass improves warm medians, but its total-lifecycle benefit is small or uncertain. Four-caller sparse MoE obtains a modest advantage over Torch in this fixed-burst test; the other conditions do not establish a general advantage. Production accounting still needs a cheaper implementation that preserves its semantics.
 
-Evidence: [versioned release](https://github.com/JueonPark/sym/releases/tag/profile-issue263-2026-11-07-v1), [full bundle](https://github.com/JueonPark/sym/releases/download/profile-issue263-2026-11-07-v1/sym-issue263-2026-11-07-v1.tar.gz), [checksums](https://github.com/JueonPark/sym/releases/download/profile-issue263-2026-11-07-v1/SHA256SUMS), [access/reproduction guide](https://github.com/JueonPark/sym/releases/download/profile-issue263-2026-11-07-v1/ARTIFACT_GUIDE.md). [Protocol](PROTOCOL.md), [reproduction instructions](README.md), and [compact result index](result-index.json) accompany the harness.
+Evidence: [versioned Wiki artifact](https://github.com/JueonPark/sym/wiki/Artifacts-Issue-263), [download and verification guide](https://github.com/JueonPark/sym/wiki/Artifacts-Issue-263#download-and-verify), and [checksums](https://raw.githubusercontent.com/wiki/JueonPark/sym/artifacts/profile-issue263-2026-11-07-v1/SHA256SUMS). [Protocol](PROTOCOL.md) and [reproduction instructions](README.md) accompany the harness. The generated result index is preserved inside the artifact at `source/bench/issue263/result-index.json`.
 
 ## Scope and qualification
 
