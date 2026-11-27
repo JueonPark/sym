@@ -195,3 +195,8 @@ and matched framework controls. [XLA GPU architecture](https://openxla.org/xla/g
 [MLIR bufferization](https://mlir.llvm.org/docs/Bufferization/) ·
 [IREE Stream](https://iree.dev/reference/mlir-dialects/Stream/) ·
 [TEMPI, HPDC 2021](https://carlpearson.net/pdf/20210624_pearson_hpdc.pdf)
+
+The [joint region planner experiment](../bench/issue271/README.md) uses these
+ownership and destination constraints to compare executable schedules under a
+declared device allocation budget. It measures completed requests, five-call
+lifecycles and paced arrivals against a finite GPU oracle.
