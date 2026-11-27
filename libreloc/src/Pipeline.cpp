@@ -32,6 +32,12 @@ void fillStagingWindow(const BoundPlan &b, void *staging, size_t bytes) {
   for (const PadRegion &p : b.padRegions)
     assert(p.fillBits == bits && "v0 supports a single fill value");
   auto *p = static_cast<uint8_t *>(staging);
+  if (es == 4) {
+    // A constant copy width lets the compiler broadcast the exact fill bits.
+    for (size_t i = 0; i < bytes / 4; ++i)
+      std::memcpy(p + 4 * i, &bits, 4);
+    return;
+  }
   for (size_t off = 0; off + es <= bytes; off += es)
     std::memcpy(p + off, &bits, es);
 }

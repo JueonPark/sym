@@ -107,6 +107,33 @@ TEST(Pipeline, H2DByteExactMatrix) {
             expectPipelineExactH2D(b, nBuffers, nStreams, override, threads);
 }
 
+TEST(Pipeline, PaddedStagingPreservesFillBitsAcrossSlotReuse) {
+  constexpr uint64_t bits = 0x12345678fedcba98ULL;
+  for (uint32_t width : {1u, 2u, 4u, 8u}) {
+    // A 2x3 source becomes 7x5. Two rows per chunk give pad-only,
+    // mixed, and short final windows, all sharing one staging slot.
+    BoundPlan b = makeBound({2, 3}, {3, 1}, {5, 1}, width,
+                            {{0, 3, 2, bits}, {1, 1, 1, bits}});
+    std::vector<uint8_t> src = iotaBytes(6, width);
+    std::vector<uint8_t> actual(b.totalBytes + 2, 0xa5);
+    std::vector<uint8_t> expected = actual;
+    for (int row = 0; row < 7; ++row) {
+      for (int col = 0; col < 5; ++col) {
+        const void *value = &bits;
+        if (row >= 3 && row < 5 && col >= 1 && col < 4)
+          value = src.data() + ((row - 3) * 3 + col - 1) * width;
+        std::memcpy(expected.data() + 1 + (row * 5 + col) * width, value,
+                    width);
+      }
+    }
+    HostBackend backend(2);
+    reloc::executeH2DPipelined(b, src.data(), actual.data() + 1, backend,
+                               /*nBuffers=*/1,
+                               /*chunkSizeOverride=*/10 * width);
+    EXPECT_EQ(expected, actual) << "element width " << width;
+  }
+}
+
 TEST(Pipeline, H2DInterleavingStress) {
   // Larger outer axis, smallest buffers, tiny chunks, several streams: forces
   // deep interleaving of gather/copy/event. Meaningful under TSan.
