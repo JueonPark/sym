@@ -39,6 +39,10 @@ ranks native Torch, CPU-transform and GPU-transform calls using compatible
 whole-call observations. It is separate from this lower-level typed dispatch
 cost model and from pinned/pageable allocation selection.
 
+The [cross-boundary region model](relocation-regions.md) gives the conditions
+for forwarding producer storage, writing into a fresh consumer result, and
+recycling storage after asynchronous use.
+
 ## Program model and the reference
 
 A typed bound plan is one layout (an index map with fused pad fills in the
