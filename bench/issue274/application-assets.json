@@ -1,0 +1,22 @@
+{
+  "model": {
+    "name": "TorchVision SqueezeNet 1.1",
+    "source": {
+      "file": "squeezenet.py",
+      "url": "https://raw.githubusercontent.com/pytorch/vision/3ac97aa9120137381ed1060f37237e44485ac2aa/torchvision/models/squeezenet.py",
+      "sha256": "6a98c53c42399ebff8f776c042c476e39128af368c6175504aa75cbdec807f2d"
+    },
+    "weights": {
+      "file": "squeezenet1_1-b8a52dc0.pth",
+      "url": "https://download.pytorch.org/models/squeezenet1_1-b8a52dc0.pth",
+      "sha256": "b8a52dc049b60e4b6ab68ad0df457362afab8b6304b2febdc1650a5dab4d7e7b",
+      "name": "SqueezeNet1_1_Weights.IMAGENET1K_V1"
+    }
+  },
+  "photo": {
+    "file": "dog.jpg",
+    "url": "https://raw.githubusercontent.com/pytorch/hub/3b54eaafd931b0c0f3ee2df391bb4be7ba6f1ca3/images/dog.jpg",
+    "sha256": "f3f87bb8ab3c26c7ecfd3ac60421d7f32b0503d1d6c5baf8bac42ed93d86351a"
+  },
+  "pillow": "12.2.0"
+}
