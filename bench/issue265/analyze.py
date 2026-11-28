@@ -76,7 +76,14 @@ def validate_record(contract, row, job):
             if job['policy'] is not None and (backend.get('replaced_regions', 0) or backend.get('runtime_executions', 0)):
                 require(prepared is not None, 'prepared policy was not installed')
             if prepared is not None:
-                require(prepared['policy'] == job['policy'], 'actual backend policy changed')
+                expected = job['policy']
+                actual = prepared['policy']
+                if expected is not None:
+                    # Later runtimes expose both reuse switches. The original
+                    # contract always cached programs and reused native groups.
+                    expected = {key: True for key in ('cache_specializations', 'reuse_groups')
+                                if key in actual} | expected
+                require(actual == expected, 'actual backend policy changed')
                 for field, limit in (('cache_entries', 'max_entries'), ('retained_parameter_bytes', 'max_parameter_bytes')):
                     require(0 <= prepared[field] <= job['policy'][limit], 'prepared cache bound exceeded')
                 require(prepared['executions'] == prepared['native']['logical_transfers'], 'native execution accounting differs')

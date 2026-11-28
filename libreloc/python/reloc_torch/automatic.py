@@ -28,6 +28,8 @@ class PreparedExecutionPolicy:
     min_bytes: int = 64 << 10
     min_reuses: int = 1
     row_policy: str = 'device'
+    cache_specializations: bool = True
+    reuse_groups: bool = True
 
     def __post_init__(self):
         for name in ('max_entries', 'max_parameter_bytes', 'min_bytes', 'min_reuses'):
@@ -36,6 +38,9 @@ class PreparedExecutionPolicy:
                 raise TypeError(f'{name} must be an integer')
             if value < (1 if name == 'max_entries' else 0):
                 raise ValueError(f'{name} is below its minimum')
+        for name in ('cache_specializations', 'reuse_groups'):
+            if type(getattr(self, name)) is not bool:
+                raise TypeError(f'{name} must be a bool')
         if self.row_policy not in ('device', 'cpu'):
             raise ValueError('row_policy must be device or cpu')
 
@@ -146,7 +151,8 @@ class AutomaticPreparedExecution:
             contexts = resources._configuration['max_typed_contexts_per_device']
             self._owners[key] = FastTransfers(device, resources=resources, contexts=max(1, contexts),
                 gather_threads=opts.get('gather_threads', 8), pinning=pinning,
-                n_buffers=opts.get('n_buffers', 2), max_prepared_groups=self.policy.max_entries)
+                n_buffers=opts.get('n_buffers', 2), max_prepared_groups=self.policy.max_entries,
+                prepared_groups=self.policy.reuse_groups)
         return self._owners[key]
 
     def prepare(self, adapter, compiled, source, device, *, non_blocking=False,
@@ -181,6 +187,35 @@ class AutomaticPreparedExecution:
                 raise
             finally:
                 self._counts['preparation_ns'] += perf_counter_ns() - started
+
+    def _specialization_entry(self, key, nbytes):
+        if not self.policy.cache_specializations and self.policy.min_reuses == 0:
+            self._counts['cache_misses'] += 1
+            return _Specialization(nbytes)
+        entry = self._cache.get(key)
+        if entry is None:
+            self._counts['cache_misses'] += 1
+            while self._cache and (len(self._cache) >= self.policy.max_entries or
+                                  self._parameter_bytes + nbytes > self.policy.max_parameter_bytes):
+                _, evicted = self._cache.popitem(last=False)
+                self._parameter_bytes -= evicted.parameter_bytes
+                self._counts['evictions'] += 1
+                # Drop cache ownership only. A preflighted invocation may hold
+                # this entry, so closing the group here would invalidate it.
+            entry = self._cache[key] = _Specialization(nbytes)
+            self._parameter_bytes += nbytes
+        else:
+            self._cache.move_to_end(key)
+            if entry.ready:
+                self._counts['cache_hits'] += 1
+        entry.seen += 1
+        if entry.seen <= self.policy.min_reuses:
+            self._exclude('first_use')
+        if self.policy.cache_specializations:
+            return entry
+        # Keep only the admission history. A preflighted call owns its own
+        # immutable bound program even when another call revisits the same key.
+        return _Specialization(nbytes)
 
     def _prepare(self, adapter, compiled, source, device, non_blocking, parameters, index):
         import torch
@@ -237,25 +272,7 @@ class AutomaticPreparedExecution:
         key = (compiled.plan_bytes, tuple(sorted(bindings.items())), tuple(source.shape), tuple(source.stride()),
                compat.dtype_name(source.dtype), source.storage_offset(), device.index, revision,
                None if index is None else (tuple(index.shape), tuple(index.stride()), compat.dtype_name(index.dtype)))
-        entry = self._cache.get(key)
-        if entry is None:
-            self._counts['cache_misses'] += 1
-            while self._cache and (len(self._cache) >= self.policy.max_entries or
-                                  self._parameter_bytes + nbytes > self.policy.max_parameter_bytes):
-                _, evicted = self._cache.popitem(last=False)
-                self._parameter_bytes -= evicted.parameter_bytes
-                self._counts['evictions'] += 1
-                # Drop cache ownership only. A preflighted invocation may hold
-                # this entry, so closing the group here would invalidate it.
-            entry = self._cache[key] = _Specialization(nbytes)
-            self._parameter_bytes += nbytes
-        else:
-            self._cache.move_to_end(key)
-            if entry.ready:
-                self._counts['cache_hits'] += 1
-        entry.seen += 1
-        if entry.seen <= self.policy.min_reuses:
-            self._exclude('first_use')
+        entry = self._specialization_entry(key, nbytes)
         if entry.rejection is not None:
             raise UnsupportedRecipe(*entry.rejection)
         if not entry.ready:
@@ -280,9 +297,9 @@ class AutomaticPreparedExecution:
                         threads=owner.gather_threads, implementation=implementation)
                     entry.program = TypedProgram._from_template(owner, compiled, source, bindings,
                                                                  bound, template, nbytes)
-                    entry.group = owner.prepare_group([entry.program])
                 else:
                     entry.program = LayoutProgram(owner, compiled, source.detach() if source.requires_grad else source)
+                if self.policy.reuse_groups and entry.program is not None:
                     entry.group = owner.prepare_group([entry.program])
                 entry.ready = True
                 self._counts['preparations'] += 1
@@ -332,7 +349,12 @@ class AutomaticPreparedExecution:
                 # binder requires a tensor without autograd history; detach
                 # preserves this call's guarded storage and current values.
                 source = invocation.source.detach() if invocation.source.requires_grad else invocation.source
-                out = invocation.entry.group.submit([source], device_layout=True).wait()[0]
+                entry = invocation.entry
+                if entry.group is None:
+                    completion = entry.owner.submit([(entry.program, source)], device_layout=True)
+                else:
+                    completion = entry.group.submit([source], device_layout=True)
+                out = completion.wait()[0]
             else:
                 d = invocation.destination
                 out = torch.empty_strided(d.shape, d.strides, dtype=getattr(torch, d.dtype), device=d.device)

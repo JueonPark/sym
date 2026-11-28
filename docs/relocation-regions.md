@@ -200,3 +200,8 @@ The [joint region planner experiment](../bench/issue271/README.md) uses these
 ownership and destination constraints to compare executable schedules under a
 declared device allocation budget. It measures completed requests, five-call
 lifecycles and paced arrivals against a finite GPU oracle.
+
+The automatic lowering experiments follow captured Torch operations through
+plan export, specialization lookup and completed kernel execution. They measure
+when reuse pays off across changing inputs and how a captured plan compares
+with materialization, manual fusion and Torch. [Results and raw records](../bench/issue272/README.md)

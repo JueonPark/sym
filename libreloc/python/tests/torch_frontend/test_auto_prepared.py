@@ -217,9 +217,10 @@ def test_bounded_cache_eviction_preserves_preflighted_call(compiler, cuda_device
 
 @pytest.mark.gpu
 @pytest.mark.parametrize('change', ['source', 'parameter', 'index'])
-def test_preflight_rechecks_mutable_operands_before_launch(compiler, cuda_device, change):
+@pytest.mark.parametrize('reuse', [True, False])
+def test_preflight_rechecks_mutable_operands_before_launch(compiler, cuda_device, change, reuse):
     import torch.ao.quantization.fx._decomposed
-    owner = backend(compiler)
+    owner = backend(compiler, prepared_execution=policy(cache_specializations=reuse, reuse_groups=reuse))
     try:
         x = torch.randn(7, 9)
         if change == 'source':
@@ -506,3 +507,32 @@ def test_prepared_backends_share_resources_without_sharing_counters(compiler, cu
         first.close()
         second.close()
         resources.close()
+
+
+@pytest.mark.gpu
+@pytest.mark.parametrize('cached,grouped', [(False, False), (False, True), (True, False), (True, True)])
+def test_automatic_reuse_controls_keep_admission_and_live_results(compiler, cuda_device, cached, grouped):
+    from reloc_torch import PreparedExecutionPolicy
+
+    settings = PreparedExecutionPolicy(min_bytes=0, min_reuses=1, row_policy='cpu',
+                                       cache_specializations=cached, reuse_groups=grouped)
+    owner = backend(compiler, prepared_execution=settings)
+    try:
+        x = torch.randn(7, 23, 9)
+        with torch.no_grad():
+            run, _ = captured_entry(owner, cast, x)
+            outputs = []
+            for _ in range(4):
+                x.neg_()
+                outputs.append((run(x), cast(x)))
+        for actual, expected in outputs:
+            exact(actual, expected)
+        stats = owner.stats()['prepared_execution']
+        assert stats['exclusions']['first_use'] == 1
+        assert stats['executions'] == 3
+        assert stats['preparations'] == (1 if cached else 3)
+        assert stats['cache_hits'] == (2 if cached else 0)
+        assert stats['native']['prepared_groups']['rebinds'] == (2 if cached and grouped else 0)
+        assert stats['native']['dispatches'] == {'cpu_reference': 3}
+    finally:
+        owner.close()
