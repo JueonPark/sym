@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.20)
+project(automatic_specialization_controls LANGUAGES CXX CUDA)
+find_package(Python REQUIRED COMPONENTS Interpreter Development.Module)
+find_package(pybind11 REQUIRED CONFIG)
+set(RELOC_ENABLE_CUDA ON CACHE BOOL "")
+set(RELOC_ENABLE_TORCH_EXT ON CACHE BOOL "")
+set(CMAKE_BUILD_RPATH_USE_ORIGIN ON)
+add_subdirectory("${RUNTIME_SOURCE}/libreloc" libreloc)

@@ -95,6 +95,23 @@ direct adapter calls have adapter-wide statistics.
 Unconfigured `pinning="auto"` remains conservative/pageable. Disabling prepared
 execution preserves the original adapter and its configuration.
 
+## Measuring reuse independently
+
+`PreparedExecutionPolicy(cache_specializations=False)` rebuilds the bound program
+for each admitted call. With `min_reuses=0` it retains no shape or parameter
+keys. A positive reuse threshold keeps a bounded history of occurrences so
+that disabling program reuse preserves the admission decision. In that case
+`cache_entries` includes those history records and `cache_misses` counts new
+keys. `preparations` counts rebuilt programs or indexed descriptor entries.
+`reuse_groups=False` constructs a native group per submission while retaining
+the normal program cache, validation, output allocation and completion accounting.
+Both switches default to true when automatic preparation is enabled. Indexed
+calls bind current indices every time and already use per-call native programs.
+
+The [automatic lowering qualification](../bench/issue272/README.md) compares
+these switches on the original changing-shape traces and checks what the
+compiler selected on previously unseen chains and parameter revisions.
+
 ## Diagnostics
 
 `stats()["prepared_execution"]` reports attempts at the adapter boundary,

@@ -96,3 +96,13 @@ def test_actual_backend_policy_bounds_and_native_counts_are_verified(damage):
     elif damage == 'execution_counts': prepared['native']['logical_transfers'] = 99
     with pytest.raises(ValueError):
         validate_campaign(contract, records)
+
+
+def test_new_runtime_defaults_preserve_original_policy_contract():
+    contract, records = fixture()
+    request = records[1]['requests'][0]['stats']['backend']['prepared_execution']
+    request['policy'] = dict(request['policy'], cache_specializations=True, reuse_groups=True)
+    validate_campaign(contract, records)
+    request['policy']['reuse_groups'] = False
+    with pytest.raises(ValueError, match='actual backend policy changed'):
+        validate_campaign(contract, records)
