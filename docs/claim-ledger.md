@@ -1,5 +1,10 @@
 # Claim ledger
 
+The [paper-facing relocation claim ledger](relocation-claim-ledger.md) is the
+authority for the current contribution statements and the matched E1–E5
+campaigns. The ledger below retains the historical baseline decisions and their
+original measurement scope.
+
 Formalizes Build Document v3 Appendix C (issue [#117](https://github.com/JueonPark/sym/issues/117)): after three baseline
 generations (staged `b` → `b_fair` [#95](https://github.com/JueonPark/sym/issues/95) → `b_pipelined` [#108](https://github.com/JueonPark/sym/issues/108)), this table is
 the single authoritative place a claim's current number and standing live.
