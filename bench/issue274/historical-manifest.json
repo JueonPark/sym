@@ -1,0 +1,1712 @@
+{
+  "schema": 1,
+  "catalog_version": "historical-1",
+  "wiki_revision": "ae44b557b836abf02aeca2780ca4b1a4c3561c3b",
+  "wiki_catalog_revision_url": "https://github.com/JueonPark/sym/wiki/Artifacts/ae44b557b836abf02aeca2780ca4b1a4c3561c3b",
+  "wiki_downloader": {
+    "url": "https://raw.githubusercontent.com/wiki/JueonPark/sym/scripts/fetch_artifact.py",
+    "bytes": 4177,
+    "sha256": "f8475b9b97513a113037a95a9d508787e74302c93a23fb9489ad735f4c7aabe2"
+  },
+  "repository_snapshot": "b9bdcefcebf39f9b268868272296c00653008f1a",
+  "platforms": {
+    "epyc": {
+      "cpu": "AMD EPYC 7351",
+      "gpu": "NVIDIA GeForce RTX 2080 Ti",
+      "device": 0,
+      "default_affinity": "4–7,20–23",
+      "default_aggregate_torch_threads": 8,
+      "python": "CPython 3.14.7",
+      "torch": "2.14.0+cu126",
+      "cuda_runtime": "12.6"
+    },
+    "ryzen": {
+      "cpu": "AMD Ryzen 7 7800X3D",
+      "gpu": "NVIDIA GeForce RTX 4070 Ti SUPER",
+      "python": "CPython 3.14.7",
+      "torch": "2.14.0+cu126",
+      "cuda_runtime": "12.6",
+      "affinity": "Per campaign; exact recorded settings linked above when available."
+    }
+  },
+  "archives": {
+    "original": {
+      "artifact_id": "experiments-2026-11-04-v1",
+      "name": "sym-experiments-2026-11-04-v1.tar.gz",
+      "bytes": 70572047,
+      "sha256": "2c74fb19fb46abff47058ccec9f5ba2bba794e7f93c39fcc4edeb9db6d220328",
+      "parts": [
+        {
+          "name": "sym-experiments-2026-11-04-v1.tar.gz.part-001",
+          "bytes": 33554432,
+          "sha256": "04d339281ac9f0f4f3b4006e20c3e3494656417334a7a2429fb97ec8066b9fcf"
+        },
+        {
+          "name": "sym-experiments-2026-11-04-v1.tar.gz.part-002",
+          "bytes": 33554432,
+          "sha256": "13a7fa41f142cc112ed7e76d89bf633580ede04870a83cc5f73725b43b0a3a9d"
+        },
+        {
+          "name": "sym-experiments-2026-11-04-v1.tar.gz.part-003",
+          "bytes": 3463183,
+          "sha256": "5dec23316d11f5c6c7f7f0dc37582e954453ef79218f3e2caa92c875a6117837"
+        }
+      ],
+      "extracted_directory": "sym_experiments_261104",
+      "source_commit": "2617ba166f98a7476a5f472d829a573317fc0cfb",
+      "wiki_page": "https://github.com/JueonPark/sym/wiki/Artifacts-Experiments-2026-11-04",
+      "wiki_revision_url": "https://github.com/JueonPark/sym/wiki/Artifacts-Experiments-2026-11-04/ae44b557b836abf02aeca2780ca4b1a4c3561c3b",
+      "download_manifest": {
+        "url": "https://raw.githubusercontent.com/wiki/JueonPark/sym/artifacts/experiments-2026-11-04-v1/manifest.json",
+        "bytes": 986,
+        "sha256": "d206ea25c29b3edd948f69cd06e78157f5e33375217683e8286011fe6bde1037"
+      },
+      "checksums": [
+        {
+          "url": "https://raw.githubusercontent.com/wiki/JueonPark/sym/artifacts/experiments-2026-11-04-v1/SHA256SUMS",
+          "bytes": 187,
+          "sha256": "2bee8830f47c418d46d62641e3fdecaadc82a4b2efca77c9c95b2b9c5025425f"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/wiki/JueonPark/sym/artifacts/experiments-2026-11-04-v1/PARTS-SHA256SUMS",
+          "bytes": 336,
+          "sha256": "ccafe85558e0c9542de56c3c23443066cf115484a292bc70893ab1fe815b5053"
+        }
+      ],
+      "members": [
+        {
+          "name": "sym_experiments_261104/sym-benefit-assessment.md",
+          "bytes": 3113,
+          "sha256": "10f2faa59326ad0d4e92fe2a76a3c57c45ba468245a0fc97d18c6a504fe3cf11"
+        }
+      ]
+    },
+    "263": {
+      "artifact_id": "profile-issue263-2026-11-07-v1",
+      "name": "sym-issue263-2026-11-07-v1.tar.gz",
+      "bytes": 244626351,
+      "sha256": "d2df704545ff2a95f646dacaaef09683b03dca68e67d0e8e3ff71693f6dde5ab",
+      "parts": [
+        {
+          "name": "sym-issue263-2026-11-07-v1.tar.gz.part-001",
+          "bytes": 33554432,
+          "sha256": "d52279a7abc9315cba2c0f02f4b01bf5a71dad3f164ddbe4f61777fb94244f7a"
+        },
+        {
+          "name": "sym-issue263-2026-11-07-v1.tar.gz.part-002",
+          "bytes": 33554432,
+          "sha256": "9ac452ecef7c0de99d772c222a2cd65b9bd197ccec7c7881f260f9aeb16c6465"
+        },
+        {
+          "name": "sym-issue263-2026-11-07-v1.tar.gz.part-003",
+          "bytes": 33554432,
+          "sha256": "1e21a0b43fca9e1c2037d6d3b40376b55e6c866f79a859197280b1178f0a1c41"
+        },
+        {
+          "name": "sym-issue263-2026-11-07-v1.tar.gz.part-004",
+          "bytes": 33554432,
+          "sha256": "14c1e4a0bac3a14d8021a0d15668758b7cba9f171a9ab5dea5ae9079ee7953ce"
+        },
+        {
+          "name": "sym-issue263-2026-11-07-v1.tar.gz.part-005",
+          "bytes": 33554432,
+          "sha256": "96fd556a7a1df6edd861ac2c9a0e6160b0f11eb701ffbf4b353b8b1a0e010327"
+        },
+        {
+          "name": "sym-issue263-2026-11-07-v1.tar.gz.part-006",
+          "bytes": 33554432,
+          "sha256": "5c6af28175617718df191cb7dbc871cb57502929ecd49f655d644459e8757724"
+        },
+        {
+          "name": "sym-issue263-2026-11-07-v1.tar.gz.part-007",
+          "bytes": 33554432,
+          "sha256": "73a3332243580bbe727eff98770f941337cf78810c1e38033541b81699d06dcc"
+        },
+        {
+          "name": "sym-issue263-2026-11-07-v1.tar.gz.part-008",
+          "bytes": 9745327,
+          "sha256": "01b8cfa7a4abba909bf126f45ad72c261ee04cb88de2f1caa9dc2678a60a1335"
+        }
+      ],
+      "extracted_directory": "sym-issue263-2026-11-07-v1",
+      "source_commit": "351c4664b6796ae7cd58fed0854e56ec2e9fbecd",
+      "wiki_page": "https://github.com/JueonPark/sym/wiki/Artifacts-Issue-263",
+      "wiki_revision_url": "https://github.com/JueonPark/sym/wiki/Artifacts-Issue-263/ae44b557b836abf02aeca2780ca4b1a4c3561c3b",
+      "download_manifest": {
+        "url": "https://raw.githubusercontent.com/wiki/JueonPark/sym/artifacts/profile-issue263-2026-11-07-v1/manifest.json",
+        "bytes": 1876,
+        "sha256": "9c61bfa64df657a07d6756cafedf2291f0a87d2188477d751c25be83adc67cc0"
+      },
+      "checksums": [
+        {
+          "url": "https://raw.githubusercontent.com/wiki/JueonPark/sym/artifacts/profile-issue263-2026-11-07-v1/SHA256SUMS",
+          "bytes": 184,
+          "sha256": "5b81f7232241666db564981b2834aa580bda3bc9e6ec69b33c8625a7a16fcdd2"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/wiki/JueonPark/sym/artifacts/profile-issue263-2026-11-07-v1/PARTS-SHA256SUMS",
+          "bytes": 872,
+          "sha256": "69e73cc1768de5b40e065ae207682d0fb1d84ee96f26296ef03038175c82c006"
+        }
+      ]
+    },
+    "264": {
+      "artifact_id": "prepared-groups-issue264-2026-11-07-v1",
+      "name": "sym-issue264-2026-11-07-v1.tar.gz",
+      "bytes": 202537327,
+      "sha256": "3d0a3a8c5dd70a6a54f37bbc9ac555eb59f1e0f005b66fd61e9d7adb9d7ccdd3",
+      "parts": [
+        {
+          "name": "sym-issue264-2026-11-07-v1.tar.gz.part-001",
+          "bytes": 33554432,
+          "sha256": "1225c4e5243e7ffb7c643441776f5a694685734922df200c9a9d59b7a3a25b7e"
+        },
+        {
+          "name": "sym-issue264-2026-11-07-v1.tar.gz.part-002",
+          "bytes": 33554432,
+          "sha256": "8a0eee705d553d79326cafbdffb27bc2358d69fcf47731ba2472a87e57cb14e4"
+        },
+        {
+          "name": "sym-issue264-2026-11-07-v1.tar.gz.part-003",
+          "bytes": 33554432,
+          "sha256": "e6fb5e522abda4105a4d938ce2ad1edb419e6689045d186adbe1bd25bb0d9da9"
+        },
+        {
+          "name": "sym-issue264-2026-11-07-v1.tar.gz.part-004",
+          "bytes": 33554432,
+          "sha256": "941329aa7c0608f6d692102edc6b434742d780e130cf9a90b313968e0daf28d2"
+        },
+        {
+          "name": "sym-issue264-2026-11-07-v1.tar.gz.part-005",
+          "bytes": 33554432,
+          "sha256": "3bdf88dcafa45674633084cdbac0cfe80a1d97217b1691bf6478572d42491ba4"
+        },
+        {
+          "name": "sym-issue264-2026-11-07-v1.tar.gz.part-006",
+          "bytes": 33554432,
+          "sha256": "aafbb5117e43ef46219827642937dad7b44cf7699a7765805803bc115d80c890"
+        },
+        {
+          "name": "sym-issue264-2026-11-07-v1.tar.gz.part-007",
+          "bytes": 1210735,
+          "sha256": "1c4cf1e64ae90c1ea970d5315d0fe254c286a66306762d4fe8114fb10ee93c42"
+        }
+      ],
+      "extracted_directory": "sym-issue264-2026-11-07-v1",
+      "source_commit": "93bd3b85dfb26e708e96d064f0c8d42cb864d64c",
+      "wiki_page": "https://github.com/JueonPark/sym/wiki/Artifacts-Issue-264",
+      "wiki_revision_url": "https://github.com/JueonPark/sym/wiki/Artifacts-Issue-264/ae44b557b836abf02aeca2780ca4b1a4c3561c3b",
+      "download_manifest": {
+        "url": "https://raw.githubusercontent.com/wiki/JueonPark/sym/artifacts/prepared-groups-issue264-2026-11-07-v1/manifest.json",
+        "bytes": 1703,
+        "sha256": "e097b95f820bca34d11da3490ff302aa973d9ac827defcc22f4f94e25d7e7ebb"
+      },
+      "checksums": [
+        {
+          "url": "https://raw.githubusercontent.com/wiki/JueonPark/sym/artifacts/prepared-groups-issue264-2026-11-07-v1/SHA256SUMS",
+          "bytes": 184,
+          "sha256": "636a9789adbdb44ba255944d2b049df11eee001ade610256612aae8a49e1aaa6"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/wiki/JueonPark/sym/artifacts/prepared-groups-issue264-2026-11-07-v1/PARTS-SHA256SUMS",
+          "bytes": 763,
+          "sha256": "5146b9b651f590eb6decca46f6e43efee06625c96107b29b059e3ed068590892"
+        }
+      ]
+    },
+    "265": {
+      "artifact_id": "automatic-prepared-issue265-2026-11-07-v1",
+      "name": "sym-issue265-2026-11-07-v1.tar.gz",
+      "bytes": 150367629,
+      "sha256": "6b115c6a6aa7aff1b03191bf9e383a5ceb9849ffe3e7bac5e5a2ed130704e0e9",
+      "parts": [
+        {
+          "name": "sym-issue265-2026-11-07-v1.tar.gz.part-001",
+          "bytes": 33554432,
+          "sha256": "0758ba144cbdd8d9a098f1c2dacd541e76772f6110209fe6e5127229d7eb1fe2"
+        },
+        {
+          "name": "sym-issue265-2026-11-07-v1.tar.gz.part-002",
+          "bytes": 33554432,
+          "sha256": "b4bffcf6a8b3985bf592dfc7ae5b9dcb84cb2a6709c688aebf3857bf5e276504"
+        },
+        {
+          "name": "sym-issue265-2026-11-07-v1.tar.gz.part-003",
+          "bytes": 33554432,
+          "sha256": "da52aec97c8e2a1611203f11b1cb2fc3fddf0e2b48fd828e7148302bc0381211"
+        },
+        {
+          "name": "sym-issue265-2026-11-07-v1.tar.gz.part-004",
+          "bytes": 33554432,
+          "sha256": "63d6bd71a3d37a0e52cff2223c2f0c79a2832ffac1c797bbc06bff764c9176f7"
+        },
+        {
+          "name": "sym-issue265-2026-11-07-v1.tar.gz.part-005",
+          "bytes": 16149901,
+          "sha256": "9c0c44caa0df6998aee23237e39fddba60e09fd58a2610c2ab910dbbabec17e2"
+        }
+      ],
+      "extracted_directory": "sym-issue265-2026-11-07-v1",
+      "source_commit": "b61fe92d278c594dbdbbee93acb64b24f62c0014",
+      "wiki_page": "https://github.com/JueonPark/sym/wiki/Artifacts-Issue-265",
+      "wiki_revision_url": "https://github.com/JueonPark/sym/wiki/Artifacts-Issue-265/ae44b557b836abf02aeca2780ca4b1a4c3561c3b",
+      "download_manifest": {
+        "url": "https://raw.githubusercontent.com/wiki/JueonPark/sym/artifacts/automatic-prepared-issue265-2026-11-07-v1/manifest.json",
+        "bytes": 1345,
+        "sha256": "34d8640d2945174745de08f8e10a181e1c83816b873738685ec3f2e3d0737475"
+      },
+      "checksums": [
+        {
+          "url": "https://raw.githubusercontent.com/wiki/JueonPark/sym/artifacts/automatic-prepared-issue265-2026-11-07-v1/SHA256SUMS",
+          "bytes": 184,
+          "sha256": "ebb68cd7cd4fcdfa0eb0caea5164f7b8b227d9f86a2ac39f8eb45a87aa98f765"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/wiki/JueonPark/sym/artifacts/automatic-prepared-issue265-2026-11-07-v1/PARTS-SHA256SUMS",
+          "bytes": 545,
+          "sha256": "b29755396bcadd7b62c993caeb6e1a084ad1d04685aa31c76d3b157ea0aac85e"
+        }
+      ]
+    },
+    "266": {
+      "artifact_id": "memory-issue266-2026-11-08-v1",
+      "name": "sym-issue266-2026-11-08-v1.tar.gz",
+      "bytes": 21429678,
+      "sha256": "02279f5593c68370ffbb382ee36ba8f9aad753419d288857a6c28f5d37a89806",
+      "parts": [
+        {
+          "name": "sym-issue266-2026-11-08-v1.tar.gz.part-001",
+          "bytes": 21429678,
+          "sha256": "02279f5593c68370ffbb382ee36ba8f9aad753419d288857a6c28f5d37a89806"
+        }
+      ],
+      "extracted_directory": "sym-issue266-2026-11-08-v1",
+      "source_commit": "6fb30b68e394a394fac74f74c002667d5105f249",
+      "wiki_page": "https://github.com/JueonPark/sym/wiki/Artifacts-Issue-266",
+      "wiki_revision_url": "https://github.com/JueonPark/sym/wiki/Artifacts-Issue-266/ae44b557b836abf02aeca2780ca4b1a4c3561c3b",
+      "download_manifest": {
+        "url": "https://raw.githubusercontent.com/wiki/JueonPark/sym/artifacts/memory-issue266-2026-11-08-v1/manifest.json",
+        "bytes": 608,
+        "sha256": "e2f56ca7c66d485c8ccbae988cbc3a8c2591497194ef0b38e8505920c42a9b2c"
+      },
+      "checksums": [
+        {
+          "url": "https://raw.githubusercontent.com/wiki/JueonPark/sym/artifacts/memory-issue266-2026-11-08-v1/SHA256SUMS",
+          "bytes": 209,
+          "sha256": "2d625a6ad14bb0a794d8be3538275d4a2495af6b44a9688691808c963aabc22d"
+        }
+      ]
+    },
+    "267": {
+      "artifact_id": "chains-issue267-2026-11-08-v1",
+      "name": "sym-issue267-2026-11-08-v1.tar.gz",
+      "bytes": 42782635,
+      "sha256": "6374e1cf4e637a32a6d411d976350c2b0aeb2337908e710ded41a3b57ee85330",
+      "parts": [
+        {
+          "name": "sym-issue267-2026-11-08-v1.tar.gz.part-001",
+          "bytes": 33554432,
+          "sha256": "5edf7d597341595cba3485baeabde50a5e1c77b41a13bef3c3466839d1c0afb2"
+        },
+        {
+          "name": "sym-issue267-2026-11-08-v1.tar.gz.part-002",
+          "bytes": 9228203,
+          "sha256": "dfb216927ec259c70155707071e96332146ba722501bb162a36cfa275392b6e6"
+        }
+      ],
+      "extracted_directory": "sym-issue267-2026-11-08-v1",
+      "source_commit": "d0004d8e41063deaa0ed4a5ccc79c7e2219ae715",
+      "wiki_page": "https://github.com/JueonPark/sym/wiki/Artifacts-Issue-267",
+      "wiki_revision_url": "https://github.com/JueonPark/sym/wiki/Artifacts-Issue-267/ae44b557b836abf02aeca2780ca4b1a4c3561c3b",
+      "download_manifest": {
+        "url": "https://raw.githubusercontent.com/wiki/JueonPark/sym/artifacts/chains-issue267-2026-11-08-v1/manifest.json",
+        "bytes": 980,
+        "sha256": "a915105cbadc42ccdad20a577eb339d8f19341b60b93a1b0efa56fc6e318bb01"
+      },
+      "checksums": [
+        {
+          "url": "https://raw.githubusercontent.com/wiki/JueonPark/sym/artifacts/chains-issue267-2026-11-08-v1/SHA256SUMS",
+          "bytes": 318,
+          "sha256": "92fa80b4fd3b1f1c3368d0be0c11f54f8c77de3406dde63dcdc59eb940945aee"
+        }
+      ]
+    },
+    "268": {
+      "artifact_id": "replay-issue268-2026-11-08-v1",
+      "name": "sym-issue268-2026-11-08-v1.tar.gz",
+      "bytes": 178821395,
+      "sha256": "937ff44c7d3b8759000595c19360c91ad6adff03bf559617e23cdfdfc2893ecc",
+      "parts": [
+        {
+          "name": "sym-issue268-2026-11-08-v1.tar.gz.part-001",
+          "bytes": 33554432,
+          "sha256": "4bb57c8b99c3e53455f76b725be28864c7d50e238b7da7cd70eff4baec4fc4d7"
+        },
+        {
+          "name": "sym-issue268-2026-11-08-v1.tar.gz.part-002",
+          "bytes": 33554432,
+          "sha256": "8eef945918fe5496c6b34b4f3cd656573ca9c2ba69edf81de08c0bccdcf9e58b"
+        },
+        {
+          "name": "sym-issue268-2026-11-08-v1.tar.gz.part-003",
+          "bytes": 33554432,
+          "sha256": "b4567db814d9dd164545f1105d2e2d91445eff5bd0dd9c0d984dc963f8f6ad6f"
+        },
+        {
+          "name": "sym-issue268-2026-11-08-v1.tar.gz.part-004",
+          "bytes": 33554432,
+          "sha256": "73ef519e0620fedef11b341946c2d66073a753d59e07d4215d8660fd6f1e24d1"
+        },
+        {
+          "name": "sym-issue268-2026-11-08-v1.tar.gz.part-005",
+          "bytes": 33554432,
+          "sha256": "273ee875d9c9f104422de85e48cfc4f40331d897cea1bd093dbdbc2449956900"
+        },
+        {
+          "name": "sym-issue268-2026-11-08-v1.tar.gz.part-006",
+          "bytes": 11049235,
+          "sha256": "1149bf51e2109cff5efac6a2568119d94e473d2d19d1762ea4d0e588d23f11fb"
+        }
+      ],
+      "extracted_directory": "sym-issue268-2026-11-08-v1",
+      "source_commit": "e98be074f960e5ae5b5610798eebeaadf9136c8d",
+      "wiki_page": "https://github.com/JueonPark/sym/wiki/Artifacts-Issue-268",
+      "wiki_revision_url": "https://github.com/JueonPark/sym/wiki/Artifacts-Issue-268/ae44b557b836abf02aeca2780ca4b1a4c3561c3b",
+      "download_manifest": {
+        "url": "https://raw.githubusercontent.com/wiki/JueonPark/sym/artifacts/replay-issue268-2026-11-08-v1/manifest.json",
+        "bytes": 1693,
+        "sha256": "51bd25a860ad4280a60a3f93eb34f99a241e3b50457798f115839cf175c0b8d5"
+      },
+      "checksums": [
+        {
+          "url": "https://raw.githubusercontent.com/wiki/JueonPark/sym/artifacts/replay-issue268-2026-11-08-v1/SHA256SUMS",
+          "bytes": 754,
+          "sha256": "f7ee60ad5d94fe7b83c2a55e82e8a5a0ed780244c2860948ea2ed2a637ecff05"
+        }
+      ]
+    },
+    "269": {
+      "artifact_id": "consumer-layout-issue269-2026-11-09-v1",
+      "name": "sym-issue269-2026-11-09-v1.tar.gz",
+      "bytes": 217212575,
+      "sha256": "65a412945300825929c82022620ebbee88cd2449a7882439b95761d655ac52f9",
+      "parts": [
+        {
+          "name": "sym-issue269-2026-11-09-v1.tar.gz.part-001",
+          "bytes": 33554432,
+          "sha256": "30064302429c136b46c6caeab70e2730a383e42e88d42a9d1c24c522f258fb37"
+        },
+        {
+          "name": "sym-issue269-2026-11-09-v1.tar.gz.part-002",
+          "bytes": 33554432,
+          "sha256": "10f71810487d4890d36a7c9919ff4ab91266fb5b2b9d012d4ce3429f03cb66eb"
+        },
+        {
+          "name": "sym-issue269-2026-11-09-v1.tar.gz.part-003",
+          "bytes": 33554432,
+          "sha256": "c78827f63fa5af72d5b5a7adbf6520865e197b63d739b7b45d15359b9cd4a2fd"
+        },
+        {
+          "name": "sym-issue269-2026-11-09-v1.tar.gz.part-004",
+          "bytes": 33554432,
+          "sha256": "636bb38da097f8ae6f62e7832914ece9498a1b56b2aab8b0ce46c5b8fb8ff9c5"
+        },
+        {
+          "name": "sym-issue269-2026-11-09-v1.tar.gz.part-005",
+          "bytes": 33554432,
+          "sha256": "d2d29e82d805005693257babc75ec72085a54a437aba8b51a3bd716cd38cdbd0"
+        },
+        {
+          "name": "sym-issue269-2026-11-09-v1.tar.gz.part-006",
+          "bytes": 33554432,
+          "sha256": "c21560980fec459383cb7f787baeb1b30ad008761bba2b57764b0551cf9bc269"
+        },
+        {
+          "name": "sym-issue269-2026-11-09-v1.tar.gz.part-007",
+          "bytes": 15885983,
+          "sha256": "673282f0f71a321ba37aa2f0148a8ac4c3e4485f0d3d05b85316a949250aa442"
+        }
+      ],
+      "extracted_directory": "sym-issue269-2026-11-09-v1",
+      "source_commit": "fc2c1bf5099f9cfe0fe8e5a2d923b331a494a45e",
+      "wiki_page": "https://github.com/JueonPark/sym/wiki/Artifacts-Issue-269",
+      "wiki_revision_url": "https://github.com/JueonPark/sym/wiki/Artifacts-Issue-269/ae44b557b836abf02aeca2780ca4b1a4c3561c3b",
+      "download_manifest": {
+        "url": "https://raw.githubusercontent.com/wiki/JueonPark/sym/artifacts/consumer-layout-issue269-2026-11-09-v1/manifest.json",
+        "bytes": 1903,
+        "sha256": "fb8954f1901080d66d63813da9566d78ff7751f46ce581a4059b276f94b613b7"
+      },
+      "checksums": [
+        {
+          "url": "https://raw.githubusercontent.com/wiki/JueonPark/sym/artifacts/consumer-layout-issue269-2026-11-09-v1/SHA256SUMS",
+          "bytes": 863,
+          "sha256": "ca6f58958a8e219eb996faf3dc17378c7537264e9610867d60e07b623dd488d3"
+        }
+      ]
+    }
+  },
+  "campaigns": {
+    "E1": {
+      "title": "Folding versus per-operation materialization",
+      "platform": "epyc",
+      "archive": "original",
+      "revisions": {
+        "runtime_and_exporter": "2617ba166f98a7476a5f472d829a573317fc0cfb",
+        "paper_snapshot_assessed": "81baf945df226722db891cd74751287e4593178f"
+      },
+      "build_provenance": [
+        "00_protocol/provenance.json",
+        "00_protocol/build.log",
+        "00_protocol/final-runtime-verification.json",
+        "00_protocol/env.sh",
+        "00_protocol/{gpu-topology,lscpu,nvidia-smi}.txt"
+      ],
+      "download_dependencies_for_new_runs": [],
+      "qualification": {
+        "scope": "latency",
+        "budget": "Common preallocated pinned wire and CUDA output. No physical pressure, prefetch, or overlap experiment.",
+        "precision": "F32/F16 ordered casts, INT8 with F32 scales, signed-zero padding. Exact non-NaN bits and NaN classification.",
+        "streams_and_threads": "One identical blocking H2D copy per arm; one/eight host workers."
+      },
+      "protocol": [
+        "01_folding/README.md",
+        "00_protocol/README.md"
+      ],
+      "raw": [
+        "01_folding/acceptance/round*-t*.json",
+        "01_folding/acceptance/*.run.json"
+      ],
+      "summary": [
+        "01_folding/{analysis-audit.json,summary.csv,contrasts.csv,results.md,figure-notes.md,folding-grid.pdf}"
+      ],
+      "offline_replay": [
+        "python3.14 01_folding/analyze.py 01_folding/acceptance",
+        "python3.14 00_protocol/plot_folding.py 01_folding"
+      ],
+      "failures_and_exclusions": [
+        "01_folding/attempt01-unmatched-grain",
+        "01_folding/pilot",
+        "01_folding/validation-before-build.log"
+      ],
+      "repo_paths": []
+    },
+    "E2": {
+      "title": "Matched FP16 kernels, grouping, and prefetch",
+      "platform": "epyc",
+      "archive": "original",
+      "revisions": {
+        "runtime_and_exporter": "2617ba166f98a7476a5f472d829a573317fc0cfb",
+        "paper_snapshot_assessed": "81baf945df226722db891cd74751287e4593178f"
+      },
+      "build_provenance": [
+        "00_protocol/provenance.json",
+        "00_protocol/build.log",
+        "00_protocol/final-runtime-verification.json",
+        "00_protocol/env.sh",
+        "00_protocol/{gpu-topology,lscpu,nvidia-smi}.txt"
+      ],
+      "download_dependencies_for_new_runs": [],
+      "qualification": {
+        "scope": "latency",
+        "budget": "128 MiB nominal aggregate conversion staging/scratch envelope; not a total free-VRAM budget.",
+        "precision": "FP16 compute/activations/KV and common INT8 snapshots with F32 scales; separate FP32 decode reference.",
+        "streams_and_threads": "Whole-request/per-step depth-two windows, grouped/split KV, unchanged consumer functions and per-arm stream ownership."
+      },
+      "protocol": [
+        "02_fp16_attribution/README.md",
+        "00_protocol/README.md"
+      ],
+      "raw": [
+        "02_fp16_attribution/acceptance/round*-float*.json",
+        "02_fp16_attribution/acceptance/*.run.json"
+      ],
+      "summary": [
+        "02_fp16_attribution/acceptance/{summary.csv,contrasts.csv,interactions.csv,analysis-audit.json}",
+        "02_fp16_attribution/{figure-notes.md,fp16-contrasts.pdf}"
+      ],
+      "offline_replay": [
+        "python3.14 02_fp16_attribution/analyze.py 02_fp16_attribution/acceptance",
+        "python3.14 00_protocol/plot_fp16.py 02_fp16_attribution"
+      ],
+      "failures_and_exclusions": [
+        "02_fp16_attribution/pilot"
+      ],
+      "repo_paths": []
+    },
+    "E3": {
+      "title": "Dynamic shape and parameter revisions",
+      "platform": "epyc",
+      "archive": "original",
+      "revisions": {
+        "runtime_and_exporter": "2617ba166f98a7476a5f472d829a573317fc0cfb",
+        "paper_snapshot_assessed": "81baf945df226722db891cd74751287e4593178f"
+      },
+      "build_provenance": [
+        "00_protocol/provenance.json",
+        "00_protocol/build.log",
+        "00_protocol/final-runtime-verification.json",
+        "00_protocol/env.sh",
+        "00_protocol/{gpu-topology,lscpu,nvidia-smi}.txt"
+      ],
+      "download_dependencies_for_new_runs": [],
+      "qualification": {
+        "scope": "latency",
+        "budget": "Explicit fast paths use two 64 MiB scratch contexts; automation uses one pinned stream and two buffers.",
+        "precision": "F32, F16, INT8 live per-channel dequantization and int64 indices; exact output bits and effective strides.",
+        "streams_and_threads": "Six rotated arms share one process/cache per round. Eight workers and blocking H2D; explicit fast arms share their owner configuration."
+      },
+      "protocol": [
+        "03_dynamic_shapes/README.md",
+        "00_protocol/README.md"
+      ],
+      "raw": [
+        "03_dynamic_shapes/acceptance/round*.json",
+        "03_dynamic_shapes/acceptance/*.run.json"
+      ],
+      "summary": [
+        "03_dynamic_shapes/acceptance/{summary.csv,process-summary.csv,requests.csv,coverage.json,analysis-audit.json}"
+      ],
+      "offline_replay": [
+        "python3.14 03_dynamic_shapes/analyze.py 03_dynamic_shapes/acceptance"
+      ],
+      "failures_and_exclusions": [
+        "03_dynamic_shapes/attempt01-path-shadowing",
+        "03_dynamic_shapes/pilot"
+      ],
+      "repo_paths": []
+    },
+    "E4": {
+      "title": "Physical memory budget",
+      "platform": "epyc",
+      "archive": "original",
+      "revisions": {
+        "runtime_and_exporter": "2617ba166f98a7476a5f472d829a573317fc0cfb",
+        "paper_snapshot_assessed": "81baf945df226722db891cd74751287e4593178f"
+      },
+      "build_provenance": [
+        "00_protocol/provenance.json",
+        "00_protocol/build.log",
+        "00_protocol/final-runtime-verification.json",
+        "00_protocol/env.sh",
+        "00_protocol/{gpu-topology,lscpu,nvidia-smi}.txt"
+      ],
+      "download_dependencies_for_new_runs": [],
+      "qualification": {
+        "scope": "latency",
+        "budget": "Physical CUDA reservations leave 512/1024 MiB free after context materialization; NVML sampling is a lower bound.",
+        "precision": "Common FP16 compute and deployed INT8/F32-scale conversion.",
+        "streams_and_threads": "Eager consumers, same depth-two prefetch on both offload paths. Residency and packing are explicit controls."
+      },
+      "protocol": [
+        "04_memory_budget/README.md",
+        "00_protocol/README.md"
+      ],
+      "raw": [
+        "04_memory_budget/acceptance/*.json",
+        "04_memory_budget/acceptance/*.memory.json.gz",
+        "04_memory_budget/supplement-resident-packed/*.json"
+      ],
+      "summary": [
+        "04_memory_budget/acceptance/{summary.csv,runtime-pairs.csv,runtime-contrasts.csv,analysis-audit.json}",
+        "04_memory_budget/supplement-resident-packed/analysis-audit.json",
+        "04_memory_budget/capacity-grid.pdf"
+      ],
+      "offline_replay": [
+        "python3.14 04_memory_budget/analyze.py 04_memory_budget/acceptance",
+        "python3.14 04_memory_budget/resident_packed_source/analyze.py 04_memory_budget/supplement-resident-packed 3 20",
+        "python3.14 00_protocol/plot_memory.py 04_memory_budget"
+      ],
+      "failures_and_exclusions": [
+        "15/120 original policy OOMs and 3/6 packed-resident OOMs retained.",
+        "04_memory_budget/{attempt01-precontext-baseline,attempt02-foreign-build,supplement-resident-serial-pilot}"
+      ],
+      "repo_paths": []
+    },
+    "E5": {
+      "title": "Lifecycle and fixed eight-request bursts",
+      "platform": "epyc",
+      "archive": "original",
+      "revisions": {
+        "runtime_and_exporter": "2617ba166f98a7476a5f472d829a573317fc0cfb",
+        "paper_snapshot_assessed": "81baf945df226722db891cd74751287e4593178f"
+      },
+      "build_provenance": [
+        "00_protocol/provenance.json",
+        "00_protocol/build.log",
+        "00_protocol/final-runtime-verification.json",
+        "00_protocol/env.sh",
+        "00_protocol/{gpu-topology,lscpu,nvidia-smi}.txt"
+      ],
+      "download_dependencies_for_new_runs": [],
+      "qualification": {
+        "scope": "latency",
+        "budget": "Burst qualification fixes 1024 MiB physical free budget and 128 MiB aggregate native scratch. Lifecycle has its own timing envelope.",
+        "precision": "FP16 model math and snapshots, with exact token/route/ownership checks.",
+        "streams_and_threads": "One/two/four persistent callers; disjoint streams/context owners, eight aggregate CPUs and 8/callers Torch threads."
+      },
+      "protocol": [
+        "05_lifecycle_concurrency/README.md",
+        "00_protocol/README.md"
+      ],
+      "raw": [
+        "05_lifecycle_concurrency/acceptance/{lifecycle,concurrency}-*.json",
+        "05_lifecycle_concurrency/acceptance/*.memory.json.gz"
+      ],
+      "summary": [
+        "05_lifecycle_concurrency/acceptance/{lifecycle-pairs.csv,concurrency-contrasts.csv,analysis-audit.json}",
+        "05_lifecycle_concurrency/README.md"
+      ],
+      "offline_replay": [
+        "python3.14 05_lifecycle_concurrency/analyze.py 05_lifecycle_concurrency/acceptance",
+        "python3.14 00_protocol/plot_lifecycle.py 05_lifecycle_concurrency"
+      ],
+      "failures_and_exclusions": [
+        "All 36 accepted burst processes fit.",
+        "05_lifecycle_concurrency/{attempt01-foreign-prelaunch,pilot}"
+      ],
+      "repo_paths": []
+    },
+    "263": {
+      "title": "E2/E5 runtime critical-path attribution",
+      "platform": "epyc",
+      "archive": "263",
+      "revisions": {
+        "runtime": "2617ba166f98a7476a5f472d829a573317fc0cfb",
+        "harness": "351c4664b6796ae7cd58fed0854e56ec2e9fbecd"
+      },
+      "build_provenance": [
+        "RUNTIME_MANIFEST.json",
+        "evidence/bootstrap",
+        "evidence/final-input-verification.json"
+      ],
+      "download_dependencies_for_new_runs": [
+        "original"
+      ],
+      "qualification": {
+        "scope": "latency",
+        "budget": "Matched E2 envelopes; E5 fixed eight-request bursts with 1024 MiB free VRAM and 128 MiB aggregate native scratch.",
+        "precision": "FP16 model math with shared native conversion/permutation kernels and common snapshots.",
+        "streams_and_threads": "E2 whole-layer/two-slot prefetch; E5 caller-owned streams and 8/callers threads. CUDA/NVTX overhead measured separately."
+      },
+      "protocol": [
+        "source/bench/issue263/PROTOCOL.md"
+      ],
+      "raw": [
+        "evidence/campaign/matrix.json",
+        "evidence/campaign/historical-qualification.json",
+        "evidence/campaign/**/*.json",
+        "evidence/campaign/**/*.sqlite"
+      ],
+      "summary": [
+        "evidence/summary.json",
+        "evidence/matched-trace-checks.json",
+        "evidence/campaign/**/*.trace.json.gz"
+      ],
+      "offline_replay": [
+        "python3.14 source/bench/issue263/analyze.py evidence/campaign --output reanalyzed-summary.json --traces"
+      ],
+      "failures_and_exclusions": [
+        "evidence/excluded-runner-restart",
+        "evidence/bootstrap",
+        "METADATA_REDACTIONS.json",
+        "Pilot native Nsight reports with unrelated environment metadata were omitted; published pilot SQLite retains event tables."
+      ],
+      "repo_paths": [
+        "bench/issue263/README.md",
+        "bench/issue263/PROTOCOL.md",
+        "bench/issue263/RESULTS.md",
+        "bench/issue263/analyze.py"
+      ]
+    },
+    "264": {
+      "title": "Prepared structural groups and native completion counters",
+      "platform": "epyc",
+      "archive": "264",
+      "revisions": {
+        "baseline": "2617ba166f98a7476a5f472d829a573317fc0cfb",
+        "measured_runtime": "a351b0f7f2ce0673145374a7a734217c1d7045bd",
+        "harness": "416c43b4888789ac2ddc58b25f2d606fad20a300"
+      },
+      "build_provenance": [
+        "RUNTIME_MANIFEST.json",
+        "runtime/{baseline,candidate,reviewed}",
+        "build-provenance",
+        "evidence/final-verification.json"
+      ],
+      "download_dependencies_for_new_runs": [
+        "original",
+        "263"
+      ],
+      "qualification": {
+        "scope": "latency",
+        "budget": "128 MiB aggregate native scratch/depth two; E5 burst physical budget follows E5.",
+        "precision": "INT8-to-FP16 weight groups and F32 layout KV; FP16 model comparison.",
+        "streams_and_threads": "Affinity 4–7,20–23, eight E2/group threads, one interop; E5 partitions callers. Same transfer/window schedules across toggles."
+      },
+      "protocol": [
+        "source/bench/issue264/PROTOCOL.md"
+      ],
+      "raw": [
+        "evidence/{groups,acceptance}-v1/contract.json",
+        "evidence/{groups,acceptance}-v1/matrix.json",
+        "evidence/{groups,acceptance}-v1/**/*.json"
+      ],
+      "summary": [
+        "evidence/{groups,acceptance}-analysis.json",
+        "evidence/{e2-accounting,e5-retention}-checks.json"
+      ],
+      "offline_replay": [
+        "python3.14 source/bench/issue264/analyze.py evidence/groups-v1 --output reanalyzed-groups.json",
+        "python3.14 source/bench/issue264/analyze.py evidence/acceptance-v1 --output reanalyzed-acceptance.json"
+      ],
+      "failures_and_exclusions": [
+        "Contract membership alone enters acceptance. Pilots/interim analyses stay separate.",
+        "The reviewed binding-error fix was correctness-tested after timing."
+      ],
+      "repo_paths": [
+        "bench/issue264/README.md",
+        "bench/issue264/PROTOCOL.md",
+        "bench/issue264/GROUPS.md",
+        "bench/issue264/RESULTS.md",
+        "bench/issue264/INDEX.json",
+        "bench/issue264/analyze.py"
+      ]
+    },
+    "265": {
+      "title": "Opt-in automatic preparation, E3 and held-out qualification",
+      "platform": "epyc",
+      "archive": "265",
+      "revisions": {
+        "baseline": "ce0bbe3b2451737ec35765bb1051841f5d19fc3d",
+        "measured_runtime": "09db6b4771fa509e8c4ead9057503c655f550fbe",
+        "harness": "975e854829a3ac0b564c707d0c8b38fdcd1485c0"
+      },
+      "build_provenance": [
+        "RUNTIME_MANIFEST.json",
+        "build-provenance",
+        "frozen-input-verification.json",
+        "evidence/environment"
+      ],
+      "download_dependencies_for_new_runs": [],
+      "qualification": {
+        "scope": "latency",
+        "budget": "One borrowed native owner; 32 entries/256 KiB copied parameter keys, 64 KiB source threshold with one prior lookup.",
+        "precision": "Original E3 plus cast, layout, indexed and live parameter axis changes.",
+        "streams_and_threads": "One pinned H2D stream, two buffers, eight Torch/OpenMP/MKL threads, one interop; independent cold process/Inductor cache."
+      },
+      "protocol": [
+        "source/bench/issue265/PROTOCOL.md"
+      ],
+      "raw": [
+        "evidence/{selection,e3,heldout}-v1/contract.json",
+        "evidence/{selection,e3,heldout}-v1/*.json"
+      ],
+      "summary": [
+        "evidence/{selection,e3,heldout}-analysis.json",
+        "source/bench/issue265/POLICY.json"
+      ],
+      "offline_replay": [
+        "python3.14 source/bench/issue265/analyze.py evidence/selection-v1 --output reanalyzed-selection.json",
+        "python3.14 source/bench/issue265/analyze.py evidence/e3-v1 --output reanalyzed-e3.json",
+        "python3.14 source/bench/issue265/analyze.py evidence/heldout-v1 --output reanalyzed-heldout.json"
+      ],
+      "failures_and_exclusions": [
+        "Selection and pilots excluded from qualification. Selected live dequantization uses the original region.",
+        "The reviewed constructor-guard change was correctness-tested after timing."
+      ],
+      "repo_paths": [
+        "bench/issue265/README.md",
+        "bench/issue265/PROTOCOL.md",
+        "bench/issue265/RESULTS.md",
+        "bench/issue265/INDEX.json",
+        "bench/issue265/POLICY.json"
+      ]
+    },
+    "266": {
+      "title": "Memory budgeting and ownership under physical pressure",
+      "platform": "epyc",
+      "archive": "266",
+      "revisions": {
+        "measured_runtime_and_harness": "119bd7f587213967c1c3fd770dd6a71dcd14cc33"
+      },
+      "build_provenance": [
+        "runtime-overlay",
+        "measurement-source inventory and runtime/source hashes in evidence/acceptance/manifest.json",
+        "scripts/verify.py"
+      ],
+      "download_dependencies_for_new_runs": [
+        "original",
+        "265"
+      ],
+      "qualification": {
+        "scope": "latency",
+        "budget": "512/1024 MiB physical free budgets, fixed/packed/recycled/adaptive policies; retained and live allocation scopes differ.",
+        "precision": "Matched FP16 E4/E5 model math and snapshots, identical Torch converters; grouped controls include layout cases.",
+        "streams_and_threads": "Affinity 4–7,20–23, eight aggregate threads; E5 uses one native gather worker per caller with 8/callers Torch threads."
+      },
+      "protocol": [
+        "source/bench/issue266/PROTOCOL.md"
+      ],
+      "raw": [
+        "evidence/acceptance/manifest.json",
+        "evidence/acceptance/**/*.json",
+        "evidence/acceptance/**/*.json.gz"
+      ],
+      "summary": [
+        "evidence/acceptance/analysis.json",
+        "source/bench/issue266/TABLES.md"
+      ],
+      "offline_replay": [
+        "python3 -X utf8 -B -S scripts/verify.py .",
+        "python3 -X utf8 -B -S source/bench/issue266/analyze.py evidence/acceptance"
+      ],
+      "failures_and_exclusions": [
+        "360 jobs include 24 actual OOMs; separate pilots and abnormal interruptions excluded.",
+        "NVML samples lower-bound transient physical peaks; scratch and Torch memory counters overlap."
+      ],
+      "repo_paths": [
+        "bench/issue266/README.md",
+        "bench/issue266/PROTOCOL.md",
+        "bench/issue266/RESULTS.md",
+        "bench/issue266/TABLES.md",
+        "bench/issue266/INDEX.json",
+        "bench/issue266/analyze.py"
+      ]
+    },
+    "267": {
+      "title": "Automatic ordered-chain kernel specialization",
+      "platform": "epyc",
+      "archive": "267",
+      "revisions": {
+        "baseline_native": "c5085cd9f5fc3f2c105cc62098b80019f6d6d698",
+        "candidate_native": "3c008646a9521c0a8148f8b07ada9e260854c839",
+        "harness": "18e12e30218a736bdbec121300f1eac97af9498a"
+      },
+      "build_provenance": [
+        "evidence/acceptance/manifest.json",
+        "SHA256-MANIFEST.json",
+        "scripts/verify.py"
+      ],
+      "download_dependencies_for_new_runs": [
+        "265"
+      ],
+      "qualification": {
+        "scope": "latency",
+        "budget": "Common pinned wire and one final H2D; true materialization charges intermediate host buffers.",
+        "precision": "F32/F16 ordered casts, leading S8 dequantization, held-out BF16/quantize fallback chains.",
+        "streams_and_threads": "One/eight CPU workers, passive OpenMP, one Inductor compile worker and one H2D path; no pipelining."
+      },
+      "protocol": [
+        "source/bench/issue267/PROTOCOL.md"
+      ],
+      "raw": [
+        "evidence/acceptance/manifest.json",
+        "evidence/acceptance/*/{record,audit}.json",
+        "evidence/acceptance/*/plans"
+      ],
+      "summary": [
+        "evidence/acceptance/{analysis.json,tables.md}",
+        "source/bench/issue267/RESULTS.md"
+      ],
+      "offline_replay": [
+        "python3.10 -X utf8 -B -S scripts/verify.py .",
+        "python3.10 -X utf8 -B -S source/bench/issue267/analyze.py evidence/acceptance"
+      ],
+      "failures_and_exclusions": [
+        "Excluded pilots and debugger diagnostics retained; unsupported stages use buffered execution. Held-out losses retained."
+      ],
+      "repo_paths": [
+        "bench/issue267/README.md",
+        "bench/issue267/PROTOCOL.md",
+        "bench/issue267/RESULTS.md",
+        "bench/issue267/TABLES.md",
+        "bench/issue267/INDEX.json",
+        "bench/issue267/analyze.py"
+      ]
+    },
+    "268": {
+      "title": "Bounded CUDA Graph replay",
+      "platform": "epyc",
+      "archive": "268",
+      "revisions": {
+        "measured_harness": "1f0578c8eb5089eff807f96907a32dc1cc5fdaf1",
+        "base_native": "b319a0ab94dbc8c8264e4fa093ffbbb796e2c046"
+      },
+      "build_provenance": [
+        "evidence/qualification/manifest.json",
+        "SHA256-MANIFEST.json",
+        "scripts/verify.py"
+      ],
+      "download_dependencies_for_new_runs": [
+        "265"
+      ],
+      "qualification": {
+        "scope": "latency",
+        "budget": "256 MiB retained replay budgets; E5 1024 MiB physical free and 128 MiB aggregate native scratch. Shape/budget supplements separate.",
+        "precision": "Shared FP16 compute, kernels, grouping and two-slot prefetch.",
+        "streams_and_threads": "Eight aggregate CPU threads and one interop; E5 splits affinity, one native gather thread per caller. Capture only qualified pure GPU regions."
+      },
+      "protocol": [
+        "source/bench/issue268/PROTOCOL.md"
+      ],
+      "raw": [
+        "evidence/qualification",
+        "evidence/diagnostics"
+      ],
+      "summary": [
+        "evidence/analysis",
+        "source/bench/issue268/{RESULTS,TABLES}.md"
+      ],
+      "offline_replay": [
+        "python3.10 -B -S scripts/verify.py .",
+        "python3.10 -B -S source/bench/issue268/analyze.py evidence/qualification --output reproduced/measurements.json",
+        "python3.10 -B -S scripts/render_tables.py reproduced reproduced/TABLES.md",
+        "python3.10 -B -S scripts/render_results.py reproduced reproduced/RESULTS.md"
+      ],
+      "failures_and_exclusions": [
+        "282/288 main arms completed. Six four-caller slots-off OOMs retained; exhausted replay budget falls back.",
+        "Development attempts and diagnostic traces are separate from timed acceptance."
+      ],
+      "repo_paths": [
+        "bench/issue268/README.md",
+        "bench/issue268/PROTOCOL.md",
+        "bench/issue268/RESULTS.md",
+        "bench/issue268/TABLES.md",
+        "bench/issue268/analyze.py"
+      ]
+    },
+    "269": {
+      "title": "Consumer-aware KV layout",
+      "platform": "epyc",
+      "archive": "269",
+      "revisions": {
+        "measured_harness": "510889bbc9a8060e914a8ec0ac3f22fd4e2ce208",
+        "base_native": "b319a0ab94dbc8c8264e4fa093ffbbb796e2c046"
+      },
+      "build_provenance": [
+        "evidence/qualification/manifest.json",
+        "SHA256-MANIFEST.json",
+        "scripts/verify.py"
+      ],
+      "download_dependencies_for_new_runs": [
+        "265"
+      ],
+      "qualification": {
+        "scope": "latency",
+        "budget": "128 MiB matched native scratch for model arms; separate 128 MiB physical free-memory pressure qualification.",
+        "precision": "Matched FP16 decoder variants; no changed GEMM or quantization precision.",
+        "streams_and_threads": "Eight CPU threads, one interop, depth-two prefetch; both runtimes share two-slot replay, up to eight shapes and 256 MiB per replay region."
+      },
+      "protocol": [
+        "source/bench/issue269/PROTOCOL.md"
+      ],
+      "raw": [
+        "evidence/qualification",
+        "evidence/diagnostics"
+      ],
+      "summary": [
+        "evidence/analysis",
+        "evidence/profile-summary.json",
+        "source/bench/issue269/{RESULTS,TABLES}.md"
+      ],
+      "offline_replay": [
+        "python3.10 -B -S scripts/verify.py .",
+        "python3.10 -B -S source/bench/issue269/analyze.py evidence/qualification --output reproduced",
+        "python3.10 -B -S scripts/profile_summary.py evidence/diagnostics reproduced/profile-summary.json",
+        "python3.10 -B -S scripts/render_tables.py reproduced reproduced/TABLES.md",
+        "python3.10 -B -S scripts/render_results.py reproduced reproduced/profile-summary.json reproduced/RESULTS.md"
+      ],
+      "failures_and_exclusions": [
+        "No OOM in 162 model arms; six native OOMs in separate supplements retained. Escaping intermediates force fallback.",
+        "Separate profiled traces do not contribute qualification timings."
+      ],
+      "repo_paths": [
+        "bench/issue269/README.md",
+        "bench/issue269/PROTOCOL.md",
+        "bench/issue269/RESULTS.md",
+        "bench/issue269/TABLES.md",
+        "bench/issue269/analyze.py"
+      ]
+    },
+    "270": {
+      "title": "Cross-boundary region legality and destination forwarding",
+      "platform": "ryzen",
+      "archive": null,
+      "revisions": {
+        "source": "e9b2ce2d0c9c334a246d6eeecd993a4d7a08f8c5",
+        "native_runtime": "23d48d5c89b1d88fa02207441253510e9ed43a30"
+      },
+      "build_provenance": [
+        "docs/relocation-regions.md",
+        "bench/issue270/ablate.py",
+        "libreloc/test/corpus/typed"
+      ],
+      "download_dependencies_for_new_runs": [],
+      "qualification": {
+        "scope": "correctness and logical bytes",
+        "budget": "Correctness and logical byte counts only; no physical-budget or latency qualification.",
+        "precision": "16 typed artifacts with preserved rounding, stage entry and channel coordinates.",
+        "streams_and_threads": "Same selected dispatch row per pair; historical affinity, thread settings, stream settings and binary hashes are unavailable."
+      },
+      "protocol": [
+        "docs/relocation-regions.md"
+      ],
+      "raw": [],
+      "summary": [
+        "docs/relocation-regions.md"
+      ],
+      "offline_replay": [],
+      "failures_and_exclusions": [
+        "44 CUDA row/binding pairs and 19 host pairs summarized; historical raw stdout is absent from the public artifacts.",
+        "Exposed intermediates keep their storage. Regenerate rows with python -m bench.issue270.ablate --device cpu or --device cuda."
+      ],
+      "repo_paths": [
+        "docs/relocation-regions.md",
+        "bench/issue270/ablate.py",
+        "bench/issue270/region.py",
+        "libreloc/python/tests/torch_frontend/test_relocation_region.py",
+        "libreloc/test/corpus/typed/cast_transpose_bf16.bin",
+        "libreloc/test/corpus/typed/cast_transpose_bf16.json",
+        "libreloc/test/corpus/typed/cast_transpose_bf16.reloc",
+        "libreloc/test/corpus/typed/cast_transpose_f16.bin",
+        "libreloc/test/corpus/typed/cast_transpose_f16.json",
+        "libreloc/test/corpus/typed/cast_transpose_f16.reloc",
+        "libreloc/test/corpus/typed/dequant_channel_runtime_transpose.bin",
+        "libreloc/test/corpus/typed/dequant_channel_runtime_transpose.json",
+        "libreloc/test/corpus/typed/dequant_channel_runtime_transpose.reloc",
+        "libreloc/test/corpus/typed/dequant_inline_zp_cast.bin",
+        "libreloc/test/corpus/typed/dequant_inline_zp_cast.json",
+        "libreloc/test/corpus/typed/dequant_inline_zp_cast.reloc",
+        "libreloc/test/corpus/typed/dequant_scale_witness.bin",
+        "libreloc/test/corpus/typed/dequant_scale_witness.json",
+        "libreloc/test/corpus/typed/dequant_scale_witness.reloc",
+        "libreloc/test/corpus/typed/dequant_then_f16.bin",
+        "libreloc/test/corpus/typed/dequant_then_f16.json",
+        "libreloc/test/corpus/typed/dequant_then_f16.reloc",
+        "libreloc/test/corpus/typed/dequant_zp127.bin",
+        "libreloc/test/corpus/typed/dequant_zp127.json",
+        "libreloc/test/corpus/typed/dequant_zp127.reloc",
+        "libreloc/test/corpus/typed/generate_typed_corpus.py",
+        "libreloc/test/corpus/typed/pad_then_quantize.bin",
+        "libreloc/test/corpus/typed/pad_then_quantize.json",
+        "libreloc/test/corpus/typed/pad_then_quantize.reloc",
+        "libreloc/test/corpus/typed/quant_dequant_padded.bin",
+        "libreloc/test/corpus/typed/quant_dequant_padded.json",
+        "libreloc/test/corpus/typed/quant_dequant_padded.reloc",
+        "libreloc/test/corpus/typed/quantize_channel_transpose_sym.bin",
+        "libreloc/test/corpus/typed/quantize_channel_transpose_sym.json",
+        "libreloc/test/corpus/typed/quantize_channel_transpose_sym.reloc",
+        "libreloc/test/corpus/typed/quantize_edges.bin",
+        "libreloc/test/corpus/typed/quantize_edges.json",
+        "libreloc/test/corpus/typed/quantize_edges.reloc",
+        "libreloc/test/corpus/typed/quantize_then_pad.bin",
+        "libreloc/test/corpus/typed/quantize_then_pad.json",
+        "libreloc/test/corpus/typed/quantize_then_pad.reloc",
+        "libreloc/test/corpus/typed/reciprocal_formation.bin",
+        "libreloc/test/corpus/typed/reciprocal_formation.json",
+        "libreloc/test/corpus/typed/reciprocal_formation.reloc",
+        "libreloc/test/corpus/typed/widen_bf16_reshape.bin",
+        "libreloc/test/corpus/typed/widen_bf16_reshape.json",
+        "libreloc/test/corpus/typed/widen_bf16_reshape.reloc",
+        "libreloc/test/corpus/typed/widen_reshape.bin",
+        "libreloc/test/corpus/typed/widen_reshape.json",
+        "libreloc/test/corpus/typed/widen_reshape.reloc",
+        "libreloc/test/corpus/typed/witness_channel.bin",
+        "libreloc/test/corpus/typed/witness_channel.json",
+        "libreloc/test/corpus/typed/witness_channel.reloc"
+      ],
+      "followup_replay": "bench/issue274/region-replay"
+    },
+    "271": {
+      "title": "Joint planning and finite measured feasible oracle",
+      "platform": "ryzen",
+      "archive": null,
+      "revisions": {
+        "source_and_report": "69811ffe0cb0a30fdfbd611299f512d0f0ae0249"
+      },
+      "build_provenance": [
+        "bench/issue271/measurements.json.gz#environment",
+        "bench/issue271/README.md"
+      ],
+      "download_dependencies_for_new_runs": [],
+      "qualification": {
+        "scope": "latency",
+        "budget": "Declared arena cap per workload, including held-final 17/23.5 MiB. This is not a physical free-VRAM cap.",
+        "precision": "Immutable host FP32 groups and FP16 cat/pointwise consumer, with numerical boundary qualification.",
+        "streams_and_threads": "One Torch and one interop thread; CPU affinity 0–15. Separate owned transfer and compute streams, serialized paced executor."
+      },
+      "protocol": [
+        "bench/issue271/PROTOCOL.md"
+      ],
+      "raw": [
+        "bench/issue271/measurements.json.gz"
+      ],
+      "summary": [
+        "bench/issue271/{README,RESULTS,HISTORICAL}.md"
+      ],
+      "offline_replay": [
+        "python -m bench.issue271.analyze bench/issue271/measurements.json.gz",
+        "python -m bench.issue271.historical --check"
+      ],
+      "failures_and_exclusions": [
+        "227/585 arena refusals retained; all 358 admitted cases agree on bits and live peak.",
+        "Initial 49-plan sweep prompted a revised catalog; only the final sweep has a published raw bundle."
+      ],
+      "repo_paths": [
+        "bench/issue271/measurements.json.gz",
+        "bench/issue271/PROTOCOL.md",
+        "bench/issue271/README.md",
+        "bench/issue271/RESULTS.md",
+        "bench/issue271/HISTORICAL.md",
+        "bench/issue271/analyze.py",
+        "bench/issue271/historical.py",
+        "bench/issue271/measure.py",
+        "bench/issue271/fused.py",
+        "bench/issue271/planner.py",
+        "bench/issue271/region_cost.py",
+        "bench/issue271/select_plan.py"
+      ],
+      "measured_native_sha256": {
+        "7800x3d-4070tis.cal": "b1296a302888e44e0d7a418eadde1e26359b9f149e290ed952ec5349cfeb5143",
+        "_pyreloc.cpython-314-x86_64-linux-gnu.so": "3fc67748f3e422543b4447f7ef72484f66cf9a96b8c75f1db0eb42710cef6c55",
+        "libreloc_runtime.so": "ba0ea83d18cdfeb9f3cf0107d8e158fe02dd5b1dd3fac2fc089910a7f3a5d4b7"
+      },
+      "measured_harness_sha256": "6dcb1162586bbedebe71a2739d1fa8c2222585248ee26cb55d4685a9909fcef1",
+      "retrospective_input_campaigns": [
+        "263",
+        "266",
+        "269"
+      ]
+    },
+    "272": {
+      "title": "Captured-artifact quality and E3 orthogonal reuse",
+      "platform": "ryzen",
+      "archive": null,
+      "revisions": {
+        "source_and_report": "cb25e615a31c387e5db95b0558f0c0813eb5e1f0",
+        "native_kernel_changes_reversed_for_control": "b319a0ab94dbc8c8264e4fa093ffbbb796e2c046"
+      },
+      "build_provenance": [
+        "e3-records.tar.gz::contract.json",
+        "captured-quality-records.tar.gz::contract.json",
+        "witness.json.gz",
+        "witness-stage-probe.json.gz",
+        "bench/issue272/build_controls.py"
+      ],
+      "download_dependencies_for_new_runs": [
+        "original"
+      ],
+      "qualification": {
+        "scope": "latency",
+        "budget": "Two pinned buffers, one transfer stream and matched owners on E3; common 1 MiB pinned wire limit for captured producer comparisons.",
+        "precision": "Original E3 precision/shape trace plus untuned F32/F16 and live per-channel S8/F32/F16 chains.",
+        "streams_and_threads": "E3 uses eight CPU workers and one interop, CPU affinity 0–7; isolated captured artifact and frontend quality use one worker."
+      },
+      "protocol": [
+        "bench/issue272/PROTOCOL.md"
+      ],
+      "raw": [
+        "bench/issue272/{e3-records.tar.gz,captured-quality-records.tar.gz,witness.json.gz,witness-stage-probe.json.gz}"
+      ],
+      "summary": [
+        "bench/issue272/{RESULTS,CAPTURED_QUALITY,WITNESS,CONTROLS}.md"
+      ],
+      "offline_replay": [
+        "python -m bench.issue272.ablate score $E3_RECORDS",
+        "python -m bench.issue272.captured_quality score $CAPTURED_RECORDS"
+      ],
+      "failures_and_exclusions": [
+        "Captured .half() spelling stopped before measurement and was replaced by supported .to(torch.float16).",
+        "Original E3 capture exclusions and changes in stage selection retained; the untimed probe is independent of timing.",
+        "Automatic endpoint and isolated captured producer have different binding/submission costs."
+      ],
+      "repo_paths": [
+        "bench/issue272/e3-records.tar.gz",
+        "bench/issue272/captured-quality-records.tar.gz",
+        "bench/issue272/witness.json.gz",
+        "bench/issue272/witness-stage-probe.json.gz",
+        "bench/issue272/README.md",
+        "bench/issue272/PROTOCOL.md",
+        "bench/issue272/RESULTS.md",
+        "bench/issue272/CAPTURED_QUALITY.md",
+        "bench/issue272/WITNESS.md",
+        "bench/issue272/CONTROLS.md",
+        "bench/issue272/ablate.py",
+        "bench/issue272/captured_quality.py",
+        "bench/issue272/build_controls.py",
+        "bench/issue272/witness.py",
+        "bench/issue272/stage_probe.cpp"
+      ]
+    }
+  },
+  "repository_files": {
+    "bench/issue263/PROTOCOL.md": {
+      "bytes": 8413,
+      "sha256": "d9f80b2b8cec335c907a565b6d470fcdf5f8acdff7c0026bc0753215eb027f76"
+    },
+    "bench/issue263/README.md": {
+      "bytes": 6688,
+      "sha256": "eb94524408b14dcd5efcb93ffbc1d58bf6cddb10003d5d02350b146287d64fda"
+    },
+    "bench/issue263/RESULTS.md": {
+      "bytes": 18802,
+      "sha256": "af55323a4f7511f9b799cdc819c070eee0888aae08b624ac4697664909eb9cd5"
+    },
+    "bench/issue263/analyze.py": {
+      "bytes": 15980,
+      "sha256": "067536eda64b4e8665cb7528d1f7bea068d905162b6f89003cba79ec50e78943"
+    },
+    "bench/issue264/GROUPS.md": {
+      "bytes": 4919,
+      "sha256": "8df23e40fbeeafe7ee10653bd51488ef8045b83fcc9d7f19c666078a57d9d025"
+    },
+    "bench/issue264/INDEX.json": {
+      "bytes": 2016,
+      "sha256": "cf63eb61a0bd5c3f8289877f45baa330473e11dd2ecffd45a1f5fe60e9dc1532"
+    },
+    "bench/issue264/PROTOCOL.md": {
+      "bytes": 4814,
+      "sha256": "4f17adcdc0befd8dcae4a1f3d6056769cb6fd8e43b9443786935ec9733dcdff2"
+    },
+    "bench/issue264/README.md": {
+      "bytes": 2429,
+      "sha256": "9b36017c5e28ae1f2d84de495d17c3366990b169f2f13797699775df070b182c"
+    },
+    "bench/issue264/RESULTS.md": {
+      "bytes": 15046,
+      "sha256": "2ffa105f2d8a0b405e20f1f5217ec9ec6eb93ddf046d9a0f70a3918049733ca8"
+    },
+    "bench/issue264/analyze.py": {
+      "bytes": 16778,
+      "sha256": "998aaf8c30212eb2477d7a786e055ffafd13b4a1159e67e854588d87fc644365"
+    },
+    "bench/issue265/INDEX.json": {
+      "bytes": 1117,
+      "sha256": "f002863650a77063aeb0d2627ecfd66aee99ffb6bb4930ca21b3b8e6dafb25e7"
+    },
+    "bench/issue265/POLICY.json": {
+      "bytes": 1371,
+      "sha256": "02ba7863345171a33bbeff5d0a1a99cbcb6934db46cd5cff83a7ca28310895cd"
+    },
+    "bench/issue265/PROTOCOL.md": {
+      "bytes": 5445,
+      "sha256": "3b356f245d2c1832bfd6273615879f79888d1b1546c7bd50fc315ee003608e4b"
+    },
+    "bench/issue265/README.md": {
+      "bytes": 2903,
+      "sha256": "3a6bc90f50402003383566870cdc9d5fc210300f8290c2810d817d4ae0b2b466"
+    },
+    "bench/issue265/RESULTS.md": {
+      "bytes": 14389,
+      "sha256": "e234bbbcf3132fd0d4599909c88dba782abb911a53fa67488b78b01c5ec12a5a"
+    },
+    "bench/issue266/INDEX.json": {
+      "bytes": 949,
+      "sha256": "fc4293717ebd036dea3f917a749d5ac7deaa81177e5ecc8b6ef9ca765d8a2ce1"
+    },
+    "bench/issue266/PROTOCOL.md": {
+      "bytes": 10619,
+      "sha256": "49e5787461c7bfce285c3858eaf60783efa75787b2fe1c3cd299ff038cb294df"
+    },
+    "bench/issue266/README.md": {
+      "bytes": 2035,
+      "sha256": "ff41a6700b316da94db2ee47590faf8aa4beedd62fa470304cf9f600443dd665"
+    },
+    "bench/issue266/RESULTS.md": {
+      "bytes": 15979,
+      "sha256": "efb643cfba853b75e19a9d3c4c54ec5f7cbb82d45b34232fd18d7bc324070e58"
+    },
+    "bench/issue266/TABLES.md": {
+      "bytes": 39322,
+      "sha256": "be9c41a9c368ffb82514a63ce6473a4aff4a6a980995cb4700e0c632a31799b7"
+    },
+    "bench/issue266/analyze.py": {
+      "bytes": 25056,
+      "sha256": "24ba8a2514044f057c3f8c3b00d70da27f58b97ba1f2e6f30fd38f45d3c8f5f6"
+    },
+    "bench/issue267/INDEX.json": {
+      "bytes": 1115,
+      "sha256": "7c0a8e0b1f49bc755e59fb21f63f9125324889820c09846d2888408206e8b734"
+    },
+    "bench/issue267/PROTOCOL.md": {
+      "bytes": 5396,
+      "sha256": "3103b38d10a743409fb4ea9587dfa455aa7defce343de0f04bb0519fba7ac64b"
+    },
+    "bench/issue267/README.md": {
+      "bytes": 1526,
+      "sha256": "8fb7fed11b5b31c79b3faf2ce6b996f0185d2d2382c81d9011a686c5633f2620"
+    },
+    "bench/issue267/RESULTS.md": {
+      "bytes": 17459,
+      "sha256": "58362001091d53d1cd235bc0f6ec40e41ecc2014e7b7a6bf6de3eb2a402f3909"
+    },
+    "bench/issue267/TABLES.md": {
+      "bytes": 171649,
+      "sha256": "ed02a49cb19443f08ea4ce74be955cad3450dbd809ad864133502bd915f0bae2"
+    },
+    "bench/issue267/analyze.py": {
+      "bytes": 11008,
+      "sha256": "52567fdf529c5e9d718867566c28965b7142dadda910bb587715106cd631f14b"
+    },
+    "bench/issue268/PROTOCOL.md": {
+      "bytes": 7808,
+      "sha256": "6c0a838084ce3c7aa760749bed46a85d714db4d27623ea3bb0a5256511703d9c"
+    },
+    "bench/issue268/README.md": {
+      "bytes": 3475,
+      "sha256": "75b84b5282e4e344cfe58e0a88ae26ff06c086d028c539229e0e7defb9ca2bfc"
+    },
+    "bench/issue268/RESULTS.md": {
+      "bytes": 11591,
+      "sha256": "b0504f1c2ebdc2f6359ff9318e934207a45d33fc6cb36694ce61ce3be4724cdd"
+    },
+    "bench/issue268/TABLES.md": {
+      "bytes": 47447,
+      "sha256": "b9e0d615d2a3cc3fd6d8dbc3ee86f9a9bf22c5bd29e7f1b060e7b13ab4135d5a"
+    },
+    "bench/issue268/analyze.py": {
+      "bytes": 19340,
+      "sha256": "736ebc0ea5ba79bfdcad89ebef02797aa52435f54e15c254abfd74a692d3d991"
+    },
+    "bench/issue269/PROTOCOL.md": {
+      "bytes": 7507,
+      "sha256": "e5071921233a2ff1a5f2dd809804ea9a904b7024cdb638fd355ab2aaa5f4e31b"
+    },
+    "bench/issue269/README.md": {
+      "bytes": 3321,
+      "sha256": "9dbbcaf25d45804e42855f71a5632ea84bccaebe10adc3ecdd4729a44f4e48c1"
+    },
+    "bench/issue269/RESULTS.md": {
+      "bytes": 13483,
+      "sha256": "4e0f263ae642031b8cf907f3246ead5850822082f42d213766aaf57a1921706b"
+    },
+    "bench/issue269/TABLES.md": {
+      "bytes": 37875,
+      "sha256": "22dbf10305b7835637aedbfa5ef5715c2dc9f814581a9c622edb117781290d44"
+    },
+    "bench/issue269/analyze.py": {
+      "bytes": 11429,
+      "sha256": "31fcb56507f98b9aefbcf2e6c8864746fce2e4642fe1c37abef902f9b69d48d3"
+    },
+    "bench/issue270/ablate.py": {
+      "bytes": 4110,
+      "sha256": "8d5a78de11cc3c3cae7138ad427a63449af8ae7b216b35789f80c392698d9100"
+    },
+    "bench/issue270/region.py": {
+      "bytes": 5662,
+      "sha256": "189f36463afcf40f7834ddb878cf9337c54ba7bf1d90903e25baeea254fe3dc2"
+    },
+    "bench/issue271/HISTORICAL.md": {
+      "bytes": 18347,
+      "sha256": "7d365a59e4a611295d4eb2bfea4a1dacfc04c08c542ed0db4be335a9260fb1e4"
+    },
+    "bench/issue271/PROTOCOL.md": {
+      "bytes": 5270,
+      "sha256": "58b0661bf57b0ff2943a805407794e2453447fd3b168f21e07afeb37c9e08539"
+    },
+    "bench/issue271/README.md": {
+      "bytes": 12562,
+      "sha256": "3b72cd47a80fe209981312a8c05efe05a4eb3272bdf86867682277a8edd52baf"
+    },
+    "bench/issue271/RESULTS.md": {
+      "bytes": 7166,
+      "sha256": "c0cf681aea3658896d8c32da2ec087481fc58070b5d234baed3baf45033d7714"
+    },
+    "bench/issue271/analyze.py": {
+      "bytes": 18411,
+      "sha256": "989d3d3fc01f9f8fee432abc4fa1152b1fd11886fe197d949be64a62d943f189"
+    },
+    "bench/issue271/fused.py": {
+      "bytes": 4635,
+      "sha256": "12a1d4651f045a93f98c3d7c53b9eeccd0fbe5de35b92a0059edcc09182cb92e"
+    },
+    "bench/issue271/historical.py": {
+      "bytes": 13971,
+      "sha256": "40f861c80d6a5529fa72792c5256053dd8e88ed3dd5e1422009d82eca780d85d"
+    },
+    "bench/issue271/measure.py": {
+      "bytes": 27494,
+      "sha256": "6dcb1162586bbedebe71a2739d1fa8c2222585248ee26cb55d4685a9909fcef1"
+    },
+    "bench/issue271/measurements.json.gz": {
+      "bytes": 373870,
+      "sha256": "7187feecd8defcfc7e58cf38a90dbc7f474bf3a9666b32f2907c3ca57493584c"
+    },
+    "bench/issue271/planner.py": {
+      "bytes": 12406,
+      "sha256": "4922f274d5fbfdf3a996cd1e0b5e4fa8ef2ca0587638cfcd0753529040fb50e3"
+    },
+    "bench/issue271/region_cost.py": {
+      "bytes": 7182,
+      "sha256": "6985284f11fad345acb4a829ddf7db461ecfd68a425237e3878974f3e13840ef"
+    },
+    "bench/issue271/select_plan.py": {
+      "bytes": 2573,
+      "sha256": "250db8a88e904cddc6067cf100ba5f9fbf7ef380e9e3b2ca2f987ab1e0755766"
+    },
+    "bench/issue272/CAPTURED_QUALITY.md": {
+      "bytes": 5673,
+      "sha256": "b24cf76cbd4b31e4615c24457dd8832c53ac38a966f88b8ac126fe078ce9f3ea"
+    },
+    "bench/issue272/CONTROLS.md": {
+      "bytes": 25999,
+      "sha256": "67e500d593a656bdd7ff8ff4fb58a1cbf9875b472083cb3f915f20aab971af22"
+    },
+    "bench/issue272/PROTOCOL.md": {
+      "bytes": 2983,
+      "sha256": "a8b86a7a8ca5a1c37d0826aaf7165422e43dc725f048959b34d07edacccd237e"
+    },
+    "bench/issue272/README.md": {
+      "bytes": 6032,
+      "sha256": "0540686fc55fb43dd5c033ee33dd40830d743f5b7b17378a4d91469b2f91b516"
+    },
+    "bench/issue272/RESULTS.md": {
+      "bytes": 6490,
+      "sha256": "4c25c4b494478d650f7de2af749efc9a3326831c708293e866e31c61be8c3999"
+    },
+    "bench/issue272/WITNESS.md": {
+      "bytes": 4085,
+      "sha256": "86e2addc70971552ae4b22924cf998d2a0a8b2963cd0e7684cde7e9910ea4226"
+    },
+    "bench/issue272/ablate.py": {
+      "bytes": 13652,
+      "sha256": "40f520451a8ee78e778633db724da06fba30c374e098d21bfd96cdcfd14687aa"
+    },
+    "bench/issue272/build_controls.py": {
+      "bytes": 2983,
+      "sha256": "fe447f8eb1b3e3b66c5280d0cb090b1131723d7d2e965f98b26bc3548f843f37"
+    },
+    "bench/issue272/captured-quality-records.tar.gz": {
+      "bytes": 62395,
+      "sha256": "926ba0779df78ac53e3092a761dd8cddb11fb8127f2faae944590d26b3891aeb"
+    },
+    "bench/issue272/captured_quality.py": {
+      "bytes": 21520,
+      "sha256": "d302a80c024cd77b37f313421824c1d791d18f137d265483c3a65daa22119bed"
+    },
+    "bench/issue272/e3-records.tar.gz": {
+      "bytes": 614547,
+      "sha256": "9dfdbc3c93ee5d141cdd32a37700c6b0b8d527fae3ea2e32bb921be05b753c07"
+    },
+    "bench/issue272/stage_probe.cpp": {
+      "bytes": 3958,
+      "sha256": "11b8daa84245fe7341a2b3fcd32485c3cd2a11d8825f2be7fa98a14e54ee07d1"
+    },
+    "bench/issue272/witness-stage-probe.json.gz": {
+      "bytes": 28882,
+      "sha256": "f6db9efc8f034e3aa6b01c9429912bd17713a297f7daadc85b50c1427a8f54e2"
+    },
+    "bench/issue272/witness.json.gz": {
+      "bytes": 28748,
+      "sha256": "3cf959ea94cc39fade63163200b7a4e9d162183925fda4385a653034fd5f9a15"
+    },
+    "bench/issue272/witness.py": {
+      "bytes": 24393,
+      "sha256": "5180433381d7af7453027a584e6ad804599e4b6af368e89d2c2d68b30e8eab66"
+    },
+    "docs/relocation-regions.md": {
+      "bytes": 15149,
+      "sha256": "2d430d07595234c3fd169ee87e573effa1e231036b3048e5b77e183f0e8dac68"
+    },
+    "libreloc/python/tests/torch_frontend/test_relocation_region.py": {
+      "bytes": 6543,
+      "sha256": "2c7c4cb5d17a7ad7e33e206070aa6e241330547d30a6f071dc1f6d6b44768426"
+    },
+    "libreloc/test/corpus/typed/cast_transpose_bf16.bin": {
+      "bytes": 435,
+      "sha256": "6ded7045bf1657cf18d50cbed6de6b4f705a62ebd1c29b3da142e4e16e572760"
+    },
+    "libreloc/test/corpus/typed/cast_transpose_bf16.json": {
+      "bytes": 5534,
+      "sha256": "8d433d725e775609c03c7acf07298353038bb451ae67dcc074cdb670f1b6892e"
+    },
+    "libreloc/test/corpus/typed/cast_transpose_bf16.reloc": {
+      "bytes": 1919,
+      "sha256": "eed0bf677adf7c0ae81704b4cc8bbd9a3423d61e04e64e26563df0ce1cd6cd24"
+    },
+    "libreloc/test/corpus/typed/cast_transpose_f16.bin": {
+      "bytes": 435,
+      "sha256": "7679bb6df34f6fdd117a93db14e21aa8dbb5c63ebf8bdce872a7bdf37ceae66a"
+    },
+    "libreloc/test/corpus/typed/cast_transpose_f16.json": {
+      "bytes": 5529,
+      "sha256": "ccf081f9e2c44e04a2073e31d850d24409ee7f02c905e61dc62f1feeed4d99e2"
+    },
+    "libreloc/test/corpus/typed/cast_transpose_f16.reloc": {
+      "bytes": 1915,
+      "sha256": "4a479e8c673736dded1b77bcdf42003728cc853b50194b1d9e11c6435e2e95c6"
+    },
+    "libreloc/test/corpus/typed/dequant_channel_runtime_transpose.bin": {
+      "bytes": 635,
+      "sha256": "d6514655f433b0628747898746931b907732dd68983cfc67e5a4cba77dd2e54a"
+    },
+    "libreloc/test/corpus/typed/dequant_channel_runtime_transpose.json": {
+      "bytes": 7878,
+      "sha256": "d720c61a6b600df225ee82a39fe44b047ac8fe8a90cb7b5ceb7f0ea316dba2be"
+    },
+    "libreloc/test/corpus/typed/dequant_channel_runtime_transpose.reloc": {
+      "bytes": 2811,
+      "sha256": "d56102dd573b43099928727a5e15fdad5200516d144c0dde25195e9a79bd0f9f"
+    },
+    "libreloc/test/corpus/typed/dequant_inline_zp_cast.bin": {
+      "bytes": 389,
+      "sha256": "0098f1d2b7dc2e4046c3360fab17cb40aba2e44113afd9d4c873b51a8fe26726"
+    },
+    "libreloc/test/corpus/typed/dequant_inline_zp_cast.json": {
+      "bytes": 5444,
+      "sha256": "f4b91c77ac897c131314bea9984ef341e8f26a56c50f7a58636e27a6c40987a7"
+    },
+    "libreloc/test/corpus/typed/dequant_inline_zp_cast.reloc": {
+      "bytes": 2221,
+      "sha256": "6c1e1bc75df4ec80a7d1fc716ebd5596cf09072f11b3d6c45f15718073e84dd3"
+    },
+    "libreloc/test/corpus/typed/dequant_scale_witness.bin": {
+      "bytes": 329,
+      "sha256": "808845c96fdff3206a02df2a93ab668263b7a3a9245af8188abe3e45b1050bb6"
+    },
+    "libreloc/test/corpus/typed/dequant_scale_witness.json": {
+      "bytes": 4392,
+      "sha256": "0fc464a8f5d8d760fad4a3478f4e857c9491bf91f8ba61681eaf49b336e73241"
+    },
+    "libreloc/test/corpus/typed/dequant_scale_witness.reloc": {
+      "bytes": 1799,
+      "sha256": "8d7b9722c981b90899ef3ceaa0164cf936b6a91dcd14a69b1500933db0cf63a6"
+    },
+    "libreloc/test/corpus/typed/dequant_then_f16.bin": {
+      "bytes": 501,
+      "sha256": "68e8b00bafa75529f23b6f08d5f4081cf9fbc3787f66bba242f0d0fb4ebe2683"
+    },
+    "libreloc/test/corpus/typed/dequant_then_f16.json": {
+      "bytes": 8951,
+      "sha256": "9dcb5cc7a060b6231224de7c2239d0cea6806943c2f5d5cb51f653534135f833"
+    },
+    "libreloc/test/corpus/typed/dequant_then_f16.reloc": {
+      "bytes": 2522,
+      "sha256": "289c40b3a520094ada0031ef47cdd907ee462b58704f8bb3045ff7293bd607fd"
+    },
+    "libreloc/test/corpus/typed/dequant_zp127.bin": {
+      "bytes": 347,
+      "sha256": "1c46058f752e042abc24d783da9b5e7a3491b8f876d56f27d49ba191e9160e56"
+    },
+    "libreloc/test/corpus/typed/dequant_zp127.json": {
+      "bytes": 4621,
+      "sha256": "09c6fde223867f01c8dec6034a74ea7b4b850b3bedbde1d2d2a252e034a2a76f"
+    },
+    "libreloc/test/corpus/typed/dequant_zp127.reloc": {
+      "bytes": 1930,
+      "sha256": "1d86f794010c85b211f946ea9a9fab6df28b5a8615d9f09784ca37adad34d77c"
+    },
+    "libreloc/test/corpus/typed/generate_typed_corpus.py": {
+      "bytes": 17813,
+      "sha256": "c7576d03d110a78a76187d9d9c55537d8b7f6f05a8993482954fdbcfd3eaeef8"
+    },
+    "libreloc/test/corpus/typed/pad_then_quantize.bin": {
+      "bytes": 393,
+      "sha256": "82befdb812281e7bafc8be7f88d36cee5ea0a0f890111cd2e0d62f28e0656773"
+    },
+    "libreloc/test/corpus/typed/pad_then_quantize.json": {
+      "bytes": 4990,
+      "sha256": "3a39d7aa014ad11d3bc4b8d329039a13ff0e5ab620c4ee80f0d96a3df3605085"
+    },
+    "libreloc/test/corpus/typed/pad_then_quantize.reloc": {
+      "bytes": 2053,
+      "sha256": "d20fa75eabc2aad68b8d48ffc04ba866b403bdf51835f5a49ad0ffe9207f37d5"
+    },
+    "libreloc/test/corpus/typed/quant_dequant_padded.bin": {
+      "bytes": 451,
+      "sha256": "56a5055aa3d9a55dc8f90532fddcfb88cdce7f9235f0512afaa47b5a514569c9"
+    },
+    "libreloc/test/corpus/typed/quant_dequant_padded.json": {
+      "bytes": 8321,
+      "sha256": "89a475f60273053dee745205e1143681bb1c52fc71f48214a158b8121e180d9f"
+    },
+    "libreloc/test/corpus/typed/quant_dequant_padded.reloc": {
+      "bytes": 2601,
+      "sha256": "15ce7c8f4cd0103faeda294072ac5bbf63a73512c7987434decc20191f5701e0"
+    },
+    "libreloc/test/corpus/typed/quantize_channel_transpose_sym.bin": {
+      "bytes": 450,
+      "sha256": "fc47220532a1e0e29bd0be0b32e7aa44ac90afcc03b537c335cb42d74706f6d5"
+    },
+    "libreloc/test/corpus/typed/quantize_channel_transpose_sym.json": {
+      "bytes": 8308,
+      "sha256": "0bee3180f4eabbcc50fc5bf4f5b938c3949bf2a10bbd6c88bbe60a3064727bc6"
+    },
+    "libreloc/test/corpus/typed/quantize_channel_transpose_sym.reloc": {
+      "bytes": 2223,
+      "sha256": "69c99a4b815d026c79ae4491ea70c8ff34a381d19d7fa1710de259efa27f3ee8"
+    },
+    "libreloc/test/corpus/typed/quantize_edges.bin": {
+      "bytes": 329,
+      "sha256": "be8341eb57710c737b0683a071a3e56fa19317018b33c26ec94914296ab8e36a"
+    },
+    "libreloc/test/corpus/typed/quantize_edges.json": {
+      "bytes": 4910,
+      "sha256": "250722fdd405badf12855720b8fd3f1016ffa71646f50c30f963395efa6ec1ed"
+    },
+    "libreloc/test/corpus/typed/quantize_edges.reloc": {
+      "bytes": 1811,
+      "sha256": "7c51c23a0f7e09d0e792877500335291ba6ed704ef61171f31db760361cbaab4"
+    },
+    "libreloc/test/corpus/typed/quantize_then_pad.bin": {
+      "bytes": 393,
+      "sha256": "d38c5b5b7631d2b6a0e4204728c948b6784c07b240d83684b1443048455f0e1e"
+    },
+    "libreloc/test/corpus/typed/quantize_then_pad.json": {
+      "bytes": 4912,
+      "sha256": "eaff7d2877ca395c80106e632f33145e81f8ff693bf8708b4663feccc9ced142"
+    },
+    "libreloc/test/corpus/typed/quantize_then_pad.reloc": {
+      "bytes": 2031,
+      "sha256": "02f1f7c955470ce0a442db002fc71a208d9bbf476cd358d6a2f30c0b335e9df7"
+    },
+    "libreloc/test/corpus/typed/reciprocal_formation.bin": {
+      "bytes": 329,
+      "sha256": "1759ba18957a293b4e59b885156da3b97e5d67b049a3dccff308da7ec16ce1b2"
+    },
+    "libreloc/test/corpus/typed/reciprocal_formation.json": {
+      "bytes": 4572,
+      "sha256": "ee7885f3b913332e0b4c01f0468e8d80b65e4a4d85588cddcb8b97ffce0dd446"
+    },
+    "libreloc/test/corpus/typed/reciprocal_formation.reloc": {
+      "bytes": 1806,
+      "sha256": "00a90376bed3afdba7a6c8bed598472ae4f22483c577ce9b04ea70b3666041f5"
+    },
+    "libreloc/test/corpus/typed/widen_bf16_reshape.bin": {
+      "bytes": 363,
+      "sha256": "c3ce28515c50ed71995432b136b026bbb88ea5cd15848d796f1d29a77887eeaa"
+    },
+    "libreloc/test/corpus/typed/widen_bf16_reshape.json": {
+      "bytes": 5588,
+      "sha256": "1d0fcd14993986363bb1a4e91b4c26e862f9c535e8bbdfa4ddb5d939cd6b8d7d"
+    },
+    "libreloc/test/corpus/typed/widen_bf16_reshape.reloc": {
+      "bytes": 1840,
+      "sha256": "ba730a79930b4afe1d1e7a2855ede4bd94db2d23ee0e65093b43410eea09b1aa"
+    },
+    "libreloc/test/corpus/typed/widen_reshape.bin": {
+      "bytes": 363,
+      "sha256": "5b26644da341faffffd55f11a1194e438402f668d0f1989ea00a41a44a5bfe18"
+    },
+    "libreloc/test/corpus/typed/widen_reshape.json": {
+      "bytes": 5601,
+      "sha256": "ef8826dd26f6ec4d9425babf0f851c83e2344fa4fdd977adcc980a0b15568889"
+    },
+    "libreloc/test/corpus/typed/widen_reshape.reloc": {
+      "bytes": 1837,
+      "sha256": "20650b330cc243497dc0ad4a32c99af4205c81100f558aee0967ee88252ee65f"
+    },
+    "libreloc/test/corpus/typed/witness_channel.bin": {
+      "bytes": 606,
+      "sha256": "574a0356ed1f1d056eece887d9e6c883721ff4d66f1e7d6227d1830d0b2eeb13"
+    },
+    "libreloc/test/corpus/typed/witness_channel.json": {
+      "bytes": 6890,
+      "sha256": "7a858592949155c6a375a390064f686e5a6e1b2c64935dbc8a561cb338e1060a"
+    },
+    "libreloc/test/corpus/typed/witness_channel.reloc": {
+      "bytes": 2532,
+      "sha256": "5e0b8eea2fad709a373adc15a6bdd242b4572efa05105727d47338bf16615ddf"
+    }
+  }
+}

@@ -199,6 +199,16 @@ work, but matches Inductor's observed kernel/allocation counts and qualifies
 0/24 against both Torch controls. These are explicit runtime and scoped
 consumer results. [E2, archive directory `02_fp16_attribution`](https://github.com/JueonPark/sym/wiki/Artifacts-Experiments-2026-11-04) · [#263 overhead attribution](../bench/issue263/RESULTS.md) · [#264 prepared groups](../bench/issue264/RESULTS.md) · [#268 replay](../bench/issue268/RESULTS.md) · [#269 consumer lowering](../bench/issue269/RESULTS.md)
 
+In #274, 18 fresh processes tested pretrained FP32 SqueezeNet 1.1 from
+normalized CPU pixels to completed GPU logits. The default opt-in preparation
+reused one group across changing image crops. Warm p95 was 4.154 ms with
+Sym + Inductor and 5.022 ms with Inductor. The six paired ratios had a geometric
+mean of 0.795 (95% bootstrap interval 0.634–0.904). Eager had the lowest
+accounted 112-call lifecycle, 1.907 s versus 7.893 s with Sym + Inductor.
+This endpoint includes the effect of the rewrite on the compiled consumer.
+The result covers one fixed-shape application on the RTX 4070 Ti SUPER.
+[#274 application and historical controls](../bench/issue274/README.md)
+
 ### E-CAPACITY
 
 **Measured effect.** Original E4 sets physical free VRAM to 512 or 1024 MiB
@@ -319,9 +329,9 @@ with the closest supported compiler mechanisms, prospective coverage on
 more untuned chains and parameter revisions, and portability or an explicit
 architecture scope. The evaluation must retain register/fallback evidence,
 compiler/setup/binding/code-size costs, and completed negative results.
-General automatic machine-code synthesis, whole-program discovery, broad
-BF16/pretrained-model behavior and productivity gains remain outside the
-qualified evidence.
+The #274 application adds one pretrained FP32 model and one guarded input
+transformation on Ada. Other architectures for that workload, BF16 models,
+whole-program discovery and productivity gains remain open.
 
 A broader systems paper additionally needs compiler-discovered realistic
 regions and workload-wide coverage, executable matched alternatives under
